@@ -424,8 +424,9 @@ When one pass finds several detections, the loop asks about them **at once, each
 up to a fixed number at a time, so the responses wait about one call rather than one call per
 detection. Each detection's answer is its own: a call that fails, or one a cap refuses, leaves
 only that detection without a classification (its rule's default awaits you, said), and the
-others are classified as usual. Every call's worst case is held against the caps while it is in
-flight, so calls at once never pass a cap together; when the cap fits only some of them, the
+others are classified as usual. Every call's hold (its counted prompt and its task's typical
+answer), then its spend so far as it streams, is held against the caps while it is in flight,
+so calls at once never pass a cap together; when the cap fits only some of them, the
 ones that reached it first are sent. The log and the responses keep the order the rules found
 the detections, whichever call finishes first: each detection's classify line names how long its
 own call took, and the pass adds one line with the classify step's total.

@@ -102,11 +102,14 @@ day** in US dollars for the installation, and whether **hosted AI** is allowed. 
 read-only, names each task's pinned model (its exact id), the prices its cap uses (input and
 output, cache write and read, US dollars per million tokens, from Anthropic's pricing page,
 with the date they were read; the card says so when they are older than 90 days), and each
-task's **cap per call**: its model's worst case at the task's prompt and answer bounds. A task's
-model never changes at run time; changing it re-runs that task's recorded cases. A Haiku task's
-prompt is held under 100,000 tokens, since over it every rate is five times; a longer one is
-refused, saying so. It is off
-until a person allows it. Every call goes through one gateway, which masks what leaves the
+task's **typical cost per call (measured)**: the mean cost of its sent calls over the last 30
+days, or its stand-in, said as not measured. It is no cap. A task's model never changes at run
+time; changing it re-runs that task's recorded cases. **{{product}} sets no AI size limit of its
+own** (the operator, 2026-11-16): a prompt is refused only when, with its task's typical answer,
+it would not fit its model's context window, both numbers named; a Haiku prompt over 100,000
+tokens is priced at its long tier, every rate five times; and a call may answer up to its
+model's maximum output. The spending limits are what bound every call ([The day
+cap](#ai-cap)). Hosted AI is off until a person allows it. Every call goes through one gateway, which masks what leaves the
 host, refuses a call over a cap before sending it, and records it under **History › AI calls**
 (the feature, the model, the verdict, the cost, who asked). Every call also names what
 started it, recorded with it: a person's press (the person the request verified), an
@@ -134,24 +137,42 @@ three calls cost about a cent together, each recorded like any call.
 ## The day cap {#ai-cap}
 
 The **Cap per day** is the most the installation's AI calls may spend in a day, in US
-dollars. Before each call the gateway adds today's spend, what the calls still in flight have
-reserved, and the call's worst case, and refuses the call, sending nothing, when the sum is
-over the cap; the refusal names each amount and the cap. A call's worst case is its prompt as
-the provider counts it (Anthropic's own token count, asked before the call; when the count
-cannot be had, a deliberately high estimate from the request's size, and the call's row says
-which), every prompt token priced as a cache write, plus the most the answer may be.
+dollars. The spending limits are the only governor of an AI call: this cap, a background
+feature's day and month caps on its network, and an incident's own cap
+([The per-incident cap](fixit-troubleshoot#the-cap)). Before each call the gateway holds what
+the call is expected to cost: its prompt as the provider counts it (Anthropic's own token
+count, asked before the call; when the count cannot be had, a deliberately high estimate from
+the request's size, and the call's row says which), every prompt token priced as a cache
+write, plus its task's typical answer (the median of its measured answers). The call is
+refused, sending nothing, only when what is left of a cap that applies (the cap, less what was
+spent, less what calls in flight hold) cannot cover that hold. The refusal names the cap, what
+was spent, what is held and by how many calls, what remains and the call's hold, how it clears
+("it stops until the day ends or an admin raises the cap in Settings › AI"; for a feature's
+month cap, until the month ends), and that nothing was sent.
 
-**Calls at once never pass the cap together.** Each call's worst case is reserved against
-the cap, under one lock every worker shares, before it is sent, and released to what the call
-actually cost once it is recorded. A second call made while the first is in flight is judged
-with the first's worst case counted. A reservation left by a worker that stopped mid-call is
+**The caps are enforced while the answer comes.** Every request is streamed, and may answer up
+to its model's maximum. While it streams, its running cost (its prompt and its answer so far)
+is checked against every cap that applies, every 1,000 tokens or 15 seconds, counting every
+other call's hold or spend so far, and the stream is closed the moment its next stretch could
+pass one. The call then ends "budget ran out mid-answer", naming the cap; its answer is never
+read, and what it cost is recorded as the stream reported it (else estimated, never zero). A
+call that thinks before it answers cannot be counted as it streams, so it is sized before it is
+sent instead: to 2.5 times its task's largest complete answer measured, and to what the tightest
+cap can pay, and held at that; one stopped at that size is asked once more, at what the
+remaining can pay. An answer that broke off, or whose stream went silent past its bound, is
+never read either.
+
+**Calls at once never pass the cap together.** Each call's hold is reserved against the cap,
+under one lock every worker shares, before it is sent, and released to what the call actually
+cost once it is recorded. A second call made while the first is in flight is judged with the
+first's hold, or its spend so far, counted. A reservation left by a worker that stopped mid-call is
 released after about ten minutes (2.5 times the longest one call can take). If the
 reservations cannot be read, every call is refused, saying so, until they can or until no
 call they could hold is still in flight.
 
 **A call the record could not take still counts.** If the record of AI calls refuses a sent
 call's row (its disk or database refusing writes), the call's reservation is kept, never
-released by time, holding what the call cost (its worst case when that is unknown), and
+released by time, holding what the call cost (its hold when that is unknown), and
 **Needs attention** names the call: it is missing from History until the record takes it.
 Mercury asks the record to take the row again before every AI call; when it does, the row
 appears in History at the call's own time, the reservation goes and the Needs attention row
@@ -183,8 +204,8 @@ settings record beside who, when and the change, and History draws it (the row's
 While no cap is set the card says "No cap is set: Mercury does not stop AI spend; the
 provider's own limit is the backstop", followed by who chose it, when and their reason;
 **Needs attention** shows a warning, "AI spend uncapped", for as long as hosted AI is on
-(see [Needs attention](needs-attention)); the gateway refuses no call for the day's spend (a task's cap per call still applies, and
-its refusal says no day cap is set), and the toolbar's spend chip, once built, shows "no
+(see [Needs attention](needs-attention)); the gateway refuses no call for the day's spend (a feature's and an incident's caps
+still apply, and their refusal says no day cap is set), and the toolbar's spend chip, once built, shows "no
 cap" for as long as it is set. To set a cap again, untick No cap, give an amount and Save.
 
 Every change to the cap, like every Save on these cards, is recorded with who, when, and its
@@ -197,19 +218,20 @@ of cents ("$0.1251").
 
 Every control that needs AI carries the same small **AI** mark: **Ask in words** on History ›
 Query, **Explain** in an alert's evidence pack, and this card's **Test**. Hover it to see the
-task it runs, the model that task is pinned to, and the most one call of it may cost (its cap
-per call, from the table above).
+task it runs, the model that task is pinned to, and about what one call of it costs (its
+typical cost per call, measured, from the table above: no cap).
 
 Before drawing such a control, {{product}} asks what the gateway would ask before sending
 anything, in the same order: is hosted AI allowed, is a key stored (only whether one is; its
-value is never read to draw a page), and would today's spend plus this task's cap per call
-still be within the cap per day. If any answer is no, the control is still drawn, never
+value is never read to draw a page), and would today's spend plus this task's typical cost per
+call (measured, from the table above) still be within the cap per day. If any answer is no, the control is still drawn, never
 hidden, but disabled, its box not fillable, and the reason is written under it:
 
 - **hosted AI is off**: allow it on this card, with a reason;
 - **no Anthropic API key is set**: a person types it with **Replace…** on this card;
-- **today's AI spend plus this task's cap per call is over the day cap**: both amounts and the
-  cap are named, with when the day's count resets (your time, and UTC's), or the cap per day
+- **today's AI spend plus this task's per-call cap is over the day cap** (the words still say
+  per-call cap; the amount is the task's typical cost per call): both amounts and the cap are
+  named, with when the day's count resets (your time, and UTC's), or the cap per day
   can be raised here;
 - **the record of AI calls cannot be read**: today's spend is unknown, so no call is made.
 

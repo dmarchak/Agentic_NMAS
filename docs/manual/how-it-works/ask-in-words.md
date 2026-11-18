@@ -14,7 +14,7 @@ It makes one call to a hosted model (Anthropic's, the model named in the button'
 through {{product}}'s AI gateway: allowed only once hosted AI is allowed on **Settings ›
 Installation › AI (hosted)**, capped, and recorded with who asked.
 
-The row carries the **AI** mark: hover it for the task, its pinned model and its cap per call.
+The row carries the **AI** mark: hover it for the task, its pinned model and its typical cost per call.
 When hosted AI cannot answer (it is off, no key is set, or today's cap would be crossed), the
 box and **Fill the builder** are disabled and the reason is written under them; the builder
 itself, its choices and **Ask**, stays as usable as ever (see
@@ -173,11 +173,13 @@ words.
 ## What it costs, and what is recorded {#cost}
 
 Each call is priced at the pinned model's rates (**Settings › Installation › AI (hosted)**
-shows the table) and refused before it is sent if its worst case would cross the task's
-per-call cap or the day's cap (with what calls in flight have reserved). Its prompt is
-measured by the provider's own token count before it is sent, and what is sent of the
-network context and the offer is fitted to the task's prompt bound by that count; when the
-count cannot be had, a deliberately high estimate is used instead, which fits less. Every
+shows the table) and refused before it is sent only if what is left of the day's cap (with what
+calls in flight hold) cannot cover its hold, its counted prompt and its task's typical answer;
+while it streams it is stopped before it would pass the cap ([The day
+cap](installation-settings#ai-cap)). Its prompt is measured by the provider's own token count
+before it is sent; {{product}} sets no size limit of its own, so the network context and the
+offer are cut only to fit the model's context window. When the count cannot be had, a
+deliberately high estimate is used instead. Every
 call is a row in **History**: who asked, the masked request, the answer, its verdict, its
 tokens (the prompt's, counted or estimated, and which) and its cost. The question's metrics and labels
 come from Prometheus; nothing is read from or sent to a device.
@@ -203,10 +205,10 @@ come from Prometheus; nothing is read from or sent to a device.
   it says "Not filled: the answer ran past max_tokens".
 - **Not one of the metrics offered:** the answer named a metric {{product}} did not offer, so
   nothing is filled.
-- **Over a cap:** the call's worst case, what is reserved by calls in flight, today's spend
-  and the cap it would cross are all named.
+- **Over a cap:** the call's hold, what calls in flight hold, today's spend, what remains and
+  the cap are all named, with how it clears.
 - **Too long:** the prompt's tokens, counted by the provider or estimated (said which), and
-  the task's bound are both named; nothing is sent.
+  the most its model's context window leaves for it are both named; nothing is sent.
 
 ## On the logs builder {#logs}
 

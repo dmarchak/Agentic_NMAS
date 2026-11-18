@@ -64,15 +64,24 @@ Each device's fix is also its own card on that device's page and under In progre
 
 ## The Self-healing toggle {#self-healing-toggle}
 
-On is Auto for the network for its default duration; its label then reads "Auto until HH:MM".
-Off is Dry run: self-healing still watches and says what it would fix, and sends nothing. One
-press, no dialog; the toggle is busy on itself until the answer, then the strip is drawn again
-with the state now. Switching it on is the approval for what is already open (the operator,
-2026-11-16, C3823): the open problems Mercury can fix run as one batch, in the steps above,
-named after the switch-on. A gate the policy holds (a
-network not marked lab, no kind allowed to be fixed) refuses it, naming the gate, and nothing
-changes. The gear opens the network's full Self-healing settings, where every time limit and
-kind is set.
+On is Auto **until someone turns it off** (the operator, 2026-11-16), on any network, pressed by
+a person who may change the network's self-healing; its label then reads **On**, and its hover
+"Self-healing fixes problems by itself on <network> until someone turns it off". The change is
+recorded on History as that person's decision. An Auto set in Settings with an expiry (1 h to 7
+days) reads **On until HH:MM**, and returns to Dry run at that time. Off is Dry run:
+self-healing still watches and says what it would fix, and sends nothing. One press, no
+dialog; the toggle is busy on itself until the answer, then the strip is drawn again with the
+state now. Switching it on is the approval for what is already open (the operator, 2026-11-16,
+C3823): the open problems Mercury can fix run as one batch, in the steps above, named after the
+switch-on. While self-healing is off, one line beside the switch says what turning it on does:
+"Also fixes the N open problems (2 restores, 1 saved script)", and the open incidents with no
+fix decided yet, "decided again in Auto, each fixed by itself only if its kind is allowed
+Auto", said apart and never counted as fixed. What Auto heals by itself is still the kinds the
+policy allows in Auto: a Tier 1 kind not allowed stays a dry run, and a Tier 2 fix is proposed
+to a person. Every run's own preconditions and verify, guard 4 (a device Mercury may not
+change), the findings and the notifications hold as in any Auto. A gate the policy holds
+refuses it, naming the gate, and nothing changes. The gear opens the network's full
+Self-healing settings, where every limit and kind is set.
 
 ## The AI troubleshooting toggle {#ai-toggle}
 
@@ -100,5 +109,6 @@ stay acknowledged. The gear opens the network's AI troubleshooting card in Setti
 ## The top bar
 
 While self-healing is in Auto, or AI troubleshooting starts by itself, on any network, the top
-bar shows a status chip ("Self-healing: Auto until …", "AI on"). It opens that network's
-control strip on the Incidents page. With neither on, there is no chip.
+bar shows a status chip ("Self-healing: Auto until …", "Self-healing: Auto until turned off",
+"AI on"). It opens that network's control strip on the Incidents page. With neither on, there
+is no chip.

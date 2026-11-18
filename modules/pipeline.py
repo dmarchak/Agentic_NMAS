@@ -689,7 +689,7 @@ def _pre_apply(ctx: PipelineContext) -> str:
 #: audit's ``netbox_available`` is its one reader, `_stage_audit_log`), so a stale one can
 #: misstate only that flag, never what is sent or verified; 600 s covers a proposal's
 #: preflight, which warms it (`warm_netbox_context`), to the person's approval of the plan
-#: (s5's press to a ready plan took 87 s on 2026-11-16) and a heal pass's devices in turn.
+#: (a switch's press to a ready plan took 87 s on 2026-11-16) and a heal pass's devices in turn.
 #: The device's change invalidates it by its key: the inventory row's name, address and
 #: NetBox id, so a renamed, re-addressed or re-created device misses. The run's parameters are
 #: no part of what NetBox answers (`build_render_context` copies them in), so each answer
@@ -788,7 +788,7 @@ def _stage_netbox_query(ctx: PipelineContext) -> None:
         try:
             # One context builder feeds the pipeline, render previews, the
             # onboarding wizard and the AI tools — see modules/nsot/context.py. Cached for
-            # the run's device (`netbox_context`, item 5: the query took 6.1 s on s1's run).
+            # the run's device (`netbox_context`, item 5: the query took 6.1 s on a switch's run).
             built = netbox_context(_list_of(ctx), dev, ctx.device_params(ip))
             context = built["context"]
             intended[ip] = {
@@ -3559,7 +3559,7 @@ def _kept_session(ctx, dev: dict, ip: str) -> str:
             prompt = (conn.find_prompt() or "").replace("^@", "").strip()
             if not prompt:
                 prompt = (conn.find_prompt() or "").replace("^@", "").strip()
-            # A prompt left in a configuration sub-mode (``r2(config-if)#``) is no session to
+            # A prompt left in a configuration sub-mode (``edge1(config-if)#``) is no session to
             # read on (the review, finding 5): a new one.
             # Any sub-mode, not only ``(config…)``: ``(dhcp-config)#``, ``(cfg-crypto-trans)#``,
             # ``(ca-trustpoint)#`` (the review of 2026-11-16).

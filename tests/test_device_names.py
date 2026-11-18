@@ -204,7 +204,7 @@ INVENTORY = {
     "modules/topology_layout.py": (2, NOT_A_DEVICE, "a local variable named r2 (a radius squared), not a device: r2"),
     "modules/topology_page.py": (1, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: r5"),
     "modules/utils.py": (1, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: probe-r1a"),
-    "routes/deploy.py": (2, HISTORY, "a dated incident or finding names the device it happened on: r2, r6"),
+    "routes/deploy.py": (1, HISTORY, "a dated incident or finding names the device it happened on: r6"),
     "routes/golden.py": (5, PROVENANCE, "a measurement names the device it was taken on: r2, s3"),
     "routes/templates.py": (1, PROVENANCE, "a measurement names the device it was taken on: s1"),
     "routes/templatize.py": (1, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: s4"),

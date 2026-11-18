@@ -87,7 +87,21 @@ def live(body: str) -> str:
 def section(body: str, sid: str) -> str:
     part = body.split(f'id="{sid}"', 1)
     assert len(part) == 2, f"no #{sid} is drawn"
+    # Premise corrected (MERCURY_CHARTER R5, board R5, approved 2026-11-15): the incident card
+    # (`inc-bluf`) is its default view up to its ONE Details, and the one card that was
+    # (`inc-ai`, Fixing it) is under that Details, up to the page's own parts.
+    if sid == "inc-bluf":
+        return part[1].split('<details class="simple-details" id="inc-details"', 1)[0]
+    if sid == "inc-ai":
+        return re.split(r'id="inc-timings"|<section class="card fixit simple inc-plan"|'
+                        r'<div id="saved-plans-', part[1], maxsplit=1)[0]
     return part[1].split("</section>", 1)[0]
+
+
+#: The incident card's status line (R5: the card's own line), its words the group "words": a
+#: `<p>` on a fixed card, a `<div>` otherwise (templates/v2/_fixit_section.html, measured
+#: 2026-11-18: the healed and watching plants draw it as a `<div>`).
+STATUS = r'<(p|div) class="simple-status[^"]*fixit-status[^"]*"[^>]*>(?P<words>.*?)</\1>'
 
 
 def todo_of(body: str) -> str:
@@ -299,13 +313,13 @@ class TestTheOnePrimaryButton:
         todo = todo_of(body)
         assert f'data-inc-state="{state}"' in todo.split(">", 1)[0], "What to do says its state"
         assert primaries(todo) == [] and "data-first=" not in todo
-        # Premise corrected (R2, 2026-11-14): no heading "What to do"; the BLUF's third line
-        # says there is nothing to press, and the one card's status line says why.
-        fix = T.text_of(section(body, "inc-bluf")).split("How to fix it", 1)[1].strip()
-        assert fix.startswith("Nothing to press"), fix
-        status = re.search(r'<p class="fixit-status"[^>]*>(.*?)</p>', section(body, "inc-ai"),
-                           re.S)
-        assert status and T.text_of(status.group(1)).startswith("Nothing"), status
+        # Premise corrected (R2, 2026-11-14): no heading "What to do". And again (R5, board R5,
+        # approved 2026-11-15): the incident card's action row draws no control, and its status
+        # line says why there is nothing to press.
+        row = section(body, "inc-bluf").split('data-bluf="fix"', 1)[1].split("</div>", 1)[0]
+        assert "<button" not in row and "<a " not in row and "<summary" not in row, row
+        status = re.search(STATUS, section(body, "inc-bluf"), re.S)
+        assert status and T.text_of(status.group("words")).startswith("Nothing"), status
 
     def test_an_item_that_left_needs_attention_is_said_and_the_device_opened(self, client):  # noqa: F811
         """A person acknowledged the can't-fix's item: the list was read and holds no item for
@@ -344,7 +358,8 @@ class TestTheOnePrimaryButton:
             todo = todo_of(T.page(client, d["incident"]))
         button = the_primary(todo)
         assert button[2] == "Open the run" and 'data-first="run"' in todo
-        assert "<summary" not in todo and 'class="inc-card"' not in todo, \
+        # (R5: the card's Details has summaries of its own; the action's own is `inc-open`.)
+        assert 'class="inc-open"' not in todo and 'class="inc-card"' not in todo, \
             "the action's own button is not offered while the run holds its device"
         assert "Capture running since" in T.text_of(todo)
         assert attention.first_action({"held": {"device": "edge-b"},

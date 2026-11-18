@@ -158,3 +158,51 @@ class TestTheSwitchOnBatch:
         inc = _of(inc_id)
         assert inc["state"] == "standing", inc.get("closed_why")
         assert inc["standing"]["decision"] == decision
+
+
+#: An act's every outcome (`act.OUTCOME_WORDS`) but healed, and the tail's.
+STANDS = ("symptom_remains", "partial", "refused", "rolled_back", "failed", "interrupted",
+          "tail_failed")
+
+
+class TestEachOutcome:
+    """7d54cf24 (C3870, the operator, 2026-11-16: "Only 'healed' closes an incident"): THE one
+    home of what an act's outcome does to its incident (`act.outcome_on_incident`) closes it
+    on healed alone, with its proof; every other outcome leaves it open, standing on the act,
+    said in Mercury's words; a tail failure stands on its step."""
+
+    def test_every_act_outcome_is_one_this_test_names(self):
+        from modules.heal import act
+        assert set(act.OUTCOME_WORDS) == set(STANDS[:-1]) | {"healed"}
+
+    def test_healed_closes_with_its_proof(self, lab):  # noqa: F811
+        from modules.heal import act
+        inc = settle(RUNNING, device="edge-b")
+        proof = {"by": "the heal's verify", "words": "verified at intent"}
+        got = act.outcome_on_incident(NET, {"id": "hd-1", "incident": inc["id"]}, "healed",
+                                      "verified", fixed=proof)
+        assert got == "closed" and _of(inc["id"])["state"] == "closed", _of(inc["id"])
+        assert "healed: verified (decision hd-1)" in _of(inc["id"]).get("closed_why", "")
+        assert _of(inc["id"])["fixed"] == proof
+
+    @pytest.mark.parametrize("outcome", STANDS)
+    def test_every_other_outcome_stands_on_the_act(self, lab, outcome):  # noqa: F811
+        from modules.heal import act
+        inc = settle(RUNNING, device="edge-b")
+        got = act.outcome_on_incident(NET, {"id": "hd-1", "incident": inc["id"]}, outcome,
+                                      "the act's words")
+        rec = _of(inc["id"])
+        assert got == "stood" and rec["state"] == "standing", rec.get("closed_why")
+        s = rec["standing"]
+        assert s["act"] is True and s["outcome"] == outcome and s["decision"] == "hd-1"
+        assert s["words"] == f"{act.STANDING_WORDS[outcome]}: the act's words"
+        assert s["on"] == (act.ON_TAIL if outcome == act.TAIL_FAILED else "departure"), s
+
+    def test_an_incident_naming_a_symptom_stands_on_it(self, lab):  # noqa: F811
+        """Closed then only by Mercury's confirmation read (`request_confirm`)."""
+        from modules.heal import act
+        from tests.test_heal_act import ADJ
+        inc = settle(RUNNING, device="edge-b", triggers=[ADJ])
+        assert act.outcome_on_incident(NET, {"id": "hd-1", "incident": inc["id"]},
+                                       "symptom_remains", "still down") == "stood"
+        assert _of(inc["id"])["standing"]["on"] == "symptom"

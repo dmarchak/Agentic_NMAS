@@ -446,12 +446,20 @@ class TestAFailedVerifyNeverReadsFixed:
         from modules.heal import bounce, run_card, session_clear
 
         iid = healed()
-        inc, entry, decisions = model(iid)
+        healed_inc, entry, decisions = model(iid)
+        # Premise corrected (measured 2026-11-18: since C3870 a healed act closes its incident
+        # with its verify kept on it, ``fixed``, and only a healed one: `act.py`'s
+        # `outcome_on_incident(..., fixed=verified_of(...) if outcome == "healed" else None)`):
+        # the record as each outcome's act leaves it carries ``fixed`` only for "healed", so the
+        # healed record's proof is not carried into an outcome that never makes one.
+        assert healed_inc.get("fixed", {}).get("act"), "the premise: the healed record's proof"
+        unproven = {k: v for k, v in healed_inc.items() if k != "fixed"}
         outcomes = (set(SL.MARKS) | set(A.OUTCOMES) | set(bounce.OUTCOMES)
                     | set(session_clear.OUTCOMES) | {"dampened", "unheard_of"})
         assert len(outcomes) >= 25 and set(SL.NOT_HEALED) <= outcomes, len(outcomes)
         fixed = set()
         for outcome in sorted(outcomes):
+            inc = healed_inc if outcome == "healed" else unproven
             steps = [dict(s, result=outcome) if s.get("step") == "record" else s
                      for s in entry["steps"]]
             edited = dict(entry, outcome=outcome, steps=steps)
@@ -464,6 +472,7 @@ class TestAFailedVerifyNeverReadsFixed:
             assert "put it back" not in IP.title(inc, edited, decisions), outcome
         assert fixed == set(run_card.HEALED) & outcomes == {"healed", "bounced", "cleared",
                                                             "dampened"}
+        inc = unproven
         for outcome in SL.NOT_HEALED:
             steps = [dict(s, result=outcome) if s.get("step") == "record" else s
                      for s in entry["steps"]]
@@ -574,7 +583,12 @@ class TestTheStates:
         assert 'data-state="needs_person"' in body and "Critical" in body
         assert text_of(cell(body, "decided")).endswith("— not yet"), \
             "no fix was chosen: a can't-fix decides none"
-        assert "Mercury cannot fix this yet" in body and "It needs a person." in body
+        # Premise corrected (measured 2026-11-18: since c4948c2c, "every 'waits for a person'
+        # says why", the line is "It needs a person: <its reason>." and never the reasonless
+        # "It needs a person."): the line says it needs a person, and why.
+        assert "Mercury cannot fix this yet" in body
+        assert re.search(r"It needs a person: [^<]*cannot fix this yet", body), \
+            "it needs a person, and the line says why"
         # Premise corrected (C3454, the approved rule "The stepper never says "failed" for a
         # decision that worked"): its decision is drawn as needing a person, never failed.
         assert 'data-step="d-decide"' in body and "run-step-needs" in body
@@ -828,7 +842,10 @@ class TestThePage:
         # Premise corrected (the operator's R2, 2026-11-14): What to do became the BLUF's third
         # line, its one action alone; the History link it drew beside it is under What Mercury
         # has done, once.
-        todo = live.split('id="inc-bluf"', 1)[1].split("</section>", 1)[0]
+        # And R5 (board R5, approved 2026-11-15): that line is the incident card's default view,
+        # up to its Details.
+        todo = live.split('id="inc-bluf"', 1)[1].split(
+            '<details class="simple-details" id="inc-details"', 1)[0]
         assert todo.count("<a ") == 1 and "Open Needs attention" not in todo
         assert todo.count("btn-primary") == 1 and ">Open edge-b</a>" in todo
         assert ">Open edge-b&#39;s History</a>" not in todo
@@ -1123,7 +1140,9 @@ class TestADrillSaysSo:
         inc, _rows, _lines = raw(iid)
         assert inc["fault_drill"]["id"] == drill["id"], "the premise: tagged at creation"
         body = page(client, iid)
-        head = body.split('class="card inc-head', 1)[1].split("</section>", 1)[0]
+        # Premise corrected (R5, board R5): the header's facts are a line under the incident
+        # card's Details (and its Drill tag also on the card's visible impact line).
+        head = body.split('class="inc-head', 1)[1].split("</p>", 1)[0]
         (tag,) = re.findall(r'<span class="inc-drill" data-drill="([^"]+)">(.*?)</span></span>',
                             head, re.S)
         assert tag[0] == drill["id"] and tag[0].startswith("fd-")
@@ -1177,8 +1196,13 @@ class TestItEndsWhenItsFixIsVerified:
         verified = next(s["at"] for s in act_steps(iid)
                         if s["step"] == "record" and s["result"] == "healed")
         taken = next(x["at"] for x in lines if x.get("row") == "taken")
-        assert inc["closed_at"] == taken != verified, \
-            "the premise, as the host's record held it: the store's close is the act's start"
+        # Premise corrected (measured 2026-11-18: since C3870 the act closes its incident when
+        # it puts its outcome on it, `act.outcome_on_incident`, after the record step: closed
+        # 14:15:38 against the verify's 14:15:17 and the take's 14:13:32 on the Ticking clock;
+        # the host's record of the time stamped the close at the take): the store's close is
+        # still not the verify, so the page drawing the verify is still the page's own choice.
+        assert inc["closed_at"] != verified and inc["closed_at"] != taken < verified, \
+            "the premise: the store's close is neither the verify nor the act's start"
         body = page(client, iid)
         span = re.search(r'<span class="inc-span">(.*?)</span> <span class="inc-ro">', body,
                          re.S).group(1)

@@ -643,7 +643,15 @@ def references(sources: dict, modules: set = None) -> dict:
     """``{(module, top-level definition or TOP): the (module, name) pairs it names}`` over
     *sources*, by tests/test_ai_controls.py's own reference reader; a class is one
     definition, its methods' references its own. *modules*: the names an import may resolve
-    to, when *sources* is a part of the program."""
+    to, when *sources* is a part of the program.
+
+    A name of the module's own units read where a function around the read binds it itself (a
+    parameter or a local, `test_ai_never._names_in_scope`, the one scope-exact resolver both
+    scans use) is that name, never the unit (C3984: `command_plan_run.Reused.keep`'s keyword
+    ``run`` was read as `command_plan_run.run`, the false edge 6856c327 removed from the
+    AI-never scan): such a unit is referenced only where a read of it is not shadowed."""
+    from tests.test_ai_never import _names_in_scope
+
     trees = {T._dotted(rel): ast.parse(text) for rel, text in sources.items()}
     modules = module_names(sources) if modules is None else modules
     out = {}
@@ -653,7 +661,10 @@ def references(sources: dict, modules: set = None) -> dict:
         imports = T._imports([n for n in parsed.body
                               if isinstance(n, (ast.Import, ast.ImportFrom))], modules)
         for n in defs:
-            out[(mod, n.name)] = T._refs(n, mod, imports, local, modules)
+            got = T._refs(n, mod, imports, local, modules)
+            read = {r.id for r, shadowed in _names_in_scope(n) if r.id not in shadowed}
+            out[(mod, n.name)] = {x for x in got
+                                  if not (x[0] == mod and x[1] in local and x[1] not in read)}
         rest = [n for n in parsed.body
                 if not isinstance(n, _DEFS + (ast.Import, ast.ImportFrom))]
         out[(mod, TOP)] = T._refs(ast.Module(body=rest, type_ignores=[]), mod, imports, local,

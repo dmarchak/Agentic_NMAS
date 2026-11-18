@@ -167,19 +167,26 @@ def test_an_opened_row_is_a_summary_in_a_real_browser(client, monkeypatch, world
                     assert got["first"][0] != "Open the incident", got["first"]
                 # Details: closed, it shows nothing; pressed, what the incident's page does
                 # not draw (a can't-fix's diagnosis and its AI analysis).
+                # Premise corrected (e9902af0, the operator's R5 item, 2026-11-16: "one Details
+                # per row (not "Details" plus "Details for the record")"; measured 2026-11-18:
+                # templates/v2/_attention.html draws `<div class="att-record">` with its
+                # "For the record" heading inside the row's `details.att-more`): For the record
+                # is the last part of the row's one Details, closed with it.
+                more = f"{row} > .att-body > details.att-more"
+                record = f"{more} .att-record"
                 if r.get("heal_diagnosis"):
-                    more = f"{row} > .att-body > details.att-more"
                     assert b.js(HEADS, more, "h3") == []
                     b.click(f"{more} > summary")
                     b.wait_for("return document.querySelector(arguments[0]).open", 10, more)
-                    assert b.js(HEADS, more, "h3") == ["Mercury's diagnosis", "AI analysis"]
+                    assert b.js(HEADS, more, "h3") == ["Mercury's diagnosis", "AI analysis",
+                                                       "For the record"]
                     assert b.js("return document.querySelector(arguments[0])"
                                 ".querySelectorAll('details').length", more) == 0
-                # Details for the record: closed; pressed, every operand of the row.
-                record = f"{row} > .att-body > details.att-record"
-                assert b.js(HEADS, record, "dt") == []
-                b.click(f"{record} > summary")
-                b.wait_for("return document.querySelector(arguments[0]).open", 10, record)
+                # For the record: closed, it shows nothing; opened, every operand of the row.
+                if not b.js("return document.querySelector(arguments[0]).open", more):
+                    assert b.js(HEADS, record, "dt") == []
+                    b.click(f"{more} > summary")
+                    b.wait_for("return document.querySelector(arguments[0]).open", 10, more)
                 assert b.js(HEADS, record, "dt") == [k for k in r["operands"] if k != "members"]
             if world == "proposal":
                 # Opening the row drew no card; Review the fix…, on the row's line, draws it.
@@ -201,7 +208,11 @@ def test_an_opened_row_is_a_summary_in_a_real_browser(client, monkeypatch, world
                        f"/v2/incident/{landed['incident_page']['id']}")
             # Premise corrected (the operator's R2, 2026-11-14: "Everything else sits below,
             # collapsed"): What's wrong is collapsed under its heading, so it is opened, as a
-            # person opens it, before its words are read.
+            # person opens it, before its words are read. Premise corrected again (board R5,
+            # approved 2026-11-15, artboard 3: What's wrong and the page's other cards move
+            # under the incident card's one Details): that Details is opened first.
+            b.click("#inc-details > summary")
+            b.wait_for("return document.querySelector('#inc-details').open", 10)
             b.click("#inc-wrong summary")
             b.wait_for("return document.querySelector('#inc-wrong details').open", 10)
             wrong = b.js("return document.querySelector('#inc-wrong').innerText")
@@ -323,7 +334,15 @@ def test_a_lost_stream_keeps_its_action_and_everything_else_under_details(stream
     assert b.done, "the row's body is drawn"
     blocks = named([cls for cls, n in b.blocks if n])
     a_summary(len(b.said.split()), blocks, b.said)
-    assert blocks == ["att-wrong", "att-todo", "att-meta", "att-more", "att-record"], blocks
+    # Premise corrected (e9902af0, the operator's R5 item, 2026-11-16: "one Details per row
+    # (not "Details" plus "Details for the record")"): the record is the last part of the
+    # row's one Details (`<div class="att-record">` inside `details.att-more`), no block beside it.
+    assert blocks == ["att-wrong", "att-todo", "att-meta", "att-more"], blocks
+    more = page.split(f'<details class="att-more" data-keep="att-more-{row["id"]}"', 1)[1]
+    assert '<div class="att-record"' in more, "the row's record is drawn"
+    head = more.split('<div class="att-record"', 1)[0]
+    assert head.count("</details>") < 1 + head.count("<details"), \
+        "For the record is inside the row's one Details"
     assert b.said.startswith(SBT.LEAD + " " + SBT.NEEDS + " What to do"), b.said
     assert "Re-subscribe r2's telemetry (101, 102)" in b.said
     fix = row["fix"]

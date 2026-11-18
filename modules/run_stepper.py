@@ -442,6 +442,13 @@ def from_record(declared, steps, *, ended: bool, now: float = None, good=(), bad
         got = [(st, n, s) for n, s in events[k] for st in [state_of(n, s)] if st]
         by_key[k] = got
     reached = max([i for i, k in enumerate(keys) if events[k]], default=-1)
+    # The step the run is on now (its newest record's place), while it goes on: a step
+    # declared after it is still ahead of it, never skipped, even where the run recorded a
+    # step declared later first (a heal waiting on its symptom runs its tail, save, commit
+    # and golden, before its symptom and its record: Record read "not needed in this run"
+    # while the symptom was read; C3988, measured 2026-11-18).
+    on = (keys.index(steps[newest].get("step"))
+          if not ended and steps and steps[newest].get("step") in keys else None)
     worst = {k: min((g[0] for g in by_key[k]), key=_WORST.index, default="")
              for k in keys}
     stop = next((i for i, k in enumerate(keys)
@@ -454,7 +461,7 @@ def from_record(declared, steps, *, ended: bool, now: float = None, good=(), bad
             if k in conditional and (ended or i < reached):
                 state = "skipped"
             elif not ended:
-                state = "skipped" if i < reached else "waiting"
+                state = "skipped" if i < reached and (on is None or i < on) else "waiting"
             elif cut_short and i > reached:
                 state = "not_reached"               # the run stopped before it got here
             else:

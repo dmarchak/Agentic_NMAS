@@ -243,6 +243,13 @@ def _step(row: dict) -> str:
     last progress."""
     if row.get("plan_href") and row.get("run_words"):
         return row["run_words"]
+    if row.get("card") in RUN_CARDS and row.get("run_words"):
+        # A run that records its own steps (a heal, a re-subscribe) holds its device as the
+        # deploy it applies through (`receipts.operation`), from its read to its tail: its
+        # words are its own newest step's, never the deploy stepper's, which a hold with no
+        # deploy progress yet draws at its first stage (a heal mid-apply read "NetBox record:
+        # the device's NetBox record and its parameters"; C3988, measured 2026-11-18).
+        return row["run_words"]
     op = row.get("operation", "")
     console = _console_steps(op)
     if console:
