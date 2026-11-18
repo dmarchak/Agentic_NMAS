@@ -328,7 +328,9 @@ the healed parts at intent; the symptom read again after the confirmation began,
 port problem's port read clear; and, where the save was not shown done, startup holding what
 runs. It then reads "already fixed; confirmation was blocked (<why the heal said it did
 not>)". Anything else, or anything that could not be read, is no proof: the read is kept as the
-heal's `confirm` step, and the AI starts with it in its evidence beside the failure.
+heal's `confirm` step, and the AI starts with it in its evidence beside the failure. A tail
+failure attached to another open incident is not judged by its own incident's close: the AI is
+asked on the open incident it was attached to.
 
 Every other close that would end an incident standing on such a heal (a drift run reading the
 device at its golden, its symptom read gone, a decision of nothing to heal) asks for the same

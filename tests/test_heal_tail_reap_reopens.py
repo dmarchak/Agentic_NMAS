@@ -102,3 +102,51 @@ def test_a_tail_failure_on_a_device_in_another_open_incident_attaches_to_it(  # 
     monkeypatch.setattr(R1, "capability_failures", lambda network, inc: [])
     pend = {i["id"]: i for i in R1.pending(NET)["incidents"]}
     assert [f["key"] for f in pend[other_id]["failures"]] == [R1.key_of("tail", d["id"])], pend
+
+
+def _attached(monkeypatch):
+    """`_healed_at_fixed`'s tail reaped while a second incident stands open on edge-b, so the
+    failure is attached to it; its page and troubleshooting record stood in (this lab's
+    sighted incident has no device identity). ``(closed id, decision, open id, record)``."""
+    from modules.fixit import incident as F
+    from modules.heal import act
+    from tests.test_incident_page import CFG
+
+    inc_id, d = _healed_at_fixed()
+    other_id = I.sight(NET, "edge-b", dict(CFG, key="cfg:2", epoch=T0 + 30),
+                       now=T0 + 30)["incident"]
+    assert act.reap_tails(NET) == [d["id"]]
+    assert _of(inc_id)["tail_attached"]["to"] == other_id, _of(inc_id)
+    rec = F.Incident(NET, other_id, "uid:edge-b", "edge-b", T0)
+    monkeypatch.setattr("modules.incident_page.resolve", lambda network, iid: {
+        "found": "page", "id": iid, "incident": _of(iid)})
+    monkeypatch.setattr("modules.fixit.section.incident_of", lambda network, found: {
+        "incident": rec, "why": ""})
+    return inc_id, d, other_id, rec
+
+
+def test_r1_asks_the_ai_on_a_tail_failure_attached_to_an_open_incident(  # noqa: F811
+        lab, monkeypatch):
+    """Ruling 17 end to end (the device-write review of 67a1ce29, 3-A; C4110): R1's start on
+    the attached ``tail:<decision>`` key is investigated on the open incident. Confirm-first
+    (`act.confirm_before_ai`) resolved the decision's OWN incident, closed and healed, and said
+    ``closed_already``: `_investigation` wrote a ``closed`` start line on the OPEN incident
+    with the other incident's "healed" words, never asked the AI, spent the key, and so hid
+    the open incident's Start. The AI is asked now, and no ``closed`` line is written."""
+    from modules import heal_notice
+    from modules.fixit import auto as R1
+    from modules.fixit import incident as F
+
+    inc_id, d, other_id, rec = _attached(monkeypatch)
+    key = R1.key_of("tail", d["id"])
+    asked = []
+
+    def ask(found, inc):
+        asked.append(found["id"])
+        return {"state": "answered"}
+    got = heal_notice._investigation(NET, other_id, key, ask, deliver=None, trigger="auto",
+                                     scripts=False)
+    assert asked == [other_id] and got == {"state": "answered"}, got
+    closed = [ln for ln in F.read(rec)["lines"] if ln.get("state") == "closed"]
+    assert closed == [], closed
+    assert _of(inc_id)["state"] == "closed" and _of(other_id)["state"] in R1.OPEN

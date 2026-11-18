@@ -654,8 +654,9 @@ def _investigation(network: str, incident_id: str, key: str, ask, *, deliver, tr
     # the act holds it; at intent with its symptom gone, the incident closes on that read and
     # nothing is asked (nor any script fired). Otherwise the read is kept in the step log, and
     # the incident is resolved after it, so the AI's evidence holds it.
+    # A tail attached to this incident from its own closed one is asked here (ruling 17, C4110).
     from modules.heal import act as HA
-    confirmed = HA.confirm_before_ai(network, key)
+    confirmed = HA.confirm_before_ai(network, key, on=incident_id)
     found = incident_page.resolve(network, incident_id)
     inc = section.incident_of(network, found)["incident"] if found["found"] == "page" else None
     who = {"by": by, "verified": verified} if by else {}

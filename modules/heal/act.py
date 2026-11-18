@@ -1812,7 +1812,7 @@ def _tail_step_of(network: str, decision: dict, standing: dict):
             or (standing or {}).get("step") or "")
 
 
-def confirm_before_ai(network: str, key: str, *, sources=None) -> dict:
+def confirm_before_ai(network: str, key: str, *, sources=None, on: str = "") -> dict:
     """C3870 (the operator, 2026-11-16: "Confirm-first: the deterministic own-device read
     before any AI call"): for a failure of an act or a tail (*key* ``act:<decision>`` or
     ``tail:<decision>``, `fixit.auto.failures`), before anything asks the AI, its device is
@@ -1826,8 +1826,14 @@ def confirm_before_ai(network: str, key: str, *, sources=None) -> dict:
     act's ``confirm`` step in the step log, so the AI's evidence holds it (`evidence_pack.
     tried_section`) beside the failure. ``{"state", "words"}``, *state* ``closed``,
     ``closed_already`` (it closed before the AI was asked: nothing to ask), ``not_fixed``,
-    ``not_standing`` (moved since: judged as before), ``unread`` or ``skipped`` (another kind
-    of failure). Never raises."""
+    ``not_standing`` (moved since: judged as before), ``unread``, ``skipped`` (another kind
+    of failure) or ``attached``. Never raises.
+
+    *on*, the incident being investigated: a tail failure attached to it from its decision's
+    own closed incident (ruling 17, the operator, 2026-11-18: "A tail failure on a device
+    already in an open incident attaches to that incident"; `incidents.reopen`'s
+    ``tail_attached``) is ``attached``: its own incident's close is not this one's, so nothing
+    is closed or confirmed on it and the AI is asked on *on* (C4110)."""
     from modules.heal import decide, decisions, steplog
 
     kind, _sep, decision_id = str(key or "").partition(":")
@@ -1840,6 +1846,12 @@ def confirm_before_ai(network: str, key: str, *, sources=None) -> dict:
         return {"state": "unread", "words": f"decision {decision_id} could not be read: {exc}"}
     if not inc:
         return {"state": "unread", "words": f"{d.get('incident') or 'its incident'} is not held"}
+    went = inc.get("tail_attached") or {}
+    if (kind == "tail" and on and inc.get("state") == "closed" and went.get("to") == on
+            and went.get("decision") == decision_id):
+        return {"state": "attached", "words": (
+            f"{inc['id']}'s tail failure is attached to {on}, which is investigated: "
+            f"{inc['id']}'s own close is not {on}'s")}
     if inc.get("state") == "closed":
         return {"state": "closed_already", "words": (
             f"{inc['id']} closed before the AI was asked: "
