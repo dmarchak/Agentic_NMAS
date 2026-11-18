@@ -135,6 +135,11 @@
     it (`data-card="plan"`: a person approves only what they can read), and the offer to save a
     verified fix another (`_saved_plans_saves.html`). tests/r5_budget.py holds the budgets. -#}
 {%- set C = x.card or {} %}
+{#- The story's summary states the next step on the incident's page (`incident_story.summary`,
+    ``next``, the page's own `todo` words): the card does not say it again (the operator's
+    decision 15, 2026-11-18: "The summary carries next; remove it from board R5's card").
+    Drawn alone, as a section's redraw, the card still says it. -#}
+{%- set STORY_NEXT = (p.story.summary.next if (p is defined and p.story is defined and p.story and p.story.summary) else none) %}
 {%- set TITLE = (page_title if page_title is defined and page_title else '') or B.what or ('Incident ' ~ x.id) %}
 {%- set start_offered = F.kind == 'start' and ((ACT.start or {}).offered or (ACT.start is not defined and A.offered)) %}
 {%- set SEV = page_sev if page_sev is defined and page_sev else ({'words': {'critical': 'Critical', 'warning': 'Warning', 'info': 'Info'}.get(B.severity or '', ''), 'kind': {'critical': 'danger', 'warning': 'warn', 'info': 'info'}.get(B.severity or '', 'neutral')}) %}
@@ -157,7 +162,7 @@
   {%- endif %}
   {%- else %}
   <p class="simple-impact" data-bluf="impact">{% if SEV.words %}<span class="inc-sev" data-state="{{ page_state_word if page_state_word is defined else x.page_state }}">{{ badge(SEV.words, SEV.kind) }}</span> {% endif %}{% if page_drill is defined and page_drill %}<span class="inc-drill" data-drill="{{ page_drill.id }}">{{ badge('Drill', 'info', title=page_drill.hover) }}</span> {% endif %}{% if B.impact %}{{ B.impact }}{% else %}<span class="muted">Not known: Mercury's table holds no impact for this kind of incident.</span>{% endif %}</p>
-  <div class="simple-status fixit-status{{ ' simple-ai' if C.kind == 'ai' }}{{ ' working-now' if x.working and not C.live }}"{% if C.live and S != 'investigating' %} id="inc-run"{% endif %} data-bluf="status" data-status{% if x.ai_failed %} data-ai-failed{% endif %}{% if C.plan_ready %} data-plan-ready{% endif %}>{% if C.live %}{% with iid=x.id, network=x.network, steps=C.live, said='' %}{% include "v2/_inc_step.html" %}{% endwith %}{% else %}{% if C.plan_ready and C.status %}{{ switch_linked(C.status) }}{% elif x.status %}{% if x.status_source %}{{ badge(x.status_source, 'info') }} {% endif %}{{ switch_linked(x.status) }}{% else %}{{ legacy_status() | times }}{% endif %}{% if S == 'investigating' or x.working %} {% with iid=x.id, network=x.network, steps=[], said=('· ' ~ (C.step or x.working_step) if (C.step or x.working_step) else '') %}{% include "v2/_inc_step.html" %}{% endwith %}{% endif %}{% endif %}{% if S == 'running' and not C.live %} <a href="{{ run_href(x.device, x.network, x.stop.run, page=C.run_page or none) }}">Open the run</a>{% endif %}</div>
+  <div class="simple-status fixit-status{{ ' simple-ai' if C.kind == 'ai' }}{{ ' working-now' if x.working and not C.live }}"{% if C.live and S != 'investigating' %} id="inc-run"{% endif %} data-bluf="status" data-status{% if x.ai_failed %} data-ai-failed{% endif %}{% if C.plan_ready %} data-plan-ready{% endif %}>{% if C.live %}{% with iid=x.id, network=x.network, steps=C.live, said='' %}{% include "v2/_inc_step.html" %}{% endwith %}{% else %}{% if C.plan_ready and C.status %}{{ switch_linked(C.status) }}{% elif x.status %}{% if x.status != STORY_NEXT %}{% if x.status_source %}{{ badge(x.status_source, 'info') }} {% endif %}{{ switch_linked(x.status) }}{% endif %}{% else %}{{ legacy_status() | times }}{% endif %}{% if S == 'investigating' or x.working %} {% with iid=x.id, network=x.network, steps=[], said=('· ' ~ (C.step or x.working_step) if (C.step or x.working_step) else '') %}{% include "v2/_inc_step.html" %}{% endwith %}{% endif %}{% endif %}{% if S == 'running' and not C.live %} <a href="{{ run_href(x.device, x.network, x.stop.run, page=C.run_page or none) }}">Open the run</a>{% endif %}</div>
   {%- if C.run %}{{ ended_run(x, C.run) }}{% endif %}
   {%- endif %}
       {#- Which control the fix names: its kind, and for a "button" the action whose route it

@@ -217,9 +217,15 @@ class TestOneStateOnThePage:
         right = SOMEBODY if state == "needs_person" else NOBODY
         assert [w for w in wrong if w in words] == [], (state, words)
         assert [w for w in right if w in words], f"the page says its own state: {words}"
-        # And What to do says it in words, once.
+        # And the page says it in words, once: in the story's summary, its Next, which the card
+        # no longer repeats (the operator's decision 15, 2026-11-18: "The summary carries next;
+        # remove it from board R5's card").
         todo = T.text_of(todo_of(body))
-        assert todo.count("It needs a person") == (1 if state == "needs_person" else 0), todo
+        nxt = re.search(r'<dd class="inc-sum-next">(.*?)</dd>', body, re.S)
+        assert nxt, "the story's summary draws its Next"
+        nxt = T.text_of(nxt.group(1))
+        assert nxt.count("It needs a person") == (1 if state == "needs_person" else 0), nxt
+        assert todo.count("It needs a person") == 0, todo
 
     def test_the_scan_finds_a_planted_contradiction(self, client, monkeypatch):  # noqa: F811
         """The floor under the scan above: the review's page, planted. A can't-fix whose
