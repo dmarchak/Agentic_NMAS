@@ -549,6 +549,16 @@ def test_a_v9_answer_without_its_band_or_why_first_is_refused(world, change):
 V6_PROMPT = ("explain", 6)
 
 
+def room(monkeypatch, tokens):
+    """The room Explain's prompt has, planted at *tokens*: since 7b0bb884 (the operator,
+    2026-11-16) its fit's budget is the room the model's context window leaves a prompt
+    (`profiles.prompt_room`, 872,000 tokens), never the pin's old max_prompt_tokens, so the
+    room is what a test lowers."""
+    real = profiles.prompt_room
+    monkeypatch.setattr(profiles, "prompt_room",
+                        lambda name: tokens if name == explain.FEATURE else real(name))
+
+
 def test_v6_is_a_candidate_built_from_v4_and_says_what_it_adds():
     """The operator, 2026-10-26: built from v4 (v5 stays rejected) with the coverage line,
     the needs wiring, the pack's endpoints and the rebuilt-evidence marks (C1808)."""
@@ -573,8 +583,7 @@ def test_v6_fits_its_budget_by_the_providers_count(world, monkeypatch):
     from modules.ai import profiles
     topo = explain.topology(world.pack)
     whole = explain.budgeted(world.pack, topo, V6_PROMPT, explain.SCHEMA_OF[6])
-    monkeypatch.setitem(profiles.TASKS, "explain", dict(
-        profiles.TASKS["explain"], max_prompt_tokens=whole["said"]["estimate"] - 1))
+    room(monkeypatch, whole["said"]["estimate"] - 1)
     monkeypatch.setattr(A, "count_tokens", lambda body, key, **kw: A.Count(tokens=1000))
     world.answer = dict(_answer(world.pack), needs=[])
     with pressed_by("operator@example.com"):
@@ -667,8 +676,7 @@ def test_v6_under_the_budget_drops_in_order_and_never_the_onset_window(world, mo
     own = {p["ref"] for p in sections.get("health", {}).get("pieces") or [] if not p.get("hop")}
     assert not ({r for _c, _n, r in order} & (inside | own))
     for budget in (full - 50, full - 400, full // 2, 10):
-        monkeypatch.setitem(profiles.TASKS, "explain",
-                            dict(profiles.TASKS["explain"], max_prompt_tokens=budget))
+        room(monkeypatch, budget)
         sel = explain.budgeted(pack, topo, V6_PROMPT, schema)
         said = sel["said"]
         assert said["budget"] == budget and said["dropped"], budget
@@ -697,9 +705,11 @@ def test_v6_s_answer_carries_its_level_and_the_prompt_says_omitted_for_size(worl
                                    trigger=triggers.person("operator@example.com"), send=world.send,
                                    today="2026-10-25", prompt=V6_PROMPT)
     assert got["ok"] is True and got["context"]["level"] == 0, got
-    # The budget is the pin's bound (27,000 since the operator's decision of 2026-10-28, C2048).
-    budget = profiles.TASKS["explain"]["max_prompt_tokens"]
-    assert budget == 27000
+    # The budget is the room the model's context window leaves a prompt (7b0bb884, the
+    # operator 2026-11-16: the pin's 27,000 of C2048 enforces nothing): 1,000,000 less 128,000.
+    budget = profiles.prompt_room("explain")
+    assert budget == profiles.context_window(profiles.TASKS["explain"]["model"]) - \
+        profiles.max_output(profiles.TASKS["explain"]["model"]) == 872000
     assert got["context"]["budget"] == budget and got["context"]["dropped"] == []
     text = " ".join(prompts.load(*V6_PROMPT)["text"].split())
     for said in ('"omitted for size"', "is not the same as not_collected or not read",

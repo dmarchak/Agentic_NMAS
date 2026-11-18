@@ -416,8 +416,8 @@ def test_explains_budget_keeps_what_the_count_fits_where_the_fallback_trims(monk
     topo = {"sent": False, "network": "", "yaml": ""}
     whole = explain.budgeted(pack, topo, ("explain", 6), explain.SCHEMA_OF[6])
     budget = whole["said"]["estimate"] - 1
-    monkeypatch.setitem(profiles.TASKS, "explain",
-                        dict(profiles.TASKS["explain"], max_prompt_tokens=budget))
+    from tests.test_ai_explain import room
+    room(monkeypatch, budget)            # the context window's room (7b0bb884), planted
     fallback = explain.budgeted(pack, topo, ("explain", 6), explain.SCHEMA_OF[6])
     assert fallback["said"]["estimate"] > budget, "nothing to drop: the fallback stays over"
     c = gateway.Counter(profiles.TASKS["explain"]["model"], KEY,
