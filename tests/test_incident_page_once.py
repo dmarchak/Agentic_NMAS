@@ -33,11 +33,23 @@ NET = T.NET
 
 
 def held():
-    """A real decision held by guard 4: edge-b's golden departs from its intent."""
-    from modules.heal import decide as DC
+    """A decision held by guard 4: edge-b's golden departs from its intent. Since C3909 (the
+    operator, 2026-11-17) the decision no longer holds that case (it is a can't-fix), but the
+    decisions it held before stay in the records the page draws: the real decision's pass,
+    its guard 4 judged by `guards.g4_golden` (the hold as it was, still in the guards module)
+    in place of `decide._g4`, so the record is the one that pass wrote then."""
+    import pytest
 
+    from modules.heal import decide as DC
+    from modules.heal import guards
+
+    def g4_as_recorded_before(network, device, src, dev):
+        golden = src.golden(device, dev)
+        return guards.g4_golden(golden), golden
     settle(GOLDEN + ROUTE4, triggers=[T.CFG], claim=False)
-    (d,) = DC.run(NET, now=T0, sources=Fake(GOLDEN + ROUTE4, state="departs"))["decided"]
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(DC, "_g4", g4_as_recorded_before)
+        (d,) = DC.run(NET, now=T0, sources=Fake(GOLDEN + ROUTE4, state="departs"))["decided"]
     assert d["outcome"] == "held", d
     from modules.heal import decisions
     (kept,) = [x for x in decisions.decisions(NET) if x.get("incident") == d["incident"]]
