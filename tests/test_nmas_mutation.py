@@ -1305,6 +1305,7 @@ NOT_COPIED = {
     ".gitignore": "git's, read by no test through the copy",
     "CLAUDE.md": "the rules' document; tests/test_claude_md.py reads it from ROOT",
     "README.md": "read by no test",
+    "design": "the GUI redesign brief's mockups and their shots (ef43ef41); read by no test",
     "requirements-mutation.txt": "mutmut's own pins, installed before the copy exists",
 }
 
