@@ -5,7 +5,7 @@
     data for says what it needs. Display only. -#}
 {%- from "v2/_macros.html" import clock, how -%}
 {%- set s = p.story %}
-<section class="inc-story" aria-label="What happened, at a glance" data-story>
+<div class="inc-story" role="region" aria-label="What happened, at a glance" data-story>
   <ol class="inc-life" aria-label="Lifecycle">
     {%- for n in s.lifecycle %}
     <li class="inc-life-node inc-life-{{ n.state }}" data-stage="{{ n.name }}" data-state="{{ n.state }}">
@@ -76,4 +76,4 @@
       {%- endif %}
     </aside>
   </div>
-</section>
+</div>
