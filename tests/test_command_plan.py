@@ -415,7 +415,7 @@ class TestTheRun:
         assert sw.state == "connected" and lab["saved"] == []
         assert [s["step"] for s in rec["steps"]] == [
             "approve", "hold", "read_before", "preconditions", "send", "verify", "record"]
-        assert rec["net_zero"] == {"checked": True, "differs": []}
+        assert rec["net_zero"] == {"checked": True, "differs": [], "scope": "full"}
         assert rec["key"] == KEY and rec["kind"] == "command_plan"
         assert rec["params"] == {"device": "s1", "interface": PORT, "cause": "bpduguard"}
         (row,) = receipts_of()
@@ -529,7 +529,7 @@ class TestNetZero:
         src = sources(lab, name="edge-a", mgmt="192.0.2.12")
         rec = go(lab, values=dict(bounce, device="edge-a"), key=BOUNCE, sources=src)
         assert rec["outcome"] == "done", rec["why"]
-        assert rec["net_zero"] == {"checked": True, "differs": []}
+        assert rec["net_zero"] == {"checked": True, "differs": [], "scope": "full"}
 
     def test_net_zero_compares_line_for_line_without_the_volatile_lines(self):
         before = "! Last configuration change at 1\nhostname a\nntp clock-period 1\n"
@@ -669,10 +669,16 @@ class TestOneWayIn:
         for name in ("actor", "reason"):
             assert params[name].kind is inspect.Parameter.KEYWORD_ONLY
         got = d.preflight(NET, VALUES, sources=Model())
-        assert set(got) == {"ok", "refused", "drawn", "hash"} and got["ok"], got
+        # Premise corrected (55c8a8eb, the operator, 2026-11-16: a step's preconditions read
+        # are kept with the proposal, each said): the preflight answers what it checked too.
+        assert set(got) == {"ok", "refused", "drawn", "hash", "checked"} and got["ok"], got
 
     def test_no_separate_send_path_remains_for_the_recovery(self):
         from modules.heal import errdisable
         for gone in ("apply", "start", "program", "_send", "_held", "_rollback", "_verify"):
             assert not hasattr(errdisable, gone), gone
-        assert json.dumps(sorted(CP.builtin())) == json.dumps([KEY])
+        # Premise corrected (17215a95, the operator, 2026-11-16: the lost stream's rungs 2 and
+        # 3 are built-in command plans beside the recovery, on the same runner): three built-in
+        # plans, the recovery among them, and no other send path for it.
+        assert json.dumps(sorted(CP.builtin())) == json.dumps(sorted([
+            KEY, "telemetry-stack-restart", "telemetry-subscription-recreate"]))
