@@ -4587,6 +4587,44 @@ def _resubscribe(client, _lab, _mp):
             capture_job._jobs.pop(kept, None)
 
 
+def _collector_sessions(client, _lab, _mp):
+    """A device's collector sessions on its Monitoring tab (C3720), a session standing: r2's
+    real intent (tests/test_heal_diagnose.py's `fleet`, its receiver and Gi2 moved to the
+    documentation range as tests/test_heal_diagnose_stream.py's `at_collector` does) standing
+    in for r3's committed intent (the walk's lab has no r2), read through the REAL reader (`diagnose_stream.read_collector`) on the
+    kernel tables and socket diagnostics captured on the development laptop
+    (tests/fixtures/diagnose/collector/: tcp, tcp6, if_inet6, fib_trie and ss_tni_4.txt) in
+    place of this host's /proc and `ss`. Its patches and its tables are undone after."""
+    import pathlib
+    import shutil as _shutil
+    import tempfile
+
+    import pytest
+
+    from modules.heal import diagnose_stream as DS
+    from tests import test_heal_diagnose_stream as T
+    from tests.test_heal_diagnose import fleet
+
+    _model, intents = fleet(T.at_collector())
+    tmp = tempfile.mkdtemp(prefix="nmas-collector-")
+    root = T.proc(pathlib.Path(tmp))
+    with open(f"{T.COLLECTOR}/ss_tni_4.txt", encoding="utf-8") as fh:
+        ss4 = fh.read()
+    real = DS.read_collector
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr("modules.neighbours.committed_intents_of",
+                   lambda name: ({"r3": intents["r2"]}, ""))
+        mp.setattr(DS, "read_collector", lambda address, port, sources, proc=None, ss=None:
+                   real(address, port, sources, proc=root, ss=lambda _p: (ss4, "")))
+        r = client.get("/v2/device/r3/collector?list=Lab", headers={"HX-Request": "true"})
+        body = r.get_data(as_text=True)
+        assert r.status_code == 200 and "192.0.2.6 port 60235" in body, body[:400]
+    finally:
+        mp.undo()
+        _shutil.rmtree(tmp, ignore_errors=True)
+
+
 def _heal_run(client, _lab, _mp):
     """A self-healing run's card on r3's page (`heal.run_card`, the operator, 2026-11-11), in
     each state its own route draws (the page's reopening of it is tests/test_run_outcomes.py's):
@@ -5535,7 +5573,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _fleet_selection, _fleet_run,
                    _attention_expected, _attention_explain, _attention_heal_analysis,
                    _attention_withheld, _attention_alike, _attention_departure,
-                   _attention_quiet_period, _attention_scheduled_ack,
+                   _attention_quiet_period, _attention_scheduled_ack, _collector_sessions,
                    _persist_read, _unlinked, _rekey, _drift, _diagnose, _declare_drill,
                    _in_progress, _held_actions, _pending, _netbox_source, _netbox_lag, _neighbours_held,
                    _silenced_alert,
