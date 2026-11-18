@@ -160,3 +160,40 @@ class TestTheActsOwnHold:
         assert got["outcome"] == "refused" and src.apply_kw is None
         assert "guard 3, planned work" in got["words"]
         assert "judged again" not in got["words"] and busy["tries"] == 0, got["words"]
+
+
+class TestTheKeptStops:
+    """70e89a47 (round 2, the operator, 2026-11-17): with every hold off the heal path, these
+    still stop a heal, nothing sent."""
+
+    def test_stop_everywhere(self, lab):
+        d = decided(RUNNING)
+        _stop_everywhere()
+        got, src, _d = act(RUNNING, decision=d)
+        assert got["outcome"] == "refused" and src.apply_kw is None
+        assert "self-healing is stopped everywhere" in got["words"], got["words"]
+
+    def test_off(self, lab):
+        d = decided(RUNNING)
+        _off()
+        got, src, _d = act(RUNNING, decision=d)
+        assert got["outcome"] == "refused" and src.apply_kw is None
+        assert "only AUTO sends a heal" in got["words"], got["words"]
+
+    def test_an_observe_only_device(self, lab, monkeypatch):
+        d = decided(RUNNING)
+        monkeypatch.setattr("modules.inventory.management.hold_refusal",
+                            lambda network, host, op: "edge-b is observe-only (mercury."
+                                                      "management observe, the test's mark)")
+        got, src, _d = act(RUNNING, decision=d)
+        assert got["outcome"] == "refused" and src.apply_kw is None
+        assert "observe-only" in got["words"], got["words"]
+
+    @pytest.mark.parametrize("tier", [3, 4])
+    def test_tier_3_and_4_are_never_healed(self, tier):
+        from modules.heal import decide
+        c = {"tier": tier, "kind": "added_line",
+             "units": [{"kind": "added_line", "section": "", "line": "x"}]}
+        mode = {"mode": "auto"}
+        outcome, _words = decide._outcome(mode, c, ["added_line"], [], device="edge-b")
+        assert outcome == "cant_fix"
