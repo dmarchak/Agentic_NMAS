@@ -4770,3 +4770,44 @@ test_netbox_mask_context, test_commit_message_masked, test_reveal_and_log_redact
 test_command_plan, the drift, roundtrip and intent-normalise tests, test_device_v2, the
 no-GET/no-POST secret tests, test_ai_never and the golden tests: **1897 passed, 1 skipped** in
 CI's interpreter.
+
+## 2026-11-18: an investigation's own parts and its own reads labelled for people (the correctness review's G5 MEDIUM-3), by hand
+
+**The change.** What leaves the host in an AI troubleshooting request. `built_request` passes
+the incident's own parts (attempts, seen_before, run_steps, after_run, the ladder) through
+`evidence_pack.people_labelled`, with the pack's sections as its new *among* (their people
+added to the actors labelled); `fixit_reads.run` passes every Mercury own-read answer but the
+golden (the held History, a fresh History, Intent, neighbours, logs, metrics) through it too.
+Found by the fast-lane correctness review: a display name in a failed run's step words, and a
+host login recorded as a History event's `who`, left the host as recorded; the gateway's net
+labels only email-shaped tokens.
+
+**The method.** Each mutant written by hand into the copy of the changed file in a throwaway
+worktree of the uncommitted change (`scripts/nmas-control`, so the checkout is never written),
+then tests/test_ai_requests_carry_no_address.py, test_fixit_troubleshoot.py's TestThePack,
+test_fixit_reads.py and test_ai_engineer_reads.py run with `-x` in CI's interpreter, confined;
+killed when the run fails, the first failing test named.
+
+| # | Mutant | Result, the first failing test |
+|---|---|---|
+| 0 | the canary: `people_labelled` raises | **died**: test_every_person_in_every_section_sent_is_their_label |
+| 1 | the own parts' labelling dropped | died: TestThePack::test_the_own_parts_carry_no_display_name |
+| 2 | the own parts labelled without the pack's people (*among* not passed) | died: the same |
+| 3 | *among*'s people dropped from the actors | died: test_a_person_the_pack_names_is_their_label_in_the_parts_beside_it |
+| 4 | the own read's labelling dropped | died: test_the_held_history_read_carries_no_name |
+| 5 | the golden's exclusion inverted (only the golden labelled) | died: the same |
+| 6 | the golden labelled too | died: test_the_golden_read_is_the_configuration_as_committed |
+| 7 | every own read returned unlabelled (the guard always true) | died: test_the_held_history_read_carries_no_name |
+
+Mutant 2 survived the first draft of the tests (its display name was the store's, which
+`people_labelled` finds without *among*); the press test then planted a person only the pack's
+History names, and it died. **8 of 8 died**, the canary first. The aimed tests:
+test_fixit_troubleshoot, test_ai_requests_carry_no_address, test_fixit_reads,
+test_ai_engineer_reads, test_ai_explain and test_evidence_pack: **261 passed, 2 skipped** in
+CI's interpreter.
+
+**Not covered, said:** a host login written as a word in free text (not in a person field) is
+never replaced: `display_names.unnamed` replaces a person's set and default names other than
+their identity, and a host login's default is its identity. Replacing every such word would
+rewrite ordinary words ("root", "admin") in every text sent; that is the operator's decision,
+not built here.

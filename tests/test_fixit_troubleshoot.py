@@ -487,3 +487,48 @@ class TestThePack:
         from modules.ai import fixit_troubleshoot as AIT
         s = AIT.seen_section(NET, "r2", {})
         assert s["state"] == "absent" and not s["pieces"] and s["why"]
+
+    def test_the_own_parts_carry_no_display_name(self, ai, monkeypatch, tmp_path):
+        """The investigation's own parts (attempts, run_steps, after_run, seen_before, the
+        ladder) leave labelled for people as the pack's sections do (the correctness review's
+        G5 MEDIUM-3; invariant 6, "no emails or person names in AI payloads"): a failed run's
+        step words naming, by display name, a person who is not an attempt's actor leave as
+        that person's label, never the name; and one naming, by their default name, a person
+        only the pack's History records (the display-name store holds no name for them)
+        leaves as theirs too."""
+        from modules import display_names
+        from modules import evidence_pack as EP
+        from modules.nsot import privileged
+
+        person, name = "dana.ops@example.com", "Dana Ops"
+        other, other_name = "lee.lab@example.org", "lee.lab"
+        monkeypatch.setattr(display_names, "_path",
+                            lambda: str(tmp_path / "display_names.json"))
+        display_names.set_name(person, name, by=person, actor_verified="access")
+        real_get, real_build = privileged.get, EP.build_incident
+
+        def get(list_name, run_id, data_dir=""):
+            rec = real_get(list_name, run_id, data_dir=data_dir)
+            if isinstance(rec, dict):
+                rec = dict(rec, steps=list(rec.get("steps") or []) + [
+                    {"step": "verify", "result": "fail",
+                     "words": f"{name} closed the collector's session, as {other_name} "
+                              "asked"}])
+            return rec
+
+        def build(*a, **kw):
+            pack = real_build(*a, **kw)
+            pack["sections"] = list(pack.get("sections") or []) + [
+                {"ref": "history", "name": "history", "state": "ok", "pieces": [
+                    {"ref": "history:99", "kind": "intent", "who": other}]}]
+            return pack
+        monkeypatch.setattr(privileged, "get", get)
+        monkeypatch.setattr(EP, "build_incident", build)
+        iid = stopped(ai)
+        press(ai, iid)
+        (body,) = ai.sent
+        text = json.dumps(body, ensure_ascii=False)
+        assert '"name":"run_steps"' in data_of(body), "the run's steps are sent"
+        assert name not in text, "a display name in a run's step words left the host"
+        assert other_name not in text, "a name only the pack names left the host"
+        assert display_names.label(person) in text and display_names.label(other) in text

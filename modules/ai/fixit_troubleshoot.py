@@ -979,6 +979,10 @@ def built_request(network: str, found: dict, incident, *, note: str = "", now: f
     lad = ladder.section(incident, tried_as)
     if lad is not None:
         own.append(lad)
+    # Every person in the incident's own parts a stable label, as in the pack's sections
+    # (C3424; the correctness review's G5 MEDIUM-3): a run's step words and the state read
+    # after it are records too, and may name anyone by display name or host login.
+    own = EP.people_labelled(own, among=pack.get("sections") or ())
     part("run_steps, after_run and the ladder")
     checked = list(sections) + own + [note_section(note)]
     data = {"pack": json.dumps([explain.as_sent(s) for s in sections] + own, sort_keys=True,
