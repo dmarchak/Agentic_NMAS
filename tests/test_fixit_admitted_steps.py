@@ -141,6 +141,35 @@ class TestCarriedGenerically:
 
 # ── The repeat of a failed attempt, the catalog's rule ──────────────────────────────────────
 
+class TestACommandPlansOwnNames:
+    """C3978 (the operator's decision 16, 2026-11-18: tests first): an AI plan's command plan
+    step names its parameters by the plan's own names (`heal.catalog.COMMAND_PLANS`, from the
+    plan's YAML: telemetry-subscription-recreate's ``subscription``), and `as_catalog` keeps
+    them, as it keeps an attempt's short names (``sub``); a name the plan does not take is
+    still left out. Before, the ``subscription`` was dropped, so the recreate step's preflight
+    refused it for a reason that was not so ("gives no subscription")."""
+
+    def test_the_plans_own_name_is_kept_and_a_name_it_does_not_take_is_not(self):
+        from modules.fixit import plan as FP
+        key = "telemetry-subscription-recreate"
+        assert FP.as_catalog(key, {"subscription": "101"}, "edge1") == {
+            "device": "edge1", "subscription": "101"}
+        assert FP.as_catalog(key, {"sub": "101"}, "edge1") == {
+            "device": "edge1", "subscription": "101"}, "an attempt's short name, as before"
+        assert FP.as_catalog(key, {"subscription": "101", "collector": True,
+                                   "receiver": "x"}, "edge1") == {
+            "device": "edge1", "subscription": "101"}
+
+    def test_a_plan_of_two_steps_carries_the_subscription_to_its_second(self):
+        from modules.fixit import plan as FP
+        line = {"steps": [{"operation": "collector-close", "params": {"subs": ["101", "102"]}},
+                          {"operation": "telemetry-subscription-recreate",
+                           "params": {"subscription": "101"}}]}
+        (_close, recreate) = FP.steps_of(line, "edge1")
+        assert recreate == {"operation": "telemetry-subscription-recreate",
+                            "params": {"device": "edge1", "subscription": "101"}}
+
+
 class TestTheRepeat:
     def test_a_deploy_that_failed_is_refused_again_unless_its_program_differs(self, lab):
         lab["seams"]["verify"] = False

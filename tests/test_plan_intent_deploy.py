@@ -346,8 +346,12 @@ class TestTheIncidentsFix:
         scoped["seams"]["management"] = "r2 is observed only (mercury.management). Nothing " \
                                         "was sent."
         got = E.preview("Lab", E.INCIDENT_FIX, fix(edit(RENAME)))
-        assert not got["ok"] and got["refused"].endswith(
-            "its own preview: r2 is observed only (mercury.management)."), got["refused"]
+        # The whole refusal (C3976: its reason first, the step's own words after it, so a card
+        # keeping its first 400 characters names the reason): the device's "Nothing was sent"
+        # is not carried into a preview's refusal.
+        assert not got["ok"] and got["refused"] == (
+            "step 1 is refused by its own preview: r2 is observed only (mercury.management). "
+            f"(step 1: {E.STEP_KINDS['intent-edit'].words})"), got["refused"]
 
     def test_an_incident_without_a_page_is_refused(self, scoped):
         params = dict(fix(edit(RENAME)), incident="hi-0000000000")

@@ -2062,52 +2062,6 @@ class TestHealProposalCards(_Cards):
         return html
 
 
-# ── G6: guard 6's batch card on Needs attention ───────────────────────────────────────────────
-
-class TestHealBatchCards(_Cards):
-    """On tests/test_heal_decide.py's lab: guard 6's batch (tests/v2_context.py's
-    `batch_fixture`: two devices whose fix previews, one held, one incident for the AI)
-    previewed by the real `heal.batch.preview`, its row built by the real producer
-    (`attention._heal_held_rows`), and Needs attention read by the real route: Turn on
-    self-healing and fix all is pressable. Blocked: a verified service, whom `may` refuses,
-    draws it disabled."""
-    from tests import test_heal_decide as _hd
-    from tests import test_sdn_connections as _sc
-    networks, lab = hosted(_sc.networks), hosted(_hd.lab)
-
-    CASES = {"fix_all": ("_heal_batch.html", "Turn on self-healing and fix all",
-                         r"Turn on self-healing and fix all", "viewer")}
-
-    def _page(self, request, monkeypatch):
-        import time as _time
-
-        import app as A
-        from modules import attention
-        from modules.heal import batch
-        from tests.v2_context import batch_fixture
-        request.getfixturevalue("lab")
-        decisions, doc, ai = batch_fixture()
-        p = batch.preview("Lab", decisions, ai_items=ai, incidents_doc=doc)
-        assert p["on"] and p["fixable"] == 2, p
-        monkeypatch.setattr(batch, "preview", lambda *_a, **_k: p)
-        rows = attention._heal_held_rows("Lab", decisions)
-        assert rows and rows[0].get("batch"), "floor: the producer builds the batch's row"
-        monkeypatch.setattr(attention, "SOURCES", [lambda: attention.source_result(
-            "heal", "Self-healing", read_at=_time.time(), took_ms=0, rows=rows,
-            checked="list Lab: 1 hold a person resolves")])
-        html = _text(A.app.test_client().get("/v2/attention"))
-        assert "Mercury can fix 2." in html and 'name="hash"' in html, \
-            "floor: the batch card is drawn with its preview"
-        return html
-
-    def drawn_fix_all(self, request):
-        return self._page(request, request.getfixturevalue("monkeypatch"))
-
-    def blocked_fix_all(self, request, monkeypatch):
-        as_service(monkeypatch)
-        return self._page(request, monkeypatch)
-
-
 # ── SDN: the editor's Preview, the operation card's Send, a response's Preview ────────────────
 
 class TestSdnOperationCards(_Cards):
@@ -2794,9 +2748,10 @@ class TestThePopulation:
         plans' four on an incident's card, Save as a self-heal script, Save as a reusable
         action, Promote <script> and Approve the shape, 2026-11-15; 99 until a saved action's
         Run <title> on a device's Overview, 2026-11-15; 100 until G6's Turn on self-healing and
-        fix all on guard 6's batch card, 2026-11-15)."""
+        fix all on guard 6's batch card, 2026-11-15; 101 until that control's route was removed,
+        the operator's decision 9, 2026-11-18, C3959)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 101, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 100, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

@@ -429,10 +429,6 @@ DECLARED = {
     # The control strip's Self-healing toggle (C3748): the network's heal policy, a setting.
     # C3823: turned on with its line's hash, the batch's job too (`heal-batch` announces).
     "control_v2.heal": ("settings", "drift"),
-    # G6's Turn on self-healing and fix all: Auto turned on (a setting), the AI's starts on
-    # the incidents with no fix (their troubleshooting records), and the batch's job, which
-    # announces what its heals change at its end (`heal-batch`).
-    "control_v2.fix_all": ("settings", "drift"),
     # A finished batch run's line dismissed from the strip by one person (`seen_runs`, the
     # In progress list's own per-person marks): their chip and list draw without it too.
     "control_v2.run_seen": ("in_progress",),

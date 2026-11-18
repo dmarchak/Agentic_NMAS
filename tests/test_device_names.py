@@ -117,7 +117,7 @@ INVENTORY = {
     "deploy/snmp_exporter/generator.yml": (4, PROVENANCE, "a measurement names the device it was taken on: r1, r3, s3"),
     "docs/manual/how-it-works/retire.md": (1, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: r5"),
     "modules/alert_bands.py": (1, PROVENANCE, "a measurement names the device it was taken on: s3"),
-    "modules/attention.py": (8, HISTORY, "a dated incident or finding names the device it happened on: r2, r6, s2, s3, tw-ztp-a"),
+    "modules/attention.py": (1, NOT_A_DEVICE, "the S3 provider's key in RENEW_AT (\"s3\": its access keys), not the switch: s3 (its history lines name example devices since C3962, 2026-11-18)"),
     "modules/bgp_summary.py": (3, PROVENANCE, "a measurement names the device it was taken on: r3, r4"),
     "modules/commands.py": (1, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: r2"),
     "modules/config_read.py": (5, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: r1, r2"),

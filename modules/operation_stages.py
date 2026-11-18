@@ -128,14 +128,6 @@ STAGES = {
     # on the incident's page, approved once by the plan's hash (``hash``); each step is
     # Re-subscribe's own apply, so its verify, its put-back and its record are Re-subscribe's,
     # the plan's own record beside them.
-    # G6's Turn on self-healing and fix all (routes/control_v2.py, modules/heal/batch.py): the
-    # batch previewed on Needs attention's card, bound by its hash (``hash``); each device is
-    # THE heal act's own (`act.apply_decision`: the deploy's nine stages, its verify and its
-    # rollback, which undoes what landed), recorded in the step log; the batch's own rows in
-    # the network's heal decisions beside them.
-    "control_v2.fix_all": Stages(
-        "v2.landing", "hash", "modules.heal.act.apply_decision",
-        "modules.pipeline.roll_back_after", "modules.heal.steplog.record_act"),
     "fixit_v2.fix_with_script": Stages(
         "incident_v2.incident", "hash", "modules.nsot.command_plan_run.plan_verify",
         "modules.nsot.command_plan_run.net_zero", "modules.nsot.command_plan_run.run"),
@@ -673,8 +665,6 @@ HISTORY = {
     # A self-healing proposal (board H, H5 and H9): approved, its step log, receipt, golden and
     # the reset's Tier 2 record; declined, its step log alone.
     "heal_proposal_v2.approve": ("heal", "receipts", "golden", "privileged"),
-    # G6's batch: each device's heal (its step log, receipt and golden), as an approved heal.
-    "control_v2.fix_all": ("heal", "receipts", "golden"),
     "heal_proposal_v2.decline": ("heal",),
     # Lift the halt (board H artboard E, C2471): kept in the network's heal decisions with who,
     # when and why; a network's halt, never one device's record.

@@ -932,7 +932,7 @@ def run(network: str, *, now: float = None, sources=None, by: str = "heal to int
                     _act(network, claimed, d, now)
                     _log_steps(network, dict(d, steps=steps, phase=phase), now)
                     if d["outcome"] == "heal" and not d.get("batch"):
-                        # The act starts at once (the operator, 2026-11-16, item 4; C3865: r2's
+                        # The act starts at once (the operator, 2026-11-16, item 4; C3865: edge2's
                         # began 13 s after its decision, behind the pass's other decisions and
                         # scripts). Its own job; a later `act.run` finds it taken.
                         from modules.heal import act

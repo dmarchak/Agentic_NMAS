@@ -62,12 +62,12 @@ HEAL_BOUNDS = {
     "tail-finish": {
         "seconds": 120,
         "why": ("reasoned from the whole tail's parts, about 2.5 times their sum: measured, "
-                "r2's save to startup 20 s and its golden commit with the read again 6 s (the "
-                "operator's rehearsal, 2026-11-16, C3865) and the whole configuration read "
-                "9.3 s (s1's, the slowest that day); not measured apart, the read again's own "
-                "sign-in (s1's 5.0 s taken for it), the batch's golden commit and the receipts "
-                "(their share of the 6 s is not split), so about 48 s x 2.5 = 120 s. To be "
-                "measured by the heal's laps (`records.laps`: tail: saved, tail: full running "
+                "a router's save to startup 20 s and its golden commit with the read again 6 s "
+                "(the operator's rehearsal, 2026-11-16, C3865) and the whole configuration read "
+                "9.3 s (a switch's, the slowest that day); not measured apart, the read again's "
+                "own sign-in (that switch's 5.0 s taken for it), the batch's golden commit and "
+                "the receipts (their share of the 6 s is not split), so about 48 s x 2.5 = "
+                "120 s. To be measured by the heal's laps (`records.laps`: tail: saved, tail: full running "
                 "configuration, tail: golden capture)"),
         "basis": "reasoned"},
     # The lead's round 2 (2026-11-16): an approved plan whose run has neither a record nor a
@@ -76,7 +76,7 @@ HEAL_BOUNDS = {
         "seconds": 60,
         "why": ("reasoned, not measured: the approval's start (its job made, the plan previewed "
                 "again, the run's record written at its approve step) has no measurement in "
-                "the records; the nearest measured part is a plan's preflight, 25 s of s5's "
+                "the records; the nearest measured part is a plan's preflight, 25 s of a switch's "
                 "87 s to a ready plan (2026-11-16), and 2.5 times that is about 60 s. The "
                 "measurement owed: each run record's start less its approve line's time"),
         "basis": "reasoned"},
@@ -97,7 +97,7 @@ WAITS = {
         "HOLD_POLL_S, then held from the act's read to the end of its tail (the operator, "
         "2026-11-16: \"Waiting on a lock is a declared wait, never an outcome\")",
         "within HOLD_WAIT_S, 2.5 times the longest operation measured holding a device in a "
-        "heal pass (r2's restore, 134 s from the switch-on, 2026-11-16, C3865), rounded up; "
+        "heal pass (a router's restore, 134 s from the switch-on, 2026-11-16, C3865), rounded up; "
         "past it the heal is refused with nothing sent, naming the holder",
         "reasoned", True, ("HOLD_POLL_S", "HOLD_WAIT_S")),
     "modules/heal/bounce.py::_held": _w(
@@ -475,7 +475,7 @@ PLAN_BOUNDS = {
              "processes restarted have not been timed. Borrowed from the re-add: 2.5 times "
              "the 116 s a re-added receiver took to stream again (measured 2026-11-08, "
              "resubscribe.MEASURED_BACK_S; resubscribe.VERIFY_BOUND_S). "
-             "scripts/nmas-telemetry-reset-probe measures each rung on r2, and this bound "
+             "scripts/nmas-telemetry-reset-probe measures each rung on a test router, and this bound "
              "becomes 2.5 times the longer measured return", "reasoned"),
     "errdisable-quiet": _b(
         10, "five 2 s BPDU hellos: a guard that trips again does so inside it; reasoned, not "

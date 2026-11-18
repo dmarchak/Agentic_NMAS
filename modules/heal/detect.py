@@ -637,7 +637,7 @@ def _close_on_fix(network, inc, trig, now, by, *, also_watching: bool = False) -
 def close_verified(network: str, incident_id: str, *, by: str, now: float = None) -> dict:
     """An approved plan's run on *incident_id* ended verified: its incident closes now, Fixed,
     on that verify (`_close_on_fix`), never at a later detect pass (the operator, 2026-11-16:
-    s5's verified run left its incident open, its page on the hand-over words). A standing or
+    a switch's verified run left its incident open, its page on the hand-over words). A standing or
     still-watching incident only (one claimed or ready is the decision's); ``{}`` when it did
     not close (not found, not verified, a trigger since), the detect pass then reads it again.
     Never raises: a failure is logged and the incident stands."""

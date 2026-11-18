@@ -356,9 +356,12 @@ class PipelineContext:
     # ---- One read, one session, and the heal's tail (the operator, 2026-11-16; C3864, C3865) -
     #: ip -> the running configuration the caller read moments before, holding the device from
     #: that read to the end of this run (a heal's read at apply, `heal.act.apply_decision`):
-    #: stage 4 takes it as the configuration before and reads none (item 4: "the act's own read
-    #: again and the pipeline's before-snapshot are ONE read"). Its operational snapshot is
-    #: still read. None, the default, reads it at stage 4 as before.
+    #: stage 4 reads the device again before the push and compares that read with the capture
+    #: (C78), so a change made from outside between the two is refused (C3967, the operator's
+    #: decision 16, 2026-11-18: "add the re-read before the push"; it reverses item 4's "ONE
+    #: read" of 2026-11-16 for that comparison). The read again is the configuration before;
+    #: no interface sections are read in its place. None, the default, reads it at stage 4 as
+    #: before.
     pre_read:            dict = None
     #: Stage 7 reads on the push's own session (item 4: "no second sign-in at stage 7"; item 5:
     #: "the after-snapshot keeps the push's session"), its prompt probed first; a session whose
@@ -966,10 +969,29 @@ def _stage_pre_snapshot(ctx: PipelineContext) -> None:
             names = _config_scope(ctx, ip)
             sections = read_sections(ctx, dev, names) if names and not shared else None
             if shared:
-                # ONE read (item 4): the caller's, made holding the device it still holds.
-                running_cfg = shared
-                snap["running_config_shared"] = True
-                lap(ctx.laps, "pre_snapshot: running configuration (the caller's read)")
+                # The caller's read (a heal's at apply, made holding the device) is the capture
+                # the program was computed from; the device is READ AGAIN here, before the
+                # push, and compared with it below (C78), so a change made from outside
+                # Mercury between that read and the push is refused, nothing sent (C3967, the
+                # operator's decision 16, 2026-11-18: "add the re-read before the push"). The
+                # read again is the configuration before, as the rollback's base.
+                try:
+                    from modules.commands import run_device_command
+                    running_cfg = run_device_command(
+                        get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock),
+                        "show running-config") or ""
+                except Exception as cfg_exc:          # noqa: BLE001 (unread: refused below)
+                    log.warning("pipeline[4/pre_snapshot]: %s running-config read again "
+                                "failed: %s", hostname, cfg_exc)
+                    running_cfg = ""
+                if not running_cfg:
+                    errors.append(f"{hostname} ({ip}): its running config could not be read "
+                                  "again before the push, so it could not be compared with the "
+                                  "read the program was computed from; nothing was sent")
+                    continue
+                snap["running_config_reread"] = True
+                lap(ctx.laps, "pre_snapshot: running configuration (read again before the "
+                              "push)")
             elif sections is not None:
                 # The plan's interface sections alone (item 5): the configuration before.
                 running_cfg = "\n".join(sections[n] for n in names)

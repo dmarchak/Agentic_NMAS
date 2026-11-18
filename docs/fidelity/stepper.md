@@ -10,6 +10,14 @@ keeps its own step names beside its code and hands the component rows. tests/tes
 holds that every operation page uses it, or is named with why not, and that no page draws
 progress any other way.
 
+**The incident card's runs** (the operator's decision 7, 2026-11-18, C3975): "`_inc_step.html` is
+THE stepper" for the AI and plan users. An AI investigation, an approved plan's run and a saved
+script's run, on an incident's card or a plan's own page, are drawn by
+`templates/v2/_inc_step.html` (its steps in `run_stepper.step`'s model; 93120b2f moved plan runs
+onto it); only `_fixit_section.html` and `_plan_card.html` include it
+(tests/test_one_stepper.py, `INCIDENT_STEPPER`), and every other operation page keeps
+`run_stepper`. This record's comparison is of `run_stepper` and stays as it was.
+
 Boards: `SaveProgress.dc.html` (C605, the desk, 1440) and `StepperPhone.dc.html` ("the one
 stepper at phone width: vertical", 390), on the mockups canvas. Shots: tests/test_board_shots.py
 `test_stepper` (`stepper-save` at 1440 and 1280, `stepper-phone` at 390), Save's running card

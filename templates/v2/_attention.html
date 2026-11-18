@@ -68,6 +68,37 @@
 {#- A moment a record holds, in the viewer's own zone with its date, the UTC on hover (the one
     `_macros.clock`). -#}
 {%- macro when(iso) -%}{{ clock(iso, 'date') }}{%- endmacro -%}
+{#- An event that cannot un-happen: a person acknowledges THIS event with a reason
+    (attention.acknowledge); a later event is a new row. One form, drawn by the operator's rows
+    and by "Mercury itself" (C3960, the operator's decision 10, 2026-11-18).
+    While the form is open (typing, or sent and awaiting its bounded answer), the row is
+    being edited: a live redraw holds (C459). Answered or closed, it says
+    `data-editing="false"` and holds nothing, so the redraw that removes an acknowledged
+    row happens (the operator, 2026-10-19: four rows sat on "Acknowledging…" for minutes,
+    the redraw held by the sent reason). Cancel only on an open, unsent form. -#}
+{%- macro ack_form(r) -%}
+      <div class="att-ack" x-data="acknowledge" data-url="{{ url_for('attention.acknowledge') }}" data-row="{{ r.id }}" data-event="{{ r.event }}" x-bind:data-editing="editing">
+        <button type="button" class="btn btn-small btn-outline" x-show="closed" x-on:click="open">Acknowledge…</button>
+        <span class="att-ack-form" x-show="isOpen" x-cloak>
+          <label class="sr-only" for="ack-{{ r.id }}">Why this needs nothing more</label>
+          {%- if r.dispositions %}
+          <label class="sr-only" for="ackd-{{ r.id }}">What it was</label>
+          <select id="ackd-{{ r.id }}" name="disposition">{% for value, words in r.dispositions %}<option value="{{ value }}">{{ words }}</option>{% endfor %}</select>
+          {%- endif %}
+          {#- C2316: a band row's acknowledgement covers what came before it and the cycle then
+              under way; a planned quiet period names its hours, its expiry drawn. -#}
+          {%- if 'events' in (r.operands or {}) %}
+          <label class="sr-only" for="ackh-{{ r.id }}">How long it covers</label>
+          <select id="ackh-{{ r.id }}" name="hours"><option value="">Until something new happens</option>{% for h in (1, 2, 4, 8, 24) %}<option value="{{ h }}">A planned quiet period: {{ h }} hour{{ '' if h == 1 else 's' }}</option>{% endfor %}</select>
+          {%- endif %}
+          <input id="ack-{{ r.id }}" name="why" type="text" autocomplete="off" placeholder="{{ r.ack_placeholder or 'Why this needs nothing more (recorded with your name)' }}">
+          <button type="button" class="btn btn-small" data-op="needs-attention" x-on:click="send" x-bind:disabled="busy" x-text="label">Acknowledge</button>{{ how('needs-attention', 'acknowledging', compact=True, op='acknowledging') }}
+          <button type="button" class="btn btn-small btn-outline" x-show="cancellable" x-on:click="cancel">Cancel</button>
+        </span>
+        <span class="refusal" x-show="said" x-text="said" x-cloak></span>
+        <span class="att-ack-note" x-show="note" x-text="note" role="status" x-cloak></span>
+      </div>
+{%- endmacro -%}
 {#- C3166: the value the background store holds (`attention_store.read`), never computed for this
     request. `store.state` "reading": its network's first value has not landed, said as that,
     busy, and drawn again when it lands (the store announces `attention`). `store.checked_at`:
@@ -307,34 +338,7 @@
       {%- endif %}
       {%- if r.clears %}<p class="att-clears">Clears when {{ r.clears.when }}{% if r.clears_at %} (by {{ clock(r.clears_at, 'date') }}){% endif %}.</p>{% endif %}
       {%- if r.acknowledge %}
-      {#- An event that cannot un-happen: a person acknowledges THIS event with a reason
-          (attention.acknowledge); a later event is a new row. -#}
-      {#- While the form is open (typing, or sent and awaiting its bounded answer), the row is
-          being edited: a live redraw holds (C459). Answered or closed, it says
-          `data-editing="false"` and holds nothing, so the redraw that removes an acknowledged
-          row happens (the operator, 2026-10-19: four rows sat on "Acknowledging…" for minutes,
-          the redraw held by the sent reason). Cancel only on an open, unsent form. -#}
-      <div class="att-ack" x-data="acknowledge" data-url="{{ url_for('attention.acknowledge') }}" data-row="{{ r.id }}" data-event="{{ r.event }}" x-bind:data-editing="editing">
-        <button type="button" class="btn btn-small btn-outline" x-show="closed" x-on:click="open">Acknowledge…</button>
-        <span class="att-ack-form" x-show="isOpen" x-cloak>
-          <label class="sr-only" for="ack-{{ r.id }}">Why this needs nothing more</label>
-          {%- if r.dispositions %}
-          <label class="sr-only" for="ackd-{{ r.id }}">What it was</label>
-          <select id="ackd-{{ r.id }}" name="disposition">{% for value, words in r.dispositions %}<option value="{{ value }}">{{ words }}</option>{% endfor %}</select>
-          {%- endif %}
-          {#- C2316: a band row's acknowledgement covers what came before it and the cycle then
-              under way; a planned quiet period names its hours, its expiry drawn. -#}
-          {%- if 'events' in (r.operands or {}) %}
-          <label class="sr-only" for="ackh-{{ r.id }}">How long it covers</label>
-          <select id="ackh-{{ r.id }}" name="hours"><option value="">Until something new happens</option>{% for h in (1, 2, 4, 8, 24) %}<option value="{{ h }}">A planned quiet period: {{ h }} hour{{ '' if h == 1 else 's' }}</option>{% endfor %}</select>
-          {%- endif %}
-          <input id="ack-{{ r.id }}" name="why" type="text" autocomplete="off" placeholder="{{ r.ack_placeholder or 'Why this needs nothing more (recorded with your name)' }}">
-          <button type="button" class="btn btn-small" data-op="needs-attention" x-on:click="send" x-bind:disabled="busy" x-text="label">Acknowledge</button>{{ how('needs-attention', 'acknowledging', compact=True, op='acknowledging') }}
-          <button type="button" class="btn btn-small btn-outline" x-show="cancellable" x-on:click="cancel">Cancel</button>
-        </span>
-        <span class="refusal" x-show="said" x-text="said" x-cloak></span>
-        <span class="att-ack-note" x-show="note" x-text="note" role="status" x-cloak></span>
-      </div>
+{{ ack_form(r) }}
       {%- endif %}
       </div>
       {#- C2970: the items folded under this one (lost streams on several devices are one
@@ -505,7 +509,10 @@
       <div class="att-record" data-keep="att-rec-{{ r.id }}">
       <h3>For the record</h3>
       <dl class="att-ops">
-        {%- for k, v in ops.items() if k != 'members' %}<div><dt>{{ k }}</dt><dd>{{ v if v is string else (v|join('; ' if k == 'steps' else ', ') if v is iterable and v is not mapping else v) }}</dd></div>{% endfor %}
+        {#- C3961 (the operator's decision 11, 2026-11-18): the record's ids are links to the
+            incident's own page, which draws the incident, its decisions and their programs. -#}
+        {%- set inc_href = url_for('incident_v2.incident', incident_id=ops.incident, list=ops.list) if (ops.incident is string and ops.incident.startswith('hi-') and ops.list is string and ops.list) else '' %}
+        {%- for k, v in ops.items() if k != 'members' %}<div><dt>{{ k }}</dt><dd>{% if inc_href and k in ('incident', 'decision', 'program_hash') and v is string and v %}<a href="{{ inc_href }}">{{ v }}</a>{% else %}{{ v if v is string else (v|join('; ' if k == 'steps' else ', ') if v is iterable and v is not mapping else v) }}{% endif %}</dd></div>{% endfor %}
       </dl>
       </div>
       {%- endif %}
@@ -540,7 +547,8 @@
   <details class="evidence" data-keep="mercury-itself">
     <summary>Mercury itself · {{ a.mercury|length }}</summary>
     <ul class="tl-record">
-      {%- for r in a.mercury %}<li data-mercury="{{ r.id }}">{{ r.what }}{% if (r.action or {}).label %}: {{ r.action.label }}{% endif %}</li>{% endfor %}
+      {%- for r in a.mercury %}<li data-mercury="{{ r.id }}">{{ r.what }}{% if (r.action or {}).label %}: {{ r.action.label }}{% endif %}{% if r.acknowledge %}
+{{ ack_form(r) }}{% endif %}</li>{% endfor %}
     </ul>
   </details>
   {%- endif %}

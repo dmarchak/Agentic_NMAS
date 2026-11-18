@@ -25,8 +25,6 @@
   <p class="small set-result" role="status" data-answer="heal">Self-healing: {{ an.heal_set }}.</p>
   {%- elif an.ai_set %}
   <p class="small set-result" role="status" data-answer="ai">{{ an.ai_set }}.</p>
-  {%- elif an.pressed %}
-  <p class="small set-result" role="status" data-answer="fix-all">Started: {{ an.pressed.fixable }} device{{ '' if an.pressed.fixable == 1 else 's' }} to fix, all at once{% if an.pressed.ai_started %}; the AI started on {{ an.pressed.ai_started }} incident{{ '' if an.pressed.ai_started == 1 else 's' }} with no fix{% endif %}{% if an.pressed.ai_capped %}; {{ an.pressed.ai_capped }} not started by a cap, each page says which{% endif %}{% if an.pressed.ai_skipped %}; {{ an.pressed.ai_skipped }} not started, each page says why{% endif %}.</p>
   {%- endif %}
   {%- if s.run and s.run.line %}
   {#- The operator, 2026-11-16: a finished run collapses to one line, its steps under Details,

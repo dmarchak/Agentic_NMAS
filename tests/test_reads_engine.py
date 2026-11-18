@@ -397,3 +397,95 @@ class TestARunsRecordOfItsReads:
             "2 reads of `show telemetry ietf subscription 102 receiver`: 2 pass; the last: read")
         # A diagnosis's step lists its reads' references, which are not entries.
         assert reads.reads_words({"reads": ["read:x:r2:show clock"]}) == ""
+
+
+class TestAnInvestigationsPool:
+    """C3974 (the operator's decision 3, 2026-11-18: "move router_reads.SessionPool's
+    credential read and SSH into the reads engine. No AI-side code may open device sessions"):
+    an investigation names its one session per device and account by an opaque key (`run`'s
+    *pool*); the engine reads the stored parameters, opens and escalates the session, rides it
+    for every run under that key and closes it at `close_pool`; a read after that fails its
+    device, recorded, opening nothing; and no module of modules/ai/ names the session opener or
+    the stored-credential read."""
+
+    @pytest.fixture
+    def opened(self, lab, monkeypatch):
+        got = {"opened": [], "enabled": 0, "closed": 0}
+
+        class Conn(Session):
+            def enable(self):
+                got["enabled"] += 1
+
+            def disconnect(self):
+                got["closed"] += 1
+
+        def open_ssh(params, plain=False, owner=""):
+            got["opened"].append((params["username"], plain, owner))
+            return Conn()
+        monkeypatch.setattr("modules.connection.open_ssh", open_ssh)
+        monkeypatch.setattr("modules.connection.stored_connection_params", lambda dev: {
+            "host": dev["ip"], "device_type": dev["device_type"], "username": "mercury",
+            "password": "stand-in", "secret": "stand-in"})
+        monkeypatch.setattr("modules.nsot.reads.signs_in_as", lambda by: "mercury")
+        monkeypatch.setattr("modules.nsot.reads.read_account_for", lambda dev: {"ok": False})
+        return got
+
+    def test_its_runs_ride_one_session_the_engine_opens_and_closes(self, opened):
+        from modules.nsot import reads
+        key = "ai-investigation-hi-0123456789ab-1"
+        for _ in range(3):
+            r = reads.run("Lab", ["r1"], ["show ip interface"], "op@example.invalid",
+                          by="ai_analysis", pool=key)
+            assert r["results"]["r1"]["answers"][0]["state"] == "answered"
+        assert opened["opened"] == [("mercury", False, reads.SessionPool.OWNER)]
+        assert opened["enabled"] == 1 and opened["closed"] == 0
+        reads.close_pool(key)
+        assert opened["closed"] == 1
+        after = reads.run("Lab", ["r1"], ["show ip interface"], "op@example.invalid",
+                          by="ai_analysis", pool=key)
+        assert after["results"]["r1"]["state"] != "answered"
+        assert "closed" in str(after["results"]["r1"]), after["results"]["r1"]
+        assert len(opened["opened"]) == 1, "nothing opened after the investigation's end"
+
+    def test_two_keys_are_two_investigations(self, opened):
+        from modules.nsot import reads
+        for key in ("ai-investigation-a-1", "ai-investigation-b-1"):
+            reads.run("Lab", ["r1"], ["show ip interface"], "op@example.invalid",
+                      by="ai_analysis", pool=key)
+        assert len(opened["opened"]) == 2
+        for key in ("ai-investigation-a-1", "ai-investigation-b-1"):
+            reads.close_pool(key)
+        assert opened["closed"] == 2
+
+    def test_no_ai_module_names_the_session_opener_or_the_credential_read(self):
+        """Parsed, every module of modules/ai/: no name or attribute ``open_ssh``,
+        ``stored_connection_params`` or ``SessionPool`` in its code (docstrings and comments
+        are not code); a planted module that names one is found."""
+        import ast
+
+        banned = {"open_ssh", "stored_connection_params", "SessionPool"}
+
+        def named(text):
+            out = set()
+            for node in ast.walk(ast.parse(text)):
+                if isinstance(node, ast.Name) and node.id in banned:
+                    out.add(node.id)
+                elif isinstance(node, ast.Attribute) and node.attr in banned:
+                    out.add(node.attr)
+                elif isinstance(node, ast.alias) and node.name.split(".")[-1] in banned:
+                    out.add(node.name)
+            return out
+
+        folder = os.path.join(ROOT, "modules", "ai")
+        files = [f for f in sorted(os.listdir(folder)) if f.endswith(".py")]
+        assert len(files) >= 40, "floor: the AI package's modules"
+        found = {f: named(_text_of(os.path.join(folder, f))) for f in files}
+        assert {f: n for f, n in found.items() if n} == {}
+        assert named("from modules.connection import open_ssh\n") == {"open_ssh"}
+        assert named("def f(p):\n    return RR.SessionPool().session(p)\n") == {"SessionPool"}
+        assert named('"""open_ssh and stored_connection_params in prose."""\n') == set()
+
+
+def _text_of(path):
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()

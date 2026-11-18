@@ -645,8 +645,144 @@ def fail(list_name: str, run_id: str, exc: BaseException) -> None:
         log.exception("reads: run %s failed, and its record could not say so", run_id)
 
 
+class SessionPool:
+    """One investigation's device sessions (the operator, 2026-11-16: "the standard reads on the
+    run's one session (sign in once), as the command-plan runner's pooled session does"): every
+    read the investigation makes through this engine (its standard reads, the plan's reads read
+    ahead, each later round's) rides one session per device and account, opened at the first
+    read and closed by `close_pool` at the investigation's end; each read still takes the
+    device's hold (`run`), so it is one operation's at a time. Its *session* is `run`'s
+    ``session(dev, fn) -> fn(conn)``; a session a read spent (`config_read.spent`), or one no
+    longer alive, is closed and opened again, never read again (C272). Mercury's account
+    escalates (`enable`) as `connection.with_temp_connection` does; the read-only account never
+    does (H28: `connection.with_plain_connection`'s rule), so a read the engine signs in as it
+    rides a session opened plain. A session is keyed by the account's whole identity (its
+    login, its password and its enable secret, by digest in memory, never logged), never by its
+    name alone: two accounts of one name with different secrets are two sessions. The pool's
+    lock is held across each read (``fn(conn)``), so its reads are serial: one device per
+    investigation. Once closed it opens no session again.
+
+    The engine's own (C3974, the operator's decision 3, 2026-11-18: "move
+    router_reads.SessionPool's credential read and SSH into the reads engine. No AI-side code
+    may open device sessions"): a caller names its investigation by an opaque key (`run`'s
+    *pool*) and ends it with `close_pool`; it never holds a pool, a session or a credential."""
+
+    OWNER = "ai troubleshooting: the investigation's one session"
+
+    def __init__(self):
+        self._conns = {}
+        self._lock = threading.Lock()
+        self._closed = False
+
+    @staticmethod
+    def _identity(params: dict) -> str:
+        """A digest of the account a session signs in as: its login, password and secret."""
+        whole = "\x1f".join(str(params.get(k) or "") for k in ("username", "password", "secret"))
+        return hashlib.sha256(whole.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _plain(dev: dict, params: dict, by: str) -> bool:
+        from modules.connection import is_plain
+
+        if is_plain(dev.get("device_type")) or signs_in_as(by) == "read_only":
+            return True
+        # The engine's read-only account, whatever the setting says now (it is read again at
+        # each read): a read signed in as the account it would resolve for this device (its
+        # login AND its password, never the name alone) signs in plain.
+        try:
+            acct = read_account_for(dev)
+        except Exception:                               # noqa: BLE001 (closed: plain)
+            return True
+        return (bool(acct.get("ok")) and acct.get("username") == params.get("username")
+                and acct.get("password") == params.get("password"))
+
+    def _drop(self, key) -> None:
+        conn = self._conns.pop(key, None)
+        if conn is not None:
+            try:
+                conn.disconnect()
+            except Exception as exc:                    # noqa: BLE001 (gone either way)
+                log.debug("reads: a pooled session's disconnect failed: %s", exc)
+
+    def session(self, by: str):
+        """`run`'s *session* for reads of kind *by*."""
+        def run_on(dev, fn):
+            from modules.config_read import spent
+            from modules.connection import open_ssh, stored_connection_params
+
+            params = stored_connection_params(dev)
+            plain = self._plain(dev, params, by)
+            key = (dev.get("ip"), dev.get("device_type"), plain, self._identity(params))
+            with self._lock:
+                if self._closed:
+                    raise RuntimeError("the investigation's sessions are closed: no read "
+                                       "opens one after its end")
+                conn = self._conns.get(key)
+                if conn is not None and (spent(conn) or not getattr(
+                        conn, "is_alive", lambda: True)()):
+                    self._drop(key)
+                    conn = None
+                if conn is None:
+                    conn = open_ssh(params, plain=plain, owner=self.OWNER)
+                    if not plain:
+                        try:
+                            conn.enable()
+                        except Exception:
+                            conn.disconnect()
+                            raise
+                    self._conns[key] = conn
+                try:
+                    return fn(conn)
+                except Exception:
+                    self._drop(key)
+                    raise
+        return run_on
+
+    def close(self) -> None:
+        """Every session closed (the investigation's end); none opens after."""
+        with self._lock:
+            self._closed = True
+            for key in list(self._conns):
+                self._drop(key)
+
+
+#: The investigations' pools by their callers' keys (`run`'s *pool*), and the keys closed
+#: lately (so a read after its investigation's end is refused, never given a new pool),
+#: bounded: the newest `_CLOSED_KEPT` closed keys.
+_POOLS: dict = {}
+_CLOSED: dict = {}
+_CLOSED_KEPT = 512
+_POOLS_LOCK = threading.Lock()
+
+
+def _pooled(key: str) -> SessionPool:
+    """The pool *key* names, made at its first read; a closed key's read is refused."""
+    with _POOLS_LOCK:
+        if key in _CLOSED:
+            raise RuntimeError("the investigation's sessions are closed: no read opens one "
+                               "after its end")
+        pool = _POOLS.get(key)
+        if pool is None:
+            pool = _POOLS[key] = SessionPool()
+        return pool
+
+
+def close_pool(key: str) -> None:
+    """The investigation *key*'s sessions closed (its end, in its ``finally``); a read under
+    that key afterwards is refused. A key that opened nothing is closed all the same."""
+    if not key:
+        return
+    with _POOLS_LOCK:
+        pool = _POOLS.pop(key, None)
+        _CLOSED[key] = True
+        while len(_CLOSED) > _CLOSED_KEPT:
+            _CLOSED.pop(next(iter(_CLOSED)))
+    if pool is not None:
+        pool.close()
+
+
 def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "person",
-        purpose: str = "", progress=None, session=None, run_id: str = "",
+        purpose: str = "", progress=None, session=None, run_id: str = "", pool: str = "",
         reason: str = "", drivers: dict = None, inline: bool = False) -> dict:
     """Ask *hosts* of *list_name* each of *commands*; the run's record (also written).
 
@@ -661,12 +797,21 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
     hosts' sessions with that driver instead of the inventory's, recorded in the run (board
     F4's platform map Test). *inline* asks a run of ONE device in the calling thread (its hold
     is then re-entrant for an operation this thread already holds it for); every other run
-    reads concurrently. Raises `Refused` with nothing asked; the refusal is recorded
-    first."""
+    reads concurrently. *pool* (an investigation's opaque key, C3974) rides that
+    investigation's one session per device and account (`SessionPool`, the engine's own, for
+    the kind the caller asked as), until `close_pool`. Raises `Refused` with nothing asked; the
+    refusal is recorded first."""
     from modules import fanout
     from modules.nsot import device_ops
     from modules.redact import known_secret_values
 
+    if session is None and pool:
+        # The kind the caller asked as, before an operation's thread makes it OPERATION below:
+        # the session the pool keys and signs in for, as the caller's own pool did (C3974).
+        # Looked up at each device's session, so a read after the investigation's end fails
+        # that device, recorded, as the caller's closed pool failed it.
+        def session(dev, fn, _key=pool, _by=by):
+            return _pooled(_key).session(_by)(dev, fn)
     hosts = list(dict.fromkeys(h for h in (hosts or []) if h))
     commands = [c.strip() for c in (commands or []) if c and c.strip()]
     started = time.time()

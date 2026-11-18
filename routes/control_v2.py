@@ -14,10 +14,8 @@ one-button batch, on Needs attention (C3789; `modules/control_strip.py`, `module
   press is checked against the line as this process drew it (no second preview), turns Auto
   on and records the batch's approval inside the request, and answers at once with the switch
   On and "Starting N fixes…"; the fixes are the batch's job, drawn live on the strip.
-- ``POST /v2/control/<list_name>/fix-all`` (``hash``): Turn on self-healing and fix all, bound
-  to the batch's hash as previewed on its card: the AI started on each incident with no fix,
-  and the rest as one job (`heal.batch.press`); the strip's run part, with the run on its
-  stepper, in place on Needs attention.
+- (``POST /v2/control/<list_name>/fix-all`` is removed: its card left with 9ffa279d and no
+  control reached it; the operator's decision 9, 2026-11-18, C3959.)
 
 The AI toggle posts Settings › AI's own routes with ``answer=strip`` (`settings_v2.ai_on_form`,
 `ai_on`, `ai_off`): one write path for turning the feature on and off. Every route is
@@ -169,27 +167,3 @@ def run_seen(list_name):
         except Exception as exc:                      # noqa: BLE001 (said in the log)
             log.warning("control strip: a dismissal was not announced to open pages: %s", exc)
     return _strip(list_name, run_only=run_only)
-
-
-@bp.route("/<list_name>/fix-all", methods=["POST"])
-def fix_all(list_name):
-    """Turn on self-healing and fix all, bound to the batch's hash as previewed. Its card is on
-    Needs attention, so its answer is the strip's run part, drawn in place there (C3789)."""
-    from modules import control_strip
-    from modules.heal import batch
-
-    who = _who()
-    try:
-        got = control_strip.fix_all(list_name, request.form.get("hash") or "",
-                                    actor=who["actor"], verified=who["verified"],
-                                    ident=who["ident"])
-    except batch.Refused as exc:
-        code = 403 if "verified person" in str(exc) or "may not" in str(exc) else 409
-        return _strip(list_name, code, run_only=True, refused=f"Nothing was started: {exc}")
-    ai = got.get("ai") or {}
-    return _strip(list_name, run_only=True, pressed={"job": got["job"], "fixable": got["preview"]["fixable"],
-                                      "ai_started": len(ai.get("started") or []),
-                                      "ai_capped": len(ai.get("capped") or [])
-                                      + len(ai.get("off") or []),
-                                      "ai_skipped": len(ai.get("skipped") or [])
-                                      + len(ai.get("failed") or [])})

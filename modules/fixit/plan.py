@@ -62,6 +62,15 @@ def as_catalog(operation: str, params: dict, device: str) -> dict:
     for k, v in (params or {}).items():
         if k in AS_CATALOG:
             out[AS_CATALOG[k]] = list(v) if isinstance(v, (list, tuple)) else v
+    # A command plan's step named by the plan's own parameter names (C3978): kept by those
+    # names, as the plan's YAML declares them (`catalog.COMMAND_PLANS`), never another name;
+    # an attempt's short name above wins where both are given.
+    from modules.heal.catalog import COMMAND_PLANS
+    if operation in COMMAND_PLANS:
+        own = {p.name for p in COMMAND_PLANS[operation].params} - {"device"}
+        for k, v in (params or {}).items():
+            if k in own and k not in out:
+                out[k] = list(v) if isinstance(v, (list, tuple)) else v
     if operation == R.READD_KEY:
         out.pop("subscriptions", None)
     return out
@@ -261,7 +270,7 @@ def sent_of(operation: str, drawn, device: str) -> dict:
         # The hash binds this program whole, entry and exit in each unit (`program_hash`), and
         # the session to close (`close_id`): a combined operation is its systems' steps, in the
         # order run (the operator, 2026-11-16: "Step 1, on the Mercury host (collector): close
-        # TCP session <device end> -> <collector end>. Step 2, on r7: ..."; the run stops at
+        # TCP session <device end> -> <collector end>. Step 2, on edge1: ..."; the run stops at
         # the close's failure with nothing sent to the device, `resubscribe` `not_closed`).
         close = d.get("close") or {}
         lines = R.program_of(d.get("units") or [], operation == R.READD_KEY)

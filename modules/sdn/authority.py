@@ -88,10 +88,6 @@ NOT_DIRECT = {
     "heal_proposal_v2.approve": "the request names a recorded proposal, not a device; its "
                                 "device is the proposal's own, read from its record, one "
                                 "the drift check read and compared with its intent",
-    # G6 (C3696): the request names the batch's hash, never a device; its devices are guard 6's
-    # holds, read in its job, each healed through THE heal act as a proposal's is (C2477).
-    "control_v2.fix_all": "the request names the batch's hash, not a device; its devices are "
-                          "guard 6's holds, read in its job, each healed through the heal act",
     # Gate 1b: saving and promoting record a network's scripts, actions and line shapes; none
     # configures a device (a saved action's own run is DIRECT above, `device_run`; a promoted
     # script's runs are self-healing's, as a proposal's are, C2477).
