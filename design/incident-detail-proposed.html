@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Incident proposed mockup</title>
+<link rel="stylesheet" href="../static/css/nmas-v2.css">
+<link rel="stylesheet" href="mockup.css">
+</head>
+<!-- Mockup 4.1, second state: the same incident (hi-ed64c53852c5) as it stood at 18:00:30 UTC,
+     the AI's plan proposed and waiting for its one approval. Values as in incident-detail.html;
+     the preconditions are the proposal's own read (fixit record, preconditions_read). -->
+<body>
+<div class="mk-shell">
+<nav class="mk-side">
+  <div class="brand">Mercury</div>
+  <a href="#">Needs attention</a>
+  <a href="incidents-board.html" class="on">Incidents</a>
+  <a href="#">Devices</a><a href="#">Topology</a><a href="#">Monitoring</a><a href="#">Logs</a>
+  <div class="grp">Automation</div>
+  <a href="#">Fixes</a><a href="#">Runs</a><a href="#">SDN</a>
+  <div class="grp">Record</div>
+  <a href="#">History</a><a href="#">Reports</a><a href="#">Settings</a>
+</nav>
+<main class="mk-main">
+  <div class="mk-top"><a href="incidents-board.html">Incidents</a> › hi-ed64c53852c5 <span class="sp"></span>
+    Default network · &lt;operator&gt;</div>
+
+  <div class="mk-head">
+    <h1>s5 · Gi0/3 err-disabled (port security)</h1>
+    <span class="state proposed">FIX PROPOSED</span>
+    <span class="meta">open 6 m 49 s · opened 17:53:55 UTC · live</span>
+    <span class="needs">severity</span>
+    <span class="sp"></span>
+    <span class="chip-ai">claude-sonnet-5-5 · $0.0537</span>
+  </div>
+
+  <nav class="life" aria-label="Lifecycle">
+    <a class="done" href="#"><span class="dot"></span><span class="nm">Detected</span><span class="tm">17:53:41</span><span class="wd">ERR_DISABLE syslog, confirmed 17:53:57</span></a>
+    <a class="done" href="#"><span class="dot"></span><span class="nm">Self-heal tried</span><span class="tm">17:58:22</span><span class="wd">Mercury's own fix: can't fix (Tier 3)</span></a>
+    <a class="done" href="#"><span class="dot"></span><span class="nm">Diagnosing</span><span class="tm">17:59:35</span><span class="wd">AI, 4 reads, 1 call, 49 s</span></a>
+    <a class="now" href="#plan"><span class="dot"></span><span class="nm">Fix proposed</span><span class="tm">18:00:24</span><span class="wd">waiting for approval</span></a>
+    <a href="#"><span class="dot"></span><span class="nm">Approved</span><span class="tm">–</span></a>
+    <a href="#"><span class="dot"></span><span class="nm">Applying</span><span class="tm">–</span></a>
+    <a href="#"><span class="dot"></span><span class="nm">Verifying</span><span class="tm">–</span></a>
+    <a href="#"><span class="dot"></span><span class="nm">Healed</span><span class="tm">–</span></a>
+  </nav>
+
+  <div class="cols">
+  <div>
+    <section class="card summary pending">
+      <h2>Summary</h2>
+      <dl class="sum">
+        <dt>What</dt><dd>s5 Gi0/3 (H7, VLAN 10) went err-disabled by port security at 17:53:41; the Interface down alert fired at 17:54:50.</dd>
+        <dt>Likely cause</dt><dd>MAC <code>aabb.cc00.8099</code> exceeded Gi0/3's limit of one address, and err-disable recovery is off for psecure-violation, so the port stays down until it is recovered.</dd>
+        <dt>Evidence</dt><dd>
+          <details class="ev"><summary><span class="k">read:3</span> show port-security Gi0/3 · 9 violations</summary></details>
+          <details class="ev"><summary><span class="k">read:2</span> show errdisable recovery · psecure-violation Disabled</summary></details>
+          <details class="ev"><summary><span class="k">read:1</span> show interfaces status err-disabled</summary></details>
+          <details class="ev"><summary><span class="k">incident:2</span> syslog 17:53:43 PSECURE_VIOLATION</summary></details>
+        </dd>
+        <dt>Next</dt><dd><strong>Approve plan p1</strong>: recover Gi0/3 (shut / no shut, never saved). First confirm <code>aabb.cc00.8099</code> is unplugged, or the port trips again.</dd>
+      </dl>
+    </section>
+
+    <section class="card" id="plan">
+      <h2>Plan p1 · errdisable-recover <span class="b l-proposed">waiting for approval</span><span class="sp"></span>
+        <span class="needs">risk level</span></h2>
+      <div class="note">Proposed by the AI 18:00:24 · changes s5's running configuration · plan hash <code>37340172ebf0a9ce</code></div>
+      <div class="diff"><span class="ctx">s5 · config mode · never saved to startup</span>
+<span class="add">interface GigabitEthernet0/3</span>
+<span class="add"> shutdown</span>
+<span class="add"> no shutdown</span></div>
+      <p style="margin:6px 0 12px"><a class="btn primary" href="incident-detail.html">Approve</a>
+        <span class="note" style="margin-left:10px">The one approval: it changes configuration. The reads around it run without one.</span></p>
+      <table class="steps">
+        <tr><td class="ic ok">✓</td><td>Preconditions read at the proposal: err-disabled by the cause now · recovery off for it · no new violation since 17:53:41 <span class="note">(reads 16–17 s old)</span></td><td class="d">9.1 s</td><td class="lg"><a class="btn sm" href="#">▸ log</a></td></tr>
+        <tr><td class="ic pend">○</td><td>Hold s5, read Gi0/3's section before anything is sent</td><td class="d"></td><td class="lg"></td></tr>
+        <tr><td class="ic pend">○</td><td>Send 3 lines in config mode</td><td class="d"></td><td class="lg"></td></tr>
+        <tr><td class="ic pend">○</td><td>Verify: Gi0/3 reads connected; re-check 10 s for a re-trip</td><td class="d"></td><td class="lg"></td></tr>
+        <tr><td class="ic pend">○</td><td>Configuration as before (net zero), record, close the incident</td><td class="d"></td><td class="lg"></td></tr>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>Hypotheses <span class="sp"></span><span class="note">1 AI pass · 4 reads · prompt fixit_troubleshoot.v18</span></h2>
+      <div class="hyp chosen"><div class="lab ok">▾ A · CHOSEN · the plan acts on it</div>
+        <div class="claim">Unauthorised MAC aabb.cc00.8099 on VLAN 10 hit the Gi0/3 maximum of 1 and shut the port; no auto-recovery.</div></div>
+      <div class="hyp open"><div class="lab" style="color:var(--warn)">▾ B · STILL OPEN · a risk to the fix</div>
+        <div class="claim">The violator is still attached; 9 violations so far suggest it will trip again after recovery.</div></div>
+      <div class="hyp out"><div class="lab" style="color:var(--ink-3)">▸ C · RULED OUT by Mercury · a configuration fault</div>
+        <div class="claim">s5 is at its golden, which matches its intent (decision hd-91b4ee758495).</div></div>
+      <span class="needs">the AI's own ruled-out hypotheses, each with its reason</span>
+    </section>
+  </div>
+
+  <aside>
+    <section class="card">
+      <h2>Confidence</h2>
+      <span class="needs">a likelihood % per hypothesis</span>
+    </section>
+    <section class="card">
+      <h2>Related</h2>
+      <div class="rel"><strong>Same port, same fix</strong><span>×9 before this</span><span class="w">each healed by an AI plan (errdisable-recover); last Nov 17 04:52, hi-2764f896b3e0</span></div>
+      <div class="rel"><strong>Same run</strong><span>6 incidents</span><span class="w">s1, s2, r2, r3, r4, r6: all self-healed by 17:59:17</span></div>
+    </section>
+    <section class="card">
+      <h2>AI call</h2>
+      <dl class="kv">
+        <dt>Model</dt><dd>claude-sonnet-5-5</dd>
+        <dt>Tokens</dt><dd>7,096 in · 11,131 cache write · 1,167 out</dd>
+        <dt>Cost</dt><dd>$0.0537</dd>
+        <dt>Latency</dt><dd>10.0 s</dd>
+        <dt>Call</dt><dd><a href="#">ai-32c642bea0ba4e30</a></dd>
+      </dl>
+    </section>
+  </aside>
+  </div>
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Incidents board mockup</title>
+<link rel="stylesheet" href="../static/css/nmas-v2.css">
+<link rel="stylesheet" href="mockup.css">
+</head>
+<!-- Mockup 4.2 (docs/mercury-gui-redesign-brief.md): the Default network's incidents as they
+     stood at 2026-11-17 17:58:40 UTC, 18 s after self-healing was switched on in the Lab 10
+     demo run. Counts are the host's incident store (98 kept, from Nov 7), each incident's
+     category taken from its first trigger, its outcome from its close words; the seven rows are
+     that run's incidents and their state at that instant, from their own timestamps. -->
+<body>
+<div class="mk-shell">
+<nav class="mk-side">
+  <div class="brand">Mercury</div>
+  <a href="#">Needs attention</a>
+  <a href="#" class="on">Incidents</a>
+  <a href="#">Devices</a><a href="#">Topology</a><a href="#">Monitoring</a><a href="#">Logs</a>
+  <div class="grp">Automation</div>
+  <a href="#">Fixes</a><a href="#">Runs</a><a href="#">SDN</a>
+  <div class="grp">Record</div>
+  <a href="#">History</a><a href="#">Reports</a><a href="#">Settings</a>
+</nav>
+<main class="mk-main board">
+  <div class="mk-top"><strong style="color:var(--ink);font-size:20px">Incidents</strong>
+    <span>Default network · live · 17:58:40 UTC</span><span class="sp"></span>
+    <span>Self-healing <strong style="color:var(--ok)">On</strong> (since 17:58:22) · Automatic AI <strong>Off</strong></span></div>
+
+  <div class="tiles">
+    <div class="tile hot"><div class="t">Interfaces</div><div class="n">3 <small>open</small></div>
+      <div class="note">26 opened since Nov 7</div>
+      <svg viewBox="0 0 100 30" preserveAspectRatio="none"><polyline points="0,28 10,28 20,28 30,28 40,28 50,28 60,28 70,28 80,28 90,16.4 100,2"/></svg></div>
+    <div class="tile hot"><div class="t">Config drift</div><div class="n">4 <small>open</small></div>
+      <div class="note">46 opened since Nov 7</div>
+      <svg viewBox="0 0 100 30" preserveAspectRatio="none"><polyline points="0,28 10,11.8 20,28 30,28 40,28 50,26.9 60,28 70,26.9 80,28 90,22.6 100,2"/></svg></div>
+    <div class="tile"><div class="t">Routing</div><div class="n">0 <small>open</small></div>
+      <div class="note">8 opened since Nov 7</div>
+      <svg viewBox="0 0 100 30" preserveAspectRatio="none"><polyline points="0,24.3 10,2 20,28 30,28 40,28 50,28 60,28 70,28 80,28 90,28 100,28"/></svg></div>
+    <div class="tile"><div class="t">Telemetry</div><div class="n">0 <small>open</small></div>
+      <div class="note">5 opened since Nov 7</div>
+      <svg viewBox="0 0 100 30" preserveAspectRatio="none"><polyline points="0,28 10,2 20,28 30,28 40,28 50,28 60,28 70,21.5 80,28 90,28 100,28"/></svg></div>
+    <div class="tile"><div class="t">Reachability</div><div class="n">0 <small>open</small></div>
+      <div class="note">1 opened since Nov 7</div>
+      <svg viewBox="0 0 100 30" preserveAspectRatio="none"><polyline points="0,28 10,2 20,28 30,28 40,28 50,28 60,28 70,28 80,28 90,28 100,28"/></svg></div>
+    <div class="tile"><div class="t">Syslog and alerts</div><div class="n">0 <small>open</small></div>
+      <div class="note">5 opened since Nov 7</div>
+      <svg viewBox="0 0 100 30" preserveAspectRatio="none"><polyline points="0,28 10,28 20,28 30,28 40,28 50,28 60,28 70,10.7 80,28 90,2 100,28"/></svg></div>
+    <div class="tile"><div class="t">SDN</div><div class="n">– </div>
+      <span class="needs">SDN detections as incidents (they are SDN › Responses' records)</span></div>
+  </div>
+  <p class="note trend" style="margin:-4px 0 12px">Trend: opened per day, Nov 7 to Nov 17 <span class="needs">30 days kept (the store holds from Nov 7 and keeps the newest 200 closed)</span>
+    <span class="needs">a category on each incident (taken here from its first trigger)</span></p>
+
+  <div class="strip">
+    <div class="lead"><div class="k">Nov 11 – now · 63 incidents</div><div class="n" style="font-size:20px;margin-top:4px">77% of the 56 closed self-healed</div></div>
+    <div><div class="n" style="color:var(--accent)">43</div><div class="k"><span class="b a-self">Self-heal</span> self-healed</div></div>
+    <div><div class="n" style="color:var(--ai)">9</div><div class="k"><span class="b a-ai">AI + approval</span> AI-fixed</div></div>
+    <div><div class="n">0</div><div class="k"><span class="b a-man">Manual</span> human-fixed</div></div>
+    <div><div class="n" style="color:var(--danger)">7</div><div class="k">open now</div></div>
+    <div><div class="n">3</div><div class="k">not a fault</div></div>
+    <div><div class="n">1</div><div class="k">closed unfixed</div></div>
+  </div>
+
+  <div class="filters">
+    <a class="f on" href="#">All open · 7</a>
+    <a class="f" href="#">Detected · 0</a>
+    <a class="f" href="#">Self-healing · 6</a>
+    <a class="f" href="#">Diagnosing · 0</a>
+    <a class="f" href="#">Fix proposed · 0</a>
+    <a class="f" href="#">Needs a person · 1</a>
+    <a class="f" href="#">Closed</a>
+    <span class="sp"></span>
+    <input type="search" placeholder="Device, issue or id" aria-label="Search">
+    <a class="btn sm" href="#">Export CSV</a>
+  </div>
+
+  <table class="rows">
+    <thead><tr><th>Device <span class="s">▲▼</span></th><th>Issue</th><th>Lifecycle <span class="s">▲▼</span></th><th>Action</th><th>Age <span class="s">▼</span></th><th>Autonomy</th><th>Recurred</th></tr></thead>
+    <tbody>
+      <tr class="grp"><td colspan="7">Needs a person (1)</td></tr>
+      <tr><td class="dev">s5</td><td>Gi0/3 err-disabled by psecure-violation<div class="sub">MAC aabb.cc00.8099 · Interfaces · hi-ed64c53852c5</div></td>
+        <td><span class="b l-person">Self-heal can't fix</span><div class="sub">Tier 3, 17:58:22</div></td>
+        <td><a class="btn sm" href="incident-detail-proposed.html">Troubleshoot with AI</a><div class="sub">Automatic AI is off</div></td>
+        <td class="age">4m45s</td><td><span class="b a-ai">AI + approval</span></td><td>×9</td></tr>
+      <tr class="grp"><td colspan="7">Self-healing now (6)</td></tr>
+      <tr><td class="dev">s1</td><td>Gi1/0 err-disabled by bpduguard<div class="sub">Interfaces · hi-3617b7059465</div></td>
+        <td><span class="b l-applying">Applying</span><div class="sub">since 17:58:24</div></td>
+        <td>Saved script: BPDU guard recovery (access ports)</td>
+        <td class="age">5m36s</td><td><span class="b a-self">Self-heal</span></td><td>×8</td></tr>
+      <tr><td class="dev">r2</td><td>Gi3 description removed outside Mercury<div class="sub">account lab, vty1 · Config drift · hi-4471f30fbc6c</div></td>
+        <td><span class="b l-applying">Applying</span><div class="sub">since 17:58:22</div></td>
+        <td>Mercury's restore: put the line back (Tier 1)</td>
+        <td class="age">5m14s</td><td><span class="b a-self">Self-heal</span></td><td>×9</td></tr>
+      <tr><td class="dev">s2</td><td>Gi1/0 err-disabled by bpduguard<div class="sub">Interfaces · hi-282737477976</div></td>
+        <td><span class="b l-applying">Applying</span><div class="sub">since 17:58:24</div></td>
+        <td>Saved script: BPDU guard recovery (access ports)</td>
+        <td class="age">5m09s</td><td><span class="b a-self">Self-heal</span></td><td>×9</td></tr>
+      <tr><td class="dev">r3</td><td>Gi4 description removed outside Mercury<div class="sub">account lab, vty0 · Config drift · hi-425a61c9ce63</div></td>
+        <td><span class="b l-applying">Applying</span><div class="sub">since 17:58:22</div></td>
+        <td>Mercury's restore: put the line back (Tier 1)</td>
+        <td class="age">4m45s</td><td><span class="b a-self">Self-heal</span></td><td>×12</td></tr>
+      <tr><td class="dev">r4</td><td>Gi4 description removed outside Mercury<div class="sub">account lab, vty0 · Config drift · hi-bb61a64d9fba</div></td>
+        <td><span class="b l-applying">Applying</span><div class="sub">since 17:58:22</div></td>
+        <td>Mercury's restore: put the line back (Tier 1)</td>
+        <td class="age">4m17s</td><td><span class="b a-self">Self-heal</span></td><td>×11</td></tr>
+      <tr><td class="dev">r6</td><td>Gi3 description removed outside Mercury<div class="sub">account lab, vty0 · Config drift · hi-e95eac2bc6d3</div></td>
+        <td><span class="b l-applying">Applying</span><div class="sub">since 17:58:22</div></td>
+        <td>Mercury's restore: put the line back (Tier 1)</td>
+        <td class="age">3m51s</td><td><span class="b a-self">Self-heal</span></td><td>×10</td></tr>
+      <tr class="grp"><td colspan="7">▸ Closed today (7): take G's r2, r3, r4, r6, s1, s2 self-healed and s5 AI-fixed, 05:20–05:23</td></tr>
+    </tbody>
+  </table>
+  <p class="note" style="margin-top:10px">Recurred counts the same device and category among the kept incidents <span class="needs">recurrence kept on the incident, and a recurrence that reopens it</span>
+    <span class="needs">an autonomy field per incident (derived here from who fixed it)</span>
+    <span class="needs">an outcome count for a chosen period (today the list counts all it keeps)</span>
+    <span class="needs">an export route (Incidents has none)</span></p>
+</main>
+</div>
+</body>
+</html>
