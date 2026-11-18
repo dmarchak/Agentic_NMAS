@@ -874,6 +874,9 @@ class TestTheRunner:
         assert tuple(invalidation.ANNOUNCERS[A.ANNOUNCER]) == A.DONE_KEYS
 
     def test_a_job_that_cannot_start_is_recorded_and_its_incident_closed(self, lab):
+        """Recorded refused, nothing sent. Since C3870 (7d54cf24, the operator, 2026-11-16:
+        "only healed closes an incident") its incident stands open on the refusal, stating
+        it, for R1 and the retry policy, never closed."""
         d = decided(GOLDEN + ROUTE4)
 
         def broken(n, t):
@@ -882,7 +885,7 @@ class TestTheRunner:
         got = A.run("Default", now=T0 + 1, starter=broken)
         assert "no thread" in got["failed"][0]
         assert applied(d["id"])["outcome"] == "refused"
-        assert I.read("Default")["incidents"][0]["state"] == "closed"
+        assert I.read("Default")["incidents"][0]["state"] == "standing"
 
 
 class TestOneApplyPath:
