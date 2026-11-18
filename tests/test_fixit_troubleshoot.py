@@ -68,6 +68,15 @@ def fix(operation="telemetry-resubscribe", device="r2", subscriptions=("101", "1
             "evidence_refs": list(cites)}
 
 
+#: A fix the lost stream's ladder lets the AI propose after attempt 1's failed re-subscribe
+#: (17215a95, the operator, 2026-11-16: "The AI never proposes a step whose equivalent already
+#: failed on the incident ... It proposes the first untried rung"; `fixit.ladder`): the
+#: collector's close, which resets nothing of the device's side, so no attempt makes it tried.
+#: A stand-in where a case is about something other than the ladder (a check, a citation, a
+#: guard); `fix()`'s re-subscribe repeats attempt 1 and is refused by the ladder.
+CLOSE = "telemetry-collector-close"
+
+
 @pytest.fixture
 def ai(web, monkeypatch, tmp_path):  # noqa: F811
     """`web` with the REAL gateway (the fixture's stand-in that refuses every ask put back),
@@ -135,6 +144,14 @@ def stopped(w):
 
 class TestThePress:
     def test_one_press_asks_once_and_proposes_a_checked_fix_flagged_as_a_repeat(self, ai):
+        """Premise corrected again (17215a95, the operator, 2026-11-16: "The AI never proposes
+        a step whose equivalent already failed on the incident: three re-subscribes already
+        removed and re-added r7's receivers, so 're-add the receiver' counts as tried. It
+        proposes the first untried rung"): the AI's answer repeating attempt 1 is no longer
+        kept, flagged and refused at its preflight (a person's and Mercury's proposals keep the
+        repeat flag alone, `fixit.ladder`); Mercury's check of the answer refuses it as
+        unchecked, naming the attempt and the first untried rung, and records the refusal on
+        its call. One press is still one call, the person's trigger, its spend the incident's."""
         iid = stopped(ai)
         ai.answer = answer(fix())
         r, html = press(ai, iid)
@@ -142,27 +159,20 @@ class TestThePress:
         assert len(ai.sent) == 1, "the device state class is off: the plain pass, one call"
         sec = sec_of(html)
         assert 'data-state="proposed"' in sec
-        assert "The AI proposes one fix" in sec
-        # Premise corrected (the operator's R2, 2026-11-14): the AI's proposal is a plan of
-        # steps (`plan.preflight`): what it found leads it, and a step repeating a failed
-        # attempt is refused at its preflight naming the attempt, where the proposal was
-        # flagged and opened in its card.
-        assert "What the AI found:" in sec
-        assert 'class="ai-fb"' in sec, "Was this right? under the AI's answer"
-        assert "already failed on this incident as attempt 1" in sec
+        assert ("The AI's answer couldn't be checked, so it isn't shown: the plan's step 1 "
+                "(telemetry-resubscribe) counts as tried: attempt:1") in sec, sec
+        assert "propose the first untried rung, rung 2" in sec
         assert "/fixit/approve" not in sec, "a repeat is never approvable"
         (line,) = [ln for ln in F.read(incident(iid))["lines"] if "proposal" in ln]
-        assert line["source"] == "ai" and line["operation"] == "telemetry-resubscribe"
-        assert line["params"]["subs"] == ["101", "102"]
-        assert line["prompt"] == "fixit_troubleshoot.v13"  # the plain pass: the investigation's last (C3797)
-        assert line["shown"]["hypotheses"][0]["cites"] == ["attempt:1"]
+        assert line["source"] == "ai" and line["operation"] == "" and line["params"] == {}
+        # Every pass is v18's prompt since v17's one shape (231da1d6; C3918's v18).
+        assert line["prompt"] == "fixit_troubleshoot.v18"
         (call,) = line["calls"]
         rows = calls.read()["rows"]
         sent = [x for x in rows if x.get("id") == call]
         assert sent and sent[0]["trigger"]["kind"] == "person"
         assert sent[0]["feature"] == "fixit_troubleshoot"
-        assert [x["use"] for x in calls.uses().get(call, [])] == [
-            "shown: a proposal, opened in its operation's preview"]
+        assert [x["use"] for x in calls.uses().get(call, [])] == ["refused by validation"]
         # The incident's spend is the call's, drawn on the page.
         spent = F.cost_so_far(incident(iid))
         assert spent["state"] == "ok" and spent["usd"] > 0
@@ -180,7 +190,10 @@ class TestThePress:
         assert "2001:db8::20" in text, "an IPv6 address the note holds goes as written"
         system = " ".join(b["text"] for b in body["system"])
         assert "telemetry-resubscribe" in system and "telemetry-readd" in system
-        assert "read_set" not in system, "the class off: the plain pass carries no read set"
+        # Premise corrected (231da1d6, the operator, 2026-11-16: "one prompt shape every pass
+        # so its cache is read", v17): every pass, the plain one too, carries the read set and
+        # the reads' format in its context, the cached prefix the same bytes call to call.
+        assert '<context name="read_set">' in system, "every pass carries the read set"
         # The attempt's approver is a stable label, never their identity (the payload's).
         from tests.test_heal_resubscribe import ACTOR
         assert ACTOR not in json.dumps(body) and "person-" in text
@@ -233,7 +246,7 @@ class TestTheCheck:
         (answer(fix(device="r6")), "r6"),
         (answer(fix(subscriptions=("101 ; configure terminal",))), "subscriptions"),
         (answer(fix(operation="configure terminal")), "catalog"),
-        (answer(fix(), cites=("seen_before:2",)), "seen_before:2"),
+        (answer(fix(operation=CLOSE), cites=("seen_before:2",)), "seen_before:2"),
         (answer(fix(), gap={"what": "both", "evidence_refs": ["attempt:1"]}), "both a fix"),
     ], ids=["another subscription", "another device", "a command as a parameter",
             "a command as the operation", "a past incident not sent", "a fix and a gap"])
@@ -259,8 +272,13 @@ class TestTheCheck:
             assert line["shown"]["hypotheses"][0]["unverified_words"] == mark
             assert line["shown"]["steps"][0]["only_unverified"] is False
             got = FP.preflight(incident(iid), line)
-            assert not got["approvable"] and not got["steps"][0]["preflight"]["ok"]
-            assert got["steps"][0]["preflight"]["code"] == "repeat"
+            # Premise corrected (17215a95's ladder): the repeat this case rested on is refused
+            # as tried now, so its fix is the collector's close (`CLOSE`). Its step rests on
+            # attempt:1 too, so the citation refuses nothing at its preflight; the plan is not
+            # approvable here only because the lab's collector stand-in reads no session for the
+            # close to bind (measured: "Step 1 names no collector session to close").
+            assert got["steps"][0]["preflight"]["ok"], got
+            assert not got["approvable"] and "names no collector session" in got["why_refused"]
             assert "/fixit/approve" not in sec_of(page(ai.client, iid)[1])
             return
         assert "couldn't be checked, so it isn't shown" in sec and why in sec, sec
@@ -285,7 +303,9 @@ class TestTheCheck:
         iid = stopped(ai)
         monkeypatch.setattr("modules.heal.guards.g3_planned", lambda *a, **k: {
             "guard": 3, "name": "planned work", "words": "a planned restart window holds r2"})
-        ai.answer = answer(fix())
+        # Premise corrected (17215a95's ladder): a fix the ladder lets through (`CLOSE`), so
+        # the refusal is the guard's, where `fix()`'s re-subscribe is refused as tried first.
+        ai.answer = answer(fix(operation=CLOSE))
         _r, html = press(ai, iid)
         assert "Mercury's check refused" in sec_of(html)
         (line,) = [ln for ln in F.read(incident(iid))["lines"] if "proposal" in ln]
