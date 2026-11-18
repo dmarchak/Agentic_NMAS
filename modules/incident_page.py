@@ -28,7 +28,7 @@ Needs attention holds, and writes nothing, creates no network and reaches no dev
   verify, by THE one function its Done stage uses too (`run_card.repair_seconds`), its span in
   the one format (`run_stepper.duration_words`). Computed each time, never stored.
 - **Its span:** a resolved incident ends when it ended (`ended_at`): a fixed one at its
-  verify, a declined one at the decline, a cleared one at its close. Its close is the act's
+  verify, a declined or cleared one at its close. Its close is the act's
   record step for an incident its act closed (`closed_at`), never the act's start, with which
   the act stamps its store's close.
 - **A drill:** a declared fault drill's incident says Drill beside its state, its drill's
