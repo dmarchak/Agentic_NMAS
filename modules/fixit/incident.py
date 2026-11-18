@@ -579,8 +579,13 @@ def record_proposal(incident: Incident, source: str, operation: str = "", params
 def passed(run: dict) -> bool:
     """Whether *run*'s own record says its fix worked: the state its operation writes when
     its verify passed (`PASSED_STATE`). The one place a later verdict (the symptom cleared, no
-    harm) joins."""
-    return run.get("state") == PASSED_STATE
+    harm) joins. A run that sent nothing is never one: a command plan's run whose precondition
+    said there was nothing to do is recorded ``done`` with outcome ``not_needed``
+    (`command_plan_run.RECORD_STATE`), its verify never run (the correctness review's G1-H1,
+    2026-11-18: such a run closed its incident "fixed: the plan's run … verified")."""
+    from modules.nsot.command_plan_run import NOT_NEEDED
+
+    return run.get("state") == PASSED_STATE and run.get("outcome") != NOT_NEEDED
 
 
 def _stamp(name: str):

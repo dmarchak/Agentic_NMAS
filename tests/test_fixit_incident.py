@@ -1141,3 +1141,33 @@ class TestHowFixedIsDerived:
     def test_a_run_naming_a_proposal_the_record_does_not_hold_is_not_ai(self, lab):
         carry(a_run(T0, ok=True), {"incident": ID, "attempt": 1, "proposal": "p7"})
         assert F.how_fixed_source(inc(), T0 + 5000) == ""
+
+
+class TestARunThatSentNothingNeverPassed:
+    """The correctness review's G1-H1 (2026-11-18; 17215a95): a command plan's run that sent
+    nothing because its precondition said there was nothing to do is recorded with state
+    ``done`` and outcome ``not_needed`` (`command_plan_run.RECORD_STATE`), and `passed` read
+    the state alone, so the attempt counted as passed and the incident closed "fixed: the
+    plan's run … verified" though nothing was sent and its verify never ran (r7's pattern: a
+    reconnect's opening burst read as the stream back, the stream wedged again). Only a healed
+    outcome closes an incident: a run that sent nothing is never a passed attempt, as
+    `saved_plans.run_verified` and `fix_page` already said."""
+
+    def test_a_not_needed_run_is_no_passed_attempt(self):
+        from modules.nsot import command_plan_run as CR
+        assert F.passed({"kind": "command_plan", "state": "done",
+                         "outcome": CR.NOT_NEEDED}) is False
+        assert F.passed({"kind": "command_plan", "state": "done", "outcome": "done"}) is True
+        assert F.passed({"state": "done", "outcome": "resubscribed"}) is True, \
+            "another operation's passed run, as before"
+        assert F.passed({"state": "refused", "outcome": CR.NOT_NEEDED}) is False
+
+    def test_its_attempt_is_listed_not_passed(self, lab):
+        """Through the record: a real Re-subscribe run carried into the incident, its record
+        rewritten as a run that sent nothing would be, lists its attempt not passed."""
+        from modules.nsot import command_plan_run as CR, privileged
+        rec = carry(a_run(T0, ok=True), {"incident": ID, "attempt": 1})
+        rec.update(state="done", outcome=CR.NOT_NEEDED)
+        privileged.record(NET, rec)
+        (attempt,) = F.attempts(inc())["attempts"]
+        assert attempt["passed"] is False
