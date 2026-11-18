@@ -375,13 +375,16 @@ def test_a_stored_secret_left_after_masking_refuses_and_sends_nothing(world, mon
 
 
 def test_the_task_s_per_call_cap_names_both_operands(world, monkeypatch):
-    """The cap is the task's, derived from its pin; a call over it (here the cap planted
-    below the call's worst case) is refused, both named."""
+    """No call has a cap of its own (7b0bb884, the operator 2026-11-16: "the spending limits
+    ... are the only governor"): `profiles.cap_per_call` is the task's measured typical cost,
+    a figure drawn, never compared. Planted far below the call's cost, it refuses nothing; the
+    call is sent and answered, and a refusal names only a spending limit (the day cap,
+    test_the_day_cap_counts_what_today_spent)."""
     monkeypatch.setattr(profiles, "cap_per_call", lambda name: 0.0000001)
+    world.answer = _answer('{"echo": "w"}')
     got = _ask(world)
-    assert got["error"] == "over_cap" and world.sent == []
-    assert "worst case $" in got["detail"]
-    assert "connection_check task's per-call cap $0.0000" in got["detail"]
+    assert got["ok"] is True and len(world.sent) == 1, got
+    assert "per-call cap" not in json.dumps(_rows())
 
 
 def test_each_task_s_cap_is_its_pinned_model_s_worst_case_at_its_bounds():
@@ -392,12 +395,27 @@ def test_each_task_s_cap_is_its_pinned_model_s_worst_case_at_its_bounds():
         "a single $0.05 cap would have refused feature 7 on Sonnet (the operator's ruling)"
 
 
-def test_a_prompt_over_the_task_s_bound_is_refused_and_says_the_long_tier(world):
+def test_a_prompt_over_the_task_s_bound_is_refused_and_says_the_long_tier(world, monkeypatch):
+    """Mercury's per-task prompt bounds are gone (7b0bb884, the operator 2026-11-16): a prompt
+    over the pin's ``max_prompt_tokens`` is sent, and one over the model's context window (here
+    planted small, so the test builds no million-token prompt) is refused, naming the window,
+    the task's typical answer and the most the prompt may be. A call past Haiku's long tier is
+    priced at the long tier, as the provider bills it."""
     bound = profiles.TASKS["connection_check"]["max_prompt_tokens"]
-    got = _ask(world, parts={"word": "w", "pack": "x" * int(bound * 4)})
-    assert got["error"] == "prompt_too_long" and world.sent == []
-    assert f"over the task's bound of {bound}" in got["detail"]
-    assert "claude-haiku-5-5 charges every rate at its long tier over 100000" in got["detail"]
+    world.answer = _answer('{"echo": "w"}')
+    assert _ask(world, parts={"word": "w", "pack": "x" * int(bound * 4)})["ok"] is True
+    assert len(world.sent) == 1, "the pin's old bound refuses nothing"
+    with monkeypatch.context() as small:
+        small.setattr(profiles, "context_window", lambda model: bound)
+        got = _ask(world, parts={"word": "w", "pack": "x" * int(bound * 4)})
+    assert got["error"] == "prompt_too_long" and len(world.sent) == 1
+    assert f"over claude-haiku-5-5's context window of {bound:,} tokens" in got["detail"]
+    assert "the prompt may be at most" in got["detail"]
+    world.answer = _answer('{"echo": "w"}', usage={"input_tokens": 150_000, "output_tokens": 8})
+    assert _ask(world)["ok"] is True
+    row = _rows()[0]  # newest first
+    assert row["price"]["tier"] == "long"
+    assert row["cost_usd"] == pytest.approx(profiles.cost_usd("claude-haiku-5-5", 150_000, 8))
 
 
 def test_every_haiku_task_s_prompt_bound_is_under_its_long_tier():
@@ -485,7 +503,10 @@ def test_the_day_cap_counts_what_today_spent(world):
     world.settings["ai_cap_usd_per_day"] = 1.49995
     got = _ask(world)
     assert got["error"] == "over_cap" and world.sent == []
-    assert "today's spend $1.4999" in got["detail"] and "day cap $1.4999" in got["detail"]
+    # The refusal names the cap, what was spent, what calls in flight hold and what remains
+    # (7b0bb884: a start is refused only when a remaining cannot cover its hold).
+    assert "the installation's day cap $1.4999: spent $1.4999" in got["detail"]
+    assert "held by 0 call(s) in flight leaves $0.0000" in got["detail"]
 
 
 def test_an_unreadable_record_refuses_rather_than_count_nothing(world, monkeypatch):
