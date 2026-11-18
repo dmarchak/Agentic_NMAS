@@ -175,13 +175,20 @@ class TestByParsing:
 
 
 TRIGGERS = re.compile(r'hx-trigger="[^"]*\b(load|every|revealed|intersect)\b')
+#: The one read a non-button may make: the person opening a fold, once, and never again
+#: (``hx-trigger="toggle once from:#<the fold>"``): "What the AI saw and said" reads each call's
+#: History when it is first opened (the operator's decision 14, 2026-11-18: "Accept a one-time
+#: History read when the fold opens"). Exactly that shape: a toggle without ``once``, or from
+#: nothing, is still found.
+ONCE_ON_OPEN = re.compile(r'\bhx-trigger="toggle once from:#[^"\s][^"]*"')
 
 
 def section_problems(text: str) -> list:
     """What in the section's template would load or repeat a request with no person's press."""
     out = [f"hx-trigger {m.group(1)}" for m in TRIGGERS.finditer(text)]
     out += [f"an hx-get on a <{m.group(1)}> that is no button"
-            for m in re.finditer(r"<(\w+)\b[^>]*\bhx-get=", text) if m.group(1) != "button"]
+            for m in re.finditer(r"<(\w+)\b[^>]*\bhx-get=[^>]*>", text)
+            if m.group(1) != "button" and not ONCE_ON_OPEN.search(m.group(0))]
     return out
 
 
@@ -200,6 +207,17 @@ class TestTheTemplate:
     ])
     def test_a_planted_trigger_is_found(self, planted, found):
         assert found in section_problems(planted)
+
+    def test_a_folds_one_read_on_its_first_open_is_the_persons_and_nothing_else_is(self):
+        """The operator's decision 14 (2026-11-18): a fold's one History read when a person
+        opens it is accepted; a toggle that reads on every open, or a trigger from no fold, is
+        not."""
+        once = '<div hx-get="/x" hx-trigger="toggle once from:#ai-saw-{{ key }}" hx-swap="x">'
+        assert section_problems(once) == []
+        for planted in ('<div hx-get="/x" hx-trigger="toggle from:#ai-saw-1">',
+                        '<div hx-get="/x" hx-trigger="toggle once">',
+                        '<div hx-trigger="toggle once from:#f"></div><span hx-get="/x">'):
+            assert section_problems(planted), planted
 
 
 class TestByBehaviour:
