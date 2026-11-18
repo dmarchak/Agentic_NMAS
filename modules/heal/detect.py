@@ -684,6 +684,12 @@ def verified_fix(network: str, inc: dict) -> dict:
     if (tried["state"] != "ok" or not last or not last["passed"]
             or last["finished_at"] is None):
         return {}
+    if last.get("linked") != "record":
+        # A run on the incident's device inside its window that names no incident is drawn as
+        # an attempt, but it is no fix a person approved in this incident: it may have fixed
+        # another port (the correctness review's G7-D2, 2026-11-18). The incident stands; its
+        # own symptom read closes it.
+        return {}
     if section.view(network, found).get("state") != "passed":
         return {}
     return {"run": last["run"], "attempt": last["n"], "operation": last["operation"],

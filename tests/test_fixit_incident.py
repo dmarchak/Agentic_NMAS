@@ -1171,3 +1171,41 @@ class TestARunThatSentNothingNeverPassed:
         privileged.record(NET, rec)
         (attempt,) = F.attempts(inc())["attempts"]
         assert attempt["passed"] is False
+
+
+def page_stands_in(monkeypatch, incident, state="passed"):
+    """`heal.detect.verified_fix`'s reads of the incident's page stood in: *incident* has a
+    troubleshooting record and a page, and its section reads *state* (the reviewer's case: the
+    section draws its newest attempt). The attempts themselves are read from the records."""
+    monkeypatch.setattr("modules.incidents_list._fixit_ids", lambda network: {incident.id})
+    monkeypatch.setattr("modules.incident_page.resolve", lambda network, iid: {
+        "found": "page", "incident": {"id": iid, "device": incident.device}})
+    monkeypatch.setattr("modules.fixit.section.incident_of", lambda network, found: {
+        "incident": incident, "why": ""})
+    monkeypatch.setattr("modules.fixit.section.view", lambda network, found, **kw: {
+        "state": state})
+
+
+class TestOnlyThisIncidentsFixClosesIt:
+    """The correctness review's G7-D2 (2026-11-18; C3812, 003f3292): `verified_fix` closed an
+    incident "verified on <device>" on its newest attempt, and an attempt is also any passing
+    catalogue run on the incident's device started inside its window (``linked`` ``window``),
+    whatever it fixed and whoever ran it; so a person's passing run on another port of the
+    device closed the incident unhealed, and a ``fixed`` incident is never reopened by its
+    alert. Only a run whose own record names the incident (``linked`` ``record``) is the fix a
+    person approved in it."""
+
+    def test_an_unrelated_passing_run_on_the_device_closes_nothing(self, lab, monkeypatch):
+        from modules.heal import detect
+        a_run(T0, ok=True)                            # on r2, in the window, naming no incident
+        (attempt,) = F.attempts(inc())["attempts"]
+        assert (attempt["passed"], attempt["linked"]) == (True, "window"), attempt
+        page_stands_in(monkeypatch, inc())
+        assert detect.verified_fix(NET, {"id": ID, "device": "r2"}) == {}
+
+    def test_a_run_its_record_names_still_closes_it(self, lab, monkeypatch):
+        from modules.heal import detect
+        rec = carry(a_run(T0, ok=True), {"incident": ID, "attempt": 1})
+        page_stands_in(monkeypatch, inc())
+        got = detect.verified_fix(NET, {"id": ID, "device": "r2"})
+        assert got["run"] == rec["id"], got
