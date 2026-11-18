@@ -144,21 +144,23 @@ def summary(model: dict, lines: list) -> dict:
     bluf = fixit.get("bluf") or {}
     proposal = _newest(lines, lambda l: "proposal" in l)
     hyps = ((proposal.get("shown") or {}).get("hypotheses") or [])
-    cause, inconclusive = "", False
-    if hyps:
-        cause = str(hyps[0].get("claim") or "")
-    elif (model.get("wrong") or {}).get("words"):
-        cause = str(model["wrong"]["words"])
-    elif fixit.get("state") in ("cant_fix", "ai_failed") or fixit.get("ai_failed"):
-        cause, inconclusive = f"Inconclusive: {fixit.get('why') or 'the AI named no cause'}", True
     evidence = [{"kind": str(e.get("kind") or ""), "at": str(e.get("at") or ""),
                  "words": str(e.get("words") or "")}
                 for e in (bluf.get("evidence") or [])[:EVIDENCE_SHOWN] if isinstance(e, dict)]
+    cause, inconclusive = "", False
+    if hyps:
+        cause = str(hyps[0].get("claim") or "")
+    elif fixit.get("state") in ("cant_fix", "ai_failed") or fixit.get("ai_failed"):
+        cause, inconclusive = f"Inconclusive: {fixit.get('why') or 'the AI named no cause'}", True
+    else:
+        # No hypothesis: the kind of what opened it (`heal.incidents.KIND_WORDS`), never the
+        # page's What's wrong, which says the fix or the reason it cannot be made (tonight's
+        # shots: "Mercury is putting it back itself ..." and a can't-fix's reason drawn as the
+        # cause; each fact once).
+        from modules.heal.incidents import KIND_WORDS
+        words = next((KIND_WORDS[e["kind"]] for e in evidence if e["kind"] in KIND_WORDS), "")
+        cause = words[:1].upper() + words[1:]
     todo = model.get("todo") or {}
-    if cause and not hyps and cause.strip().lower() in str(todo.get("words") or "").lower():
-        # Each fact once (the redesign brief §5): a can't-fix's reason is what to do, never
-        # also its cause; with no hypothesis the cause is not named yet.
-        cause = ""
     if model.get("resolved"):
         ttr = (model.get("ttr") or {}).get("words") or ""
         nxt = "Nothing to do" + (f": resolved in {ttr}" if ttr else "")

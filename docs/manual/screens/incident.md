@@ -35,8 +35,9 @@ The top of the page tells the incident's story before any detail:
   the incident is at now is marked; one it skipped (a self-heal that needed no AI skips
   Diagnosing, Fix proposed and Approved) is drawn faint, and a failed verify is drawn red,
   never Healed.
-- **Summary:** four lines. What happened; the likely cause (the AI's first hypothesis, or
-  "Inconclusive" with its reason when the AI ended without a fix); the evidence, four lines
+- **Summary:** four lines. What happened; the likely cause (the AI's first hypothesis,
+  "Inconclusive" with its reason when the AI ended without a fix, or else the kind of what
+  opened the incident, such as a configuration change from outside Mercury); the evidence, four lines
   each opening to its raw text, with the rest counted; and what to do next.
 - **Hypotheses:** what the AI considered, the one its plan acts on first, each with what it
   cites and the read that would confirm it.

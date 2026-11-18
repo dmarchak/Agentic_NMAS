@@ -91,15 +91,18 @@ def test_an_ai_that_ended_without_a_fix_is_inconclusive():
 
 
 def test_a_reason_that_is_already_next_is_never_also_the_cause():
-    """The shot of a can't-fix standing (2026-11-18): its reason was drawn as the likely cause
-    and again as next; each fact once."""
+    """Tonight's shots (2026-11-18): a can't-fix's reason, and a self-heal's fix, were drawn as
+    the likely cause (each from What's wrong). With no hypothesis the cause is the kind of what
+    opened it."""
     why = "mercury cannot fix this yet: nothing was sent (Tier 2)"
     model = dict(_model(resolved=False), wrong={"words": why},
                  todo={"words": "It needs a person: " + why})
+    model["fixit"]["bluf"]["evidence"] = [{"kind": "config_change", "at": "", "words": "x"}]
     got = S.summary(model, [])
-    assert got["cause"] == "" and got["next"].endswith(why)
-    model = dict(model, wrong={"words": "a drift from the golden on Gi2"})
-    assert S.summary(model, [])["cause"] == "a drift from the golden on Gi2"
+    assert got["cause"] == "A configuration change from outside Mercury"
+    assert why not in got["cause"] and got["next"].endswith(why)
+    model["fixit"]["bluf"]["evidence"] = [{"kind": "syslog", "at": "", "words": "x"}]
+    assert S.summary(model, [])["cause"] == ""
 
 
 def test_the_hypotheses_are_the_newest_proposals_the_first_chosen():
