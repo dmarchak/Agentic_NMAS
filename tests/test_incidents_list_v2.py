@@ -105,6 +105,27 @@ def listed(p: dict) -> dict:
     return {r["id"]: r for g in p["groups"] for r in g["rows"]}
 
 
+class TestThePagesTimingLines:
+    def test_each_page_logs_its_stages_and_lock_waits_at_warning(self, planted, caplog):
+        """c601697f (speed pass round 1): the Incidents page and an incident's page each log
+        their seconds, each stage's and the lock waits in one line at WARNING, the level the
+        host's service writes, so the operator's run records them. The debt pass, 2026-11-18
+        (docs/FAST_LANE_DEBT.md, c601697f's survey row)."""
+        import logging
+        import re
+        iid = planted["healed"]["page"]
+        with caplog.at_level(logging.WARNING):
+            L.page(NET, "open")
+            IP.page(NET, iid, attention={})
+        lines = {r.name: r.getMessage() for r in caplog.records
+                 if r.levelno == logging.WARNING and " page " in r.getMessage()
+                 and "lock waits: " in r.getMessage()}
+        assert re.match(rf"incidents page open on {NET}: \d+\.\d\d s; .+; lock waits: ",
+                        lines.get("modules.incidents_list", "")), lines
+        assert re.match(rf"incident page {iid} on {NET}: \d+\.\d\d s; .+; lock waits: ",
+                        lines.get("modules.incident_page", "")), lines
+
+
 class TestTheRows:
     def test_each_row_is_its_incident_pages_state_title_and_address(self, planted):
         from modules.heal import incidents as HI
