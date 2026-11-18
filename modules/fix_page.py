@@ -326,10 +326,10 @@ PLAN_STATE = "self-healing never runs it by itself"
 
 
 def _builtin_row(key, name, fixes, how, hover, record, group) -> dict:
+    """A built-in's row as the list draws it (its status words are its page's, `page`)."""
     words, badge, _said = HOW[how]
-    said = BUILTIN_SAID[group if group in ("plan", "telemetry") else how]
     return {"key": key, "name": name, "fixes": fixes, "how": how, "badge": badge,
-            "words": words, "said": said, "hover": hover, "record": record, "saved": False,
+            "words": words, "hover": hover, "record": record, "saved": False,
             "group": group, "shared": False, "source": "builtin"}
 
 
@@ -371,11 +371,11 @@ def _saved_rows(network: str, runs, capped, deleted: bool = False) -> list:
         if bool(f.get("retired")) != deleted:
             continue
         how = f["how"]
-        words, badge, said = HOW[how]
+        # The row's Mode is its badge, who deleted it and why its hover (the one list, the
+        # operator, 2026-11-17): the status sentence is its page's (`page`), never carried here.
+        words, badge, _said = HOW[how]
         if deleted:
-            r = f.get("retired") or {}
-            words, badge, said = "Deleted", "muted", (
-                f"deleted by {_people(r.get('by'))}; Restore… on its page brings it back")
+            words, badge = "Deleted", "muted"
         rec = record_of(network, [key], f.get("track") or (), runs=runs, capped=capped)
         hover = {"automatic": "Runs by itself on a matching incident while self-healing is in "
                               f"Auto; saved by {_people(f.get('promoted_by') or f.get('saved_by'))}"
@@ -388,7 +388,7 @@ def _saved_rows(network: str, runs, capped, deleted: bool = False) -> list:
                      f"{(f.get('retired') or {}).get('reason') or 'no reason recorded'}")
         devices = {r["device"] for r in rec["rows"] if r.get("device")}
         out.append({"key": key, "name": f.get("name") or key, "fixes": fixes_words(f),
-                    "how": how, "badge": badge, "words": words, "said": said, "hover": hover,
+                    "how": how, "badge": badge, "words": words, "hover": hover,
                     "record": rec, "saved": True, "group": "saved",
                     "shared": bool(f.get("shared")) and f.get("network") != network,
                     "devices": sorted(devices), "source": _source_of(network, f),
@@ -405,13 +405,25 @@ def _sorted(rows: list) -> list:
                   else MODE_RANK.get(r["how"], len(MODES)))
 
 
+#: A row's record as the list draws it: its Runs column (runs, verified, dry), its hover
+#: (summary) and its Last run.
+LIST_RECORD = ("runs", "verified", "dry", "summary", "last")
+
+
+def _list_row(r: dict) -> dict:
+    """A row (`_saved_rows`, `_builtin_row`) as the list draws it: without the devices its
+    search reads, its record cut to `LIST_RECORD`."""
+    return dict({k: v for k, v in r.items() if k != "devices"},
+                record={k: r["record"].get(k) for k in LIST_RECORD})
+
+
 def listing(network: str, q: str = "", mode: str = "", kind: str = "") -> dict:
-    """Troubleshooting › Fixes for *network*: ``{"network", "total", "counts", "groups":
-    [{"key", "title", "rows", "more", "count"}], "q", "mode", "kind", "filtered"}``. *q*
-    matches a fix's name, what it fixes, or a device its record names; *mode* one of `MODES`;
-    *kind* ``saved``, ``builtin`` or ``deleted`` (the deleted saved fixes, shown only by that
-    filter: their record, origin and runs stay). Each group draws its first `SHOWN` rows and
-    counts the rest. A read."""
+    """Troubleshooting › Fixes for *network*: ``{"network", "total", "saved", "built",
+    "deleted", "saved_counts", "rows", "more", "q", "mode", "kind", "filtered", "shown"}``,
+    *rows* the one list, at most `LIST_SHOWN`. *q* matches a fix's name, what it fixes, or a
+    device its record names; *mode* one of `MODES`; *kind* ``saved``, ``builtin`` or
+    ``deleted`` (the deleted saved fixes, shown only by that filter: their record, origin and
+    runs stay). A read."""
     runs, capped = _runs(network)
     saved = _saved_rows(network, runs, capped)
     gone = _saved_rows(network, runs, capped, deleted=True)
@@ -441,9 +453,13 @@ def listing(network: str, q: str = "", mode: str = "", kind: str = "") -> dict:
     counts = {}
     for r in saved:
         counts[r["words"]] = counts.get(r["words"], 0) + 1
+    # The groups choose the rows and count them (``shown``); the page draws the one list,
+    # never the groups, so they are not carried; nor are a row's devices (searched, above)
+    # or its record's rows (drawn on its own page), `_list_row`.
     return {"network": network, "total": len(saved) + len(built), "saved": len(saved),
-            "built": len(built), "deleted": len(gone), "saved_counts": counts, "groups": groups,
-            "rows": every[:LIST_SHOWN], "more": max(0, len(every) - LIST_SHOWN),
+            "built": len(built), "deleted": len(gone), "saved_counts": counts,
+            "rows": [_list_row(r) for r in every[:LIST_SHOWN]],
+            "more": max(0, len(every) - LIST_SHOWN),
             "mode_rank": MODE_RANK, "source_words": SOURCE_WORDS, "q": q or "",
             "mode": mode or "", "kind": kind or "",
             "filtered": bool(needle or mode or kind), "shown": sum(g["count"] for g in groups)}
@@ -586,24 +602,35 @@ def find(network: str, key: str) -> dict:
     return {"kind": "unknown", "fix": None, "template": None, "row": None}
 
 
+def _page_record(rec: dict) -> dict:
+    """*rec* (`record_of`, `_kind_record`) as a fix's page draws it: its rows, its count of
+    the rest and its summary, whose words say the runs and how many verified; the counts
+    themselves are the list's Runs column, never this page's."""
+    return {k: v for k, v in rec.items() if k not in ("runs", "verified")}
+
+
 def page(network: str, key: str) -> dict:
     """A fix's page (the module docstring): ``{"kind", "key", "network", "name", "fixes",
     "how", "badge", "words", "said", "hover", "heal_now", "from", "contents", "origin",
-    "record", "runs", "limits", "changed", "runnable", "why_not"}``. A read."""
+    "record", "limits", "changed", "runnable", "why_not"}``, *record* `record_of`'s as the page
+    draws it (`_page_record`). Whether a saved fix is shared is said by its Origin's Scope. A
+    read."""
     from modules.nsot import saved_plans as S
 
     got = find(network, key)
     out = {"kind": got["kind"], "key": key, "network": network, "name": key, "from": {},
            "contents": None, "origin": [], "record": None, "limits": [], "changed": [],
-           "runnable": False, "why_not": "", "heal_now": "", "hover": "", "shared": False,
+           "runnable": False, "why_not": "", "heal_now": "", "hover": "",
            "deleted": {}, "change_right": "", "by_run": False, "version": 0, "versions": [],
            "held_manual": {}, "editable": False}
     if got["kind"] == "unknown":
         return out
     if got["kind"] == "builtin":
         r = got["row"]
-        out.update({k: r[k] for k in ("name", "fixes", "how", "badge", "words", "said",
-                                      "hover", "record")},
+        out.update({k: r[k] for k in ("name", "fixes", "how", "badge", "words", "hover")},
+                   said=BUILTIN_SAID[r["group"] if r["group"] in ("plan", "telemetry")
+                                     else r["how"]],
+                   record=_page_record(r["record"]),
                    origin=[{"dt": "Ships with", "words": "Mercury: built in, read-only here"}],
                    why_not="A built-in fix is read-only here.")
         return out
@@ -628,7 +655,7 @@ def page(network: str, key: str) -> dict:
         out.update(name=t.words.split(":")[0].strip(),
                    fixes="; ".join(_cond_words({"condition": c}) for c in t.fixes)
                    or t.words, how="manual", hover=PLAN_HOVER,
-                   record=record_of(network, [key]),
+                   record=_page_record(record_of(network, [key])),
                    origin=[{"dt": "Ships with", "words": "Mercury: built in, read-only here"}],
                    why_not=("Its lines ship with Mercury and are not edited here; Run… runs "
                             "it once, a person's press bound to its preview's hash"))
@@ -649,9 +676,9 @@ def page(network: str, key: str) -> dict:
     out["by_run"] = by_run
     heal = S.heal_mode(network)
     out.update(name=f.get("name") or key, fixes=fixes_words(f, t), how=how, words=words,
-               badge=badge, said=said, shared=bool(f.get("shared")),
+               badge=badge, said=said,
                heal_now={"off": "Off", "dry_run": "Dry run", "auto": "Auto"}.get(heal, heal),
-               record=record_of(network, [key], f.get("track") or ()))
+               record=_page_record(record_of(network, [key], f.get("track") or ())))
     out["from"] = _from_incident(network, f)
     src = f.get("from_run") or {}
     run = _source_run(network, f)
@@ -947,7 +974,8 @@ def run_card(network: str, key: str, *, incident: str = "", device: str = "",
              right: str = "") -> dict:
     """Run…'s card (the module docstring; board fix-manual-controls screen 1): ``{"state",
     "mode", "key", "network", "name", "incidents", "devices", "ports", "choices", "device",
-    "interface", "why", "note", "preview", "post", "right", "port_ok", "none_open"}``.
+    "where", "why", "note", "preview", "post", "right", "port_ok", "none_open"}``, *where* the
+    device and the chosen port in words (the port itself is carried by the press, ``post``).
     *mode* ``incident`` ("Run on an open incident…": the open incidents this fix matches, the
     one chosen filling device, object and cause from its problem, run through the incident's
     own "Fix with:" path) or ``port`` ("Or choose a device and interface…": a device and a port
@@ -956,9 +984,11 @@ def run_card(network: str, key: str, *, incident: str = "", device: str = "",
     by the conditions it ``fixes:`` (`builtin_offer`), else a device and each parameter it
     declares (`builtin_port`), its device chosen from committed intent; *port_words* that
     link's words. *state* ``choose`` (a preview to approve), ``none`` (*why*), ``refused`` (the
-    preview's refusals) or ``not_offered``. *post* is the existing run path's ``{"endpoint",
-    "args", "vals"}``. A person's action, the same with self-healing on or off. A read: no
-    device is asked."""
+    preview's refusals) or ``not_offered``. *post* is the existing run path's ``{"url",
+    "vals"}`` (its URL built here, so the card carries only what it draws). A person's action,
+    the same with self-healing on or off. A read: no device is asked."""
+    from flask import url_for
+
     from modules import incident_page
     from modules import problem as P
     from modules.neighbours import committed_intents_of
@@ -968,7 +998,7 @@ def run_card(network: str, key: str, *, incident: str = "", device: str = "",
     got = find(network, key)
     c = {"state": "not_offered", "mode": "port", "key": key, "network": network, "name": key,
          "incidents": [], "devices": [], "ports": [], "choices": [], "device": "",
-         "interface": "", "why": "", "note": "", "preview": None, "post": None, "right": right,
+         "why": "", "note": "", "preview": None, "post": None, "right": right,
          "port_ok": False, "none_open": False, "matched": False,
          "port_words": "Or choose a device and interface…"}
     if got["kind"] not in ("saved", "plan") or got["template"] is None:
@@ -996,8 +1026,7 @@ def run_card(network: str, key: str, *, incident: str = "", device: str = "",
                                                       "state", "where")},
                                    chosen=r is chosen) for r in rows]
             prob, iid = chosen["problem"], chosen["id"]
-            c.update(mode="incident", device=prob.device, interface=prob.object or "",
-                     where=chosen["where"])
+            c.update(mode="incident", device=prob.device, where=chosen["where"])
             found = incident_page.resolve(network, iid)
             if builtin:
                 # Filled from the incident (`builtin_offer`), the one the press is held to.
@@ -1020,8 +1049,8 @@ def run_card(network: str, key: str, *, incident: str = "", device: str = "",
                 return dict(c, state="refused", preview=dict(pv, ok=False, refusals=[
                     "its preview moved while this card was drawn; choose again"]))
             return dict(c, state="choose" if pv["ok"] else "refused", preview=pv,
-                        post={"endpoint": "fixit_v2.fix_with_script",
-                              "args": {"incident_id": iid, "list": network},
+                        post={"url": url_for("fixit_v2.fix_with_script", incident_id=iid,
+                                             list=network),
                               "vals": {"key": key, "hash": offer["hash"], "view": "fix"}})
         c["none_open"] = True
     intents, err = committed_intents_of(network)
@@ -1075,7 +1104,6 @@ def run_card(network: str, key: str, *, incident: str = "", device: str = "",
                         "this fix matches no problem, so Mercury cannot tell which port needs "
                         "it; ")
                      + "its checks read the port live when you run it")
-    c["interface"] = chosen
     c["where"] = f"{dev} {_short(chosen)}" if chosen else dev
     # Each choice the plan takes (an err-disabled port's cause), chosen here: the match's own
     # value through its fill's map when it names one, else the first; a subscription from the
@@ -1099,8 +1127,7 @@ def run_card(network: str, key: str, *, incident: str = "", device: str = "",
     at = {"interface": chosen} if iface else {}
     pv = _preview(network, key, {"device": dev, **at, **picked})
     return dict(c, state="choose" if pv["ok"] else "refused", preview=pv,
-                post={"endpoint": "saved_plans_v2.device_run",
-                      "args": {"device": dev, "list": network},
+                post={"url": url_for("saved_plans_v2.device_run", device=dev, list=network),
                       "vals": {"key": key, **at, "hash": pv["hash"], "view": "fix",
                                **picked}})
 

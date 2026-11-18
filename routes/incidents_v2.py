@@ -48,7 +48,7 @@ def page():
         strip = control_strip.view(ref.name)
     with server_timing.timed("render"):
         html = render_template("v2/incidents.html", p=p, who=_who(), active_nav="incidents",
-                               strip=strip, batch_rows=batch)
+                               strip=strip)
     return _strict(html)
 
 

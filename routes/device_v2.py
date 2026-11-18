@@ -728,9 +728,10 @@ def collector(name):
             why = f"the collector's sessions could not be read ({type(exc).__name__})"
         if not rows and not why:
             why = f"{host}'s committed intent declares no telemetry subscription"
-    return _strict(render_template("v2/_collector_sessions.html", device=dev, rows=rows,
-                                   why=why, read_at=time.strftime("%Y-%m-%dT%H:%M:%SZ",
-                                                                  time.gmtime())))
+    # The fragment draws inside the device's own page, which names the device: only the
+    # sessions and their words are carried (never the inventory row, which it would not draw).
+    return _strict(render_template("v2/_collector_sessions.html", rows=rows, why=why,
+                                   read_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())))
 
 
 @bp.route("/device/<name>/status", methods=["GET"])
