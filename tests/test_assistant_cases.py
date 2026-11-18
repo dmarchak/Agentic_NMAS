@@ -112,9 +112,16 @@ def test_a_batched_request_is_the_press_s_byte_for_byte_and_judged_the_same(worl
     def unmarked(body):
         return dict(body, system=[{k: v for k, v in b.items() if k != "cache_control"}
                                   for b in body["system"]])
+    # Byte for byte but max_tokens (7b0bb884, the operator 2026-11-16): a press asks the
+    # model's maximum, the caps enforced live while it streams; a batched request keeps its
+    # pin's max_tokens, since a batch's answers are read whole, never streamed
+    # (`gateway.ask_batch`).
+    assert live_body["max_tokens"] == profiles.max_output(profiles.TASKS["assistant"]["model"])
     for r in sent:
         assert r["params"]["messages"] == live_body["messages"]
-        assert json.dumps(unmarked(r["params"])) == json.dumps(unmarked(live_body))
+        assert r["params"]["max_tokens"] == profiles.TASKS["assistant"]["max_tokens"]
+        assert json.dumps(dict(unmarked(r["params"]), max_tokens=0)) == \
+            json.dumps(dict(unmarked(live_body), max_tokens=0))
         assert r["params"]["system"][-1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
     assert "cache_control" not in live_body["system"][-1], "a press is sent unmarked (C2261)"
     for r in got["results"].values():
@@ -272,8 +279,11 @@ def test_each_run_is_scored_and_the_tokens_and_cost_are_the_calls_records(world,
     assert u["calls"] == 2
     assert (u["input"], u["output"]) == ({"mean": 3250, "max": 3500}, {"mean": 125, "max": 150})
     assert u["cost_usd"] == {"mean": round(sum(costs) / 2, 6), "max": max(costs)}
-    assert u["estimate"] == {"budget_chars": 12000, "tokens_at_4": 3000,
-                             "tokens_at_2.585": 4642}
+    # No retriever budget to test since 7b0bb884 (manual_index's LIMIT and BUDGET_CHARS gone):
+    # said, never a figure for a bound that is not there.
+    assert u["estimate"] == {"budget_chars": None,
+                             "why": "the manual's passages are chosen by relevance alone, with "
+                                    "no count or size bound (the operator, 2026-11-16)"}
     assert kept["spent_usd"] == round(sum(costs), 6)
     assert {r["actor"] for r in calls.read()["rows"]} == {EVAL}
 
