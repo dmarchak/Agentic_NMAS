@@ -459,11 +459,16 @@ def plan_for_incident(steps, incident, *, improvement=None, call_id: str, calls=
         alt_steps = [{"operation": s["operation"],
                       "params": {k: v for k, v in (s.get("params") or {}).items()
                                  if v is not None}} for s in imp["steps"]]
+        # The improvement's steps keep their unverified marks (`fixit_troubleshoot.shown`), as
+        # the plan's steps do: the alternative's preflight reads them (`fixit.plan.
+        # _unverified_mark`; the correctness review's G5 HIGH-2).
+        marked = ((shown or {}).get("improvement") or {}).get("steps") or []
         got = plan_for_incident(alt_steps, incident, call_id=call_id, calls=calls, actor=actor,
                                 actor_verified=actor_verified, note=note,
                                 shown={"why": imp.get("what") or "",
                                        "improvement": {"what": imp.get("what") or "",
-                                                       "saves": imp.get("saves") or ""}},
+                                                       "saves": imp.get("saves") or ""},
+                                       **({"steps": marked} if marked else {})},
                                 prompt=prompt, now=now,
                                 alternative_of=str(line.get("proposal") or ""), reuse=reuse)
         alt = got.get("line") or {}

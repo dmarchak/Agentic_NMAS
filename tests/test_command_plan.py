@@ -429,6 +429,16 @@ class TestTheRun:
         (ev,) = lab["events"]
         assert ev["event"] == "action" and "Gi1/0" in ev["happened"]
 
+    def test_the_record_keeps_the_digest_of_the_template_it_ran(self, lab):
+        """The correctness review's G3-H2 (2026-11-18): Save stores a verified run's plan, so
+        the run's record names the template it ran by its digest (the digest the approved hash
+        binds), and a Save after the plan changed can tell the two apart."""
+        rec = go(lab)
+        assert rec["outcome"] == "done", rec["why"]
+        from modules.nsot import privileged
+        assert rec["template_digest"] == CP.template_of(KEY).digest
+        assert privileged.get(NET, rec["id"])["template_digest"] == rec["template_digest"]
+
     def test_err_disabled_again_is_rolled_back_saying_what_it_achieved(self, lab):
         """Premise corrected (4a8bb0df, the operator, 2026-11-16: "a re-trip is its own outcome
         with no rollback"): the port err-disabled again by its own cause is the run's outcome,

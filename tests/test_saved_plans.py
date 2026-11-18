@@ -120,6 +120,31 @@ class TestSavingAScript:
         assert t.commands == CP.template_of("errdisable-recover").commands
         assert S.scripts(NET)[e["key"]]["match"] == MATCH
 
+    @pytest.mark.parametrize("dry_run", [False, True])
+    def test_a_plan_changed_since_its_verified_run_is_not_saved(self, store, monkeypatch,
+                                                                dry_run):
+        """The correctness review's G3-H2 (2026-11-18): Save stored the run's plan as it is NOW
+        (`_template_doc`, the current template for the run's key), so a plan changed between
+        the verified run and the Save (an edited fix's new version, a built-in plan a deploy
+        changed) was stored as the verified fix, Automatic at once: lines no run verified,
+        firing by themselves. The run's record names the template it ran by its digest; a Save
+        whose plan's digest differs is refused naming both, nothing stored."""
+        from modules.nsot import privileged
+
+        ran = CP.template_of("errdisable-recover")
+        run_id = store["run"]()
+        rec = privileged.get(NET, run_id)
+        privileged.record(NET, dict(rec, template_digest=ran.digest))
+        changed = CP.parse(dict(ran.doc, title="Recover an err-disabled port, changed since"))
+        assert changed.digest != ran.digest
+        real = CP.template_of
+        monkeypatch.setattr(CP, "template_of", lambda key: (
+            changed if key == "errdisable-recover" else real(key)))
+        with pytest.raises(S.Refused) as exc:
+            script(store, run_id=run_id, dry_run=dry_run)
+        assert ran.digest in str(exc.value) and changed.digest in str(exc.value), exc.value
+        assert S.scripts(NET) == {}, "nothing is stored"
+
     @pytest.mark.parametrize("state, kind, words", [
         ("failed", "command_plan", "did not send its program and pass its own verify"),
         ("done", "privileged", "is no command plan's run"),
@@ -210,6 +235,65 @@ class TestFiring:
         with identity.as_ai("fixit-troubleshoot"):
             assert "may not run a saved script" in S.authority_refusal(
                 e["key"], {"script": e["key"]}, NET)
+
+    @pytest.mark.parametrize("meanwhile", ["nothing", "a person's planned window",
+                                           "the fix deleted", "self-healing turned off"])
+    def test_a_run_that_waited_for_its_device_judges_its_stops_and_authority_again(
+            self, store, monkeypatch, meanwhile):
+        """The correctness review's G2-H1 (2026-11-18; 70e89a47): an Automatic fix waits for
+        another operation's hold on its device (one operation per device is a wait), and its
+        approval and the heal's stops were judged only before the wait, Stop and Off asked only
+        while the device was busy. A person's Reload (its window declared, the device held), a
+        Delete… of the fix or an Off while it waited, and the run then held the device and
+        sent: a write no person approved. Judged again once the device is free, as the heal's
+        act judges again after its own wait; with nothing changed, it goes on to hold and
+        send."""
+        import contextlib
+        import time as _time
+
+        from modules import restarts
+        from modules.nsot import command_plan_run as CR
+
+        e = script(store, dry_run=True)
+        S.promote(e["key"], **WHO)
+        mode = {"mode": "auto", "set": "auto", "words": "Auto"}
+        monkeypatch.setattr("modules.heal.policy.current", lambda network, now=None: dict(mode))
+        monkeypatch.setattr(CP, "preview", lambda network, key, values, **kw: {
+            "ok": True, "hash": "h", "values": dict(values), "refusals": [],
+            "program": ["interface GigabitEthernet0/2"], "title": "Recover s1 Gi0/2",
+            "device_row": {"hostname": "s1", "ip": "192.0.2.21"}, "derived": {}})
+        busy = [{"operation": "reload", "actor": PERSON}]
+        monkeypatch.setattr("modules.nsot.device_ops.holder",
+                            lambda network, device: busy.pop() if busy else None)
+
+        def meanwhile_happens(_s):
+            now = _time.time()
+            if meanwhile == "a person's planned window":
+                restarts.record_planned(["s1"], now, now + 600, PERSON, "maintenance", "api",
+                                        list_name=NET)
+            elif meanwhile == "the fix deleted":
+                S.retire(e["key"], network=NET, reason="taken back by its author", **WHO)
+            elif meanwhile == "self-healing turned off":
+                mode.update(mode="off", set="off", words="self-healing is off")
+        monkeypatch.setattr(CR.time, "sleep", meanwhile_happens)
+        held = []
+
+        @contextlib.contextmanager
+        def hold(network, device, *a, **kw):
+            held.append(device)
+            raise RuntimeError("reached the send")
+            yield
+        monkeypatch.setattr("modules.nsot.device_ops.hold", hold)
+        rec = CR.run(NET, e["key"], {"device": "s1", "interface": "Gi0/2",
+                                     "cause": "bpduguard"}, actor=PERSON, actor_verified="",
+                     person=False, confirmed="h", authority={"script": e["key"]})
+        if meanwhile == "nothing":
+            assert held == ["s1"], (rec["outcome"], rec.get("why"))
+            return
+        assert held == [], "nothing is held or sent"
+        assert rec["outcome"] == "refused" and "Nothing was sent" in rec["why"], rec["why"]
+        assert {"a person's planned window": "as planned", "the fix deleted": "deleted",
+                "self-healing turned off": "off"}[meanwhile] in rec["why"], rec["why"]
 
     def test_a_scripts_authority_does_not_stand_on_another_network(self, store):
         """Review 4: the run's network is checked against the script's."""

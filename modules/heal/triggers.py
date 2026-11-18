@@ -498,7 +498,7 @@ def from_alerts(store: str, value: dict, now: float = None) -> dict:
         return _counts()
     ctx, counts, out = _Context(now), _counts(), []
     allowed = _store_networks(store, "grafana-alerts")
-    held, redone = {}, {}
+    held, redone, withheld = {}, {}, set()
     for key, inst, is_again in new + again:
         device = inst.get("device") or ""
         placed_at = ""
@@ -524,15 +524,23 @@ def from_alerts(store: str, value: dict, now: float = None) -> dict:
             if not is_again:
                 counts["off"] += 1
             continue
+        labels = inst.get("labels") or {}
+        iface = next((labels[k] for k in INTERFACE_LABELS if labels.get(k)), "")
         if not is_again:
-            # An alert Mercury's own run caused (a recovery's shutdown fires Interface down):
-            # attributed as a change line is (`attribution.attribute`: a run spanning it), so
-            # it opens no incident of its own (the operator's record of a switch, 2026-11-16).
+            # An alert Mercury's own run caused (a recovery's shutdown fires Interface down)
+            # opens no incident of its own (the operator's record of a switch, 2026-11-16):
+            # only a verified run that configured the interface it names explains it, and a
+            # hold is a wait (`attribution.alert_attribute`; the correctness review's G6-H1).
+            # Its key is kept out of ``seen``, so each read judges it again: once the run's
+            # window closes, or the hold ends on a run that touched another port or failed, it
+            # is sighted.
             from modules.heal import attribution as AT
             fired = (_epoch(inst.get("active_at")) or _epoch(inst.get("starts_at")) or now)
             try:
-                if AT.attribute(network, device, fired)["by"] == AT.MERCURY:
+                if AT.alert_attribute(network, device, iface, fired, now)["by"] in (
+                        AT.MERCURY, AT.HELD):
                     counts["mercury"] += 1
+                    withheld.add(key)
                     continue
             except Exception as exc:                  # noqa: BLE001 (sighted as before)
                 log.warning("heal: whose the alert on %s was could not be read: %s", device,
@@ -565,8 +573,6 @@ def from_alerts(store: str, value: dict, now: float = None) -> dict:
             again_words = (f"; it still fires and no open incident holds it: its incident "
                            f"{closed['id']} closed at {closed.get('closed_at') or '?'} "
                            f"({str(closed.get('closed_why') or '').split(':', 1)[0] or '?'})")
-        labels = inst.get("labels") or {}
-        iface = next((labels[k] for k in INTERFACE_LABELS if labels.get(k)), "")
         far = far_ends(ctx.intents(network), device, iface) if iface else []
         at = (_epoch(inst.get("active_at")) or _epoch(inst.get("starts_at")) or now)
         on = f" on {iface}" if iface else ""
@@ -594,6 +600,9 @@ def from_alerts(store: str, value: dict, now: float = None) -> dict:
     if redone or resighted:
         kept = {k: v for k, v in dict(resighted, **redone).items() if k in keys}
         _move(lambda d: d.setdefault("resighted", {}).__setitem__(store, kept))
+    if withheld:
+        _move(lambda d: d.setdefault("seen", {}).__setitem__(
+            store, sorted(set((d.get("seen") or {}).get(store) or []) - withheld)))
     return _deliver(ctx, out, counts)
 
 
@@ -843,6 +852,16 @@ def clean_ended(network: str, result: dict, now: float) -> list:
                 from modules.heal import act
                 act.request_confirm(network, inc["id"], (
                     f"the drift check ({by}) read {host} at its golden at {_iso(at)}"))
+                continue
+            # The correctness review's G4-D3 (C3966): a read at a golden that departs from
+            # intent leaves the device off its intent, so it ends nothing; judged as the
+            # confirmation read judges it (`act.golden_not_proof`), on the golden read now.
+            from modules.heal import act
+            src = decide.Sources(network)
+            nothing = act.golden_not_proof(host, src.golden(host, src.device(host)))
+            if nothing:
+                log.info("heal: %s's clean read in %s ends nothing: %s", host, network,
+                         nothing)
                 continue
             d = decide.end_standing(
                 network, inc["id"],
