@@ -547,11 +547,12 @@ def estimate() -> dict:
 def incident_cap(incident, spent_here) -> dict:
     """The incident's own spending limit as the gateway's *spend_cap* (`gateway.ask`): its cap
     (`fixit.policy.cap_usd`, the network's or the installation's, said with where it is
-    changed), and what it has spent read inside the reservations' lock each time: the calls
-    its proposals name (`fixit.incident.cost_so_far`) plus *spent_here()*, this
-    investigation's calls so far (recorded, not yet on a proposal); its calls in flight are
-    held under ``incident:<id>``. None when the cap cannot be read (the start's check refuses
-    that first)."""
+    changed), and what it has spent read inside the reservations' lock each time: the
+    incident's calls (`fixit.incident.calls_of`: those its proposals name and every call of its
+    own investigations, a stopped or failed one's included) plus each of *spent_here()*'s, this
+    investigation's calls so far as ``{call id: cost}``, that those do not already hold, so
+    each call counts once; its calls in flight are held under ``incident:<id>``. None when the
+    cap cannot be read (the start's check refuses that first)."""
     from modules.fixit import incident as F
     from modules.fixit import policy as P
 
@@ -561,10 +562,13 @@ def incident_cap(incident, spent_here) -> dict:
         return None
 
     def spent():
-        got = F.cost_so_far(incident)
+        got = F.calls_of(incident)
         if got["state"] == "unreadable":
             return {"state": "unreadable", "error": got["error"]}
-        return {"state": "ok", "usd": float(got["usd"] or 0.0) + float(spent_here() or 0.0)}
+        counted = {c["id"] for c in got["calls"]}
+        here = sum(float(usd or 0.0) for cid, usd in (spent_here() or {}).items()
+                   if cid not in counted)
+        return {"state": "ok", "usd": sum((c["usd"] for c in got["calls"]), 0.0) + here}
 
     return {"name": "this incident's AI cap", "kind": "incident",
             "said": f"this incident's AI cap ({P.cap_said(network or 'the network', cap)})",
@@ -2275,10 +2279,11 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
             scope["held"] = {incident.device: {
                 s["name"]: s for s in (prep["pack"].get("sections") or [])
                 if s.get("name") in ("history", "intent") and s.get("state") in ("ok", "empty")}}
-        memo = {"spent": 0.0}
+        memo = {"spent": {}}
         # The incident's own cap, judged by the gateway at every call's start and live while it
-        # streams, with this investigation's calls so far counted (they are on no proposal yet).
-        own_cap = incident_cap(incident, lambda: memo["spent"])
+        # streams, with this investigation's calls so far counted once each (on no proposal
+        # yet; the record of calls holds them by this incident's subject too).
+        own_cap = incident_cap(incident, lambda: dict(memo["spent"]))
         feature = loop_feature(prep)
 
         def ask(feature_, prompt, schema, parts, *, trigger, **kw):
@@ -2312,7 +2317,8 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
             job = op_progress.current()
             got = gateway.ask(feature_, prompt, schema, parts, trigger=trigger,
                               spend_cap=own_cap, stop_if=lambda: TJ.was_stopped(job), **kw)
-            memo["spent"] += float(got.get("cost_usd") or 0.0)
+            memo["spent"][got.get("call_id") or f"call {memo['calls']}"] = float(
+                got.get("cost_usd") or 0.0)
             lap(f"call {memo['calls']} ({prompt[0]}.v{prompt[1]}, its send)")
             # Its parts, as the gateway timed them (the speed pass, 2026-11-17): the gates and
             # request build, the provider's count among them, and the model call itself.

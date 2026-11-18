@@ -354,6 +354,35 @@ class TestRefusedAtThePress:
         assert (got["worst"], got["total"], got["spent"]) == (least, least, 0.0)
         assert 'name="drawn_cap" value="1.000000"' in sec
 
+    def test_a_stopped_investigations_calls_count_toward_the_incident_cap(self, ai,
+                                                                           monkeypatch):
+        """What an investigation spent is this incident's though it kept no proposal (the
+        correctness review's G5 MEDIUM-1; 7b0bb884: the per-incident cap governs every call):
+        an investigation its watchdog stopped after its call keeps no line naming the call,
+        and the incident's spend, the start's cap check and the gateway's live cap all still
+        count it, each once, so the next press cannot spend the whole cap again."""
+        from modules.ai import fixit_troubleshoot as AIT
+        from modules.fixit import policy as P
+        from modules.settings_schema import write_settings
+        iid = stopped(ai)
+        monkeypatch.setattr("modules.troubleshoot_job.was_stopped", lambda job: bool(ai.sent))
+        press(ai, iid)
+        assert len(ai.sent) == 1, "the investigation made its call"
+        assert not [ln for ln in F.read(incident(iid))["lines"] if "proposal" in ln], \
+            "a stopped investigation keeps no proposal"
+        rows = [r for r in calls.read()["rows"] if r.get("feature") == AIT.FEATURE]
+        cost = sum(float(r.get("cost_usd") or 0) for r in rows)
+        assert cost > 0
+        assert F.cost_so_far(incident(iid))["usd"] == pytest.approx(cost)
+        # The gateway's live cap: the record's calls, and this investigation's own so far each
+        # counted once (the same call held by both counts once).
+        cap = AIT.incident_cap(incident(iid), lambda: {r["id"]: r["cost_usd"] for r in rows})
+        assert cap["spent"]()["usd"] == pytest.approx(cost), "counted once"
+        least = AIT.start_usd()
+        assert write_settings({"ai_cap_usd_per_incident": round(cost + least / 2, 6)})["ok"]
+        got = P.cap_state(incident(iid), least)
+        assert got["state"] == "refused" and got["spent"] == pytest.approx(cost), got
+
     def test_the_mode_off_sends_nothing(self, ai):
         from modules.settings_schema import write_settings
         iid = stopped(ai)

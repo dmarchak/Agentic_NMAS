@@ -4811,3 +4811,46 @@ never replaced: `display_names.unnamed` replaces a person's set and default name
 their identity, and a host login's default is its identity. Replacing every such word would
 rewrite ordinary words ("root", "admin") in every text sent; that is the operator's decision,
 not built here.
+
+## 2026-11-18: the per-incident AI cap counts a stopped or failed investigation's calls (the correctness review's G5 MEDIUM-1), by hand
+
+**The change.** What the gateway's per-incident cap compares (its refusal is the tier's: CLAUDE.md,
+"AI cost safety"). `fixit.incident.calls_of` (the incident's spend, which `cost_so_far`, the
+start's `policy.cap_state`, the card and the hand-over read) also counts every call in the
+record of AI calls since detection that `investigates` the incident (feature `fixit_troubleshoot`
+or `fixit_auto`, subject `heal_incident` with this incident's id), read once the incident's
+record holds a start line; `fixit_troubleshoot.incident_cap` sums `calls_of` and adds only this
+investigation's calls (now kept by call id) that those do not hold. Found by the fast-lane
+correctness review: an investigation its watchdog stopped, or one that raised after its calls,
+kept no proposal naming them, so the next press read $0.00 spent.
+
+**The method.** As the section above: each mutant written by hand into the copy of the changed
+file in a throwaway worktree (`scripts/nmas-control`), then test_fixit_incident.py's TestTheCost,
+test_fixit_troubleshoot.py's TestRefusedAtThePress and test_fixit_start_spend.py with `-x` in
+CI's interpreter, confined.
+
+| # | Mutant | Result, the first failing test |
+|---|---|---|
+| 0 | the canary: `calls_of` raises | **died**: TestTheCost::test_only_this_incidents_calls_are_summed_each_once |
+| 1 | the investigations' calls not added | died: TestTheCost::test_an_investigations_calls_no_line_names_are_its_own_and_no_others |
+| 2 | read only when a proposal names a call (the start-line gate dropped) | died: the same |
+| 3 | the start-line check inverted (read with no start line) | died: TestTheCost::test_no_call_named_is_nothing_spent_with_nothing_read |
+| 4 | `investigates`: any feature | died: the second test above |
+| 5 | `investigates`: only the press's feature, not R1's | died: the same |
+| 6 | `investigates`: any incident | died: the same |
+| 7 | `investigates`: any subject kind | died: the same |
+| 8 | `incident_cap`: this investigation's calls counted again though the record holds them | died: TestTheCost::test_the_live_cap_adds_this_investigations_calls_once |
+| 9 | `incident_cap`: this investigation's calls not added | died: the same |
+| 10 | `incident_cap`: the record's calls not summed | died: the same |
+| 11 | the investigation's own calls never kept by id | **survived, equivalent** |
+
+Mutant 7 survived the first draft (no call of another subject kind under the incident's id was
+planted); one was added, and it died. Mutant 11 is equivalent in every product path: every
+investigation takes its start line before its first call (the one start path: `fixit_v2._ask`
+and `heal_notice`'s starts), and every call is recorded with this incident's subject before
+`gateway.ask` returns, so the record's rows hold every call the kept ids hold; the kept ids
+count only for an investigation called with no start line (a test's direct call), kept as a
+second count that can never add a call twice. **11 of 12 died, 1 equivalent**, the canary first.
+The aimed tests: 54 test files reading the incident's spend, the cap or the investigation
+(`fixit.incident`, `cap_state`, `cost_so_far`, `calls_of`, `fixit_troubleshoot`, `heal_notice`):
+**1653 passed, 15 failed, 7 skipped**, the 15 failing the same on the parent b2aac483.
