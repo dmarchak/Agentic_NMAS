@@ -21,6 +21,9 @@ modules/nsot/command_policy.py, modules/nsot/command_plan_run.py).
   compare when a section cannot be read; each snapshot rule and the device departing from the
   access rule; the spanning-tree verdicts; the pooled session refusing another address or
   account, IPv4 and IPv6.
+- **C3847's follow-ups (ec92d62b)**: the pipeline's stage callback; verify recorded as its own
+  step with its seconds; stage 7 reading no configuration after a transient run, BGP's hold
+  from before; the cosmetic scope per program; the switch's own recovery table read.
 
 No device, no network, no AI.
 """
@@ -781,6 +784,261 @@ class TestThePooledSession:
         with pytest.raises(ValueError, match="it is not read on that session"):
             session({"ip": signed, "username": user}, lambda c: c)
         assert got == [], "nothing was asked of the pool"
+
+
+# ── C3847's follow-ups (ec92d62b): the stage callback, verify's own step, stage 7's read ────
+
+def _stub_stages(monkeypatch, order, raise_at=""):
+    """Every pipeline stage replaced by one that records its name in *order* (stage
+    *raise_at* raising `PipelineStageError`), the rollback and the failure capture too."""
+    import modules.pipeline as P
+
+    def stage(ctx, _n):
+        order.append(_n)
+        if _n == raise_at:
+            raise P.PipelineStageError(f"{_n} failed for the test")
+    for name in P.STAGE_NAMES:
+        monkeypatch.setattr(P, f"_stage_{name}", lambda ctx, _n=name: stage(ctx, _n))
+    monkeypatch.setattr(P, "_stage_rollback", lambda ctx: order.append("rollback"))
+    monkeypatch.setattr(P, "_capture_failure_state", lambda ctx: None)
+
+
+class TestTheStageCallback:
+    """ec92d62b: `PipelineContext.on_stage` hears each stage's start and its end, or its
+    failure before any rollback the stage starts; a callback that raises changes nothing the
+    run does; a run with none calls nothing."""
+
+    def test_each_stage_is_told_as_it_starts_and_ends(self, monkeypatch):
+        import modules.pipeline as P
+        from tests.test_held_save import _ctx
+
+        order = []
+        _stub_stages(monkeypatch, order)
+        ctx = _ctx()
+        ctx.on_stage = lambda stage, event: order.append((stage, event))
+        P.PipelineRunner(ctx).run()
+        ran = [n for n in order if isinstance(n, str) and n != "audit_log"]
+        assert ran and ctx.final_status == "success", order
+        told = [e for e in order if isinstance(e, tuple)]
+        assert told == [(n, ev) for n in ran for ev in ("start", "end")], told
+
+    def test_a_callback_that_raises_changes_nothing_the_run_does(self, monkeypatch):
+        import modules.pipeline as P
+        from tests.test_held_save import _ctx
+
+        plain, raising = [], []
+        _stub_stages(monkeypatch, plain)
+        ctx = _ctx()
+        P.PipelineRunner(ctx).run()
+        _stub_stages(monkeypatch, raising)
+        ctx2 = _ctx()
+
+        def boom(stage, event):
+            raise RuntimeError("the callback fails")
+        ctx2.on_stage = boom
+        P.PipelineRunner(ctx2).run()
+        assert raising == plain and ctx2.final_status == ctx.final_status == "success"
+        assert ctx2.stages_failed == [] and ctx2.error == ctx.error
+
+    def test_a_stage_error_is_told_before_its_rollback(self, monkeypatch):
+        import modules.pipeline as P
+        from tests.test_held_save import _ctx
+
+        order = []
+        _stub_stages(monkeypatch, order, raise_at="verify")
+        ctx = _ctx()
+        ctx.push_results = {ctx.device_ips[0]: {"ok": True}}
+        ctx.on_stage = lambda stage, event: order.append((stage, event))
+        P.PipelineRunner(ctx).run()
+        assert ("verify", "failed") in order and "rollback" in order, order
+        assert order.index(("verify", "failed")) < order.index("rollback"), order
+        assert ("verify", "end") not in order
+
+    def test_a_run_with_no_callback_calls_nothing(self, monkeypatch, caplog):
+        import modules.pipeline as P
+        from tests.test_held_save import _ctx
+
+        order = []
+        _stub_stages(monkeypatch, order)
+        ctx = _ctx()
+        assert ctx.on_stage is None
+        with caplog.at_level("ERROR", logger="modules.pipeline"):
+            P.PipelineRunner(ctx).run()
+        assert ctx.final_status == "success"
+        assert "on_stage callback raised" not in caplog.text
+
+
+class TestVerifysOwnStep:
+    """ec92d62b: a command plan run records verify as its own step as stage 8 ends, with when
+    it began and its own seconds, once, after the send's step."""
+
+    def test_verify_is_recorded_with_its_start_and_seconds(self, lab):
+        rec = go(lab)
+        assert rec["outcome"] == "done", rec["why"]
+        steps = [s["step"] for s in rec["steps"]]
+        assert steps.count("verify") == 1 and steps.index("send") < steps.index("verify")
+        v = next(s for s in rec["steps"] if s["step"] == "verify")
+        assert v["began"] and v["started"] == v["began"], v
+        assert isinstance(v["took_s"], float) and v["took_s"] >= 0, v
+
+
+class TestStageSevensRead:
+    """ec92d62b (the operator's R3 answer (a)): a transient run with nothing that reads the
+    configuration after (no removal, no re-created IP SLA, no IP SLA compare) has stage 7 read
+    none, said why; every other run reads it; BGP's hold times are then taken from the
+    configuration before."""
+
+    @staticmethod
+    def ctx(transient=True, **over):
+        from tests.test_held_save import _ctx
+        c = _ctx()
+        c.transient = transient
+        for k, v in over.items():
+            setattr(c, k, v)
+        return c
+
+    def test_a_transient_run_reads_no_configuration_after(self):
+        import modules.pipeline as P
+        c = self.ctx()
+        assert "net-zero check reads the configuration after" in P._post_config_not_read(
+            c, c.device_ips[0])
+
+    def test_an_access_rule_run_says_the_rules_words(self):
+        import modules.pipeline as P
+        c = self.ctx()
+        ip = c.device_ips[0]
+        c.snapshot_scope = {ip: {"rule": "access", "interfaces": [PORT], "words": "the rule"}}
+        assert P._post_config_not_read(c, ip) == "the rule"
+
+    def test_a_deploy_or_restore_still_reads_it(self):
+        import modules.pipeline as P
+        c = self.ctx(transient=False)
+        assert P._post_config_not_read(c, c.device_ips[0]) == ""
+
+    @pytest.mark.parametrize("what", ["units", "recreates", "ip_sla"])
+    def test_a_transient_run_that_reads_it_after_still_reads_it(self, what):
+        import modules.pipeline as P
+        c = self.ctx()
+        ip = c.device_ips[0]
+        if what == "ip_sla":
+            c.expect_ip_sla = {ip: ["1"]}
+        else:
+            c.removals = {ip: {what: ["x"]}}
+        assert P._post_config_not_read(c, ip) == ""
+
+    def test_bgps_hold_is_read_from_before_when_stage_7_read_none(self):
+        import modules.pipeline as P
+        pre = {"running_config": "router bgp 65001\n"}
+        assert P._hold_config(pre, {"running_config": "",
+                                    "running_config_scoped": "a transient run"}) == \
+            pre["running_config"]
+        assert P._hold_config(pre, {"running_config": "after\n"}) == "after\n"
+        assert P._hold_config(pre, {"running_config": "",
+                                    "running_config_sections": [PORT]}) == \
+            pre["running_config"]
+
+    def test_a_plan_run_reads_the_whole_configuration_once_after(self, lab):
+        rec = go(lab)
+        assert rec["outcome"] == "done", rec["why"]
+        # Stage 4's read before and the net-zero check's after: stage 7 adds none.
+        assert lab["sw"].reads.count("show running-config") == 2, lab["sw"].reads
+
+
+class TestTheCosmeticScope:
+    """ec92d62b: a deploy or restore whose every line is cosmetic (`verify_scope.COSMETIC`)
+    reads no routing or interface snapshots; any other line, a transient run, a re-created IP
+    SLA, an IP SLA compare, a paired link or a declared effect keeps the full ones."""
+
+    @staticmethod
+    def scope(program, transient=False, **over):
+        import modules.pipeline as P
+        from tests.test_held_save import _ctx
+        c = _ctx()
+        ip = c.device_ips[0]
+        c.transient = transient
+        c.rendered_commands = {ip: list(program)}
+        for k, v in over.items():
+            setattr(c, k, {ip: v})
+        return P._cosmetic_scope(c, ip)
+
+    @pytest.mark.parametrize("program, what", [
+        (["interface GigabitEthernet0/1", " description uplink"], "descriptions"),
+        (["interface GigabitEthernet0/1", " no description"], "descriptions"),
+        (["banner motd ^Cauthorised use only^C"], "banners"),
+        (["snmp-server location rack 4", "interface GigabitEthernet0/1",
+          " description uplink"], "SNMP location")])
+    def test_every_line_cosmetic_is_the_cosmetic_rule(self, program, what):
+        got = self.scope(program)
+        assert got["rule"] == "cosmetic" and what in got["words"], got
+
+    @pytest.mark.parametrize("program", [
+        ["interface GigabitEthernet0/1", " description uplink", " shutdown"],
+        ["interface Loopback9"],
+        ["default interface GigabitEthernet0/1"],
+        ["ip sla 5", " icmp-echo 192.0.2.1"],
+        []])
+    def test_any_other_line_keeps_the_full_snapshots(self, program):
+        assert self.scope(program) == {}
+
+    @pytest.mark.parametrize("over", [
+        {"transient": True}, {"removals": {"recreates": ["1"]}}, {"expect_ip_sla": ["1"]},
+        {"pair_transient": {"peer": "r2"}}, {"expected_effects": {"declared": ["x"]}}])
+    def test_a_run_with_its_own_verify_keeps_the_full_snapshots(self, over):
+        program = ["interface GigabitEthernet0/1", " description uplink"]
+        transient = over.pop("transient", False)
+        assert self.scope(program, transient=transient, **over) == {}
+
+
+class TestTheRecoveryTable:
+    """ec92d62b: the errdisable-recover plan reads the switch's own recovery table (`show
+    errdisable recovery`, s1's capture): Disabled passes, Enabled fails, anything else is
+    unreadable, said; a script saved before keeps its config-filter read, and the check then
+    reads the table itself on the run's session."""
+
+    def test_s1s_table_reads_bpduguard_disabled(self):
+        got = T.E.recovery_timer(T.text("s1_errdisable_recovery.txt"), "bpduguard")
+        assert got["state"] == "disabled" and got["row"].startswith("bpduguard"), got
+        assert "psecure-violation" in got["reasons"]
+
+    @pytest.mark.parametrize("text, why", [
+        (None, "no answer"),
+        ("% Invalid input detected at '^' marker.\n", "the device answered"),
+        ("", "the answer is empty"),
+        ("errdisable recovery cause bpduguard\n", "holds no `ErrDisable Reason"),
+        ("ErrDisable Reason            Timer Status\n-----------------"
+         "            --------------\nudld                         Disabled\n",
+         "lists no row for bpduguard")])
+    def test_each_unreadable_shape_is_said(self, text, why):
+        got = T.E.recovery_timer(text, "bpduguard")
+        assert got["state"] == "unreadable" and why in got["why"], got
+
+    def test_an_old_scripts_filter_read_reads_the_table_itself(self):
+        asked = []
+
+        class Src:
+            def read(self, device, commands):
+                asked.append((device, tuple(commands)))
+                return {T.E.RECOVERY_READ: T.text("s1_errdisable_recovery.txt")}
+
+        class Run:
+            device, sources = "s1", Src()
+            derived = {"interface": PORT, "cause": "bpduguard", "interface_short": "Gi1/0"}
+        result, words = T.E.check_no_recovery("errdisable recovery interval 300\n", Run())
+        assert asked == [("s1", (T.E.RECOVERY_READ,))]
+        assert result == "pass" and "Disabled" in words, words
+
+    def test_the_tables_own_answer_is_judged_with_no_second_read(self):
+        class Src:
+            def read(self, device, commands):
+                raise AssertionError("the table was already read")
+
+        class Run:
+            device, sources = "s1", Src()
+            derived = {"interface": PORT, "cause": "bpduguard", "interface_short": "Gi1/0"}
+        enabled = T.text("s1_errdisable_recovery.txt").replace(
+            "bpduguard                    Disabled", "bpduguard                    Enabled", 1)
+        result, words = T.E.check_no_recovery(enabled, Run())
+        assert result == "fail" and "does not race it" in words, words
 
 
 # ── The review of Gate 1a ───────────────────────────────────────────────────────────────────
