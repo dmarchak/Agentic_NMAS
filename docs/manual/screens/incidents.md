@@ -12,8 +12,8 @@ incident that needs a person is on it, its item linking to that incident's page.
 where an incident lives, open or closed; Needs attention is where a person looks first.
 
 The page opens with the control strip, for this network, the one place its switches are:
-**Self-healing** (on is Auto until a time, for the network's default duration; off is Dry run)
-and **AI troubleshooting: Automatic** (on, the AI investigates by itself when Mercury's fix
+**Self-healing** (on is Auto until someone turns it off, on any network; off is Dry run) and
+**Automatic AI troubleshooting** (on, the AI investigates by itself when Mercury's fix
 fails; off, back to Manual), each with its gear to its full setting, both showing the state now
 and usable only by a person who may change those settings. With open incidents Automatic would
 start on, one line beside its switch says so ("Also starts on N open incidents, about $X"); it

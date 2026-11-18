@@ -212,12 +212,16 @@ Who sees the amounts is not a choice yet: everyone who can make AI calls sees th
 
 While any network's self-healing runs in **Auto** ({{product}} applies the fixes its policy allows
 with no person), the top bar carries an amber chip just before the AI chip, "Self-healing:
-Auto until Nov 14 18:00", the time in your own zone, with UTC on hover. With more than one
+Auto until Nov 14 18:00", the time in your own zone, with UTC on hover; an Auto with no expiry,
+the Self-healing switch's own, says "Self-healing: Auto until turned off". With more than one
 network in Auto it says how many ("Auto on 2 networks until …") and names the one whose Auto
-ends first, the others on hover. Selecting it opens that network's
-[Self-healing tab in Settings](settings#self-healing). It reads the mode that is in force, not
-only the one set: an Auto that has expired, is not confirmed, or is held by the installation's
-stop switch is not Auto, and the chip goes the moment Auto ends. In dry run or off nothing is
+ends first (one until turned off comes after every Auto with a time), the others on hover.
+Selecting it opens that network's control strip at the top of
+[Troubleshooting › Incidents](incidents), where its switches are. It reads the mode that is in
+force, not only the one set: an Auto that has expired, is not confirmed, or is held by the
+installation's stop switch is not Auto, and the chip goes the moment Auto ends; it reads itself
+again once, at the first expiry, and an Auto until turned off gives it nothing to read again
+at. In dry run or off nothing is
 drawn: status is shown in the top bar by exception, and the sidebar is navigation only. Up to
 laptop width (1366 px) the chip says "Auto" alone, its words on hover; on a phone it sits just
 after the AI chip.

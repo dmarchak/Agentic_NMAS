@@ -190,10 +190,14 @@ a device to its committed intent; nothing on this tab contacts a device.
 
 - **Self-healing on <network>**: the mode now (**Off**, **Dry run**: every step but the apply,
   each record saying what it would have done, or **Auto**: the Tier 1 kinds allowed below heal
-  without a person until the expiry, then dry run), with why in words ("dry run: AUTO … expired",
-  "off: self-healing is stopped everywhere"); who set it, when and their reason; the network's
-  stage (Auto is allowed only on a network marked lab, until the AUTO production-readiness
-  gate); production's bar (30 days and 100 dry-run events at 1% wrong or fewer; lab drills never
+  without a person until the expiry, then dry run, or, with no expiry, until someone turns it
+  off), with why in words ("dry run: AUTO … expired", "off: self-healing is stopped
+  everywhere"); who set it, when and their reason; the network's stage (the tab still says Auto
+  is allowed only on a network marked lab, until the AUTO production-readiness gate, and its
+  Mode dropdown keeps to that, while the policy itself, since 2026-11-16, allows Auto on any
+  network: the control strip's Self-healing switch on [Incidents](incidents) turns it on until
+  turned off, on any network; [The Self-healing toggle](heal-batch#self-healing-toggle));
+  production's bar (30 days and 100 dry-run events at 1% wrong or fewer; lab drills never
   count); and the policy's fingerprint. Values a person did not confirm are not in force, and
   the chip says **not in force: off**. While Auto is in force, every page's top bar says so too
   ([the Self-healing chip](getting-started#self-healing-auto)), and selecting it opens this
@@ -209,7 +213,10 @@ a device to its committed intent; nothing on this tab contacts a device.
   Dry run are previewed as they open. For Auto, **Auto until** is a quick choice, **1 h**,
   **2 h**, **4 h**, **8 h**, **24 h** or **7 days** from the preview, or **a time** in the
   date-time picker, in your own time zone (the one every time on the screens is drawn in,
-  named beside the picker), with its UTC drawn beside it; at most 7 days away. A quick choice's
+  named beside the picker), with its UTC drawn beside it; at most 7 days away. With neither a
+  quick choice nor a time, Auto has no expiry and lasts until a person turns it off, as the
+  control strip's switch sets it; the preview names which ("until <time>, then dry run", or
+  "until a person turns it off"). A quick choice's
   time is drawn into the picker when it is previewed, and that time is the one confirmed,
   however long after you press. Each choice is previewed in the window, writing nothing:
   **What this changes** (the mode, the kinds that heal without a person, the kinds proposed,
