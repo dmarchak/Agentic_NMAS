@@ -133,10 +133,26 @@ def section_of(html):
     """The fragment the section draws (the page's, or a post's answer). Premise corrected (the
     operator's R2, 2026-11-14): it is the BLUF and the one card under it ("Fixing it", which
     keeps the id `inc-ai`) with their modals, one swap target (`#inc-fixit`), where it was the
-    AI troubleshooting card alone."""
+    AI troubleshooting card alone. Premise corrected again (board R5, becced07, approved
+    2026-11-15: the incident is one card, the page's own parts, its timings to The record, under
+    its one Details): the page's parts are left out, as before, and the fragment runs on to its
+    end, the plan's own card and the modals included, where it stopped at the timings."""
     assert 'id="inc-fixit"' in html and 'id="inc-ai"' in html, "no AI troubleshooting drawn"
-    return html.split('<div class="inc-fixit" id="inc-fixit"', 1)[1].split(
-        'id="inc-timings"', 1)[0]
+    body = html.split('<div class="inc-fixit" id="inc-fixit"', 1)[1]
+    if 'id="inc-timings"' in body:
+        head, rest = body.split('<details class="card inc-timings" id="inc-timings"', 1)
+        body = head + rest.split('class="card tl-record-d', 1)[1].split("</details>", 1)[1]
+    return body.split("</main>", 1)[0]
+
+
+def status_of(html):
+    """The incident card's one status line (board R5, becced07; 00c70e0f: one sentence, its
+    source a label), as a person reads it: its words, tags left out."""
+    from html import unescape
+    m = re.search(r'<div class="simple-status fixit-status[^"]*"[^>]*\bdata-status\b[^>]*>'
+                  r'(.*?)</div>', html, re.S)
+    assert m, "no status line drawn"
+    return " ".join(unescape(re.sub(r"<[^>]+>", " ", m.group(1))).split())
 
 
 def drawn_page(client, iid):
@@ -156,6 +172,13 @@ def bluf_of(html):
     return html.split('id="inc-bluf"', 1)[1].split("</section>", 1)[0]
 
 
+def plan_of(html):
+    """The plan waiting on Approve, its own card under the incident (`#inc-plan`; board R5,
+    becced07, approved 2026-11-15)."""
+    assert 'id="inc-plan"' in html, "no plan card drawn"
+    return html.split('id="inc-plan"', 1)[1].split("</section>", 1)[0]
+
+
 def post(client, iid, what, **data):
     return client.post(f"/v2/incident/{iid}/fixit/{what}?list={NET}", data=data, headers=HX)
 
@@ -172,7 +195,9 @@ class TestTheStates:
         # Premise corrected (the operator's R1 and R2, 2026-11-14): the one card's status line
         # is the section's own (`x.status`), and a lost stream (no code fix of its kind) has
         # the AI as its next action; "No fix has been tried" was the old state's paragraph.
-        assert re.search(r'<p class="fixit-status" data-status>[^<]+', sec)
+        # Premise corrected again (board R5, becced07): the status line is the BLUF's
+        # `<div class="simple-status fixit-status" data-bluf="status" data-status>`.
+        assert status_of(sec)
         assert "Start AI troubleshooting" in bluf_of(sec)
         assert "AI $0.00 of its cap of $1.00" in sec
         assert "/fixit/retry" not in sec and "/fixit/cancel" not in sec
@@ -187,8 +212,11 @@ class TestTheStates:
         assert 'data-state="stopped"' in sec
         # Premise corrected (R2): the stop is said once, by the card's status line (the
         # section's `status`), where "Stopped: … Nothing more runs unless you choose." was.
-        status = re.search(r'<p class="fixit-status" data-status>(.*?)</p>', sec, re.S).group(1)
-        assert "Start AI troubleshooting" in status, status
+        # Premise corrected again (board R5's status line, becced07; 9f62b2c7, the operator,
+        # 2026-11-16: a person's Re-subscribe is never Mercury's fix, so the line says Mercury
+        # has no fix it runs by itself for a lost stream, and that the AI can investigate).
+        status = status_of(sec)
+        assert status.endswith("The AI can investigate"), status
         assert 'data-attempt="1"' in sec and "<strong>failed:</strong>" in sec
         assert f"result={rec['id']}" in sec, "Open the run opens the run's own card"
         # Premise corrected (the operator's R2, 2026-11-14: "Cancel and 'Retry with more
@@ -294,7 +322,12 @@ class TestTheNextAction:
         assert "/fixit/start" in attr(start, "hx-post"), "Start's own route (the section's)"
         assert attr(start, "hx-target") == "#inc-fixit"
         # The fix that failed (attempt 1, Re-subscribe) is in Attempts, never the next action.
-        assert "Re-subscribe" not in bluf
+        # Premise corrected (9f62b2c7, the operator, 2026-11-16): the status line names
+        # Re-subscribe as a person's operation, never as an action; no control of the BLUF
+        # offers it.
+        controls = re.findall(r"<(?:a|button|summary)\b[^>]*>(.*?)</(?:a|button|summary)>",
+                              bluf, re.S)
+        assert controls and not [c for c in controls if "Re-subscribe" in c], controls
         attempts = sec.split('data-more="attempts"', 1)[1].split("</details>", 1)[0]
         assert "Re-subscribe r2&#39;s telemetry (101, 102)" in attempts
         (hand,) = re.findall(r'<button\b([^>]*\bdata-modal-open="fixit-hand-[^"]+"[^>]*)>', bluf)
@@ -327,11 +360,11 @@ class TestTheNextAction:
     def test_past_the_cap_the_card_says_which_cap_and_offers_hand_over(self, web):
         iid = plant()
         attempt(web)
-        setting(ai_cap_usd_per_incident=0.10)
+        setting(ai_cap_usd_per_incident=UNDER_THE_LEAST)
         sec = section_of(drawn_page(web, iid))
         assert "/fixit/start" not in sec, "no Start past the cap"
         cap = re.search(r'<p class="small fixit-cap"[^>]*>(.*?)</p>', sec, re.S)
-        assert cap and "against the cap of $0.10" in cap.group(1), sec[-1500:]
+        assert cap and "against the cap of $0.02" in cap.group(1), sec[-1500:]
         assert "Hand over…" in bluf_of(sec) and "/fixit/cancel" not in sec
 
     def test_past_the_cap_hand_over_is_the_one_control_drawn(self, web):
@@ -340,7 +373,7 @@ class TestTheNextAction:
         the AI again, Modify…) or decides a plan (Approve, Deny…) is drawn or posts."""
         iid = plant()
         attempt(web)
-        setting(ai_cap_usd_per_incident=0.10)
+        setting(ai_cap_usd_per_incident=UNDER_THE_LEAST)
         sec = section_of(drawn_page(web, iid))
         outside = outside_modals(sec)
         labels = [" ".join(re.sub(r"<[^>]+>", " ", inner).split())
@@ -362,9 +395,15 @@ class TestTheNextAction:
         html = drawn_page(web, iid)
         sec = section_of(html)
         assert 'data-fix="approve"' in bluf_of(sec)
-        assert f"fixit-modify-{iid}" in bluf_of(sec) or f"fixit-deny-{iid}" in bluf_of(sec)
-        assert "Approve isn't offered: a step was refused at its preflight" in bluf_of(sec)
-        assert primaries_of(outside_modals(sec)) == []
+        # Premise corrected (board R5, becced07: the plan waiting on Approve is its own card
+        # under the incident, Modify and Deny on it; fb8be7e8, the operator, 2026-11-16: a
+        # refused plan's primary button is Ask the AI again).
+        card = plan_of(sec)
+        assert f"fixit-modify-{iid}" in card or f"fixit-deny-{iid}" in card
+        assert "Approve isn't offered: a step was refused at its preflight" in card
+        assert "/fixit/approve" not in sec
+        assert [w for _a, w in primaries_of(outside_modals(sec))] == [
+            "Ask the AI again Asking the AI…"]
         assert outside_modals(html).count("btn-primary") <= 1, "the page draws one primary"
 
 
@@ -404,7 +443,11 @@ class TestWhatItFound:
                 b.wait_for("return !!document.querySelector('#inc-ai .fixit-sub')")
                 # Premise corrected (the operator's R2, 2026-11-14: "Everything else sits below,
                 # collapsed"): the lines are under the card's collapsed "What attempt 1 found",
-                # opened first as a person opens it; each line is then read as before.
+                # opened first as a person opens it; each line is then read as before. Premise
+                # corrected again (board R5, becced07): the card is under the incident's one
+                # Details, opened first.
+                b.click("#inc-details > summary")
+                b.wait_for("return document.getElementById('inc-details').open")
                 b.click('#inc-ai details[data-more="found"] > summary')
                 b.wait_for("return document.querySelector('#inc-ai details[data-more=found]')"
                            ".open")
@@ -529,7 +572,10 @@ class TestAnUnknownIncident:
     the data folder written, no model asked, nothing started)."""
 
     UNKNOWN = "hi-000000000000"
-    ROUTES = ["approve", "modify", "deny", "ask_again", "start", "handover", "handover/1/send"]
+    # Premise corrected (b001bb46, C3805, the operator, 2026-11-15): "Fix with saved script"
+    # posts `script`, a fixit route of its own.
+    ROUTES = ["approve", "modify", "deny", "ask_again", "start", "handover", "handover/1/send",
+              "script"]
 
     @pytest.mark.parametrize("what", ROUTES)
     def test_an_id_no_record_holds_is_404_said(self, web, what):
@@ -573,6 +619,14 @@ def counted(monkeypatch):
     return calls
 
 
+#: A per-incident cap under the least one AI call costs (`fixit_troubleshoot.start_usd`, $0.0576
+#: from the pin's stand-in typical output): past it with nothing spent. Premise corrected
+#: (7b0bb884, the operator, 2026-11-16: "a start is refused only if the remaining budget can't
+#: cover the counted prompt plus the task's measured typical output"): $0.10 was under the old
+#: worst case of four calls at the pin's cap, and covers the least call now.
+UNDER_THE_LEAST = 0.02
+
+
 def setting(**kw):
     from modules.settings_schema import write_settings
     got = write_settings(kw, actor=ACTOR)
@@ -588,14 +642,18 @@ class TestTheCap:
     def test_past_the_cap_the_ai_is_not_offered_and_both_figures_are_said(self, web):
         iid = plant()
         attempt(web)
-        setting(ai_cap_usd_per_incident=0.10)
+        setting(ai_cap_usd_per_incident=UNDER_THE_LEAST)
         sec = section_of(drawn_page(web, iid))
         assert "/fixit/start" not in sec and "Retry with more information" not in sec
         assert "Start AI troubleshooting" not in [w for _a, w in primaries_of(sec)]
+        from modules.ai import fixit_troubleshoot as AIT
         from modules.fixit.policy import money
-        worst = money(S.worst_usd())                  # the pin's two calls, from its prices
+        # Premise corrected (7b0bb884, the operator, 2026-11-16: no worst case): the figure is
+        # the least one AI call costs, from the pin's typical output and its prices.
+        least = money(AIT.start_usd())
         cap = re.search(r'<p class="small fixit-cap"[^>]*>(.*?)</p>', sec, re.S)
-        assert cap and worst in cap.group(1) and "$0.10" in cap.group(1), sec[-1200:]
+        assert cap and f"least call costs {least}" in cap.group(1) and "$0.02" in cap.group(1), \
+            sec[-1200:]
         assert "Hand over…" in bluf_of(sec)
 
 
@@ -836,13 +894,23 @@ class TestTheSetting:
 
 class TestTheFigures:
     def test_a_retry_s_worst_case_is_two_calls_at_the_pin_s_cap(self):
-        # Premise corrected (C3797, the operator, 2026-11-15: the investigation is iterative,
-        # "not a fixed 2 passes"): its worst case is its rounds and its last pass, four calls.
+        """Premise corrected again (7b0bb884, the operator, 2026-11-16: "remove every AI
+        token/size limit Mercury sets itself. The spending limits ... are the only governor"):
+        there is no worst case and no bound on calls, so a retry's figure is the least one AI
+        call costs, its pin's typical output at its model's output rate
+        (`fixit_troubleshoot.start_usd`), and the section draws and compares that figure; the
+        worst case's own names (CALLS_PER_ATTEMPT, WORST_PIN, CALLS_WORST, ROUNDS) are gone."""
+        from modules.ai import background, profiles
         from modules.ai import fixit_troubleshoot as AIT
-        from modules.ai import profiles
-        assert S.CALLS_PER_ATTEMPT == AIT.CALLS_WORST == AIT.ROUNDS + 1 == 4
-        assert S.worst_usd() == round(4 * profiles.cap_per_call(S.WORST_PIN), 6)
-        assert 0 < S.worst_usd() < 1.0, "one retry's worst case fits under the $1.00 default cap"
+        for gone in ("CALLS_PER_ATTEMPT", "WORST_PIN"):
+            assert not hasattr(S, gone), gone
+        for gone in ("CALLS_WORST", "ROUNDS"):
+            assert not hasattr(AIT, gone), gone
+        pin = profiles.task(AIT.FEATURE)
+        rate = profiles.prices_for(pin["model"], 0)["output"]
+        tokens = int(background.typical_output(AIT.FEATURE)["tokens"])
+        assert AIT.start_usd() == round(tokens * rate / 1_000_000, 6)
+        assert 0 < AIT.start_usd() < 1.0, "one call's least fits under the $1.00 default cap"
 
 
 # ── On a projector: 1920x1080, nothing scrolls inside the section ───────────────────────────
@@ -869,6 +937,10 @@ class TestOnAProjector:
                         {"width": 1920, "height": 1080})
                 b.go(srv.url(f"/v2/incident/{iid}?list={NET}"))
                 b.wait_for("return !!document.querySelector('#inc-bluf .bluf-acts')")
+                # Premise corrected (board R5, becced07): Attempts is in the card under the
+                # incident's one Details, opened first.
+                b.click("#inc-details > summary")
+                b.wait_for("return document.getElementById('inc-details').open")
                 b.click('#inc-ai details[data-more="attempts"] > summary')
                 b.click(f'#inc-bluf [data-modal-open="{mid}"]')
                 opened = b.wait_for(f"return document.getElementById('{mid}').open")
@@ -966,11 +1038,18 @@ class TestTheModals:
                         {"width": 1280, "height": 900})
                 b.go(srv.url(f"/v2/incident/{iid}?list={NET}"))
                 b.wait_for("return !!document.querySelector('#inc-bluf .bluf-acts')")
+                # Premise corrected (board R5, becced07): Modify… and Deny… are the plan's own
+                # card's (`#inc-plan`), two items of its "Modify or deny…" menu, which is opened
+                # first; Hand over… stays the BLUF's.
+                card = {"modify": "#inc-plan", "deny": "#inc-plan", "hand": "#inc-bluf"}
+                menu = "#inc-plan details.simple-menu"
                 for key in ("modify", "deny", "hand"):
                     mid = f"fixit-{key}-{iid}"
+                    if card[key] == "#inc-plan":
+                        b.js("document.querySelector(arguments[0]).open = true", menu)
                     b.js("document.querySelector(arguments[0]).scrollIntoView({block: 'center'})",
                          f'[data-modal-open="{mid}"]')
-                    b.click(f'#inc-bluf [data-modal-open="{mid}"]')
+                    b.click(f'{card[key]} [data-modal-open="{mid}"]')
                     b.wait_for(f"return document.getElementById('{mid}').open")
                     seen[key] = b.js(WHERE, mid)
                     press_key(b, ESCAPE)
@@ -978,7 +1057,8 @@ class TestTheModals:
                     after[key] = b.js(WHERE, mid)
                 # Modify's own Cancel closes it too, and gives the focus back.
                 mid = f"fixit-modify-{iid}"
-                b.click(f'#inc-bluf [data-modal-open="{mid}"]')
+                b.js("document.querySelector(arguments[0]).open = true", menu)
+                b.click(f'#inc-plan [data-modal-open="{mid}"]')
                 b.wait_for(f"return document.getElementById('{mid}').open")
                 b.click(f"#{mid} [data-modal-close]")
                 b.wait_for(f"return !document.getElementById('{mid}').open")

@@ -357,11 +357,30 @@ def test_each_read_is_in_the_send_log_and_on_history(ai, monkeypatch, tmp_path):
             opened.append("r2")
             return _fixture("r2__show_telemetry_ietf_subscription_101_receiver.txt")
 
+        def enable(self):
+            """Mercury's account escalates, as the pooled session does (H28)."""
+
+        def disconnect(self):
+            """Closed at the investigation's end."""
+
     monkeypatch.setattr("modules.connection.with_temp_connection", lambda dev, fn: fn(Conn()))
+    # Premise corrected (231da1d6, the operator, 2026-11-16: "the standard reads on the run's
+    # one session (sign in once)"): an investigation's device reads ride its one pooled
+    # session (`router_reads.SessionPool`, Mercury's account, through the reads engine), which
+    # opens it with `connection.open_ssh`, where each read took Show commands' own temporary
+    # session; the same stand-in session answers it, signed in as the lab's stand-in account
+    # (the lab's r2 holds no stored credential: the pool reads the stored parameters itself).
+    monkeypatch.setattr("modules.connection.open_ssh", lambda params, plain=False, owner="":
+                        Conn())
+    monkeypatch.setattr("modules.connection.stored_connection_params", lambda dev: {
+        "host": dev.get("ip"), "device_type": dev.get("device_type"), "username": "mercury",
+        "password": "stand-in", "secret": "stand-in"})
     monkeypatch.setattr("modules.connection.with_plain_connection",
                         lambda dev, fn: pytest.fail("the read-only session opened"))
     real, root = DS.read_collector, proc(tmp_path)
-    monkeypatch.setattr(DS, "read_collector", lambda a, p, s: real(
+    # Premise corrected (17215a95, C3720: `collector_of` hands `read_collector` the shared `ss`
+    # answer): the stand-in takes its whole signature, its own planted `ss` read in place.
+    monkeypatch.setattr(DS, "read_collector", lambda a, p, s, proc="/proc", ss=None: real(
         "192.0.2.10", 57000, ["192.0.2.6"], proc=root, ss=_ss(4)))
     # The lab's committed intent is the operation's sources' (r2's real intent, its two
     # subscriptions and their receiver), as the router read set reads it.
@@ -370,13 +389,16 @@ def test_each_read_is_in_the_send_log_and_on_history(ai, monkeypatch, tmp_path):
     monkeypatch.setattr("modules.ai.router_reads._committed",
                         lambda network, hosts: (intents, {h: "" for h in hosts}))
     iid = stopped(ai)
-    first = answer(fix())
+    # Premise corrected (17215a95's ladder: `fix()`'s re-subscribe repeats attempt 1 and is
+    # refused as tried, ending the press at pass 1): the answers' fix is the collector's close.
+    from tests.test_fixit_troubleshoot import CLOSE
+    first = answer(fix(operation=CLOSE))
     first["reads"] = [{"op": "collector_sessions", "args": {"device": "r2", "subscription": "101"},
                        "why": "the collector's side", "hypothesis": "a dead session"},
                       {"op": "show", "args": {"device": "r2", "words":
                                               "telemetry ietf subscription 101 receiver"},
                        "why": "the device's side", "hypothesis": "a dead session"}]
-    second = answer(fix(), cites=("attempt:1", "read:1"))
+    second = answer(fix(operation=CLOSE), cites=("attempt:1", "read:1"))
     script = [first, second]
     ai.answer = None
     sent_answers = iter(script)
@@ -403,11 +425,14 @@ def test_each_read_is_in_the_send_log_and_on_history(ai, monkeypatch, tmp_path):
     from modules.ai import calls
     from modules.ai import fixit_troubleshoot as FT
     rows = {r["id"]: r for r in calls.read()["rows"]}
-    asked = f"{FT.FEATURE}.v{FT.PROMPT_PLAN_READS[1]}"
-    assert asked == "fixit_troubleshoot.v11"  # the investigation's first pass (C3797)
-    first_row = [r for r in rows.values() if r.get("feature") == "fixit_troubleshoot"
-                 and r.get("prompt") == asked]
-    assert len(first_row) == 1 and first_row[0]["schema"] == asked
+    # Premise corrected again (231da1d6, v17's one shape: every pass one prompt and schema, the
+    # cached prefix the same bytes call to call; C3918's v18): both calls are v18, where the
+    # first pass was v11 and the next its own.
+    asked = f"{FT.FEATURE}.v{FT.PROMPT_INVESTIGATE[1]}"
+    assert asked == "fixit_troubleshoot.v18"
+    both = [r for r in rows.values() if r.get("feature") == "fixit_troubleshoot"
+            and r.get("prompt") == asked]
+    assert len(both) == 2 and all(r["schema"] == asked for r in both)
     assert not [r for r in rows.values() if r.get("prompt") == "fixit_troubleshoot.v5"]
     assert "FixitReadAsk" in json.dumps(ai.sent[0]["output_config"])
     (loop,) = read_log.loops()["loops"]
@@ -415,7 +440,7 @@ def test_each_read_is_in_the_send_log_and_on_history(ai, monkeypatch, tmp_path):
     assert "collector_sessions" in text and "show telemetry ietf subscription 101 receiver" \
         in text
     assert "local collector_sessions r2 101" in text
-    assert opened == ["r2"], "the device read ran through Show commands' own session"
+    assert opened == ["r2"], "the device read ran through the investigation's one session"
     (dev_read,) = [e for e in loop["reads"] if e.get("op") == "show"]
     assert dev_read["verdict"] == "run"
     assert dev_read["signed_in_as"]["source"].startswith("mercury-account:")

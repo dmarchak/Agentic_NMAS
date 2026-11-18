@@ -111,9 +111,14 @@ class TestEachInvestigationIsItsOwnCall:
             headers={"HX-Request": "true", presses.HEADER: KEY})
         assert r.status_code == 200, r.get_data(as_text=True)[:400]
         rows = [x for x in calls.read()["rows"] if x.get("feature") == "fixit_troubleshoot"]
-        assert len(world.sent) == 4, "four provider requests, one an investigation"
+        # Premise corrected (C3872, 7d54cf24, the operator, 2026-11-16: "a refused start spends
+        # no key"): the catch-up's list holds five, the incident whose automatic start a cap
+        # refused among them (tests/test_fixit_catch_up.py's LISTED), so five investigations,
+        # each its own request, where four were listed.
+        assert len(ticked) == 5
+        assert len(world.sent) == len(ticked), "one provider request an investigation"
         assert not [x for x in rows if x.get("verdict") == calls.JOINED], "no join"
-        assert len({x["id"] for x in rows}) == 4
+        assert len({x["id"] for x in rows}) == len(ticked)
         by_id = {x["id"]: x for x in rows}
         for iid in ticked:
             inc = S.incident_of(NET, incident_page.resolve(NET, iid))["incident"]
@@ -241,7 +246,10 @@ class TestTheErrDisabledPort:
         assert T.E.reclassify_step(NET, sources=T.Src(), now=T.AT + 600)["classified"] == [iid]
         asked = []
 
-        def preflight(network, params, *, reads=False, sources=None):
+        # Premise corrected (5653c025, the operator, 2026-11-16: the plan's preconditions read
+        # with the investigation's own reads reused): the step's preflight is asked with the
+        # incident and the job's reuse too (`fix_proposal._command_plan_reads`).
+        def preflight(network, params, *, reads=False, sources=None, incident="", reuse=None):
             asked.append(dict(params))
             return {"ok": True, "refused": "", "drawn": {}, "hash": "h-recover"}
         monkeypatch.setitem(catalog.COMMAND_PLANS, RECOVER["operation"], dataclasses.replace(
@@ -331,6 +339,15 @@ class TestTheErrDisabledPort:
             ran.append(tuple(requests))
             return RL.Answered("\n".join(answers[r] for r in requests), run="run-s1")
         monkeypatch.setattr(RR, "run", device)
+        # Premise corrected (4a8bb0df, 231da1d6: one device's reads in a round share one
+        # session, the family's `run_many`, bound to `router_reads.run_many` when the family is
+        # defined): the read engine's stand-in answers that path too, each read as `run` does,
+        # where s1's two reads went past it to the engine.
+        import dataclasses
+
+        from modules.ai import fixit_reads as FR
+        monkeypatch.setattr(FR, "FAMILY", dataclasses.replace(FR.FAMILY, run_many=lambda items,
+                            scope: [device(op, a, reqs, scope) for op, a, reqs in items]))
         passes = []
 
         def make(body):
@@ -348,7 +365,11 @@ class TestTheErrDisabledPort:
             step = dict(RECOVER, evidence_refs=["read:1", "read:2"])
             return dict(a, plan=[step], reads=[])
         got, _found = self.investigate(s1, monkeypatch, make)
-        assert passes == [False, True], "a first pass, then one that saw the reads"
+        # Premise corrected (5653c025, the operator, 2026-11-16: "runs the standard reads at
+        # once"; "the pre-gathered reads must answer it in ONE call"): an err-disabled port's
+        # standard reads (`fixit_troubleshoot.PREGATHER`) run beside pass 1's build, so the one
+        # pass sees both and proposes, where a first pass asked for them and a second saw them.
+        assert passes == [True], "one pass, which saw the reads"
         assert ran == [("show interfaces status err-disabled",), ("show errdisable recovery",)]
         assert got["state"] == "proposed", got["words"]
         (step,) = got["proposal"]["steps"]
@@ -362,7 +383,9 @@ class TestTheErrDisabledPort:
             __import__("modules.fixit.section", fromlist=["x"]).incident_of(
                 NET, __import__("modules.incident_page", fromlist=["x"]).resolve(
                     NET, s1.iid))["incident"])["lines"] if "proposal" in ln]
-        assert line["prompt"] == "fixit_troubleshoot.v12", "the answer is the later pass's"
+        # Every pass is one prompt since v17's one shape (231da1d6; C3918's v18), where the
+        # later pass's was v12.
+        assert line["prompt"] == "fixit_troubleshoot.v18", "the answer is the one pass's"
 
     def test_with_no_read_to_settle_it_it_names_the_read_it_lacked(self, s1, monkeypatch):
         """C3797: it declines a plan only when its reads cannot settle the question, naming the
@@ -421,7 +444,10 @@ def test_the_estimate_takes_the_first_measured_calls_as_measured(ai, monkeypatch
     # clock (`calls._now`): that morning's.
     monkeypatch.setattr(calls, "_now", lambda: AFTER)
     est = AIT.estimate()
-    # The calls one investigation is expected to make, three since C3797 (it may ask again);
-    # its worst case, four.
+    # The calls one investigation is expected to make, three since C3797 (it may ask again).
+    # Premise corrected (7b0bb884, the operator, 2026-11-16: no worst case): beside it the
+    # least one call costs (`start_usd`, the figure a start is held to), where its worst case,
+    # four calls at the pin's per-call cap, was.
     assert est["measured"] is True and est["usd"] == pytest.approx(3 * 0.035792), est
-    assert est["worst"] == pytest.approx(4 * profiles.cap_per_call("fixit_troubleshoot"))
+    assert "worst" not in est
+    assert est["least"] == pytest.approx(AIT.start_usd())

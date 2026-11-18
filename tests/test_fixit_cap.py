@@ -112,12 +112,25 @@ class TestTheSettings:
 
 # ── The cap refuses ─────────────────────────────────────────────────────────────────────────
 
+#: The installation's cap as a refusal names it, with its source and where it is changed
+#: (C3873, 7d54cf24, the operator, 2026-11-16: "the refusal names the cap's source and where it
+#: is changed").
+WHERE = "the installation's (Settings › AI, the AI troubleshooting card, AI spend per incident)"
+
+
 class TestTheCapRefuses:
+    """Premise corrected (7b0bb884, the operator, 2026-11-16: no worst case; "a start is refused
+    only if the remaining budget can't cover the counted prompt plus the task's measured typical
+    output"): the figure compared is the next attempt's least call, said so ("the next
+    attempt's least call costs"), where it was its worst case ("costs at most"); and (C3873)
+    the cap is named with its source and where it is changed."""
+
     def test_just_under_the_cap_it_allows(self, lab):  # noqa: F811
         spent(0.40, 0.34)
         got = P.cap_state(inc(), 0.25)
         assert got == {"state": "allowed", "spent": pytest.approx(0.74), "worst": 0.25,
-                       "total": pytest.approx(0.99), "cap": 1.0, "words": ""}
+                       "total": pytest.approx(0.99), "cap": 1.0, "words": "",
+                       "source": "installation"}
         assert P.cap_refusal(inc(), 0.25) == ""
 
     def test_at_the_cap_exactly_it_allows(self, lab):  # noqa: F811
@@ -138,15 +151,15 @@ class TestTheCapRefuses:
         assert got["total"] == pytest.approx(1.17)
         assert got["words"] == (
             "Retry isn't available: this incident's AI spend would pass its cap. Spent $0.92 "
-            "in this incident; the next attempt costs at most $0.25, which would make $1.17 "
-            "against the cap of $1.00. Mercury never raises the cap")
+            "in this incident; the next attempt's least call costs $0.25, which would make "
+            f"$1.17 against the cap of $1.00, {WHERE}. Mercury never raises the cap")
         assert P.cap_refusal(inc(), 0.25) == got["words"]
 
     def test_the_worst_case_alone_past_the_cap_refuses_with_nothing_spent(self, lab):  # noqa
         assert P.cap_refusal(inc(), 1.01).startswith(
             "Retry isn't available: this incident's AI spend would pass its cap. Spent $0.00 "
-            "in this incident; the next attempt costs at most $1.01, which would make $1.01 "
-            "against the cap of $1.00.")
+            "in this incident; the next attempt's least call costs $1.01, which would make "
+            f"$1.01 against the cap of $1.00, {WHERE}.")
 
     def test_only_this_incidents_calls_count(self, lab):  # noqa: F811
         spent(0.90, incident=inc("hi-0000000000ee"))
@@ -159,7 +172,9 @@ class TestTheCapRefuses:
         assert P.cap_refusal(inc(), 0.25) == ""
         setting(ai_cap_usd_per_incident=0.5)
         assert P.cap_refusal(inc(), 0.25).endswith(
-            "which would make $1.17 against the cap of $0.50. Mercury never raises the cap")
+            "which would make $1.17 against the cap of $0.50, the installation's (Settings › "
+            "AI, the AI troubleshooting card, AI spend per incident). Mercury never raises the "
+            "cap")
 
     @pytest.mark.parametrize("raw", [None, 0, -1, "1.00", True, float("inf")])
     def test_a_stored_cap_that_is_no_positive_amount_refuses_never_no_cap(self, lab,  # noqa
@@ -195,8 +210,9 @@ class TestTheCapRefuses:
         assert got["words"].startswith("Retry isn't available: what this incident's AI calls "
                                        "cost is not known (the record of AI calls could not "
                                        "be read (IsADirectoryError: ")
+        # Premise corrected (C3873, 7d54cf24): the cap named with its source and where.
         assert got["words"].endswith("so spent plus the next attempt's worst case of $0.01 "
-                                     "cannot be compared with the cap of $1.00")
+                                     f"cannot be compared with the cap of $1.00, {WHERE}")
 
     def test_a_call_the_record_does_not_hold_refuses(self, lab):  # noqa: F811
         a_call(CALL_A, 0.05)
