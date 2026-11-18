@@ -111,14 +111,19 @@ def planted():
     decide(got["started"], 6, "cant_fix", DETECTED + 17)
     F.claim_start(inc_of(got["started"]), f"decision:{got['started']}", trigger="auto",
                   state="started", now=DETECTED + 18)
-    # Taken by an automatic start that a cap stopped: no AI was asked, and its key is taken.
+    # An automatic start that a cap stopped: no AI was asked. Premise corrected (C3872,
+    # 7d54cf24, the operator, 2026-11-16: "a refused start spends no key"): its key is not
+    # taken, so it is listed again, where it was left out.
     decide(got["capped"], 7, "cant_fix", DETECTED + 19)
     F.claim_start(inc_of(got["capped"]), f"decision:{got['capped']}", trigger="auto",
                   state="capped", which="incident", words="the cap", now=DETECTED + 20)
     return got
 
 
-LISTED = ("stream", "cant_fix", "held4", "failed")
+#: What R1 would start on (C3872: the capped start's refusal spent no key, so it is among them).
+LISTED = ("stream", "cant_fix", "held4", "failed", "capped")
+#: The AI switch's answer while its catch-up starts (`troubleshoot_control.starting_words`).
+STARTING = "Starting the AI on {n} incidents…"
 
 
 def get(w, path):
@@ -223,10 +228,10 @@ class TestTheForm:
         html, shown, each = form_of(world)
         est = AIT.estimate()["usd"]
         assert float(each) == pytest.approx(est, abs=1e-6)
-        assert f"Starts on these 4 open incidents, about {usd(est * 4)}" in html
+        assert f"Starts on these 5 open incidents, about {usd(est * 5)}" in html
         for k in LISTED:
             assert f'data-incident="{got[k]}"' in html, k
-        for k in ("waits", "dry", "closed", "started", "capped"):
+        for k in ("waits", "dry", "closed", "started"):
             assert got[k] not in html, k
         assert "held by guard 4: heal off for this device" in html
         assert "r4" in html and f"about {usd(est)}" in html
@@ -235,7 +240,7 @@ class TestTheForm:
         assert r.status_code == 200, out
         assert sorted(i for i, _k, _kw in counted) == sorted(got[k] for k in LISTED)
         (rec,) = record(world)
-        assert rec["catch_up"]["usd_total"] == pytest.approx(est * 4, abs=1e-6)
+        assert rec["catch_up"]["usd_total"] == pytest.approx(est * 5, abs=1e-6)
 
     def test_none_qualifying_says_so_and_turns_on_as_before(self, world, counted):
         html, shown, each = form_of(world)
@@ -275,13 +280,14 @@ class TestTheChoice:
         (rec,) = record(world)
         assert sorted(rec["catch_up"]["ticked"]) == sorted(listed)
         assert rec["catch_up"]["unticked"] == []
-        assert rec["catch_up"]["usd_total"] == pytest.approx(float(each) * 4, abs=1e-6)
+        assert rec["catch_up"]["usd_total"] == pytest.approx(float(each) * 5, abs=1e-6)
         assert rec["actor"] == TEST_PERSON
         assert sorted((i, k) for i, k, _kw in counted) == sorted(
             [(got["stream"], f"decision:{got['stream']}"),
              (got["cant_fix"], f"decision:{got['cant_fix']}"),
              (got["held4"], f"held:{got['held4']}"),
-             (got["failed"], "act:hd-00000000ac7d")])
+             (got["failed"], "act:hd-00000000ac7d"),
+             (got["capped"], f"decision:{got['capped']}")])
         assert all({k: kw[k] for k in ("actor", "verified", "counts")} == {
             "actor": TEST_PERSON, "verified": "access", "counts": True}
             and str(kw.get("planned") or "").startswith("fixit-start-")
@@ -303,7 +309,7 @@ class TestTheChoice:
             F.record_proposal(inc_of(got[k]), "mercury", words="nothing", now=NOW + 1)
         out, started = run(NOW + 60)
         assert out["started"] == [] and started == [], out
-        assert len(counted) == 4
+        assert len(counted) == 5
 
     def test_a_ticked_one_not_listed_is_refused_and_nothing_changes(self, world, counted):
         """Premise corrected (Gate 2, C3769: no ticks; the name predates the change): an
@@ -409,7 +415,9 @@ class TestTheCaps:
         assert r.status_code == 200, out
         assert [i for i, _k, _kw in counted] == order[:starts]
         for iid in order[starts:]:
-            (line,) = F.starts(inc_of(iid))["starts"]
+            # The newest start line: the planted capped incident keeps its earlier refused
+            # start too (C3872: a refused start spends no key, so it is pressed again).
+            line = F.starts(inc_of(iid))["starts"][-1]
             assert (line["state"], line["which"]) == ("capped", "day")
             assert f"today's AI spend ${spent:.2f}" in line["words"], line["words"]
             assert f"would pass the day cap of ${DAY_CAP:.2f}" in line["words"]

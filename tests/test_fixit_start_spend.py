@@ -88,10 +88,12 @@ class TestTheStartsAreReserved:
         r, out = post(world, shown, each)
         assert r.status_code == 200, out
         planned = [h for h in held if h[0].startswith("fixit-start-")]
-        assert [(f, c) for _i, f, c in planned] == [("fixit_auto", True)] * 4, held
+        # Premise corrected (C3872, 7d54cf24: "a refused start spends no key"): five are listed,
+        # the incident whose automatic start a cap refused among them (LISTED).
+        assert [(f, c) for _i, f, c in planned] == [("fixit_auto", True)] * 5, held
         assert any(p.endswith("fixit_starts.lock") for p in locked), locked
         # Each investigation ran while its own planned start was still held...
-        assert [s[0] for s in seen] == order and len(order) == 4
+        assert [s[0] for s in seen] == order and len(order) == 5
         assert all(s[1] in s[2] for s in seen), seen
         # ...and none is left once it ended.
         left = reservations.open_reservations()["held"]

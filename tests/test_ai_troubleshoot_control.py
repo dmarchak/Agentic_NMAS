@@ -222,7 +222,10 @@ class TestOnePress:
         assert r.status_code == 200 and "Automatic may be turned on" in out, out
         each = AIT.estimate()["usd"]
         html = strip(world)
-        assert f"Also starts on 4 open incidents, about {usd(each * 4)}" in html
+        # Premise corrected (C3872, 7d54cf24, the operator, 2026-11-16: "a refused start spends
+        # no key"): five are listed, the incident whose automatic start a cap refused among them
+        # (tests/test_fixit_catch_up.py's LISTED).
+        assert f"Also starts on 5 open incidents, about {usd(each * 5)}" in html
         assert 'name="start"' not in html and 'type="checkbox"' not in html, "no ticks, no form"
         r, html = press(world)
         assert r.status_code == 200, html

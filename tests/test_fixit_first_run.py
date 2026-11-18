@@ -111,9 +111,14 @@ class TestEachInvestigationIsItsOwnCall:
             headers={"HX-Request": "true", presses.HEADER: KEY})
         assert r.status_code == 200, r.get_data(as_text=True)[:400]
         rows = [x for x in calls.read()["rows"] if x.get("feature") == "fixit_troubleshoot"]
-        assert len(world.sent) == 4, "four provider requests, one an investigation"
+        # Premise corrected (C3872, 7d54cf24, the operator, 2026-11-16: "a refused start spends
+        # no key"): the catch-up's list holds five, the incident whose automatic start a cap
+        # refused among them (tests/test_fixit_catch_up.py's LISTED), so five investigations,
+        # each its own request, where four were listed.
+        assert len(ticked) == 5
+        assert len(world.sent) == len(ticked), "one provider request an investigation"
         assert not [x for x in rows if x.get("verdict") == calls.JOINED], "no join"
-        assert len({x["id"] for x in rows}) == 4
+        assert len({x["id"] for x in rows}) == len(ticked)
         by_id = {x["id"]: x for x in rows}
         for iid in ticked:
             inc = S.incident_of(NET, incident_page.resolve(NET, iid))["incident"]
