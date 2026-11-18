@@ -719,6 +719,30 @@ class TestAPersonsPlan:
                  authority={"script": PROVISIONAL})
         assert lab["sw"].batches and " description x" in lab["sw"].batches[0], rec["why"]
 
+    def test_an_automatic_fire_with_a_provisional_shape_starts_no_run(self, lab, provisional,
+                                                                       monkeypatch):
+        """The fire itself previews strictly (1d44aea9; the operator's ruling 4, 2026-11-18,
+        C4043). The independent review found its mutant (`fire`'s preview back to
+        `person_plan=True`) surviving every test, held only by the run's own strict preview:
+        an Automatic fire on a PROVISIONAL shape starts no run, and its row says why."""
+        from modules.nsot import saved_plans as S
+        e = {"key": PROVISIONAL, "network": NET, "mode": "auto", "name": "the fix under test",
+             "promoted_by": "p@example.invalid"}
+        monkeypatch.setattr(S, "scripts", lambda network: {PROVISIONAL: e})
+        monkeypatch.setattr(S, "mode_now", lambda entry, hm: "auto")
+        monkeypatch.setattr(S, "_claim", lambda key, inc, m, retry="": ({"id": "row1"}, None))
+        monkeypatch.setattr(S, "fill", lambda entry, prob: dict(provisional))
+        settled, ran = [], []
+        monkeypatch.setattr(S, "_settle", lambda key, rid, **kw: (settled.append(kw), {})[1])
+        monkeypatch.setattr(S, "_run_as_job",
+                            lambda network, e, values, confirmed, incident, **kw:
+                            (ran.append(confirmed), {"outcome": "refused", "id": "r"})[1])
+        monkeypatch.setattr("modules.heal.decide.script_hold", lambda *a, **kw: None)
+        got = S.fire(NET, PROVISIONAL, None, "inc-1", sources=Model())
+        assert ran == [], "an Automatic fire on a provisional shape started a run"
+        assert not got["ok"] and "PROVISIONAL" in got["words"], got
+        assert settled and "PROVISIONAL" in settled[-1].get("words", ""), settled
+
 
 # ── Run… on built-in fixes (fc937efe) ───────────────────────────────────────────────────────
 
