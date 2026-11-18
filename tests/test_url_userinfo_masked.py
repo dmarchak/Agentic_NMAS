@@ -118,6 +118,10 @@ ENTRY_POINTS = {
     # C2821: a drift diff as the approval queue stores it, masked at rest.
     "modules/approval_queue.py:_masked": lambda: __import__(
         "modules.approval_queue", fromlist=["_masked"])._masked(PLANTED),
+    # Fixed's proof (00c70e0f, C3840): each read a command plan run made, its answer masked as
+    # redact_text masks, cut at OUTPUT_CHARS.
+    "modules/fixit/proof.py:_masked": lambda: (
+        __import__("modules.fixit.proof", fromlist=["_masked"])._masked(PLANTED)[0]),
     # A heal unit as its decision record keeps it, each line masked (board H, H3).
     "modules/heal/kinds.py:masked_unit": lambda: "\n".join(
         __import__("modules.heal.kinds", fromlist=["masked_unit"]).masked_unit(
