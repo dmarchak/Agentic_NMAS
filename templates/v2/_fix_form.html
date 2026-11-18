@@ -29,7 +29,7 @@
   {%- if said and said.words %}
   <div class="notice notice-{{ 'danger' if said.level == 'danger' else 'ok' }} set-result" role="{{ 'alert' if said.level == 'danger' else 'status' }}">{{ icon('warn' if said.level == 'danger' else 'tick', 16) }}<p>{{ said.words }}</p></div>
   {%- endif %}
-  <form class="simple-form" id="fix-form-{{ c.mode }}" aria-label="{{ 'A new fix' if new else 'Edit this fix' }}" hx-get="{{ u_draw }}" hx-trigger="change delay:300ms, submit" hx-target="{{ slot }}" hx-swap="outerHTML">
+  <form class="simple-form" id="fix-form-{{ c.mode }}" aria-label="{{ 'A new fix' if new else 'Edit this fix' }}" method="get" action="{{ url_for('fixes_v2.new', list=c.network) if new else url_for('fixes_v2.edit', key=c.key, list=c.network) }}" hx-get="{{ u_draw }}" hx-trigger="change delay:300ms, submit" hx-target="{{ slot }}" hx-swap="outerHTML">
     <input type="hidden" name="drafted" value="1">
     <input type="hidden" name="n" value="{{ d.lines | length }}">
     {%- if not new %}<input type="hidden" name="version" value="{{ c.version }}">{% endif %}
@@ -106,7 +106,7 @@
   {%- endif %}
   {%- if c.right %}<p class="small bluf-refused" data-refused="save">{{ c.right }}</p>{% endif %}
   <div class="simple-acts">
-    <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="plans" hx-post="{{ u_save }}" hx-include="#fix-form-{{ c.mode }}" {% if new %}hx-target="#fix-new" hx-swap="outerHTML"{% else %}hx-target="#fix-live" hx-select="#fix-live" hx-disinherit="*" hx-swap="outerHTML"{% endif %} hx-disabled-elt="this"{% if c.right or not b.saveable %} disabled{% endif %} title="{{ ('Saves this fix as Manual only' ~ (', plan ' ~ b.preview.short if b.preview and b.preview.short else '') ~ '; it can be set Automatic after its first verified run') if new else ('Saves version ' ~ b.version ~ '; version ' ~ c.version ~ ' kept' if b.new_version else 'Saves the name, description and match in place, the same version') }}"{{ gate('approve') }}><span class="op-idle">{{ c.save }}</span><span class="op-busy">Saving…</span></button>{{ how('plans', compact=True, op='saving a fix') }}</span>
+    <form class="op-form" method="post" action="{{ url_for('fixes_v2.new_save', list=c.network) if new else url_for('fixes_v2.edit_save', key=c.key, list=c.network) }}" hx-post="{{ u_save }}" hx-include="#fix-form-{{ c.mode }}" {% if new %}hx-target="#fix-new" hx-swap="outerHTML"{% else %}hx-target="#fix-live" hx-select="#fix-live" hx-disinherit="*" hx-swap="outerHTML"{% endif %}><span class="op-act"><button type="submit" class="btn btn-small btn-primary" data-op="plans" hx-disabled-elt="this"{% if c.right or not b.saveable %} disabled{% endif %} title="{{ ('Saves this fix as Manual only' ~ (', plan ' ~ b.preview.short if b.preview and b.preview.short else '') ~ '; it can be set Automatic after its first verified run') if new else ('Saves version ' ~ b.version ~ '; version ' ~ c.version ~ ' kept' if b.new_version else 'Saves the name, description and match in place, the same version') }}"{{ gate('approve') }}><span class="op-idle">{{ c.save }}</span><span class="op-busy">Saving…</span></button>{{ how('plans', compact=True, op='saving a fix') }}</span></form>
     <button type="button" class="btn btn-small" hx-get="{{ url_for('fixes_v2.new', list=c.network, close='1') if new else url_for('fixes_v2.edit', key=c.key, list=c.network, close='1') }}" hx-target="{{ slot }}" hx-swap="outerHTML" hx-disabled-elt="this">Cancel</button>
   </div>
 {%- if new %}

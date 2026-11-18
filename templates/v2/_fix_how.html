@@ -58,7 +58,7 @@
   {%- if form %}
     {%- set restoring = form.action == 'restore' %}
     <details class="small" data-keep="fx-delete-{{ p.key }}"{% if said and said.level == 'danger' %} open{% endif %}><summary>{{ 'Restore…' if restoring else 'Delete…' }}</summary>
-      <form class="simple-form" hx-post="{{ url_for('fixes_v2.restore' if restoring else 'fixes_v2.delete', key=p.key, list=p.network) }}" hx-target="#fix-how" hx-swap="outerHTML">
+      <form class="simple-form" hx-post="{{ url_for('fixes_v2.restore', key=p.key, list=p.network) if restoring else url_for('fixes_v2.delete', key=p.key, list=p.network) }}" hx-target="#fix-how" hx-swap="outerHTML">
         {%- if restoring %}
         <p>Restoring brings {{ p.name }} back as it was: offered, matched and run again by its own mode, and in the AI's catalog. Its deletion stays in its record and in History.</p>
         {%- else %}
