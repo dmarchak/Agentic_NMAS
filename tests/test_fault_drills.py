@@ -40,7 +40,7 @@ import types
 
 import pytest
 
-from tests.test_heal_act import FakeAct
+from tests.test_heal_act import FakeAct, acted, acts_with
 from tests.test_heal_decide import Fake, GOLDEN, ROUTE4, ROUTE6
 from tests.test_heal_decide import lab  # noqa: F401 (the fixture, named by each test below)
 from tests.test_heal_policy import T0, auto, iso
@@ -88,8 +88,9 @@ def _departure(running, device=DEV):
 
 def inject(at, running=GOLDEN + ROUTE6, device=DEV):
     """The fault on *device* at *at*: its configuration change sighted (the trigger's own
-    writer), the grace period settled on its departure, the decision's real run; a heal is
-    then acted by the real act. ``(incident, decision)`` as recorded."""
+    writer), the grace period settled on its departure, the decision's real run; a heal it
+    decides the pass starts at once (C3865), its job the real act over the fakes at
+    ``at + 140`` (`acts_with`). ``(incident, decision)`` as recorded."""
     seen = I.sight(NET, device, {"kind": "config_change", "key": f"cfg:{device}:{at}",
                                  "epoch": at, "at": iso(at), "attribution": {"by": "outside"},
                                  "words": "CONFIG_I"}, now=at)
@@ -97,12 +98,14 @@ def inject(at, running=GOLDEN + ROUTE6, device=DEV):
                                      "second": 1,
                                      "operands": {"departure": _departure(running, device)}},
              at + 100)
-    ran = DC.run(NET, now=at + 130, sources=Fake(running))
+    with acts_with(FakeAct(running, at=at + 140)) as jobs:
+        ran = DC.run(NET, now=at + 130, sources=Fake(running))
     assert ran["ran"] and not ran["failed"], ran
     (one,) = [x for x in ran["decided"] if x["incident"] == seen["incident"]]
     d = DS.find(NET, one["decision"])
     if d["outcome"] == "heal":
-        got = A.act_one(NET, d["id"], now=at + 140, sources=FakeAct(running, at=at + 140))
+        (job,) = jobs
+        got = acted(job)
         assert got["outcome"] == "healed", got
     inc = next(i for i in I.read(NET)["incidents"] if i["id"] == seen["incident"])
     return inc, DS.find(NET, d["id"])

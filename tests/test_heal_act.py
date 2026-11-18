@@ -21,7 +21,9 @@ section 4 steps 3 to 5, sections 8 and 11, N9, N12, N13, C2402), no network, no 
   session): what was decided is what reaches the wire, IPv4 and IPv6 alike, and the receipt
   names the heal, its policy and the removal's stated reason.
 """
+import contextlib
 import os
+import time
 
 import pytest
 
@@ -153,6 +155,57 @@ def act(running, decision=None, **kw):
     src = FakeAct(running, **kw)
     d = decision or decided(running)
     return A.act_one("Default", d["id"], now=T0 + 5, sources=src), src, d
+
+
+class _ClockOf:
+    """The act module's `time` while a decided heal's job runs: ``time()`` is *src*'s clock
+    (`FakeAct.clock`), everything else the real `time`."""
+
+    def __init__(self, src):
+        self.src = src
+
+    def time(self):
+        return self.src.clock()
+
+    def __getattr__(self, name):
+        return getattr(time, name)
+
+
+@contextlib.contextmanager
+def acts_with(src, *, clock=None, wait_s=60.0):
+    """The decision's pass starts each heal it decides at once, as its own job (item 4, the
+    operator, 2026-11-16; C3865: `decide.run` calls `act.start_decided`, which holds the
+    decision's mark, takes it and starts `act.start`): inside this, that job is the real
+    `act.start` over *src*, the test's sources, with the act's clock the test's (*clock*,
+    else *src*'s), and the pass waits for it (*wait_s*, None: not waited), so what the act did
+    is recorded when the pass returns. Yields the started jobs' ids, in order (`acted` reads
+    each one's answer). Without it the pass's job would read the real device sources."""
+    from modules.heal import act
+    from modules.nsot import capture_job
+
+    real, jobs = act.start, []
+
+    def start(network, decision, sources=None):
+        job = real(network, decision, sources=src)
+        jobs.append(job)
+        if wait_s is not None:
+            assert capture_job.wait(job, wait_s), (
+                f"the heal of {decision.get('device')} was still running after {wait_s} s")
+        return job
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(act, "start", start)
+        mp.setattr(act, "time", clock if clock is not None else _ClockOf(src))
+        yield jobs
+
+
+def acted(job):
+    """The act's answer (`act.apply_decision`'s, as `act_one` returns it) from its job."""
+    from modules.nsot import capture_job
+
+    got = capture_job.get(job) or {}
+    assert got.get("state") == "done", f"the heal's job {job}: {got.get('state')} " \
+                                       f"{got.get('error')}"
+    return got["payload"]["result"]
 
 
 def applied(decision_id):
