@@ -261,7 +261,7 @@ def sent_of(operation: str, drawn, device: str) -> dict:
         # The hash binds this program whole, entry and exit in each unit (`program_hash`), and
         # the session to close (`close_id`): a combined operation is its systems' steps, in the
         # order run (the operator, 2026-11-16: "Step 1, on the Mercury host (collector): close
-        # TCP session <device end> -> <collector end>. Step 2, on r7: ..."; the run stops at
+        # TCP session <device end> -> <collector end>. Step 2, on edge1: ..."; the run stops at
         # the close's failure with nothing sent to the device, `resubscribe` `not_closed`).
         close = d.get("close") or {}
         lines = R.program_of(d.get("units") or [], operation == R.READD_KEY)

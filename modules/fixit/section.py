@@ -810,7 +810,7 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     if offer and out["ai_answer"]:
         out["ai_answer"]["outdated"] = f"outdated: a saved script now fixes this ({offer['name']})"
     if done or state == "passed":
-        # A run that passed its verify leaves nothing to press (the operator, 2026-11-16: s5's
+        # A run that passed its verify leaves nothing to press (the operator, 2026-11-16: a switch's
         # verified AI plan read "No saved fix, and the AI found no safe plan", its next action
         # fallen through to Hand over): its incident closes on that verify at once
         # (`detect.close_verified`), and until it has, the status says the run passed.
@@ -975,7 +975,7 @@ FLAGGED = re.compile(r"Mercury's catalogue has (.+?) for this incident's problem
 
 def _plain(said: str) -> str:
     """*said* without its meta-leads (`META_LEADS`), its first letter a capital, unless its
-    first word is a name with a digit in it (a device or a port: "s5 Gi0/3 saw…" stays)."""
+    first word is a name with a digit in it (a device or a port: "access1 Gi0/3 saw…" stays)."""
     said = META_LEADS.sub("", str(said or "")).strip()
     first = said.split(" ", 1)[0]
     if not said or any(ch.isdigit() for ch in first):
@@ -1060,7 +1060,7 @@ def _why_person(nxt: dict, offer: dict, found: dict, answer: dict = None) -> str
         return "The AI's plan is ready: needs your approval"
     if kind == "start" or (kind == "button" and not nxt.get("script") and not nxt.get("read")):
         # The AI's latest finding is the best current knowledge, ahead of the retry's reason
-        # (the operator, 2026-11-16: r7's status said the 04:53 retry, not the AI's 05:17
+        # (the operator, 2026-11-16: a router's status said the 04:53 retry, not the AI's 05:17
         # finding); an answer superseded or withheld is not drawn as this incident's. Its
         # source is the label beside it (`status_source`), never a lead in its words.
         said = finding_words(answer)

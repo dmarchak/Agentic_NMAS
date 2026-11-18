@@ -266,7 +266,7 @@ def say_round(verdicts: list) -> None:
     elif before.startswith("The AI "):
         troubleshoot_job.amend(f"The AI asked to check {things} more")
     # The round in plain words, what was checked and on which device, never an internal name
-    # or a command (the operator, 2026-11-16: "Checked r7's telemetry connection and the
+    # or a command (the operator, 2026-11-16: "Checked edge1's telemetry connection and the
     # collector's sessions").
     words = checked_words(verdicts)
     troubleshoot_job.say(f"Checking {words}…", done=f"Checked {words}")
@@ -312,7 +312,7 @@ def _and(items: list) -> str:
 
 
 def checked_words(verdicts: list) -> str:
-    """A round of reads in a person's words: each device's reads as that device's ("r7's
+    """A round of reads in a person's words: each device's reads as that device's ("edge1's
     telemetry connection and telemetry receivers"), then Mercury's own sources ("the
     collector's sessions")."""
     by_device, own = {}, []

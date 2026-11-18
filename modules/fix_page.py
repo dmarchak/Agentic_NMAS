@@ -158,7 +158,7 @@ def _summary(n_runs: int, verified: int, dry: int, capped: bool) -> str:
 
 
 def _incident_places(network: str, ids) -> dict:
-    """``{incident id: "s1 Gi1/0"}`` for *ids*, from the incidents store (one read)."""
+    """``{incident id: "access1 Gi1/0"}`` for *ids*, from the incidents store (one read)."""
     from modules import problem as P
     from modules.heal import incidents
 

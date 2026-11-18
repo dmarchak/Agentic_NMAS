@@ -320,7 +320,7 @@ def fix_running(network: str, found: dict, now: float = None) -> dict:
     """THE answer to whether a heal act runs on the incident now (C3862, the operator,
     2026-11-16: "A row whose fix is running in a batch must show "Mercury working" and the
     step, whatever its earlier grace or dry-run state"): ``{"words", "step", "job",
-    "decision"}``, *words* "Self-healing: restoring r2" and *step* the act's live step, or
+    "decision"}``, *words* "Self-healing: restoring edge2" and *step* the act's live step, or
     ``{}`` when none runs. The Incidents row (`incidents_list._row`), the incident's card and
     page (`fixit.section`'s ``working``, then `working_status`) and Needs attention's row
     linking it (which draws the list's status, `attention._incidents_agree`) all read this.

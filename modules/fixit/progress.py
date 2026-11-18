@@ -24,9 +24,9 @@ RUN_WORDS = {"hold": "Holding {device}", "read_before": "Reading before",
              "record": "Fixed"}
 #: A re-subscribe's steps, with the collector step first where its plan has one (the operator,
 #: 2026-11-16: each system's step said with its own result, in order: "1. Close the
-#: collector's session ✓ 2 s", "Waiting for r7 to reconnect", "2. Re-subscribe 101 and 102",
+#: collector's session ✓ 2 s", "Waiting for edge1 to reconnect", "2. Re-subscribe 101 and 102",
 #: "Checking the streams are back"; the waits between them each a line of their own:
-#: "Waiting for r7 to drop its old connection", "Waiting 10 s before the re-add").
+#: "Waiting for edge1 to drop its old connection", "Waiting 10 s before the re-add").
 RESUB_WORDS = {"before": "Reading {device} and the collector first",
                "close": "On the Mercury host (collector): close {device}'s stale session",
                "gone": "Waiting for {device} to drop its old connection",
@@ -35,7 +35,7 @@ RESUB_WORDS = {"before": "Reading {device} and the collector first",
                "re-add": "On {device}: add the receivers for {subs} back",
                "verify": "Checking the streams are back"}
 #: The system each action is on: a line opening a system's step is numbered, as the plan card
-#: numbers it ("Step 1, on the Mercury host (collector)", "Step 2, on r7"); the reads and the
+#: numbers it ("Step 1, on the Mercury host (collector)", "Step 2, on edge1"); the reads and the
 #: waits between them are not.
 SYSTEM_OF = {"close": "host", "remove": "device", "re-add": "device", "send": "device"}
 HIDDEN = ("approve", "rollback", "plan", "hash", "started")
@@ -105,7 +105,7 @@ def systems(declared) -> int:
 def numbered(label: str, n: int, total: int, key: str = "", device: str = "") -> str:
     """A plan step's line in words (the operator, 2026-11-16: never "1. Sending" beside the
     unnumbered Holding and Checks, read as the first step): a plan of one step is not numbered;
-    of more, "Sending: step 1 of 2, on s5"."""
+    of more, "Sending: step 1 of 2, on access1"."""
     if total <= 1:
         return label
     on = f", on {device}" if key == "send" and device else ""

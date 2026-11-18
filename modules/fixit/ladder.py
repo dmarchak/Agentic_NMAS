@@ -1,9 +1,9 @@
 """What counts as tried in an incident, and the lost stream's ladder of repairs (the operator,
-2026-11-16, incident hi-22cfdc299000: r7's streams 101 and 102 lost, its gRPC session wedged
+2026-11-16, incident hi-22cfdc299000: a router's streams 101 and 102 lost, its gRPC session wedged
 with both ends holding it).
 
 **Tried, by equivalence** (the operator: "The AI never proposes a step whose equivalent already
-failed on the incident: three re-subscribes already removed and re-added r7's receivers, so
+failed on the incident: three re-subscribes already removed and re-added [the router]'s receivers, so
 're-add the receiver' counts as tried. It proposes the first untried rung."). `TRIED_AS` is a
 declared table: each step of Mercury's that resets the device's side of a stream, by the reset
 it makes. Two steps of one class are the same attempt for "tried": a failed run of either makes
@@ -28,7 +28,7 @@ new session carrying data, `modules/heal/stream_checks.py`):
    `telemetry-stack-restart` (``no netconf-yang`` then ``netconf-yang``, net zero); all of the
    device's NETCONF and telemetry pause.
 The lines of rungs 2 and 3 are PROVISIONAL shapes until an admin approves them, once
-scripts/nmas-telemetry-reset-probe has measured each on r2 (the operator: "measure both on r2
+scripts/nmas-telemetry-reset-probe has measured each on a test router (the operator: "measure both on [a test router]
 first as Mercury probes ... I approve the shapes as admin when measured"): their plans preview
 refused, naming each shape, and nothing runs before.
 
@@ -82,7 +82,8 @@ STREAM_LOST = (
      "impact": "only the recreated subscriptions' streams pause (for a time not yet "
                "measured); routing, forwarding and other subscriptions untouched",
      "why": "its lines are provisional shapes until an admin approves them, once the probe "
-            "has measured them on r2: the plan's preview names them, and nothing runs before"},
+            "has measured them on a test router: the plan's preview names them, and nothing "
+            "runs before"},
     {"rung": 3, "what": "Restart the device's telemetry stack (its NETCONF-YANG processes, "
                         "never the device), the collector's stale half closed first",
      "tried_as": "telemetry_stack_restarted",
@@ -92,8 +93,8 @@ STREAM_LOST = (
                "its NETCONF-YANG processes restart (for a time not yet measured); routing and "
                "forwarding are unaffected; never a reload",
      "why": "its two lines are provisional shapes until an admin approves them, once the "
-            "probe has measured them on r2: the plan's preview names them, and nothing runs "
-            "before"},
+            "probe has measured them on a test router: the plan's preview names them, and "
+            "nothing runs before"},
 )
 
 
