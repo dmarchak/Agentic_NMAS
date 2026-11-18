@@ -58,6 +58,12 @@ harm, and CI keeps measuring what the change broke.
    page. `--revert` (back to the previous deployed release) works either way: it is recovery.
 2. Run the catch-up below before the next ordinary deploy (`nmas-deploy --wait`).
 
+The release that made the mode off by default (40fb2926) changed `scripts/nmas-deploy`, which the
+host keeps twice: the checkout's copy and the updater's root-owned copy. After deploying it, run
+once from the host's checkout `sudo install -o root -g root -m 0644 scripts/nmas-deploy
+/usr/local/lib/nmas-update/nmas-deploy`, then `scripts/nmas-update-check` (docs/UPDATE.md,
+"Re-install").
+
 ## The catch-up (mandatory when it ends)
 
 What the first catch-up did (overnight 2026-11-17 to 11-18), in order:
