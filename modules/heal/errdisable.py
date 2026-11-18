@@ -251,7 +251,7 @@ def recovery_for(config: str, cause: str) -> str:
 
 #: ``show errdisable recovery``'s table: its header, and one row, the reason (which may hold
 #: spaces, ``channel-misconfig (STP)``, and which IOS cuts at its column: ``Recovery command:
-#: "clear``) then its timer's state. s1's capture, tests/fixtures/errdisable/.
+#: "clear``) then its timer's state. a lab switch's capture, tests/fixtures/errdisable/.
 _TIMER_HEAD = re.compile(r"^\s*ErrDisable Reason\s+Timer Status\s*$")
 _TIMER_ROW = re.compile(r"^(?P<reason>\S.*?)\s+(?P<status>Enabled|Disabled)\s*$")
 _TIMER_INTERVAL = re.compile(r"^\s*Timer interval:\s*(?P<s>\d+)\s*seconds", re.M)
@@ -544,7 +544,7 @@ def beyond_port(inc: dict, port: str) -> list:
     trigger (`decide.judged_triggers`) that is no port event (`PORT_TRIGGERS`) or names another
     port, and each attached member's device; ``[]`` when it holds only *port*'s. A fix verified
     on *port* heals none of them, so it never closes the incident while one is there (the
-    correctness review's G3 M3, 2026-11-18: s1's Gi1/0 recovered, Gi2/0's cable still out)."""
+    correctness review's G3 M3, 2026-11-18: its Gi1/0 recovered, Gi2/0's cable still out)."""
     from modules.heal import decide
 
     left = [t.get("words") or t.get("key") or t.get("kind") or "a trigger"
@@ -958,7 +958,7 @@ def cause_lines(run, src=None) -> dict:
 
 
 #: How close a violation and the err-disable it causes are logged: the same second on IOS
-#: (s5's 18:21:58 pair, 2026-11-16), so ten seconds tells the triggering one from a new one.
+#: (a switch's 18:21:58 pair, 2026-11-16), so ten seconds tells the triggering one from a new one.
 TRIGGER_S = 10
 
 
@@ -982,7 +982,7 @@ def _psecure_cleared(run, port: str, cause: str, short: str, c: dict, got: dict)
     errs = [p for p in mine if p["kind"] == "errdisable" and p["cause"] == cause]
     trips = [p for p in mine if p["kind"] == "violation" and p["mac"]]
     # The violation that err-disabled the port lands within seconds of its err-disable line
-    # (s5, 2026-11-16: both at 18:21:58): it is the cause, never "new". New is a violation
+    # (a switch, 2026-11-16: both at 18:21:58): it is the cause, never "new". New is a violation
     # after that pair; with no err-disable line read, the first violation is the trigger.
     anchor = (max(p["epoch"] for p in errs) if errs else
               min(p["epoch"] for p in trips) if trips else since)

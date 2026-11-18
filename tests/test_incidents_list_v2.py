@@ -83,7 +83,13 @@ def tear(key: str) -> None:
 
 @pytest.fixture
 def planted(client):  # noqa: F811
-    docs = {n: _load(n) for n in ("healed", "failed", "busy")}
+    # Premise corrected (measured 2026-11-18: rolled_back() on this branch leaves its incident
+    # STANDING, 7d54cf24 and C3870, so tests/fixtures/incident_page/failed.json, re-captured
+    # from it for its walks test, is open): the rolled-back heal its STORE closed, which these
+    # tests hold on Closed as "Closed, not confirmed" (C3876), is the capture taken before
+    # C3870, kept as closed_unconfirmed.json, unchanged.
+    docs = {n: _load(f) for n, f in (("healed", "healed"), ("failed", "closed_unconfirmed"),
+                                     ("busy", "busy"))}
     plant(list(docs.values()))
     return docs
 
@@ -254,12 +260,24 @@ CHIP = "/v2/incidents/heal-auto"
 
 def auto_on(now=None, hours=2):
     """Auto confirmed on the lab's network by a person, from *now* for *hours* (the policy's
-    own writer, tests/test_heal_policy.py's `auto`): its expiry as the policy now reads it."""
-    from modules.heal import policy
+    own writer, tests/test_heal_policy.py's `auto`): its expiry as the policy now reads it.
+
+    The switch-on's retry (`heal.retry.run_soon`, its own thread: the operator, 2026-11-16,
+    "switched on, every open incident whose fixes failed is tried again once") is recorded,
+    not started, as tests/test_heal_switch_batch.py records it: these tests hold the chip, and
+    a retry thread on a planted standing incident outlived its test into the next one's store
+    (measured 2026-11-18, -n 2: test_a_chip_says_a_store_it_cannot_read's teardown found
+    lists/default/heal/incidents.json.lock, its setup log "Default's retry (switched_on)
+    failed: Refused: no heal incident hi-… is held")."""
+    from modules.heal import policy, retry
     from tests.test_heal_policy import auto
 
     now = time.time() if now is None else now
-    auto(NET, now=now, hours=hours)
+    retries = []
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(retry, "run_soon",
+                   lambda network, trigger, **kw: retries.append(dict(kw, trigger=trigger)))
+        auto(NET, now=now, hours=hours)
     return policy.current(NET)
 
 
@@ -487,10 +505,15 @@ class TestPressedInARealBrowser:
         heads = [s for s in before if s.isupper()]
         assert heads[:2] == ["TROUBLESHOOTING", "OBSERVE"], before
         section = before[before.index("TROUBLESHOOTING") + 1:before.index("OBSERVE")]
-        assert section == ["Incidents", "Self-healing"], section
-        assert landed[1] == "Incidents" and landed[2].startswith("3 open"), landed
+        # Premise corrected (measured 2026-11-18: templates/v2/base.html draws Troubleshooting ›
+        # Fixes between them, C3849, board fixes-list approved by the operator 2026-11-16).
+        assert section == ["Incidents", "Fixes", "Self-healing"], section
+        # Premise corrected (C3876, the operator, 2026-11-16: the rolled-back heal its store
+        # closed is on Closed, as TestTheRows holds: 2 open; measured 2026-11-18 in Firefox:
+        # "2 open · 1 needs a person · 1 watching").
+        assert landed[1] == "Incidents" and landed[2].startswith("2 open"), landed
         assert kids == ["svg span", "svg span"], kids
-        assert count == "Open · 3", count
+        assert count == "Open · 2", count
         assert heal == f"/v2/settings/network/{NET}?tab=heal", heal
 
     def test_a_row_opens_its_incident_whose_breadcrumb_leads_back_and_search_narrows(
@@ -517,6 +540,10 @@ class TestPressedInARealBrowser:
                                   "'.inc-row'), function (r) { return r.dataset.incident; })")
                 b.go(srv.url(f"/v2/incidents?list={NET}"))
                 b.wait_for("return document.getElementById('inc-q')")
+                # Board R5 (approved 2026-11-15): the search sits behind one "Search or
+                # filter…" link, opened by a person's press before it is typed into.
+                b.click("details.inc-search > summary")
+                b.wait_for("return document.querySelector('details.inc-search').open")
                 b.type("#inc-q", busy["related"])
                 b.click(".inc-list-filter button[type=submit]")
                 found = b.wait_for("return /q=/.test(location.search) &&"
@@ -526,7 +553,10 @@ class TestPressedInARealBrowser:
                 b.go("about:blank")
                 browser.close_socketio_sessions()
         assert on_page == ["Incidents", "Closed"], on_page
-        assert back == [healed], back
+        # Premise corrected (C3876, the operator, 2026-11-16: the tabs follow the store, so the
+        # rolled-back heal its store closed is on Closed, "Closed, not confirmed", after the
+        # heal Mercury fixed; measured 2026-11-18 in Firefox: the two rows in that order).
+        assert back == [healed, planted["failed"]["page"]], back
         assert found == [busy["related"]], found
 
 

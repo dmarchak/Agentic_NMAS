@@ -1589,7 +1589,7 @@ PLANS = {p.key: p for p in (
 
 def _fix_title(p: dict) -> str:
     """An incident plan's title by the devices it acts on, never by the incident's id (the
-    operator, 2026-11-16: "No IDs as titles"): "Fix r7's incident: 1 step"."""
+    operator, 2026-11-16: "No IDs as titles"): "Fix edge1's incident: 1 step"."""
     devices = list(dict.fromkeys(str((s.get("params") or {}).get("device") or "")
                                  for s in p["steps"] if isinstance(s, dict)))
     devices = [d for d in devices if d]

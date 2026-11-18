@@ -1,12 +1,12 @@
 # Restart a device's telemetry stack (the lost stream's ladder, rung 3; the operator,
-# 2026-11-16, incident hi-22cfdc299000: r7's gRPC dial-out session wedged, both ends holding
+# 2026-11-16, incident hi-22cfdc299000: a router's gRPC dial-out session wedged, both ends holding
 # it). Its plan is [close the collector's stale half (telemetry-collector-close), this].
 # The least disruptive restart IOS-XE offers for gRPC dial-out that Mercury could find: Cisco
 # documents no command restarting the telemetry process (pubd) alone; turning netconf-yang off
 # and on stops and starts the NETCONF-YANG (DMI) processes, pubd among them, and leaves IOSd,
 # routing and forwarding running. Never a reload.
-# Its two lines are NOT measured shapes (scripts/nmas-telemetry-reset-probe measures them on
-# r2): until each is proposed (held PROVISIONAL, modules/nsot/command_policy.py) the plan's
+# Its two lines are NOT measured shapes (scripts/nmas-telemetry-reset-probe measures them on a
+# lab router): until each is proposed (held PROVISIONAL, modules/nsot/command_policy.py) the plan's
 # preview refuses it, naming each; once proposed, a person's Approve of the plan, its lines
 # shown, is their approval and sends them (32ad9360; the operator, 2026-11-17).
 # What is NOT restored if `no netconf-yang` takes other lines: the pipeline's rollback inverts

@@ -1705,7 +1705,7 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         ctx.keep_session = True
         if (source or {}).get("read"):
             ctx.pre_read = {device.get("ip", ""): source["read"]}
-        # Where each second goes (round 2, item 4: about 30 s of r2's 64 s were not accounted
+        # Where each second goes (round 2, item 4: about 30 s of a router's 64 s were not accounted
         # for): each stage's and each read's lap, kept in the heal's record.
         import time as _time
         if laps is not None:
@@ -1725,7 +1725,7 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     finally:
         # The run's pool is this run's, and nothing else will ever close it:
         # each deploy and restore left one session open until the device's
-        # ten-minute timeout, and five of them locked the tool out of r2 (C97). A heal's
+        # ten-minute timeout, and five of them locked the tool out of a router (C97). A heal's
         # run that passed keeps it for its tail, whose settle closes it (`close_kept`).
         if not (ctx.tail and ctx.final_status == "success"):
             from modules.connection import close_persistent_connection

@@ -110,7 +110,7 @@ RECORD_STATE = {"done": "done", "refused": "refused", "not_net_zero": "failed",
 
 
 #: How old a device read taken earlier in the same proposing job may be and still answer a
-#: proposal's preflight (`Reused`). Reasoned, not measured: s5's port-security run
+#: proposal's preflight (`Reused`). Reasoned, not measured: a switch's port-security run
 #: (2026-11-16) took 87 s from the press to a ready plan, 25 s of it this preflight, so the
 #: investigation's reads were at most about 62 s old when the preflight asked; 2.5x that is
 #: about 150 s. An err-disabled port changes only by IOS's own recovery (300 s by default,
@@ -991,7 +991,7 @@ def preconditions_now(network: str, key: str, p: dict, *, sources=None,
                     str(incident or ""), src)
     if p.get("device_row"):
         # The approved run's stage 1 then finds the device's NetBox context ready (item 5: the
-        # query took 6.1 s on s1's run), fetched beside this preflight, never waited on here.
+        # query took 6.1 s on a switch's run), fetched beside this preflight, never waited on here.
         from modules.pipeline import warm_netbox_context
         warm_netbox_context(network, p["device_row"])
     # The run's one path (`_read_and_judge`): every device read in one engine run, the rest
