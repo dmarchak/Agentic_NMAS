@@ -269,12 +269,22 @@ def _refused_running(name: str, running: dict, by: str) -> dict:
                     {"kind": running.get("kind") or "request", "by": running.get("by")}, by)}}
 
 
+#: `_held_row`'s answer while the held list is not a current read yet.
+NOT_HELD_YET = object()
+
+
 def _held_row(row_id: str):
     """The row *row_id* as the held list draws it now (a row folded under another included),
-    or None: from the background's value, never computed for the press."""
+    or None: from the background's value, never computed for the press. `NOT_HELD_YET` while
+    the held list is no current read: before this start's first value lands, "Reading" or the
+    page kept before the start, drawn restored (the correctness review's G6 M3), where a row's
+    absence says nothing."""
     from modules import attention_store
 
     page = attention_store.read()
+    store = page.get("store") or {}
+    if store.get("state") == "reading" or store.get("restored"):
+        return NOT_HELD_YET
     for r in page.get("rows") or []:
         for x in [r] + list(r.get("folded") or []):
             if x.get("id") == row_id:
@@ -296,6 +306,8 @@ def checked_answer(got: dict, row_id: str) -> dict:
     if not row_id:
         return {"checked": {"at": got["at"], "unnamed": True}}
     held = _held_row(row_id)
+    if held is NOT_HELD_YET:
+        return {"busy": True, "since": got["at"], "taking": True}
     if held is None:
         _tell(got.get("reader") or "")
         return {"checked": {"at": got["at"], "cleared": True}}

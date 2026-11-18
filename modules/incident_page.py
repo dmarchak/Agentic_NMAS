@@ -1113,7 +1113,10 @@ def item_of(attention, incident_id: str, decisions: list, network: str, device: 
     a = attention or {}
     stand_in = {"id": "", "action": {}, "devices": [device] if device else [],
                 "networks": {device: [network]} if device else {}}
-    if (a.get("store") or {}).get("state") == "reading":
+    store = a.get("store") or {}
+    if store.get("state") == "reading" or store.get("restored"):
+        # The page kept before a start is not a current read (the correctness review's G6
+        # M3): until this start's first value lands, the item is not known, never "none".
         return {"state": "reading", "first": "", "level": "", "row": stand_in}
     mine = {d.get("id") for d in decisions if d.get("id")}
     found = marked = None
