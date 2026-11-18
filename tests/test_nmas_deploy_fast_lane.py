@@ -93,6 +93,43 @@ def test_a_red_smoke_puts_the_previous_release_back(world, capsys):
     assert "the smoke check was RED, so it was reverted" in capsys.readouterr().err
 
 
+def test_a_red_smoke_with_a_swapped_venv_puts_the_venv_and_the_units_back(world, capsys):
+    """The correctness review's G7-D4 (2026-11-18): a red smoke's revert reset the checkout
+    and restarted the app, but left the venv link on the new release's venv and the ZTP
+    responder running the new release's code, and said "reverted … (running again)": a mixed
+    version drawn as a rollback done. The revert puts back what the deploy moved: the venv
+    link, the app, and each unit that runs the checkout."""
+    world.advance({"app.py": "v = 2\n"})
+    plan = {"state": "swap", "from": "aaa", "to": "bbb"}
+    moved = []
+
+    def venv(mod):
+        mod.venv_plan = lambda *a, **k: dict(plan)
+        mod.swap_venv = lambda p, *a, **k: moved.append(("swap", p["to"]))
+        mod.unswap_venv = lambda p, *a, **k: moved.append(("unswap", p["from"]))
+        mod.prune_venvs = lambda keep, *a, **k: ([], [])
+    pid = {"n": 300}
+
+    def restart_unit(u):
+        moved.append(("restart", u))
+        pid["n"] += 1
+
+    def unit_of(u):
+        return {"MainPID": pid["n"], "start": "", "load": "loaded"}
+    code, restarted, _calls = _run(world, {}, extra=("--fast-lane", TESTS), setup=venv,
+                                   units=(restart_unit, unit_of),
+                                   smoke=lambda repo, target: (False, "SMOKE FAILED: /v2/ 500"))
+    err = capsys.readouterr().err
+    assert code == 5, err
+    assert _git(world.host, "rev-parse", "HEAD") == world.base, "put back"
+    assert moved == [("swap", "bbb"), ("restart", "nmas-ztp-responder.service"),
+                     ("unswap", "aaa"), ("restart", "nmas-ztp-responder.service")], moved
+    row = _record(world)[-1]
+    assert row["reverted"]["venv"] == "aaa", row["reverted"]
+    assert any("nmas-ztp-responder.service: restarted" in w
+               for w in row["reverted"]["checkout_units"]), row["reverted"]
+
+
 def test_revert_puts_back_the_previous_deployed_commit_with_no_verdict(world, capsys):
     target = world.advance({"app.py": "v = 2\n"})
     assert _run(world, {}, extra=("--fast-lane", TESTS), smoke=_green)[0] == 0

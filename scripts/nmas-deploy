@@ -2017,6 +2017,21 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
         print(said)
         if not smoked:
             git(repo, "reset", "--hard", "--quiet", head)
+            # What the deploy moved goes back with the checkout (the correctness review's
+            # G7-D4, 2026-11-18): the venv link before the app restarts, the checkout's other
+            # units once it runs the release put back; never a mixed version said as reverted.
+            venv_back = ""
+            if venv["state"] == "swap":
+                try:
+                    unswap_venv(venv)
+                    venv_back = venv["from"]
+                    print(f"venv: {VENV_LINK} -> mercury-venv-{venv['from']} (put back)")
+                except (subprocess.CalledProcessError, OSError) as exc:
+                    return finish(UNHEALTHY, f"{what}, the smoke check was RED, and the venv "
+                                             f"link could not be put back from {venv['to']} to "
+                                             f"{venv['from']} ({exc}); the checkout is at "
+                                             f"{head[:10]} and nothing restarted: "
+                                             "scripts/host-steps/venv-rollback.sh points it back")
             again = unit()
             try:
                 (restart or (lambda: subprocess.run(["sudo", "systemctl", "restart", SERVICE],
@@ -2027,11 +2042,25 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
                                          f"{head[:10]} did not restart: {exc}")
             back_ok, _seen, back_why = wait_for_running(head, again["MainPID"],
                                                         health or _health, unit, clock, sleep)
-            row["reverted"] = {"to": head, "running": back_ok, "why": back_why}
+            # The units load the checkout, which is the release put back whether or not the
+            # app is confirmed running on it, so each is restarted either way.
+            units_back_ok, units_back = restart_checkout_units(
+                restart_unit or (lambda u: subprocess.run(["sudo", "systemctl", "try-restart", u],
+                                                          check=True, capture_output=True,
+                                                          text=True, timeout=120)),
+                unit_of or (lambda u: unit_state(u)), clock, sleep)
+            for line in units_back:
+                print(line)
+            row["reverted"] = {"to": head, "running": back_ok, "why": back_why,
+                               "venv": venv_back, "checkout_units": units_back}
+            back_words = ("running again" if back_ok and units_back_ok else
+                          f"NOT confirmed running: {back_why}" if not back_ok else
+                          "running again, but not every unit that runs the checkout was: "
+                          + "; ".join(w for w in units_back if "NOT" in w))
             return finish(UNHEALTHY, f"{what}, but the smoke check was RED, so it was reverted "
-                                     f"to {head[:10]} ("
-                                     + ("running again" if back_ok else
-                                        f"NOT confirmed running: {back_why}") + f"). {said[-300:]}")
+                                     f"to {head[:10]} (" + back_words
+                                     + (f"; venv {venv_back}" if venv_back else "")
+                                     + f"). {said[-300:]}")
     return finish(OK, f"{what}, restarted: pid {before['MainPID']} -> {state.get('MainPID')}, "
                       f"running {target[:10]} since {state.get('start')} (systemd). {message}"
                       + pruned)
