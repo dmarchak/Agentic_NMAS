@@ -313,6 +313,27 @@ def test_decline_pressed_is_recorded_as_the_person_and_the_row_clears(app_client
     assert DS.proposals("Default") == [] and _rows() == [] and app_client.started == []
 
 
+def test_decline_says_its_incident_stays_open_while_its_cause_stands(app_client):
+    """Ruling 18 (the operator, 2026-11-18: "Decline does not close an incident whose cause
+    still stands"): the result and the button's hover said the decline closes the incident ("its
+    incident is closed and a later check may propose again"; "Records your reason and closes the
+    incident"), though it now stands, needing a person, until its cause is read gone."""
+    d = proposed()
+    card = app_client.get(_base(d), headers=HX).get_data(as_text=True)
+    assert "closes the incident" not in card and "keeps the incident open" in card
+    r = app_client.post(_base(d) + "/decline", data={"reason": "not during the lab"},
+                        headers=HX)
+    out = r.get_data(as_text=True)
+    assert r.status_code == 200, out
+    assert "its incident is closed" not in out and "a later check may propose again" not in out
+    assert ("its incident stays open, needing a person, until what it would have fixed is "
+            "gone") in out, out
+    # The effect it says: the incident stands on the decline.
+    from modules.heal import incidents as HI
+    inc = next(i for i in HI.read("Default")["incidents"] if i["id"] == d["incident"])
+    assert (inc["state"], inc["standing"]["outcome"]) == ("standing", "declined"), inc
+
+
 def test_decline_without_a_reason_is_refused_in_place(app_client):
     d = proposed()
     r = app_client.post(_base(d) + "/decline", data={"reason": ""}, headers=HX)
