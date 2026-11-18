@@ -165,7 +165,15 @@ class TestALaptopKitMarksTheServersChecks:
 
 class TestAHostRaisesThemAsBefore:
     def test_the_default_raises_every_row(self, kind, page):
-        assert _ids(page()) == HOST_ROWS
+        """Every row, as before; those about Mercury itself (its CI, the CI agreement, its
+        scheduled developer jobs) drawn apart under "Mercury itself" (7968c7d4, the operator,
+        2026-11-16), never in the operator's list."""
+        p = page()
+        mercury = sorted(r["id"] for r in p["mercury"])
+        assert sorted(_ids(p) + mercury) == HOST_ROWS
+        assert mercury == sorted(i for i in HOST_ROWS
+                                 if i.split(":", 1)[0] in ("ci", "ci_agreement",
+                                                           "scheduled_jobs")), mercury
 
     def test_host_set_is_the_default_exactly(self, kind, page):
         before = _steady(page())

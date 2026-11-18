@@ -107,9 +107,11 @@ class TestTheBottomLineLeads:
         # pass 69 characters and fold).
         assert message.subject(facts) == f"[Mercury] {WHAT}: could not fix"
         assert message.subject(dict(facts, network="B")) == f"[Mercury] {WHAT} (B): could not fix"
-        # The heading of the incident's page is the same title.
+        # The heading of the incident's page is the same title (its h1 carries board R5's
+        # attributes since becced07: read by its id, whatever else it carries).
         _r, html = FX.page(web, iid)
-        h1 = re.sub(r"<[^>]+>", "", html.split('<h1 id="inc-title">', 1)[1].split("</h1>")[0])
+        h1 = re.sub(r"<[^>]+>", "", re.search(r'<h1\b[^>]*\bid="inc-title"[^>]*>(.*?)</h1>',
+                                              html, re.S).group(1))
         assert h1.strip().startswith(WHAT), h1
         # The rest below: the outcome once, on its own line.
         assert text.count("Mercury cannot fix this yet") == 1

@@ -217,8 +217,13 @@ def test_a_value_mercury_holds_is_masked_by_value_and_its_label_never_said(gw, m
 
 def test_a_call_refused_after_the_mask_still_says_what_was_masked(gw, monkeypatch):
     """Refused at the cap, nothing sent: the person is still told what of their words was
-    masked (it is what would have been sent), and the row says it too."""
-    monkeypatch.setattr(profiles, "cap_per_call", lambda name: 0.0000001)
+    masked (it is what would have been sent), and the row says it too. The cap is a spending
+    limit, the installation's day cap planted tiny (7b0bb884: no call has a cap of its own),
+    and the prompt's bound the model's context window, planted at the pin's old bound."""
+    from modules import settings_schema
+    real = settings_schema.get_setting
+    monkeypatch.setattr(settings_schema, "get_setting", lambda k, d=None: (
+        0.0000001 if k == "ai_cap_usd_per_day" else real(k, d)))
     got = _ask(gw, "snmp-server community Wombat77Comm RO")
     assert got["error"] == "over_cap" and gw.sent == []
     said = {"values": 1, "lines": [1],
@@ -226,7 +231,9 @@ def test_a_call_refused_after_the_mask_still_says_what_was_masked(gw, monkeypatc
     assert got["typed_masked"] == said and _row()["typed_masked"] == said
     assert "Wombat77Comm" not in json.dumps(_row())
     # Refused before the caps (the prompt over its bound): told the same.
+    monkeypatch.setattr(settings_schema, "get_setting", real)
     bound = profiles.TASKS["connection_check"]["max_prompt_tokens"]
+    monkeypatch.setattr(profiles, "context_window", lambda model: bound)
     got = _ask(gw, "snmp-server community Wombat77Comm RO", pack="x" * (bound * 4))
     assert got["error"] == "prompt_too_long" and gw.sent == []
     assert got["typed_masked"] == said

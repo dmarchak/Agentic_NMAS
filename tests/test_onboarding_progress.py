@@ -160,23 +160,24 @@ class TestThePage:
 
     def test_answering_after_its_fetch_says_ready_to_verify(self, client, monkeypatch):  # noqa: F811
         html = _page(client, monkeypatch, ZTP_ROW, "fetched_not_reached", ANSWERING)
-        assert "Answering: ready to Verify." in html
+        assert "Reachable: ready to Verify." in html
         assert "accepted a TCP connection on port 22 within 2 s" in html
         assert "sent nothing: no login was tried" in html
         waiting = html[html.index('data-step="waiting"'):]
-        assert "answering: ready to Verify" in waiting[:waiting.index("</li>")]
+        assert "reachable: ready to Verify" in waiting[:waiting.index("</li>")]
 
     def test_no_answer_yet_says_so_and_before_its_fetch_says_nothing(  # noqa: F811
             self, client, monkeypatch):
         html = _page(client, monkeypatch, ZTP_ROW, "fetched_not_reached",
                      dict(ANSWERING, answering=False,
                           claim="answered neither ICMP nor TCP 22 within 2 s each"))
-        assert "Not answering yet." in html and "Answering: ready" not in html
+        assert "Not reachable yet." in html and "Reachable: ready" not in html
         html = _page(client, monkeypatch, ZTP_ROW, "fetched_not_reached", None)
         assert "Not probed yet:" in html
         html = _page(client, monkeypatch, ZTP_ROW, "leased_not_fetched",
                      dict(ANSWERING, answering=None, stage="leased_not_fetched"))
-        assert "Answering" not in html and "Not probed yet" not in html
+        assert ("Reachable: ready" not in html and "Not reachable yet" not in html
+                and "Not probed yet" not in html)
 
     def test_the_wait_counts_from_its_create(self, client, monkeypatch):  # noqa: F811
         html = _page(client, monkeypatch, ZTP_ROW, "leased_not_fetched")
@@ -204,7 +205,7 @@ class TestThePage:
         _stored(monkeypatch, ANSWERING)
         frag = client.get("/v2/device/bp1/pending/progress").get_data(as_text=True)
         assert frag.lstrip().startswith('<div id="pending-progress"')
-        assert "Answering: ready to Verify." in frag and "<html" not in frag
+        assert "Reachable: ready to Verify." in frag and "<html" not in frag
         monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [])
         gone = client.get("/v2/device/bp1/pending/progress").get_data(as_text=True)
         assert "bp1 is no longer pending" in gone and 'id="pending-progress"' in gone
@@ -241,7 +242,7 @@ class TestTheInProgressChip:
         row = chip["running"][0]
         assert row["device"] == "bp1" and row["list"] == "Lab" and row["page"] is True
         assert row["name"] == "Onboarding: waiting for it"
-        assert row["step"] == "answering: ready to Verify"
+        assert row["step"] == "reachable: ready to Verify"
         assert chip["shown"] and chip["level"] == "run"
 
     def test_nothing_pending_lists_nothing(self, quiet, monkeypatch):

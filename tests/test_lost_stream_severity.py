@@ -172,7 +172,7 @@ class TestTheLevelIsTheRules:
             "r2 subscription 101, NMAS telemetry stream lost: r2 subscription 102")
         assert row["operands"]["device_answers"].startswith("the reachability reading of ")
         assert row["operands"]["device_answers"].endswith(
-            f": r2 ({ADDRESS['r2']}) answering, 0 consecutive miss(es), not answering at 3")
+            f": r2 ({ADDRESS['r2']}) reachable, 0 consecutive miss(es), not reachable at 3")
         # It still names its action and how it clears.
         assert row["action"]["open"] == "resubscribe" and row["action"]["subs"] == ["101", "102"]
         assert row["clears"]["ways"] == ["resolves"] and row["attach_to"] is None
@@ -232,8 +232,8 @@ class TestWhetherTheDeviceAnswers:
         assert row["fix"]["answers"] == {
             "state": "missed",
             "words": "r2 missed Mercury's last 1 reachability probe; it is counted as not "
-                     "answering at 3. If it stops answering, this becomes part of its "
-                     "not-answering item."}
+                     "reachable at 3. If it becomes not reachable, this becomes part of its "
+                     "not-reachable item."}
 
     @pytest.mark.parametrize("reach,why", [
         (dict(state="unreadable"),
@@ -279,7 +279,7 @@ class TestFoldedIntoTheDeviceDownRow:
         got = page(lost(), reach, monkeypatch)
         row = one(got["rows"])
         assert (row["id"], row["level"]) == ("reachability:not-answering", "danger")
-        assert row["what"] == "r2 is not answering"
+        assert row["what"] == "r2 is not reachable"
         also = one(row["attached"])
         assert also["what"] == ROW and also["kind"] == "incident"
         # The device-down row keeps its own action: nothing is re-subscribed on a device
@@ -296,14 +296,14 @@ class TestFoldedIntoTheDeviceDownRow:
     def test_another_device_down_folds_nothing_of_this_one(self, world, monkeypatch):  # noqa: F811
         got = page(lost(), probed(down=("r7",)), monkeypatch)
         assert [(r["what"], r["level"]) for r in got["rows"]] == [
-            ("r7 is not answering", "danger"), (ROW, "warning")]
+            ("r7 is not reachable", "danger"), (ROW, "warning")]
         assert got["rows"][0]["attached"] == []
 
     def test_the_row_stands_alone_and_says_so_when_no_device_down_row_is_drawn(self, world):  # noqa: F811
         row = one(rows(lost(), probed(down=("r2",))))
         assert row["attach_to"] == A.NOT_ANSWERING_ROW
         assert row["fix"]["answers"]["words"] == (
-            "r2 is not answering Mercury's reachability probe (3 consecutive misses), so "
+            "r2 is not reachable by Mercury's reachability probe (3 consecutive misses), so "
             "its telemetry is lost with it.")
 
 

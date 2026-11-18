@@ -68,7 +68,7 @@
   <p class="small muted">{{ c.device }} is held while it runs; a failed verify is rolled back. <span class="info-link" tabindex="0" title="Approved by its hash {{ pv.short }}: what runs is exactly this preview, and a check that moved since is refused, naming what moved">{{ icon('info', 15) }}</span></p>
   {%- if c.right %}<p class="small bluf-refused" data-refused="run">{{ c.right }}</p>{% endif %}
   <div class="simple-acts">
-    <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fix-run" hx-post="{{ url_for(c.post.endpoint, **c.post.args) }}" hx-vals='{{ c.post.vals | tojson }}' hx-target="#fix-run" hx-swap="outerHTML" hx-disabled-elt="this" title="Runs exactly this program on {{ where }}, held to its hash {{ pv.short }}"{% if c.right %} disabled{% endif %}{{ gate('confirm') }}><span class="op-idle">Run on {{ where }}</span><span class="op-busy">Starting…</span></button>{{ how('plans', compact=True, op='running a saved fix') }}</span>
+    <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="plans" hx-post="{{ url_for(c.post.endpoint, **c.post.args) }}" hx-vals='{{ c.post.vals | tojson }}' hx-target="#fix-run" hx-swap="outerHTML" hx-disabled-elt="this" title="Runs exactly this program on {{ where }}, held to its hash {{ pv.short }}"{% if c.right %} disabled{% endif %}{{ gate('confirm') }}><span class="op-idle">Run on {{ where }}</span><span class="op-busy">Starting…</span></button>{{ how('plans', compact=True, op='running a saved fix') }}</span>
     {{ cancel() }}
   </div>
   {%- elif c.state == 'none' %}

@@ -325,13 +325,11 @@ place is named. Where this list and another document disagree, the charter gover
   one sentence in an engineer's words, its source a small label (AI / Mercury) shown once.
 - **Deploys and approvals:** the operator is told before every deploy; anything needing the
   operator's words is parked until they are given, and a renamed approved item is a new item
-  (memory, "Park what needs words"). Under the fast lane's skip mode (2026-11-15) a change
-  ships without tests, its debt listed in docs/FAST_LANE_DEBT.md, cleared in one full pass
-  (tests, fidelity, full gate, CI green) once the features are complete: after the Lab 10
-  demo and Lab 9's SDN work, which continues in skip mode, run as long unattended sessions
-  (the operator, 2026-11-16). The Lab 10 recording and the demo run on the rehearsed build,
-  the backup video their fallback; code that writes to devices keeps its independent review
-  before every deploy meanwhile (CLAUDE.md, "Temporary skip mode within the fast lane").
+  (memory, "Park what needs words"). The fast lane and its skip mode (2026-11-15 to
+  2026-11-17: a change shipped without tests, its debt listed in docs/FAST_LANE_DEBT.md) were
+  retired on 2026-11-18 (the operator: "Turn fastlane off and restore full CI gating"): full
+  gating governs every deploy again, and the fast lane is a reusable mode, off by default, its
+  on and off steps, its risks and its catch-up in docs/FASTLANE.md.
 
 ## Human-facing means human-readable
 

@@ -34,9 +34,9 @@ passes and whether it is reliable (every run passed), each run's misses named; p
 reliable share; overall the share reliable, against 15.12's done floor (`FLOOR`). Beside it, per
 question (one call), the prompt's tokens (input, cache writes and reads), the output's tokens and
 the cost, from the call's own record (`calls`: the provider's usage and the batch-rate cost the
-gateway kept), their mean and max, and the estimate they test: the retriever's budget
-(`manual_index.BUDGET_CHARS`) at 4 and at 2.585 characters a token; the cost per answer that
-passed.
+gateway kept), their mean and max, and the cost per answer that passed. The retriever has no
+budget to test since 2026-11-16 (7b0bb884, the operator: passages by relevance alone, no count
+or size bound), so the estimate says so (``budget_chars`` None, with why).
 """
 import argparse
 import json
@@ -55,9 +55,6 @@ CASES = os.path.join("tests", "fixtures", "ai_cases", "assistant", "recorded.jso
 #: 15.12's done floor applied to reliability: 95% (90% only for Explain and the Analyst, which
 #: the assistant is neither).
 FLOOR = 0.95
-#: The rates the retriever's budget was sized at (manual_index's `BUDGET_CHARS`): 4 characters
-#: a token, and C1798's 2.585.
-RATES = (4.0, 2.585)
 #: The retriever's top k a recorded case's expected sections must reach (`--list`).
 TOP_K = 5
 
@@ -141,10 +138,8 @@ def usage(results: dict) -> dict:
     """Tokens and cost per question (one call each), from the calls' own records: each
     answered call's prompt (``input``: its uncached input, cache writes and cache reads, as the
     provider counted them), ``output`` and ``cost_usd``, their mean and max; the measured
-    characters a token over the requests' text; and the estimate beside them, the retriever's
-    budget at each of `RATES`."""
-    from modules.ai import manual_index
-
+    characters a token over the requests' text; and the estimate beside them, which says the
+    retriever has no budget (`NO_BUDGET`)."""
     per = []
     for r in results.values():
         row = r.get("row") or {}
@@ -170,9 +165,12 @@ def usage(results: dict) -> dict:
                                     "cost_usd")},
             "chars_per_token": round(sum(p["chars"] for p in per) / prompt_tokens, 3)
             if prompt_tokens else None,
-            "estimate": {"budget_chars": manual_index.BUDGET_CHARS,
-                         **{f"tokens_at_{rate:g}": round(manual_index.BUDGET_CHARS / rate)
-                            for rate in RATES}}}
+            "estimate": {"budget_chars": None, "why": NO_BUDGET}}
+
+
+#: Why the report has no retriever budget to compare against (`manual_index.select`).
+NO_BUDGET = ("the manual's passages are chosen by relevance alone, with no count or size bound "
+             "(the operator, 2026-11-16)")
 
 
 def _share(k: int, n: int) -> str:
@@ -233,9 +231,8 @@ def score_cases(data: dict, actor: str, runs: int, out: str, stop_usd: float, pr
     print(f"per question ({used['calls']} calls): input tokens mean {used['input']['mean']:.0f}"
           f", max {used['input']['max']}; output mean {used['output']['mean']:.0f}, max "
           f"{used['output']['max']}; cost mean ${used['cost_usd']['mean']:.6f}, max "
-          f"${used['cost_usd']['max']:.6f}; the estimate: {est['budget_chars']} characters of "
-          f"passages, {est['tokens_at_4']} tokens at 4 a token, {est['tokens_at_2.585']} at "
-          f"2.585; measured {used['chars_per_token'] or 'no'} characters a token")
+          f"${used['cost_usd']['max']:.6f}; no budget estimate: {est['why']}; measured "
+          f"{used['chars_per_token'] or 'no'} characters a token")
     floor = (f"over the {FLOOR:.0%} floor" if report and reliable / len(report) >= FLOOR
              else f"under the {FLOOR:.0%} floor")
     words = (f"{_share(reliable, len(report))} case(s) reliable, {floor}; batch "

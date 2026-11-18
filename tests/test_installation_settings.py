@@ -971,11 +971,17 @@ class TestTheCards:
         2026-10-14): no assistant or agent card and no "AI and workflow". The premise that no
         AI tab exists changed on 2026-10-27: board AI3 (signed off under the Phase 7 mode,
         docs/STANDING_APPROVAL_LOG.md "Boards AI1 to AI5", decision 1) brings `?tab=ai` back as
-        Settings › AI, each network's background AI features (tests/test_settings_ai_v2.py)."""
+        Settings › AI, each network's background AI features (tests/test_settings_ai_v2.py).
+        Premise corrected (a61bb071, the operator 2026-11-16: "hide it via a setting (Settings >
+        AI, "Assistant" on/off, default off for now)"): the tab holds the Assistant's one switch,
+        its card the on/off only, and still no agent card."""
         from modules import installation_settings as I
         assert dict(I.TABS)["ai"] == "AI" and "ai" in I.BUILT_TABS
         _r, html = _get(networks, "/v2/settings/installation?tab=ai")
-        assert 'id="card-assistant"' not in html and 'id="card-agent"' not in html
+        card = html[html.index('id="card-assistant"'):]
+        card = card[:card.index("</section>")]
+        assert "/v2/settings/installation/card/assistant/save" in card, card
+        assert '"ai_assistant_on"' in card and 'id="card-agent"' not in html
         assert 'id="ai-bg"' in html and 'id="card-netbox"' not in html, "the AI tab, not another"
         assert "AI and workflow" not in html
 

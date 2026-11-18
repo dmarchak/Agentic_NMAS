@@ -69,12 +69,15 @@ def rule_of(body: dict) -> str:
 
 
 def reply(body: dict, text: dict) -> A.Reply:
-    """The provider's answer *text*, billed exactly the call's worst case (every prompt token
-    a cache write at `TOKENS`, all of max_tokens), so what a settled call counts is what it
-    reserved."""
+    """The provider's answer *text*, billed exactly the call's hold (7b0bb884, the operator
+    2026-11-16: a call holds its counted prompt, every token a cache write at `TOKENS`, plus its
+    task's typical answer, the pin's max_tokens while none is measured, and so after it too,
+    every call billing that), so what a settled call counts is what it reserved. A call's
+    max_tokens is the model's maximum (the caps enforced live), never what it bills."""
+    typical = profiles.TASKS[CL.CLASSIFY_FEATURE]["max_tokens"]
     return A.Reply(status=200, body={
         "content": [{"type": "text", "text": json.dumps(text)}], "stop_reason": "end_turn",
-        "usage": {"input_tokens": 0, "output_tokens": int(body["max_tokens"]),
+        "usage": {"input_tokens": 0, "output_tokens": int(typical),
                   "cache_creation_input_tokens": TOKENS}}, attempts=1, latency_s=0.1)
 
 

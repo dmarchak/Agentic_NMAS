@@ -21,7 +21,9 @@ section 4 steps 3 to 5, sections 8 and 11, N9, N12, N13, C2402), no network, no 
   session): what was decided is what reaches the wire, IPv4 and IPv6 alike, and the receipt
   names the heal, its policy and the removal's stated reason.
 """
+import contextlib
 import os
+import time
 
 import pytest
 
@@ -60,8 +62,13 @@ class FakeAct:
 
     def __init__(self, running, *, post=None, recheck="clean", symptom=None, plan=None,
                  result=None, mode=None, planned=None, golden=GOLDEN, intended=GOLDEN,
-                 read_error="", commit="c" * 40, saved=None):
+                 read_error="", commit="c" * 40, saved=None, at=T0 + 5):
         self.d = Fake(running, golden=golden, intended=intended, read_error=read_error)
+        # The act's clock (e400a31f): its stops are judged again at `clock()` once the device
+        # is held, and the hold's wait counts by it. The test's time, never the wall clock, so
+        # an AUTO confirmed for an hour around T0 is in force; `sleep` moves it. *at*: the
+        # time the test acts at.
+        self.t = float(at)
         self.running, self.post, self.recheck = running, post, recheck
         self._symptom, self._plan, self._result = symptom, plan, result
         self._mode, self._planned, self.commit, self.saved = mode, planned, commit, saved
@@ -70,6 +77,12 @@ class FakeAct:
 
     def __getattr__(self, name):
         return getattr(self.d, name)
+
+    def clock(self):
+        return self.t
+
+    def sleep(self, seconds):
+        self.t += seconds
 
     def mode(self, now):
         from modules.heal import policy
@@ -142,6 +155,57 @@ def act(running, decision=None, **kw):
     src = FakeAct(running, **kw)
     d = decision or decided(running)
     return A.act_one("Default", d["id"], now=T0 + 5, sources=src), src, d
+
+
+class _ClockOf:
+    """The act module's `time` while a decided heal's job runs: ``time()`` is *src*'s clock
+    (`FakeAct.clock`), everything else the real `time`."""
+
+    def __init__(self, src):
+        self.src = src
+
+    def time(self):
+        return self.src.clock()
+
+    def __getattr__(self, name):
+        return getattr(time, name)
+
+
+@contextlib.contextmanager
+def acts_with(src, *, clock=None, wait_s=60.0):
+    """The decision's pass starts each heal it decides at once, as its own job (item 4, the
+    operator, 2026-11-16; C3865: `decide.run` calls `act.start_decided`, which holds the
+    decision's mark, takes it and starts `act.start`): inside this, that job is the real
+    `act.start` over *src*, the test's sources, with the act's clock the test's (*clock*,
+    else *src*'s), and the pass waits for it (*wait_s*, None: not waited), so what the act did
+    is recorded when the pass returns. Yields the started jobs' ids, in order (`acted` reads
+    each one's answer). Without it the pass's job would read the real device sources."""
+    from modules.heal import act
+    from modules.nsot import capture_job
+
+    real, jobs = act.start, []
+
+    def start(network, decision, sources=None):
+        job = real(network, decision, sources=src)
+        jobs.append(job)
+        if wait_s is not None:
+            assert capture_job.wait(job, wait_s), (
+                f"the heal of {decision.get('device')} was still running after {wait_s} s")
+        return job
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(act, "start", start)
+        mp.setattr(act, "time", clock if clock is not None else _ClockOf(src))
+        yield jobs
+
+
+def acted(job):
+    """The act's answer (`act.apply_decision`'s, as `act_one` returns it) from its job."""
+    from modules.nsot import capture_job
+
+    got = capture_job.get(job) or {}
+    assert got.get("state") == "done", f"the heal's job {job}: {got.get('state')} " \
+                                       f"{got.get('error')}"
+    return got["payload"]["result"]
 
 
 def applied(decision_id):
@@ -217,12 +281,15 @@ class TestTheHeal:
     def test_the_golden_step_says_the_documentation_was_updated_and_tested(self, lab):
         """Lab 10 (3): the step a person reads names what was updated (the golden, by its
         commit) and how it was tested (the config check before the commit, the configuration
-        repository's CI on its push, and the device read again)."""
+        repository's CI on its push, and the device read again). Since the tail (e400a31f,
+        decision (b): the golden's commit and the read again are their own steps under Fixed),
+        the commit step says the config check passed and the golden step the read again."""
         got, _src, _d = act(GOLDEN + ROUTE4)
         (g,) = [s for s in got["steps"] if s["step"] == "golden"]
-        assert g["result"] == "ok"
-        assert g["words"].startswith("documentation updated and tested: golden ")
-        assert "config check passed" in g["words"] and "read again matches it" in g["words"]
+        (c,) = [s for s in got["steps"] if s["step"] == "commit"]
+        assert (g["result"], c["result"]) == ("ok", "ok")
+        assert g["words"].startswith("At its golden: documentation updated and tested, golden ")
+        assert "config check passed" in c["words"] and "read again matches it" in g["words"]
 
     def test_a_decision_is_taken_once(self, lab):
         d = decided(GOLDEN + ROUTE4)
@@ -242,11 +309,16 @@ class TestTheStops:
         assert "only AUTO sends a heal" in got["words"]
 
     def test_a_policy_that_moved_since_the_decision(self, lab):
+        """The act-time "policy moved" check is removed (70e89a47, the operator, 2026-11-17,
+        round 2): only Stop everywhere, Off, a kind no longer allowed and a person's planned
+        window stop the act; a policy confirmed again in Auto since the decision heals."""
+        from modules.heal import policy
         d = decided(GOLDEN + ROUTE4)
         auto("Default", now=T0, kinds=("added_line", "missing_line"))
+        assert policy.current("Default", T0 + 5)["fingerprint"] != d["policy"]["fingerprint"]
         got, src, _d = act(GOLDEN + ROUTE4, decision=d)
-        assert "the policy moved since the decision (decided under" in got["words"]
-        assert d["policy"]["fingerprint"] in got["words"] and src.apply_kw is None
+        assert got["outcome"] == "healed" and src.apply_kw is not None, got["words"]
+        assert "the policy moved since the decision" not in got["words"]
 
     def test_a_kind_no_longer_allowed(self, lab):
         d = decided(GOLDEN + ROUTE4)
@@ -255,28 +327,43 @@ class TestTheStops:
         assert "added_line is no longer allowed AUTO" in got["words"] and src.apply_kw is None
 
     def test_a_network_not_marked_lab(self, lab):
+        """The lab-stage gate at apply is removed (70e89a47, round 2): a network marked
+        production heals in Auto as a lab one does."""
         d = decided(GOLDEN + ROUTE4)
         got, src, _d = act(GOLDEN + ROUTE4, decision=d, mode=lambda m: dict(
             m, stage={"stage": "production"}))
-        assert "marked production, not lab" in got["words"] and src.apply_kw is None
+        assert got["outcome"] == "healed" and src.apply_kw is not None, got["words"]
+        assert "not lab" not in got["words"]
 
     def test_a_halt_in_force(self, lab):
+        """A halt stops nothing (70e89a47, round 2: every halt removed from the heal path;
+        Off and Stop everywhere are the stops): with a halt recorded the act heals."""
         d = decided(GOLDEN + ROUTE4)
         DS.halt("Default", guard=10, name="rate", words="six an hour", operands={}, now=T0)
         got, src, _d = act(GOLDEN + ROUTE4, decision=d)
-        assert "halted by guard 10" in got["words"] and src.apply_kw is None
+        assert got["outcome"] == "healed" and src.apply_kw is not None, got["words"]
+        assert "halted by guard 10" not in got["words"]
 
-    def test_planned_work(self, lab):
-        got, src, _d = act(GOLDEN + ROUTE4, planned={"words": "edge-b is restarting"})
+    def test_planned_work(self, lab, monkeypatch):
+        """A planned window a person declared still stops the act (70e89a47 keeps "a PERSON's
+        planned windows"), read through guard 3's seam (`restarts.explained_by_person`), never
+        the sources' own planned read; nothing is sent."""
+        d = decided(GOLDEN + ROUTE4)
+        monkeypatch.setattr("modules.restarts.explained_by_person", lambda dev, n, now, **kw: {
+            "end": T0 + 300, "words": "edge-b is restarting"})
+        got, src, _d = act(GOLDEN + ROUTE4, decision=d)
         assert "guard 3, planned work: edge-b is restarting" in got["words"]
-        assert src.apply_kw is None
+        assert got["outcome"] == "refused" and src.apply_kw is None
 
     def test_no_confirming_person(self, lab):
+        """The act-time "no person confirmed" check is removed (70e89a47, round 2): the policy
+        a person confirmed is the decision's authority, and its apply goes on."""
         d = decided(GOLDEN + ROUTE4)
         nobody = dict(d, policy=dict(d["policy"], by=None))
         src = FakeAct(GOLDEN + ROUTE4)
         got = A.apply_decision("Default", nobody, now=T0 + 5, sources=src)
-        assert "nobody is accountable" in got["words"] and src.apply_kw is None
+        assert got["outcome"] == "healed" and src.apply_kw is not None, got["words"]
+        assert "nobody is accountable" not in got["words"]
 
     def test_a_failed_read(self, lab):
         got, src, _d = act(GOLDEN + ROUTE4, read_error="timed out")
@@ -364,27 +451,51 @@ class TestTheOutcome:
         assert DS.halted("Default")["guard"] == 14
 
     def test_a_send_neither_verified_nor_rolled_back_halts(self, lab):
-        got, _src, _d = act(GOLDEN + ROUTE4, result={
+        """The act's halt write is removed (70e89a47, the operator, 2026-11-17, round 2:
+        "guard 14 and every halt write (act, ...)"): a send neither verified nor rolled back is
+        a failure, recorded as failed, R1's to see; it halts nothing."""
+        got, _src, d = act(GOLDEN + ROUTE4, result={
             "outcome": "failed", "stage": "deploy", "commands": ["x"], "rolled_back": False,
             "reason": "the session closed mid-push"})
-        assert got["outcome"] == "failed" and DS.halted("Default")["guard"] == 14
+        assert got["outcome"] == "failed" and applied(d["id"])["outcome"] == "failed"
+        assert DS.halted("Default") == {}
 
     def test_refused_by_the_apply_sends_nothing(self, lab):
         got, _src, _d = act(GOLDEN + ROUTE4, result={
             "outcome": "refused", "commands": [], "reason": "s3 is held by a deploy"})
         assert got["outcome"] == "refused" and "held by a deploy" in got["words"]
 
+    # Fixed rests on verify (e400a31f, the operator's decisions (a) and (b), 2026-11-16): the
+    # save, the golden's commit and the read again are the tail under Fixed; a tail failure
+    # flags the incident and reopens it (C3870), never changes the outcome from healed.
+
     def test_not_at_its_golden_when_read_again_is_partial(self, lab):
         got, _src, _d = act(GOLDEN + ROUTE4, recheck="drifted")
-        assert got["outcome"] == "partial" and "not at it (drifted" in got["words"]
+        tail = got["records"]["tail"]
+        assert got["outcome"] == "healed" and tail["state"] == "flagged", got["words"]
+        assert tail["flag"].startswith("edge-b fixed, but the device read again is not at its "
+                                       "golden"), tail["flag"]
+        assert [(s["step"], s["result"]) for s in tail["steps"]][-1] == ("golden", "failed")
+        (inc,) = I.read("Default")["incidents"]
+        assert inc["state"] != "closed", "a flagged tail reopens the incident"
 
     def test_no_golden_commit_is_partial(self, lab):
         got, _src, _d = act(GOLDEN + ROUTE4, commit="")
-        assert got["outcome"] == "partial" and "golden was not committed" in got["words"]
+        tail = got["records"]["tail"]
+        assert got["outcome"] == "healed" and tail["state"] == "flagged", got["words"]
+        assert tail["flag"] == "edge-b fixed, but its golden was not committed: no commit"
+        (inc,) = I.read("Default")["incidents"]
+        assert inc["state"] != "closed", "a flagged tail reopens the incident"
 
     def test_not_saved_to_startup_is_partial(self, lab):
         got, _src, _d = act(GOLDEN + ROUTE4, saved={"ok": False, "error": "write failed"})
-        assert got["outcome"] == "partial" and "NOT saved to startup" in got["words"]
+        tail = got["records"]["tail"]
+        assert got["outcome"] == "healed" and tail["state"] == "flagged", got["words"]
+        assert tail["flag"] == "edge-b fixed, but its save to startup failed: write failed"
+        (saved,) = [s for s in tail["steps"] if s["step"] == "saved"]
+        assert saved["result"] == "failed" and "NOT saved to startup" in saved["words"]
+        (inc,) = I.read("Default")["incidents"]
+        assert inc["state"] != "closed", "a flagged tail reopens the incident"
 
 
 # ── Verify: intent, then the symptom ────────────────────────────────────────────────────────
@@ -561,12 +672,18 @@ def _alerts_doc(at, view=None, am=()):
 
 def _alert_trigger(inst):
     """An alert's trigger as `triggers.from_alerts` makes it from the reader's instance: the
-    rule's name, and the interface its labels name (none: "")."""
+    rule's name, the interface its labels name (none: ""), and, for an instance naming no
+    device, the polled address it was placed by (3d3a8297, C3811: such an instance is judged
+    the device's again only at that address, `act.alert_firing`)."""
+    from modules.heal.attribution import address_of
+
     labels = inst.get("labels") or {}
+    placed = ({"address": address_of(inst["address"]) or str(inst["address"])}
+              if not inst.get("device") and inst.get("address") else {})
     return {"kind": "alert", "key": "alert:1", "epoch": T0 - 60, "at": iso(T0 - 60),
             "source": "grafana-alerts", "rule": inst.get("rule") or "",
             "interface": next((labels[k] for k in TR.INTERFACE_LABELS if labels.get(k)), ""),
-            "related": [], "words": f"the alert {inst.get('rule') or '?'} fired"}
+            "related": [], "words": f"the alert {inst.get('rule') or '?'} fired", **placed}
 
 
 class TestTheJudge:
@@ -757,6 +874,9 @@ class TestTheRunner:
         assert tuple(invalidation.ANNOUNCERS[A.ANNOUNCER]) == A.DONE_KEYS
 
     def test_a_job_that_cannot_start_is_recorded_and_its_incident_closed(self, lab):
+        """Recorded refused, nothing sent. Since C3870 (7d54cf24, the operator, 2026-11-16:
+        "only healed closes an incident") its incident stands open on the refusal, stating
+        it, for R1 and the retry policy, never closed."""
         d = decided(GOLDEN + ROUTE4)
 
         def broken(n, t):
@@ -765,7 +885,7 @@ class TestTheRunner:
         got = A.run("Default", now=T0 + 1, starter=broken)
         assert "no thread" in got["failed"][0]
         assert applied(d["id"])["outcome"] == "refused"
-        assert I.read("Default")["incidents"][0]["state"] == "closed"
+        assert I.read("Default")["incidents"][0]["state"] == "standing"
 
 
 class TestOneApplyPath:

@@ -128,8 +128,11 @@ def test_the_day_cap_is_the_stored_number_else_its_declared_default(monkeypatch,
     from modules import settings_schema
     monkeypatch.setattr(settings_schema, "load_user_settings", lambda: dict(stored))
     assert gateway.DEFAULT_CAP_PER_DAY == settings_schema.DEFAULTS["ai_cap_usd_per_day"]
+    # ``per_call`` is the task's measured typical cost, labelled so (7b0bb884: no call has a
+    # cap of its own); the day cap is the one limit read here.
     assert gateway.caps("connection_check") == {
-        "per_call": gateway.profiles.cap_per_call("connection_check"), "per_day": per_day}
+        "per_call": gateway.profiles.cap_per_call("connection_check"), "per_day": per_day,
+        "per_call_label": "typical cost per call (measured)"}
 
 
 def test_another_provider_is_refused_naming_it():

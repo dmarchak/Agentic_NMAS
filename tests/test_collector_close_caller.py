@@ -290,19 +290,29 @@ def test_one_operation_and_the_two_scripts_reach_it():
     """Said in the module's header (C3078): the re-subscribe with the collector step is the one
     operation that calls it, by one function (`resubscribe.Sources.close`); beside it only the
     two scripts import it. The run card and its template name the run's receipt
-    (``collector_close``, a record field), which call nothing. Parsed, never matched as text."""
+    (``collector_close``, a record field), which call nothing; the plan card's words
+    (`fixit.plan.sent_of`, 93120b2f: "Step 1, on the Mercury host (collector): close TCP
+    session ...") read its helper's name, `HELPER`, and call nothing either. Parsed, never
+    matched as text."""
     import ast
     import subprocess
 
     found = subprocess.run(["git", "grep", "--untracked", "-l", "-w", "-e", "collector_close",
                             "--", "modules", "routes", "app.py", "scripts", "templates"],
                            cwd=ROOT, capture_output=True, text=True).stdout.split()
-    assert sorted(found) == ["modules/heal/collector_close.py", "modules/heal/resubscribe.py",
+    assert sorted(found) == ["modules/fixit/plan.py",
+                             "modules/heal/collector_close.py", "modules/heal/resubscribe.py",
                              "modules/heal/run_card.py", "scripts/nmas-collector-close-dry-run",
                              "scripts/nmas-collector-peers", "templates/v2/_resubscribe.html"]
+    # The plan card's words read the helper's name alone: no call of the module.
+    plan = ast.parse(open(os.path.join(ROOT, "modules/fixit/plan.py"), encoding="utf-8").read())
+    used = {n.attr for n in ast.walk(plan) if isinstance(n, ast.Attribute)
+            and isinstance(n.value, ast.Name) and n.value.id == "CC"}
+    assert used == {"HELPER"}, used
     importers = {}
     for path in found:
-        if path.endswith(".html") or path == "modules/heal/collector_close.py":
+        if path.endswith(".html") or path in ("modules/heal/collector_close.py",
+                                              "modules/fixit/plan.py"):
             continue
         tree = ast.parse(open(os.path.join(ROOT, path), encoding="utf-8").read())
         for node in ast.walk(tree):
@@ -316,7 +326,11 @@ def test_one_operation_and_the_two_scripts_reach_it():
     assert importers == {"modules/heal/resubscribe.py": {"close", "_close_and_wait"},
                          "scripts/nmas-collector-close-dry-run": {"main"},
                          "scripts/nmas-collector-peers": {"main"}}, importers
-    assert "ONE OPERATION CALLS IT" in C.__doc__
+    # The header's rule as the operator amended it (2026-11-16, 17215a95: "I approve a second
+    # caller for the collector close: a plan step with the same guards"): both callers, the
+    # re-subscribe's collector step and the plan's close step, are one code path.
+    assert "ONLY BEHIND A PREVIEWED, HASH-CONFIRMED OPERATION OR PLAN STEP" in C.__doc__
+    assert "Both callers are one code path" in C.__doc__
 
 
 # ── the peers, from committed intent ─────────────────────────────────────────────────────────

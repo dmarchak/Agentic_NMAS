@@ -54,6 +54,8 @@ class Session:
     def __init__(self):
         self.mu = threading.Lock()
         self.sessions, self.deploy = [], []
+        #: Every command the sessions were asked, in order.
+        self.asked = []
 
     def plain(self, dev, fn):
         return self._timed(dev, fn, "read-only")
@@ -73,6 +75,8 @@ class Session:
         return got
 
     def answer(self, command):
+        with self.mu:
+            self.asked.append(command)
         return f"{command}: answered"
 
     def of(self, host):
@@ -160,8 +164,9 @@ def overlap(a, b) -> bool:
 
 def test_a_passs_three_reads_of_one_device_all_run_in_order(engine):
     """(a) The host's case: three device reads of the incident's device. Each runs, in the
-    pass's order, each session after the last one's end, and none is refused by the pass's own
-    hold."""
+    pass's order, in ONE session under the device's one hold (231da1d6, the operator
+    2026-11-16: one read session per run, `ReadFamily.run_many`), and none is refused by the
+    pass's own hold."""
     recs = passed([ask("show", words="telemetry ietf subscription all"), BGP, BGP6], scope())
     assert [r["verdict"] for r in recs] == ["run"] * 3, [r.get("reason") for r in recs]
     assert [r["id"] for r in recs] == ["read:1", "read:2", "read:3"]
@@ -169,10 +174,10 @@ def test_a_passs_three_reads_of_one_device_all_run_in_order(engine):
         "show telemetry ietf subscription all: answered", "show ip bgp summary: answered",
         "show bgp ipv6 unicast summary: answered"]
     edge1 = engine.of("edge1")
-    # As Mercury's account, Show commands' own session (C3661, the default).
-    assert len(edge1) == 3 and all(s["path"] == "mercury" for s in edge1)
-    for before, after in zip(edge1, edge1[1:]):
-        assert after["start"] >= before["end"], "one device's reads one after another"
+    # As Mercury's account, Show commands' own session (C3661, the default): one sign-in.
+    assert len(edge1) == 1 and edge1[0]["path"] == "mercury"
+    assert engine.asked == ["show telemetry ietf subscription all", "show ip bgp summary",
+                            "show bgp ipv6 unicast summary"], "in the pass's order"
     assert device_ops.holder(NETWORK, "edge1") is None, "no hold left behind"
 
 
@@ -217,16 +222,16 @@ def test_a_device_another_operation_holds_is_refused_by_name_and_the_rest_run(en
 
 
 def test_a_read_reaching_no_device_runs_beside_a_devices_reads(engine):
-    """(d) The stream's series (a ``local`` read) overlaps edge1's first read, while edge1's
-    two reads run one after another."""
+    """(d) The stream's series (a ``local`` read) overlaps edge1's session, while edge1's two
+    reads run in that one session, one after another (231da1d6: one read session per run)."""
     series = Series()
     recs = passed([BGP, ask("stream_series", subscription="101"),
                    BGP6], scope(series=series))
     assert [r["verdict"] for r in recs] == ["run"] * 3, [r.get("reason") for r in recs]
-    first, second = engine.of("edge1")
-    assert second["start"] >= first["end"]
+    (one,) = engine.of("edge1")
+    assert engine.asked == ["show ip bgp summary", "show bgp ipv6 unicast summary"]
     (local,) = series.stamps
-    assert overlap(local, first), (local, first)
+    assert overlap(local, one), (local, one)
 
 
 def test_the_device_a_read_reaches_is_its_cli_operations_device_argument():

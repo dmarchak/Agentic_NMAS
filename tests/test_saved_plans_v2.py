@@ -73,7 +73,10 @@ class TestTheCard:
         assert 'name="keep_cause" value="1" checked> cause: BPDU guard' in html
         assert 'data-preview="match">1 of the 1 open incidents' in html
         assert 'data-fill="cause">cause: BPDU guard as bpduguard' in html
-        assert "Save as a self-heal script" in html and "Save as a reusable action" in html
+        # Board R5's simple card (approved 2026-11-15): the offer's Save (Automatic: saving a
+        # verified fix is the approval, 6b91dc45), Customize… holding the reusable action's.
+        assert "Save this fix so Mercury handles it automatically?" in html
+        assert 'data-save="default"' in html and "Save as a reusable action" in html
         assert 'data-refused="action"' not in html, "rights unset: every person holds them"
         # Review 7: and the card says so, until access_rights names who holds each.
         assert ('data-rights="unset">Until Settings\' access_rights names who holds them, '
@@ -89,8 +92,9 @@ class TestTheCard:
         r = card["client"].post(url.replace("&amp;", "&"), headers={"HX-Request": "true"},
                                 data={"name": "BPDU guard recovery", "keep_cause": "1"})
         assert r.status_code == 200
-        e = S.scripts(NET)["script-bpdu-guard-recovery"]
+        e = S.scripts(NET)["fix-bpdu-guard-recovery"]                     # 3a659d6b's key
         assert e["match"] == {"condition": "err_disabled", "cause": "BPDU guard"}
+        assert e["mode"] == "auto" and e["promoted_by"] == PERSON, "Save is the approval"
 
     def test_no_verified_run_says_so_and_offers_nothing(self, card, monkeypatch):
         monkeypatch.setattr("modules.fixit.incident.attempts", lambda inc, *a, **kw: {
@@ -106,11 +110,13 @@ class TestTheCard:
 
 class TestSaving:
     def test_saved_as_a_script_in_dry_run_then_promoted(self, card):
-        r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1")
+        """Customize's Dry run (6b91dc45: a plain Save is Automatic): saved, it is board R5's
+        one line, "Saved: <name>, Dry run.", with Promote… opening the promote in place."""
+        r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1", dry_run="1")
         html = _html(r)
-        assert r.status_code == 200 and "Saved BPDU guard recovery as a self-heal script, " \
-                                          "in Dry run" in html
-        e = S.scripts(NET)["script-bpdu-guard-recovery"]
+        assert r.status_code == 200 and 'data-saved="script"' in html
+        assert "BPDU guard recovery</a>, Dry run." in html, html[:600]
+        e = S.scripts(NET)["fix-bpdu-guard-recovery"]
         assert e["match"] == {"condition": "err_disabled", "cause": "BPDU guard"}
         assert e["fills"]["cause"] == {"BPDU guard": "bpduguard"}
         assert "Promote BPDU guard recovery" in html
@@ -135,9 +141,11 @@ class TestSaving:
     def test_an_admin_saves_a_reusable_action(self, card):
         card["rights"]["admin"] = [PERSON]
         r = _post(card, "save-action", name="Bounce interface", words="Shut and no shut")
-        assert r.status_code == 200 and "Saved Bounce interface as a reusable action" in \
-            _html(r)
-        assert list(S.actions()) == ["action-bounce-interface"]
+        # Board R5: the saved line "Saved: <name>, in the catalog"; a saved fix keyed fix-
+        # (3a659d6b).
+        assert r.status_code == 200 and 'data-saved="action"' in _html(r)
+        assert "Bounce interface</a>, in the catalog" in _html(r)
+        assert list(S.actions()) == ["fix-bounce-interface"]
 
 
 class TestTheShapes:
@@ -183,8 +191,12 @@ def device(card, monkeypatch):
     from modules.nsot import command_plan_run as CR
 
     def change(doc):
+        # An action saved before C3849 on Lab: its network the one its run was on, not shared
+        # (4816fadb, the operator, 2026-11-16: "a saved fix belongs to the network it was
+        # saved on").
         doc["plans"][BOUNCE["key"]] = {"key": BOUNCE["key"], "kind": "action",
-                                       "name": "Bounce interface", "template": BOUNCE}
+                                       "name": "Bounce interface", "template": BOUNCE,
+                                       "from_run": {"network": NET}}
     S._update(change)
     monkeypatch.setattr("modules.nsot.hostvars.read_committed", lambda repo, host: {
         "interfaces": [{"name": "GigabitEthernet0/2"}, {"name": "GigabitEthernet0/3"}]})
@@ -241,8 +253,13 @@ class TestTheDeviceActions:
         assert f"run={kw['run_id']}" in slot
 
     def test_an_action_an_interface_does_not_fill_alone_is_not_offered(self, device):
-        """The incident's recovery takes its cause too: it is never offered on a device's page,
-        and asked to run there it is refused, nothing run."""
+        """The incident's recovery takes its cause too, so no interface fills it alone
+        (`interface_actions`). Since da740aa1 (the operator, 2026-11-16: a fix's first run is
+        a person's "on a matching incident or a chosen port") a chosen port runs it with its
+        choice asked beside the port (`port_actions`): offered with its cause's select. A key
+        that is neither a saved action of the network nor a built-in fix is refused, nothing
+        run; the built-in recovery itself is Run… on a chosen device (fc937efe, the operator,
+        2026-11-17: "same as saved fixes"), the runner bound to the hash sent."""
         def change(doc):
             doc["plans"].pop(BOUNCE["key"])
         S._update(change)
@@ -251,12 +268,21 @@ class TestTheDeviceActions:
         e = S.save_action(NET, run_id=device["run"](), name="Recover a port", words="x",
                           actor=PERSON, actor_verified="access", person=True)
         assert e["key"] in S.actions() and e["key"] not in S.interface_actions()
-        assert 'data-offer="none"' in _html(_dev(device))
+        html = _html(_dev(device))
+        assert f'data-action="{e["key"]}"' in html and "Preview Recover a port…" in html
+        assert f'name="c__{e["key"]}__cause"' in html, "its choice asked beside the port"
+        r = device["client"].post(f"/v2/saved-plans/device/r2/run?list={NET}",
+                                  headers={"HX-Request": "true"},
+                                  data={"key": "no-such-fix", "interface": "Gi0/2", "hash": "h"})
+        assert r.status_code == 409 and not device["seen"]["run"]
+        assert "no saved action on one interface, nor a built-in fix" in _html(r)
         r = device["client"].post(f"/v2/saved-plans/device/r2/run?list={NET}",
                                   headers={"HX-Request": "true"},
                                   data={"key": "errdisable-recover", "interface": "Gi0/2",
                                         "hash": "h"})
-        assert r.status_code == 409 and not device["seen"]["run"]
+        assert r.status_code == 200
+        ((key, _values, kw),) = device["seen"]["run"]
+        assert key == "errdisable-recover" and kw["confirmed"] == "h"
 
     def test_the_ai_or_an_unverified_viewer_may_not_run_it(self, device, monkeypatch):
         with identity.as_ai("assistant"):

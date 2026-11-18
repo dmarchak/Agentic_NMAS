@@ -55,9 +55,16 @@ class TestTheCatalogue:
     def test_the_incidents_attempts_are_the_catalogues_operations(self):
         # G7 (C3712) adds Recover an err-disabled interface, a built-in command plan a
         # proposal names beside the catalog's operations (C3757, path 2).
+        # The lost stream's ladder (17215a95, the operator 2026-11-16): the collector close
+        # alone, a catalog operation, and the two later rungs, built-in command plans, each
+        # compared by its own typed parameters (`incident.parameters_of`), as a saved action is.
+        rungs = ("telemetry-stack-restart", "telemetry-subscription-recreate")
         assert F.CATALOGUE_KEYS == tuple(catalog.entries()) == (
-            RESUB, READD, R.COLLECTOR_KEY, "errdisable-recover")
-        assert set(F.PARAMETERS) == set(catalog.entries()) == set(V.AS_ATTEMPT)
+            RESUB, READD, R.COLLECTOR_KEY, R.CLOSE_KEY, "errdisable-recover") + rungs
+        assert set(F.PARAMETERS) | set(rungs) == set(catalog.entries()) == \
+            set(V.AS_ATTEMPT) | set(rungs)
+        assert all(catalog.is_command_plan(k) and F.parameters_of(k) is not None
+                   for k in rungs)
 
     # Collected on a parent without `entries` too (its CATALOG's keys), so red-green reads this
     # test's own body failing there, never a collection error (C2633).
@@ -67,9 +74,12 @@ class TestTheCatalogue:
         device (the incident's), each to a parameter the attempt declares."""
         names = [p.name for p in catalog.entries()[key].params]
         assert names[0] == "device" and "device" in F.NOT_PARAMETERS
-        mapped = V.AS_ATTEMPT[key]
+        # A built-in command plan with no row of its own (the ladder's rungs, 17215a95) maps
+        # each parameter by its own name, as `validate.as_attempt` and `parameters_of` do.
+        mapped = V.AS_ATTEMPT.get(key) or {n: n for n in names[1:]}
         assert sorted(mapped) == sorted(names[1:])
-        declared = [n for n, _kind in F.PARAMETERS[key]]
+        assert V.as_attempt(key, {n: "x" for n in names}) == {v: "x" for v in mapped.values()}
+        declared = [n for n, _kind in F.parameters_of(key)]
         assert set(mapped.values()) <= set(declared)
         # What the attempt declares beyond the proposal is the collector step alone, which no
         # proposal may name until the operation takes it (C3108).
@@ -126,8 +136,10 @@ class TestACheckedProposal:
          ["takes exactly the parameters device and subscriptions", "also gives 'commands'"]),
         ("an operation the catalog does not hold", "reload-device", {}, "not_in_catalog",
          "schema", ["an operation of the catalog (errdisable-recover, "
-                    "telemetry-collector-resubscribe, telemetry-readd and "
-                    "telemetry-resubscribe)", "names 'reload-device'"]),
+                    "telemetry-collector-close, telemetry-collector-resubscribe, "
+                    "telemetry-readd, telemetry-resubscribe, telemetry-stack-restart and "
+                    "telemetry-subscription-recreate)",  # the ladder's steps (17215a95)
+                    "names 'reload-device'"]),
         ("a re-add of a receiver no run left removed", READD,
          {"device": "r2", "subscription": "101"}, "not_removed", "scope",
          ["a re-add adds back a receiver a run left removed, and the proposal names "

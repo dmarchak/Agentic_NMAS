@@ -279,7 +279,7 @@ class TestThePage:
         r, html = _get(lab, "/v2/device/r3")
         assert r.status_code == 200
         text = _text(html)
-        assert "r3" in text and "Answering" in text and "10.255.1.13" in text
+        assert "r3" in text and "Reachable" in text and "10.255.1.13" in text
         assert 'hx-get="/v2/device/r3/overview?list=Lab"' in html and 'hx-get="/v2/device/r3/monitoring?list=Lab"' in html
         assert text.count("Not in the spike") == 0          # a title, not text
         # Overview, Intent, History, Logs, NetBox and Neighbours (step 4,
@@ -307,22 +307,23 @@ class TestThePage:
 
     def test_a_held_device_s_status_is_its_operation_linked_to_its_card(self, lab):
         # Board PS (C2274): r3 held by a reload at its wait reads as the reload, amber, never
-        # "Answering", and opens r3's page, which reopens the reload's card.
+        # "Reachable" (C3838's words, c4948c2c), and opens r3's page, which reopens the reload's
+        # card. Its person by display name (C3838).
         from modules.nsot import device_ops as D
         with D.hold("Lab", "r3", "reload", "ops@example.com"):
             for step in ("read", "window", "reload"):
                 D.note(step)
             _, html = _get(lab, "/v2/device/r3/status")
         assert '<a class="status-op" href="/v2/device/r3?list=Lab">' in html, html
-        assert "Reloading · by ops@example.com · step 4 of 6 (wait)" in html
-        assert "badge-warn" in html and "Answering" not in html
+        assert "Reloading · by ops · step 4 of 6 (wait)" in html
+        assert "badge-warn" in html and "Reachable" not in html
         # The control: released, it answers again.
         _, html = _get(lab, "/v2/device/r3/status")
-        assert "Answering" in html and "status-op" not in html
+        assert "Reachable" in html and "status-op" not in html
 
     def test_a_device_the_reader_has_no_row_for_is_not_probed_yet(self, lab):
         _, html = _get(lab, "/v2/device/r9/status")
-        assert "Not probed yet" in html and "Answering" not in html
+        assert "Not probed yet" in html and "Reachable" not in html
 
 
 # --------------------------------------------------------------- Overview
@@ -738,7 +739,10 @@ class TestTheShippedScripts:
                                                     # runs (console_ztp).
                                                     "/v2/onboard/console/7?list_name=Lab&run="
                                                     "20261022T000000000000Z-" + "0" * 32
-                                                    + "&job=x"))
+                                                    + "&job=x",
+                                                    # R5 (becced07): Troubleshooting ›
+                                                    # Incidents' list (ai_step).
+                                                    "/v2/incidents?list=Lab"))
         from modules import device_page
         from modules.nsot import rotate_op
         from routes import device_v2
@@ -808,7 +812,9 @@ class TestTheShippedScripts:
         # +2 2026-11-13: read_account (board R: Credentials' Read-only account on the devices
         # redraws when its coverage reader reads again) and read_account_probe (a probe's card
         # reads its job when the probe ends).
-        assert len(keys) == 58
+        # +1 2026-11-15: ai_step (R5, becced07: an AI investigation's live step, which the
+        # Incidents list and an incident's stepper read again).
+        assert len(keys) == 59
         # Diagnose…'s card while its run runs (H16) is the one that listens for `diagnosis`;
         # it reads its job's network and kind, which the shared stand-in above does not carry.
         monkeypatch.setattr(capture_job, "get", lambda job: {

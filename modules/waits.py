@@ -159,6 +159,16 @@ WAITS = {
         "within VERIFY_BOUND_S, 2.5 times the 116 s measured from the re-add to the stream's "
         "data (MEASURED_BACK_S, 2026-11-08); ends as soon as the checks pass",
         "measured", True, ("POLL_S", "DIRECT_POLL_S", "VERIFY_BOUND_S")),
+    # 70e89a47 (the operator, 2026-11-17, round 2: one operation per device is a wait, never a
+    # refusal): an Automatic fix's run waits for another operation's hold on its device.
+    "modules/nsot/command_plan_run.py::run": _w(
+        "an Automatic fix's device to be free of another operation's hold, asked every "
+        "HOLD_POLL_S (the heal act's), Stop everywhere and Off asked at each poll, then held "
+        "for the whole run",
+        "within 840 s, under the fire's own 900 s wait for this job (saved_plans._run_as_job; "
+        "the review of round 2): past it the fire would record a run that may still send, so "
+        "the wait ends first, nothing sent, said",
+        "reasoned", True, ("HOLD_POLL_S",)),
     # C3757 (path 2): a command plan's verify, each read polled or waited by a bound its
     # template names from PLAN_BOUNDS below (G7's recovery the first; never the bounce's 600 s).
     "modules/nsot/command_plan_run.py::_verify_item": _w(

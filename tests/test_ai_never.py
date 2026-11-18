@@ -101,17 +101,97 @@ def units_of(rel: str, source: str) -> dict:
         lo, hi = node.lineno, node.end_lineno or node.lineno
         reached = {name for line, name in refs if lo <= line <= hi}
         local = set()
-        for n in ast.walk(node):
-            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name):
-                if n.func.id in bound:
-                    reached.add(bound[n.func.id])
-                elif n.func.id in names:
-                    local.add(n.func.id)
-            elif isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id in names \
-                    and n.id != node.name:
-                local.add(n.id)              # a unit handed on (a job's work, a callback)
+        for n, shadowed in _names_in_scope(node):
+            if n.id in shadowed:
+                # A parameter or a local of the function it is read in (``run`` the keyword of
+                # a method, beside a module-level ``run``): that name, never the unit.
+                continue
+            if n.id in bound and n.called:
+                reached.add(bound[n.id])
+            elif n.id in names and (n.called or n.id != node.name):
+                local.add(n.id)              # a call, or a unit handed on (a job, a callback)
         out[node.name] = (reached, local)
     return out
+
+
+class _Read(ast.Name):
+    """A name read, and whether it is called (`_names_in_scope`)."""
+
+
+def _bound_in(fn) -> set:
+    """The names *fn* binds itself, so a read of them in its body is its own (Python's rule: a
+    name assigned anywhere in a function is local to it): its parameters, every name it stores
+    or deletes, imports, and the functions and classes it defines, less those it declares
+    ``global`` or ``nonlocal``. Nested functions' own bindings are theirs, not *fn*'s."""
+    a = fn.args
+    out = {x.arg for x in a.posonlyargs + a.args + a.kwonlyargs}
+    out |= {x.arg for x in (a.vararg, a.kwarg) if x}
+    free = set()
+    todo = list(fn.body) if not isinstance(fn, ast.Lambda) else [fn.body]
+    while todo:
+        n = todo.pop()
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            out.add(n.name)
+            todo.extend(n.decorator_list)
+            continue
+        if isinstance(n, ast.Lambda):
+            continue
+        if isinstance(n, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            # A comprehension's targets are its own scope's, never the function's: only what
+            # it computes is walked, so its loop name shadows nothing outside it.
+            todo.extend(x for x in (getattr(n, "elt", None), getattr(n, "key", None),
+                                    getattr(n, "value", None)) if x is not None)
+            for g in n.generators:
+                todo.append(g.iter)
+                todo.extend(g.ifs)
+            continue
+        if isinstance(n, (ast.Global, ast.Nonlocal)):
+            free |= set(n.names)
+        elif isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
+            out.add(n.id)
+        elif isinstance(n, (ast.Import, ast.ImportFrom)):
+            out |= {(al.asname or al.name).split(".")[0] for al in n.names}
+        elif isinstance(n, ast.ExceptHandler) and n.name:
+            out.add(n.name)
+        todo.extend(ast.iter_child_nodes(n))
+    return out - free
+
+
+def _names_in_scope(node):
+    """Each name *node* reads, as ``(name, shadowed)``: *shadowed* the names the functions
+    around the read bind themselves (`_bound_in`), so a parameter or a local that shares a
+    module-level unit's name is not read as that unit. ``name.called`` says whether the read is
+    a call's function. A class body's own names do not shadow its methods' reads (Python's
+    class scope is not enclosing)."""
+    calls = {id(n.func) for n in ast.walk(node)
+             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+
+    def walk(n, shadowed):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            for d in getattr(n, "decorator_list", ()):
+                yield from walk(d, shadowed)
+            a = n.args
+            outer = a.defaults + [d for d in a.kw_defaults if d is not None]
+            # Annotations are read where the function is defined, as its defaults are.
+            outer += [x.annotation for x in a.posonlyargs + a.args + a.kwonlyargs
+                      + [v for v in (a.vararg, a.kwarg) if v] if x.annotation is not None]
+            if getattr(n, "returns", None) is not None:
+                outer.append(n.returns)
+            for d in outer:
+                yield from walk(d, shadowed)
+            inner = shadowed | _bound_in(n)
+            for child in (n.body if isinstance(n.body, list) else [n.body]):
+                yield from walk(child, inner)
+            return
+        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load):
+            read = _Read(id=n.id, ctx=n.ctx)
+            read.called = id(n) in calls
+            yield read, shadowed
+            return
+        for child in ast.iter_child_nodes(n):
+            yield from walk(child, shadowed)
+
+    yield from walk(node, frozenset())
 
 
 def graph(files: dict) -> dict:
@@ -364,6 +444,44 @@ def test_what_reaches_no_writer_is_not_found(world):
     units = graph(files)
     seen = reach(units, ["modules.ai.planted_reader.act"])
     assert findings(seen, SETTINGS + SECRETS + NOTIFY + TEMPLATES + APPROVALS) == []
+
+
+#: A module with a writer named ``store`` at module level, and an answer handler whose own
+#: parameter, local or loop name is also ``store`` (`units_of`'s shadowing).
+SHADOW = ("import modules.secrets_store as S\nfrom modules.ai import gateway\n\n"
+          "def store(v):\n    S.set_secret('k', v)\n\n"
+          "class Kept:\n    def keep(self, store=''):\n        return {'store': str(store)}\n\n"
+          "def act(a, store=None):\n    gateway.ask('x')\n    return store(a) if store else a\n\n"
+          "def act_local(a):\n    gateway.ask('x')\n    store = len\n    return store(a)\n\n"
+          "def act_kept(a):\n    gateway.ask('x')\n    return Kept().keep(a)\n")
+
+
+def test_a_parameter_or_local_named_as_a_unit_is_not_that_unit(world):
+    """The scan's false path of 2026-11-18 (`modules.ai.read_loop._read_key` reached
+    `command_plan_run.Reused` for its pure `key`, and `Reused.keep`'s keyword parameter named
+    ``run`` was read as the module's `command_plan_run.run`, so the AI's answer appeared to reach
+    the pipeline, a credential's write and a teams note): a parameter, a local or a method's
+    keyword that shares a module-level unit's name is that name, never the unit. The real
+    product's `Reused` reaches no run; the controls beside it, a unit handed on by name and one
+    called, are still found."""
+    files = dict(product_files())
+    files["modules/ai/planted_shadow.py"] = SHADOW
+    units = graph(files)
+    for name in ("act", "act_local", "act_kept"):
+        seen = reach(units, [f"modules.ai.planted_shadow.{name}"])
+        assert findings(seen, SECRETS) == [], name
+    assert "modules.nsot.command_plan_run.run" not in \
+        units["modules.nsot.command_plan_run.Reused"][1]
+    # The controls: the module-level writer handed on, and called, is found.
+    handed = SHADOW + "\ndef act_handed(a, job=None):\n    gateway.ask('x')\n    return job or store\n"
+    called = SHADOW + "\ndef act_called(a):\n    gateway.ask('x')\n    store(a)\n"
+    for source, name in ((handed, "act_handed"), (called, "act_called")):
+        files["modules/ai/planted_shadow.py"] = source
+        units = graph(files)
+        seen = reach(units, [f"modules.ai.planted_shadow.{name}"])
+        assert findings(seen, SECRETS) == [
+            f"modules.ai.planted_shadow.{name} -> modules.ai.planted_shadow.store -> "
+            "modules.secrets_store.set_secret"], name
 
 
 # ── C3682: a model's text never fills a secret field ─────────────────────────────────────────

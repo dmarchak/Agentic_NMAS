@@ -32,12 +32,14 @@ def compiled_schemas() -> list:
     """The answer schemas the AI features ask now that the compile check sends, ``[(name,
     version, model)]``: AI troubleshooting's investigation, its first, later and last passes
     (`fixit_troubleshoot.PROMPT_PLAN_READS`, `PROMPT_AGAIN`, `PROMPT_PLAN`), whose schema the
-    provider refused on 2026-11-15 ("The compiled grammar is too large")."""
+    provider refused on 2026-11-15 ("The compiled grammar is too large"), each schema once:
+    since v17 every pass is asked with one shape (231da1d6, the operator 2026-11-16), so the
+    three are one schema, compiled by one call, never three paid calls of the same."""
     from modules.ai import fixit_troubleshoot as FT
 
     # The investigation's three passes (C3797): its first, a later one and its last.
-    return [(FT.FEATURE, v, FT.SCHEMA_OF[v])
-            for v in (FT.PROMPT_PLAN_READS[1], FT.PROMPT_AGAIN[1], FT.PROMPT_PLAN[1])]
+    versions = (FT.PROMPT_PLAN_READS[1], FT.PROMPT_AGAIN[1], FT.PROMPT_PLAN[1])
+    return [(FT.FEATURE, v, FT.SCHEMA_OF[v]) for v in dict.fromkeys(versions)]
 
 
 def compile_check(*, actor: str, trigger: dict, send=None, today: str = None) -> list:

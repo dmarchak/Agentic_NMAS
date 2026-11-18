@@ -28,7 +28,7 @@ import pytest
 import modules.heal.resubscribe  # noqa: F401  (the operation the cards are about)
 from modules.heal.resubscribe import Sources as RealSources  # before `resub` replaces it
 from tests.conftest import TEST_PERSON
-from tests.test_heal_act import SETTER, FakeAct, decided
+from tests.test_heal_act import ADJ, CFG, SETTER, FakeAct, decided
 from tests.test_heal_decide import GOLDEN, ROUTE4
 from tests.test_heal_decide import lab as heal_lab  # noqa: F401
 from tests.test_heal_resubscribe import ABSENT, NET, Box, Src, seq
@@ -513,16 +513,17 @@ def heal(heal_lab, monkeypatch):  # noqa: F811
         assert capture_job.wait(job, 30), f"job {job} did not end within 30 s"
 
 
-def heal_one(c, running=GOLDEN + ROUTE4, **kw):
+def heal_one(c, running=GOLDEN + ROUTE4, *, triggers=None, **kw):
     """One heal decided by the real decision and run by the real runner as its own job, over
-    the act's fakes: ``(job, sources)``."""
+    the act's fakes: ``(job, sources)``. *triggers*: the incident's, the decision's default
+    (a configuration change) unless given."""
     from modules.heal import act, policy
     from modules.nsot import capture_job
 
     # The job reads the mode at the wall clock; the lab's AUTO was confirmed at T0.
     kw.setdefault("mode", lambda got: policy.current("Default", T0 + 5))
     src = FakeAct(running, **kw)
-    d = decided(running)
+    d = decided(running, triggers=triggers)
     got = act.run("Default", now=T0 + 5,
                   starter=lambda network, taken: act.start(network, taken, sources=src))
     assert got["started"] and not got["failed"], got
@@ -600,7 +601,10 @@ class TestAHealsOutcome:
         assert stage_states(body)["done"] == "failed", "nothing green"
 
     def test_a_partial_heal_is_amber_never_green(self, heal):
-        _job, _src, d = heal_one(heal, recheck="drifted")
+        # Partial: its symptom unreadable after the change (e400a31f: the read again off its
+        # golden is a tail flag under Fixed now, never partial).
+        _job, _src, d = heal_one(heal, triggers=[CFG, ADJ], symptom={
+            "state": "unreadable", "words": "the symptom could not be read again"})
         html = bar(heal)
         assert recorded(d) == "partial", "the card says what the record holds"
         assert 'class="ip-chip ip-warn"' in html and "In progress: 1 partial" in html

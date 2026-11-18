@@ -399,17 +399,20 @@ class TestTheProposal:
         with pytest.raises(P.Refused, match="not a proposal"):
             P.view("Default", d["id"], sources=FakeApproved(R8))
 
-    def test_the_stops_are_its_refusals(self, lab, measured):
+    def test_the_stops_are_its_refusals(self, lab, measured, monkeypatch):
+        """The stops that still apply are its refusals: a planned window a person declared
+        (guard 3's own seam, `restarts.explained_by_person`). A halt stops nothing since
+        70e89a47 (the operator, 2026-11-17, round 2: "a kind the policy no longer proposes and
+        a halt stop nothing")."""
         d = proposed()
         DS.halt("Default", guard=10, name="rate", words="six heals in an hour", operands={},
                 now=T0)
         v = P.view("Default", d["id"], now=T0 + 1, sources=FakeApproved(R8))
-        assert not v["confirmable"] and "halted by guard 10" in v["refusals"][0]
-        held = FakeApproved(R8, planned={"words": "a planned window until 10:00"})
-        DS.lift("Default", DS.halted("Default")["id"], reason="lifted for the test", **{
-            "by": PERSON, "actor_verified": "access", "person": True})
-        v = P.view("Default", d["id"], now=T0 + 1, sources=held)
-        assert "guard 3, planned work" in v["refusals"][0]
+        assert not any("halted" in r for r in v["refusals"]), v["refusals"]
+        monkeypatch.setattr("modules.restarts.explained_by_person", lambda dev, n, now, **kw: {
+            "end": T0 + 600, "words": "a planned window until 10:00"})
+        v = P.view("Default", d["id"], now=T0 + 1, sources=FakeApproved(R8))
+        assert not v["confirmable"] and "guard 3, planned work" in v["refusals"][0]
 
 
 # ── Approve ─────────────────────────────────────────────────────────────────────────────────
@@ -574,7 +577,9 @@ class TestTheApprovedAct:
         assert got["outcome"] == "refused" and got["sent"] is False
         assert "not the one proposed" in got["words"] and "Nothing was sent" in got["words"]
         (inc,) = I.read("Default")["incidents"]
-        assert inc["state"] == "closed", "a later read starts over"
+        # Only healed closes an incident (C3870, 7d54cf24): refused, it stands open on the
+        # refusal, R1's to see and the retry's to take.
+        assert inc["state"] == "standing", "only healed closes an incident (C3870)"
 
     def test_a_proposal_with_no_reset_sends_its_merge_alone(self, lab):
         key = " ip ospf message-digest-key 1 md5 S3cretKey\n"
@@ -702,14 +707,14 @@ class TestWithdrawn:
                                                                     _dep(R8_AGAIN))
         assert d["departure"] in w["words"] and _dep(R8_AGAIN) in w["words"], \
             "the words name both departures"
-        assert _incident()["state"] == "watching", "sent back to the grace period"
+        assert _incident()["state"] == "watching", "sent back to be read again"
         assert DS.proposals("Default") == []
-        # The normal path makes it again: two reads the grace apart, then the decision.
+        # The normal path makes it again: one read (no grace since 70e89a47, round 2: "a
+        # drifted read settles the incident at once, on its first read"), then the decision.
         check = _Check(R8_AGAIN)
-        _pass(T0 + 200, check)
-        out = _pass(T0 + 330, check)
+        out = _pass(T0 + 200, check)
         assert [r["incident"] for r in out["ready"]] == [d["incident"]], out
-        made = DC.run("Default", now=T0 + 331, sources=Fake(R8_AGAIN, intended=GOLDEN))
+        made = DC.run("Default", now=T0 + 201, sources=Fake(R8_AGAIN, intended=GOLDEN))
         assert [x["outcome"] for x in made["decided"]] == ["propose"], made
         (again,) = DS.proposals("Default")
         assert again["id"] != d["id"] and again["departure"] == _dep(R8_AGAIN)
@@ -783,7 +788,10 @@ class TestInterrupted:
         (found,) = INT.find("Default")["found"]
         assert found["id"] == d["id"]
         (r,) = INT.reap("Default", now=T0 + 9)["reaped"]
-        assert r["halted"] and applied(d["id"])["outcome"] == "interrupted"
+        # Recorded interrupted; it halts nothing since 70e89a47 (round 2: the interrupted halt
+        # write removed).
+        assert not r["halted"] and applied(d["id"])["outcome"] == "interrupted"
+        assert DS.halted("Default") == {}
 
 
 # ── The routes ──────────────────────────────────────────────────────────────────────────────

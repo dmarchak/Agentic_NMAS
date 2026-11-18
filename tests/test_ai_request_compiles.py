@@ -59,8 +59,8 @@ def sent_schema(model) -> dict:
 
 def test_each_schema_troubleshooting_sends_is_within_the_provider_s_limits():
     asked = connection.compiled_schemas()
-    # The investigation's three passes since C3797 (its first, a later one and its last).
-    assert len(asked) == 3, asked
+    # The investigation's passes, one shape since v17 (231da1d6): one schema, asked once.
+    assert len(asked) == 1, asked
     for name, version, model in asked:
         s = sent_schema(model)
         c = schemas.complexity(s)
@@ -72,11 +72,10 @@ def test_each_schema_troubleshooting_sends_is_within_the_provider_s_limits():
 
 
 def test_the_schemas_asked_are_the_flattened_ones():
-    # The investigation's passes since C3797: v11, v12 and v13, each flattened as v9 and v10.
-    assert (FT.PROMPT_PLAN_READS, FT.PROMPT_AGAIN, FT.PROMPT_PLAN) == (
-        (FT.FEATURE, 11), (FT.FEATURE, 12), (FT.FEATURE, 13))
-    assert [m for _n, _v, m in connection.compiled_schemas()] == [
-        FT.TroubleshootInvestigate, FT.TroubleshootInvestigateAgain, FT.TroubleshootInvestigated]
+    # The investigation's passes: one shape since v17 (231da1d6), the prompt v18 since C3918
+    # (the operator, 2026-11-17), its one schema flattened as v9 and v10's were.
+    assert FT.PROMPT_PLAN_READS == FT.PROMPT_AGAIN == FT.PROMPT_PLAN == (FT.FEATURE, 18)
+    assert [m for _n, _v, m in connection.compiled_schemas()] == [FT.SCHEMA_OF[18]]
     assert all(issubclass(m, schemas.FlatWire) for _n, _v, m in connection.compiled_schemas())
     for _n, _v, model in connection.compiled_schemas():
         assert "fix" not in sent_schema(model)["properties"], "the plan is the fix"

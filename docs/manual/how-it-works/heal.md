@@ -169,13 +169,19 @@ step is the deploy pipeline's ([Deploy](deploy)):
    arrives; if none has arrived by then it ends **symptom remains** (amber), saying how long it
    waited and the newest heartbeat it read. Any other applet, and any other missing line, keeps
    its own symptom.
-9. `saved`: once verified, the running configuration is saved and the device released.
-10. `golden`: the device is captured and read again against its new golden.
-11. `record`: the outcome is recorded and the incident closed.
+9. `record`: the outcome is recorded. Fixed rests on verify and closes the incident; any other
+   outcome leaves it open, saying what happened.
+10. `saved`: after Fixed, the running configuration is saved to startup.
+11. `commit`: after Fixed, the whole configuration is read and the golden committed from it.
+12. `golden`: after Fixed, the device is read again, its own read, against its new golden.
 
-A failed verify rolls back what landed, and **halts** the network's healing until a person
-lifts it ([Lift the halt](heal-proposal#halt)). A configuration healed whose symptom remains is
-amber, "symptom remains", never green.
+The last three are a tail under Fixed: any of them failing is flagged there, and the incident
+stays Fixed on its verify.
+
+A failed verify rolls back what landed. Since 2026-11-17 it halts nothing (the operator: every
+hold off the heal path): a failed heal is a failure the AI troubleshoots where that is on, and
+the next problem is still healed. A configuration healed whose symptom remains is amber,
+"symptom remains", never green.
 
 **Who a heal is by.** A heal is Mercury's own: the chip, the held-device banner and the card say
 **by Mercury's self-healing · policy set by <name>** (an approved proposal's, **approved by

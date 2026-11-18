@@ -18,12 +18,13 @@ Through the real app, the REAL detection job's decision (`decide.run`, which kee
 the step log, not in the decision's own record) and the real act over tests/test_heal_act.py's
 fakes, and in a real browser for the row that wraps. No device, no network.
 """
+import contextlib
 import re
 
 import pytest
 
 from modules.nsot.device_ops import holder as REAL_HOLDER  # before the lab replaces it
-from tests.test_heal_act import SETTER, FakeAct
+from tests.test_heal_act import SETTER, FakeAct, acts_with
 from tests.test_heal_decide import GOLDEN, ROUTE4, Fake, settle
 from tests.test_heal_decide import lab as heal_lab  # noqa: F401
 from tests.test_heal_policy import T0, auto
@@ -39,21 +40,23 @@ MERCURY = "Mercury&#39;s self-healing · policy set by " + SETTER.split("@")[0]
 
 def detected_and_run(c, running=GOLDEN + ROUTE4, sources=None):
     """One heal as the lab runs it: an incident settled and left READY, decided by the real
-    detection job's decision (`decide.run`), then started by the real runner as its own job.
+    detection job's decision (`decide.run`), which starts the heal at once as its own job
+    (C3865, `act.start_decided`; `acts_with`: the real `act.start` over the fakes, not waited
+    for, so a gated source holds it where a test says), and a later runner pass finds it taken.
     ``(job, decision, src)``."""
     from modules.heal import act, decide, decisions, policy
 
     auto("Default", now=T0 - 60, kinds=("added_line",))
     settle(running, claim=False)
-    got = decide.run("Default", now=T0, sources=Fake(running))
+    src = sources or FakeAct(running, mode=lambda _got: policy.current("Default", T0 + 5))
+    with acts_with(src, wait_s=None) as jobs:
+        got = decide.run("Default", now=T0, sources=Fake(running))
     assert [d["outcome"] for d in got["decided"]] == ["heal"], got
     d = decisions.find("Default", got["decided"][0]["decision"])
     assert not d.get("steps"), "the premise: the decision's own record keeps no steps"
-    src = sources or FakeAct(running, mode=lambda _got: policy.current("Default", T0 + 5))
-    ran = act.run("Default", now=T0 + 5,
-                  starter=lambda network, taken: act.start(network, taken, sources=src))
-    assert ran["started"] and not ran["failed"], ran
-    job = ran["started"][0]["job"]
+    (job,) = jobs
+    ran = act.run("Default", now=T0 + 5)
+    assert not ran["started"] and not ran["failed"], ran
     c.state["jobs"].append(job)
     return job, d, src
 
@@ -120,13 +123,13 @@ class TestMercurysOwn:
         from modules.nsot import device_ops
         try:
             src.reached("apply")
-            # The device held as the heal's deploy holds it (the act's fakes send nothing, so
-            # the hold the pipeline takes is taken here, as the policy's setter).
-            # The lab reads no hold while it decides (guard 7); the page reads them for real.
+            # The device held by the act itself from its read to its tail, as the policy's
+            # setter (e400a31f, item 4: `act.hold_device`; before it, the pipeline's hold was
+            # taken here by hand). The lab reads no hold while it decides (guard 7); the page
+            # reads them for real.
             monkeypatch.setattr(device_ops, "holder", REAL_HOLDER)
-            with device_ops.hold("Default", "edge-b", "deploy", SETTER,
-                                 detail="heal to intent"):
-                device_ops.note("deploy")
+            assert device_ops.holder("Default", "edge-b"), "the act holds edge-b at its apply"
+            with contextlib.nullcontext():
                 chip = bar(heal)
                 # What the screens are drawn from: the job is the policy's, run as its setter,
                 # and the hold the server refuses by is that setter's.

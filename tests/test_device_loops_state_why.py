@@ -55,11 +55,21 @@ SCANNED = {
         "one_device", "the platform pack's reads on ONE device's session; the reader reads the "
                       "devices concurrently by `fanout.read_each` (C1772)"),
     ("modules/pipeline.py", "_stage_pre_snapshot"): ("sequential", _ONE_RUN),
-    ("modules/pipeline.py", "_stage_post_snapshot"): ("sequential", _ONE_RUN),
     ("modules/pipeline.py", "_read_vlans"): (
         "one_device", "the VLANs ONE device's program configures, each a `show vlan id` on "
                       "that device's post-change session (C1646)"),
-    ("modules/pipeline.py", "_capture_failure_state"): ("sequential", _ONE_RUN),
+    # The section reads the deploy, a command plan's net-zero check and the rollback's
+    # read-back share (e400a31f, 7b300f39, 8a4090f3): one interface after another on ONE
+    # device's session.
+    ("modules/pipeline.py", "read_sections"): (
+        "one_device", "the interfaces of ONE device a program touches, each a `show "
+                      "running-config interface` on that device's pooled session (e400a31f)"),
+    ("modules/pipeline.py", "_read_like_before.read"): (
+        "one_device", "the rollback's read-back of ONE device's touched interfaces, each on "
+                      "its one session through run_device_command (8a4090f3)"),
+    ("modules/pipeline.py", "_capture_scoped"): (
+        "one_device", "a scoped capture of ONE device: each interface the run touched, read on "
+                      "its one session (7b300f39, R3)"),
     ("modules/pipeline.py", "_stage_rollback"): ("sequential", _ONE_RUN),
     ("modules/nsot/credential_rotation.py", "push_rotation"): (
         "one_device", "the rotation's commands on the one session it verifies on"),

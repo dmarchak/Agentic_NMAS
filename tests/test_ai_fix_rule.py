@@ -221,9 +221,12 @@ class TestTheDoor:
     CASES = {
         # ── an operation not in the catalog
         "another operation": (answer(operation="reload-device"), "not_in_catalog",
+                              # The collector close and the lost stream's two later rungs
+                              # (17215a95, the operator 2026-11-16) are steps a proposal names.
                               ["an operation of the catalog (errdisable-recover, "
-                               "telemetry-collector-resubscribe, telemetry-readd and "
-                               "telemetry-resubscribe)",
+                               "telemetry-collector-close, telemetry-collector-resubscribe, "
+                               "telemetry-readd, telemetry-resubscribe, telemetry-stack-restart "
+                               "and telemetry-subscription-recreate)",
                                "this one names 'reload-device'"]),
         "the re-add, given the re-subscribe's parameters": (
             answer(operation="telemetry-readd"), "unknown_parameter",
@@ -441,10 +444,15 @@ class TestTheCatalog:
         # Re-subscribe, its one-step Re-add the receiver and Re-subscribe with the collector
         # step (C3078), by their own modules' keys. Recover an err-disabled interface (G7,
         # C3712) is a built-in command plan a proposal names beside them (C3757, path 2),
-        # never an operation of the catalog: its run is tests/test_command_plan.py's.
-        assert set(catalog.CATALOG) == {R.KEY, R.READD_KEY, R.COLLECTOR_KEY} == {
-            KEY, "telemetry-readd", "telemetry-collector-resubscribe"}
-        assert set(catalog.COMMAND_PLANS) == {E.KEY} == {"errdisable-recover"}
+        # never an operation of the catalog: its run is tests/test_command_plan.py's. The
+        # collector close alone is a plan's step (17215a95, the operator 2026-11-16: "a second
+        # caller for the collector close: a plan step with the same guards"), and the lost
+        # stream's two later rungs are built-in command plans beside the recovery.
+        assert set(catalog.CATALOG) == {R.KEY, R.READD_KEY, R.COLLECTOR_KEY, R.CLOSE_KEY} == {
+            KEY, "telemetry-readd", "telemetry-collector-resubscribe",
+            "telemetry-collector-close"}
+        assert set(catalog.COMMAND_PLANS) == {E.KEY, "telemetry-subscription-recreate",
+                                              "telemetry-stack-restart"}
         endpoints = {r.endpoint for r in app.url_map.iter_rules()}
         for op in catalog.COMMAND_PLANS.values():
             assert {op.preview_endpoint, op.confirm_endpoint} <= endpoints
@@ -535,6 +543,10 @@ class ResubscribeDrive:
         """A drive whose verify fails: the stream's series never comes back."""
         return type(self)(series=seq([ABSENT]))
 
+    def ran(self, program) -> bool:
+        """It ran: the device was sent its program, whole (`CloseDrive`'s sends nothing)."""
+        return self.sent() == program and bool(program)
+
 
 class ReaddDrive(ResubscribeDrive):
     """Re-add the receiver's run on the same lab, one subscription: its one send is its whole
@@ -555,13 +567,14 @@ class CollectorDrive(ResubscribeDrive):
     own data directory), and its confirm is bound to the selection's hash, which holds the one
     session the dry run named."""
 
-    def __init__(self, again=False, **sources):
+    def __init__(self, again=False, closes=True, **sources):
         import tempfile
         from pathlib import Path
 
         from tests.test_heal_resubscribe import CloseSrc, helper_world
+        # *closes* False: the real helper's `ss -K` leaves the session (`helper_world`).
         self.helper, close = helper_world(Path(tempfile.mkdtemp(
-            dir=os.environ.get("NMAS_DATA_DIR") or None)))
+            dir=os.environ.get("NMAS_DATA_DIR") or None)), closes=closes)
         if again:
             # A stream that did not come back: the device's session is stale again by the next
             # run (the helper's `ss` lists the captured session once more after each close).
@@ -588,10 +601,36 @@ class CollectorDrive(ResubscribeDrive):
         return type(self)(again=True, series=seq([ABSENT]), after=IDLE)
 
 
+class CloseDrive(CollectorDrive):
+    """The collector close alone, a plan's step (17215a95, the operator 2026-11-16: "a plan
+    step with the same guards (dry-run close at preview, real close only at apply under the
+    person's hash ...)"): the collector step's run with ``close_only``, on the same lab and the
+    same REAL helper. It sends nothing to the device (its program is empty): what it does is
+    close the one session the dry run named."""
+
+    def plan(self):
+        from modules.heal import resubscribe as R
+        return R.plan(NET, "r2", ["101"], collector=True, close_only=True, sources=self.src)
+
+    def run(self, fn, **over):
+        return super().run(fn, **dict({"close_only": True}, **over))
+
+    def failing(self):
+        """A drive whose run fails: the helper's close leaves the session (``not_closed``, a
+        failed run), the close alone being all the step does."""
+        return type(self)(closes=False)
+
+    def ran(self, program) -> bool:
+        """It ran: nothing sent to the device, and exactly one real close of the session."""
+        return self.sent() == [] and program == [] and self.src.closed == 1 and any(
+            not a["dry_run"] for a in self.src.asked)
+
+
 #: How each catalog entry's run is driven; an entry with no drive fails (`TestToARun`). A
 #: built-in command plan's run (G7's recovery) is driven in tests/test_command_plan.py.
 DRIVES = {KEY: ResubscribeDrive, "telemetry-readd": ReaddDrive,
-          "telemetry-collector-resubscribe": CollectorDrive}
+          "telemetry-collector-resubscribe": CollectorDrive,
+          "telemetry-collector-close": CloseDrive}
 
 
 def _not_a_person() -> list:
@@ -663,7 +702,7 @@ class TestToARun:
             program = d.plan()["program"]
             rec = d.run(run, actor_verified=how)
             assert rec["outcome"] not in ("refused", "running"), rec["why"]
-            assert d.sent() == program and program
+            assert d.ran(program), (d.sent(), program)
             kept = d.stored(rec)
             assert len(d.records()) == n
             assert (kept["actor"], kept["actor_verified"], kept["key"]) == (ACTOR, how, key)
@@ -696,13 +735,34 @@ class TestToARun:
                                 if r.endpoint == op.preview_endpoint))
         assert methods and (methods <= G.SAFE_METHODS
                             or G.GATES[op.preview_endpoint].kind == G.NOT_DEVICE)
-        # And the confirm's view reaches the entry's run: by its job starter or itself.
+        # And the confirm's view reaches the entry's run: by its job starter or itself. The
+        # view's own module's helpers it calls are its body too (Approve's press is timed
+        # around `_approve`, C3912).
         view = inspect.unwrap(app.view_functions[op.confirm_endpoint])
         tree = ast.parse(inspect.getsource(inspect.getmodule(view)))
-        node = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
-                    and n.name == view.__name__)
-        reached = {name for _line, name in references(ast.unparse(node))}
-        assert reached & ({op.runs} | starters(op.runs)), (op.confirm_endpoint, reached)
+        defs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+        todo, seen_defs, reached = [view.__name__], set(), set()
+        while todo:
+            name = todo.pop()
+            if name in seen_defs or name not in defs:
+                continue
+            seen_defs.add(name)
+            reached |= {ref for _line, ref in references(ast.unparse(defs[name]))}
+            todo += [c.func.id for c in ast.walk(defs[name]) if isinstance(c, ast.Call)
+                     and isinstance(c.func, ast.Name)]
+        if op.confirm_endpoint == "fixit_v2.approve":
+            # A step of its incident's plan (17215a95, C3078 amended: "only behind a previewed,
+            # hash-confirmed operation or plan step"): Approve starts the plan engine, whose
+            # catalog step's apply is the operation's own run.
+            from modules import plan_engine as PE
+            assert "modules.plan_engine.start" in reached, (op.confirm_endpoint, reached)
+            engine = ast.parse(inspect.getsource(PE))
+            apply_ = next(n for n in engine.body if isinstance(n, ast.FunctionDef)
+                          and n.name == "_catalog_apply")
+            pe_reached = {ref for _line, ref in references(ast.unparse(apply_))}
+            assert op.runs in pe_reached, pe_reached
+        else:
+            assert reached & ({op.runs} | starters(op.runs)), (op.confirm_endpoint, reached)
 
 
 # ── C: nothing else reaches a run ───────────────────────────────────────────────────────────
