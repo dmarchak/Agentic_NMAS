@@ -16,7 +16,7 @@
   {%- endif %}
   </ul>
   {%- for r in P.reads %}
-  <details class="inc-proof-read" data-read="{{ r.read }}"><summary><span class="mono">{{ r.command }}</span> <span class="muted">+{{ r.offset_s }} s, {{ clock(r.at) }}</span>{% if r.said %}: {{ r.said }}{% endif %}</summary>
+  <details class="inc-proof-read" data-read="{{ r.read }}" data-keep="proof-read-{{ r.read }}"><summary><span class="mono">{{ r.command }}</span> <span class="muted">+{{ r.offset_s }} s, {{ clock(r.at) }}</span>{% if r.said %}: {{ r.said }}{% endif %}</summary>
     {%- if r.answer %}<pre class="mono small">{{ r.answer }}</pre>{% else %}<p class="small muted">Its answer is not kept here.</p>{% endif %}
     {%- if r.cut %}<p class="small muted">Cut here: the whole masked answer is in the read's own record.</p>{% endif %}
   </details>

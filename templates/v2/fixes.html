@@ -18,7 +18,7 @@
 <div id="fix-new" hidden></div>
 <div class="tab-body" id="fixes-live" hx-disinherit="*" hx-get="{{ url_for('fixes_v2.page', list=p.network, q=p.q or none, mode=p.mode or none, kind=p.kind or none) }}" hx-select="#fixes-live" hx-trigger="nmas:saved_plans from:body, nmas:privileged from:body" hx-swap="outerHTML">
 <p class="inc-list-sum" data-total="{{ p.total }}"><strong>{{ p.total }} fix{{ 'es' if p.total != 1 }}</strong> · {{ p.saved }} saved{% if p.saved_counts %} ({% for w, n in p.saved_counts | dictsort %}{{ n }} {{ w }}{{ ', ' if not loop.last }}{% endfor %}){% endif %} · {{ p.built }} built-in{% if p.deleted %} · <a href="{{ url_for('fixes_v2.page', list=p.network, kind='deleted') }}">{{ p.deleted }} deleted</a>{% endif %}</p>
-<details class="inc-search"{% if p.filtered %} open{% endif %}>
+<details class="inc-search" data-keep="fixes-search"{% if p.filtered %} open{% endif %}>
 <summary>Search or filter…</summary>
 <form class="inc-list-filter" role="search" method="get" action="{{ url_for('fixes_v2.page') }}">
   <input type="hidden" name="list" value="{{ p.network }}">
