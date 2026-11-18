@@ -13,7 +13,7 @@ operator, 2026-11-16), every open incident an Automatic saved script matches, ea
 plan previewed as `saved_plans.fire` previews it (asking no device), handed in the same way
 (`control_strip.batch_script_items`); an incident a listed script covers is a fix, so it is
 not the AI's. It leads "8 devices have faults. Mercury can fix 7 (5 restores, 2 saved
-scripts); the AI starts on s5." with its real counts (`lead_words`), and its hash binds every
+scripts); the AI starts on sw1." with its real counts (`lead_words`), and its hash binds every
 device, incident, decision and program hash, every script's key, incident and plan hash, and
 every incident the AI would start on.
 
@@ -127,7 +127,7 @@ def _names(devices: list) -> str:
 
 def lead_words(n: int, m: int, restores: int = None, scripts: int = 0, ai=()) -> str:
     """The batch card's lead (C3819): "8 devices have faults. Mercury can fix 7 (5 restores,
-    2 saved scripts); the AI starts on s5." *m* the fixes (*restores* guard 6's departures,
+    2 saved scripts); the AI starts on sw1." *m* the fixes (*restores* guard 6's departures,
     *scripts* the incidents an Automatic saved script matches), *ai* the devices the AI
     starts on. *restores* None: the lead as before, counts alone."""
     head = (f"{n} device{'' if n == 1 else 's'} {'has' if n == 1 else 'have'} faults. "

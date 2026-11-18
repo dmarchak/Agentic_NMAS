@@ -11,7 +11,7 @@
 # rolled back; the rollback puts back every removed subscription from the pre-change snapshot
 # (pipeline `transient_removal_units`, `removal.restore_program`), then compares the whole
 # configuration again and says NOT RESTORED with each line still differing. Its shapes are
-# NOT measured (scripts/nmas-telemetry-reset-probe measures them on r2): until each is proposed
+# NOT measured (scripts/nmas-telemetry-reset-probe measures them on a router): until each is proposed
 # (held PROVISIONAL, modules/nsot/command_policy.py) the plan's preview refuses it; once
 # proposed, a person's Approve of the plan, its lines shown, sends them (32ad9360). Whether the
 # device takes the removals and re-adds in one batch, and how long the streams take to return,
