@@ -45,7 +45,7 @@ def page():
                                      for h in (r.get("card") or {}).get("held") or []])
     return _strict(render_template("v2/incidents.html", p=p, who=_who(),
                                    active_nav="incidents",
-                                   strip=control_strip.view(ref.name), batch_rows=batch))
+                                   strip=control_strip.view(ref.name)))
 
 
 def _batch_rows(network: str) -> list:
