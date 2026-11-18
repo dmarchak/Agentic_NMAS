@@ -108,4 +108,7 @@ def test_the_status_line_is_the_reason_while_a_person_is_needed(web, monkeypatch
     assert "why_person" not in fixit
     assert seen and status == seen[-1]["why_person"], (status, seen and seen[-1]["why_person"])
     assert status.startswith("Mercury has no fix it runs by itself for a lost stream"), status
-    assert status.endswith("The AI can investigate"), status
+    # And, its network's automatic troubleshooting off, that the switch is off (ruling 12, the
+    # operator, 2026-11-18: "restore 'the switch is off' on the lost stream's status line").
+    assert status.endswith(
+        "The AI can investigate, but automatic troubleshooting is off for this network"), status

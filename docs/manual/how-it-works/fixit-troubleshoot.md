@@ -107,7 +107,10 @@ line per subscription with its state in words (the operation's outcome, or what 
 said), each line opening to its three checks with their addresses, ports and connection
 numbers, and any stale session flagged. No page load, no refresh and no announcement starts
 another attempt. What comes next is the bottom line's one action: the AI's investigation
-([Starting by itself](#automatic), or **Start AI troubleshooting**), or **Hand over…**.
+([Starting by itself](#automatic), or **Start AI troubleshooting**), or **Hand over…**. On a
+lost stream, while the network's automatic troubleshooting is off, the status line also says
+so ("The AI can investigate, but automatic troubleshooting is off for this network"), the
+words linked to the switch.
 
 ## The steps, from a plan to its run {#steps}
 

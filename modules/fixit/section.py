@@ -1080,7 +1080,7 @@ def _why_person(nxt: dict, offer: dict, found: dict, answer: dict = None) -> str
             log.error("fixit: %s's retries could not be said: %s", inc.get("id"), exc)
             said = ""
         if said:
-            return said
+            return said + _switch_off((found or {}).get("network") or "", inc)
     if kind == "start":
         try:
             prob = P.classify(found)
@@ -1094,6 +1094,24 @@ def _why_person(nxt: dict, offer: dict, found: dict, answer: dict = None) -> str
     # Standing on a decision with nothing above to say: the decision's own reason, never a
     # reasonless "waits for a person" (the operator, 2026-11-16).
     return _standing_words(found) if standing else ""
+
+
+def _switch_off(network: str, inc: dict) -> str:
+    """What a lost stream's status line adds while the network's automatic troubleshooting is
+    off (ruling 12, the operator, 2026-11-18: "restore 'the switch is off' on the lost stream's
+    status line"): ", but automatic troubleshooting is off for this network" (the words R1's
+    refusal says, `fixit.auto.eligible`), linked to the switch where it is drawn
+    (`switch_linked`); "" for any other incident, with the switch on, or unreadable."""
+    from modules.fixit import auto as A
+
+    try:
+        if not A.no_code_fix(inc or {}) or A.switch(network)["on"]:
+            return ""
+    except Exception as exc:                          # noqa: BLE001 (said without it)
+        log.error("fixit: %s's automatic troubleshooting switch could not be read: %s",
+                  (inc or {}).get("id"), exc)
+        return ""
+    return ", but automatic troubleshooting is off for this network"
 
 
 def _standing_words(found: dict) -> str:
