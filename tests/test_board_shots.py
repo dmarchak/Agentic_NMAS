@@ -4045,7 +4045,7 @@ def test_heal_proposal(tmp_path, monkeypatch):
     make_networks(tmp_path, monkeypatch)
     mark("Default")
     confirm("Default", heal_mode="dry_run")
-    for target, value in (("modules.restarts.explained_by", lambda d, n, now: None),
+    for target, value in (("modules.restarts.explained_by", lambda d, n, now, **kw: None),
                           ("modules.nsot.device_ops.holder", lambda n, d: None),
                           ("modules.change_windows.holding", lambda now=None, given=None: None),
                           ("modules.heal.detect.wake", lambda: None),
@@ -4174,7 +4174,7 @@ def test_heal_mark(tmp_path, monkeypatch):
     make_networks(tmp_path, monkeypatch)
     mark("Default")
     confirm("Default", heal_mode="dry_run")
-    for target, value in (("modules.restarts.explained_by", lambda d, n, now: None),
+    for target, value in (("modules.restarts.explained_by", lambda d, n, now, **kw: None),
                           ("modules.nsot.device_ops.holder", lambda n, d: None),
                           ("modules.change_windows.holding", lambda now=None, given=None: None),
                           ("modules.heal.detect.wake", lambda: None),
@@ -4223,7 +4223,7 @@ def test_incident(tmp_path, monkeypatch):
     from tests.test_heal_policy import confirm, mark
     from tests.test_sdn_connections import make_networks
 
-    for target, value in (("modules.restarts.explained_by", lambda d, n, now: None),
+    for target, value in (("modules.restarts.explained_by", lambda d, n, now, **kw: None),
                           ("modules.nsot.device_ops.holder", lambda n, d: None),
                           ("modules.change_windows.holding", lambda now=None, given=None: None),
                           ("modules.heal.detect.wake", lambda: None),
