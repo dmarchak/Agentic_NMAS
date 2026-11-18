@@ -44,33 +44,34 @@ class TestTheTierOfAKind:
 
 
 class TestGuard14ARolledBackHeal:
+    """Guard 14 is retired (70e89a47, the operator, 2026-11-17, round 2: "guard 14 and every
+    halt write" removed; a rolled-back heal is a failure R1 sees, and verify and rollback are
+    the safety): `g14_rolled_back` halts nothing, whatever rollbacks it is shown. Each test
+    keeps the case it was written for and holds that it no longer halts."""
+
     def test_a_rollback_of_the_device_after_the_last_halt_halts_naming_the_newest(self):
-        """Three rollbacks of r1 after the halt: the newest is the one named, in the words and
-        in what is recorded. The whole answer, so each of its parts is held."""
+        """Three rollbacks of r1 after the last halt, the case that halted naming the newest:
+        it halts nothing now."""
         rows = [decision("hd-1", R1, at=AFTER), decision("hd-2", R1, at=LATER),
                 decision("hd-3", R1, at=LATEST)]
-        assert G.g14_rolled_back(rows, R1, HALT) == {
-            "guard": 14, "name": "a rolled-back heal", "outcome": "halted",
-            "words": ("the heal of r1 (hd-3) was rolled back, and the policy halts until a "
-                      "person lifts it"),
-            "operands": {"decision": "hd-3"}, "until": None}
+        assert G.g14_rolled_back(rows, R1, HALT) is None
 
     def test_one_before_the_halt_or_at_its_instant_does_not(self):
-        """The halt that rollback wrote is in force already (guard 2's): only one AFTER it."""
-        assert G.g14_rolled_back([decision("hd-1", R1, at=BEFORE)], R1, HALT) is None
-        assert G.g14_rolled_back([decision("hd-1", R1, at=AT)], R1, HALT) is None
-        assert G.g14_rolled_back([decision("hd-1", R1, at=AFTER)], R1, HALT)["guard"] == 14
+        """Before, at and after the last halt's instant alike: none halts."""
+        for at in (BEFORE, AT, AFTER):
+            assert G.g14_rolled_back([decision("hd-1", R1, at=at)], R1, HALT) is None
 
     @pytest.mark.parametrize("never", [0, 0.0, None])
     def test_with_no_halt_ever_recorded_any_dated_rollback_halts(self, never):
-        """No halt is epoch 0, so a rollback dated one second into the epoch is after it."""
-        got = G.g14_rolled_back([decision("hd-1", R1, at="1970-01-01T00:00:01Z")], R1, never)
-        assert got is not None and got["operands"] == {"decision": "hd-1"}
+        """No halt ever recorded, a rollback dated after the epoch: it halts nothing now."""
+        assert G.g14_rolled_back([decision("hd-1", R1, at="1970-01-01T00:00:01Z")], R1,
+                                 never) is None
 
     def test_another_device_s_rollback_does_not(self):
+        """Neither another device's rollback nor the device's own halts."""
         rows = [decision("hd-1", R2, at=AFTER)]
         assert G.g14_rolled_back(rows, R1, HALT) is None
-        assert G.g14_rolled_back(rows, R2, HALT)["operands"] == {"decision": "hd-1"}
+        assert G.g14_rolled_back(rows, R2, HALT) is None
 
     @pytest.mark.parametrize("outcome", ["healed", "dampened", "ROLLED_BACK", "", None])
     def test_an_outcome_that_is_not_a_rollback_does_not(self, outcome):
@@ -92,47 +93,43 @@ def unit(op="remove", chain=(), lines=("line",), stanza=False):
 
 
 class TestGuard12TheProgramsSize:
+    """Guard 12 is retired (70e89a47, the operator, 2026-11-17, round 2: "a program's size
+    refuses nothing; verify and rollback are the safety"): `g12_size` refuses nothing, however
+    many removals or sections, at any limit. Each test keeps the program it was written for and
+    holds that it is no longer refused."""
+
     def test_more_removals_than_allowed_is_refused_recording_both_numbers(self):
+        """Three removal units against a limit of 2, the case that was refused: not now."""
         units = [unit("remove", ["interface GigabitEthernet0/1"]),
                  unit("remove", ["interface GigabitEthernet0/2"]),
                  unit("remove", ["router ospf 1"]), unit("add", ["router ospf 1"])]
-        assert G.g12_size(units, 2, 50) == {
-            "guard": 12, "name": "the program's size", "outcome": "cant_fix",
-            "words": ("the heal would remove 3 units (a unit is one feature on one section, "
-                      "N13), more than 2"),
-            "operands": {"removal_units": 3, "heal_max_removed_units": 2}, "until": None}
-        assert G.g12_size(units, 3, 50) is None
+        for most_removed in (0, 2, 3):
+            assert G.g12_size(units, most_removed, 50) is None
 
     def test_units_under_a_section_are_counted_by_that_section(self):
-        """Mutant 9: a unit with a chain belongs to its chain's first line."""
+        """Two sections against a limit of 1, the case that was refused: not now."""
         units = [unit("add", ["interface GigabitEthernet0/1"]),
                  unit("add", ["interface GigabitEthernet0/2"]),
                  unit("add", ["interface GigabitEthernet0/2", "service-policy"])]
-        # The whole answer (run 73's mutants 48 and 55 to 57: which guard, and its outcome).
-        assert G.g12_size(units, 50, 1) == {
-            "guard": 12, "name": "the program's size", "outcome": "cant_fix",
-            "words": "the heal spans 2 sections, more than 1: never a partial heal",
-            "operands": {"sections": 2, "heal_max_units": 1}, "until": None}
-        assert G.g12_size(units, 50, 2) is None
+        for most_sections in (0, 1, 2):
+            assert G.g12_size(units, 50, most_sections) is None
 
     def test_a_stanza_with_no_chain_is_its_own_first_line(self):
-        """Mutants 16 and 18 to 23: two stanzas at the top level are two sections, each named
-        by its FIRST line (their second lines are the same)."""
+        """Two top-level stanzas against a limit of 1: not refused now."""
         units = [unit("add", lines=["router ospf 1", " network 192.0.2.0 0.0.0.255 area 0"],
                       stanza=True),
                  unit("add", lines=["router ospf 2", " network 192.0.2.0 0.0.0.255 area 0"],
                       stanza=True)]
-        assert G.g12_size(units, 50, 1)["operands"] == {"sections": 2, "heal_max_units": 1}
+        assert G.g12_size(units, 50, 1) is None
         assert G.g12_size(units, 50, 2) is None
 
     def test_global_lines_with_no_chain_are_one_section_together(self):
-        """Mutant 17: two different global lines are the global configuration, once."""
+        """Global lines, alone or beside a stanza, against a limit of 1: not refused now."""
         units = [unit("add", lines=["ip routing"]), unit("add", lines=["ipv6 unicast-routing"])]
         assert G.g12_size(units, 50, 1) is None
-        # And beside a stanza they are two: the global configuration, and the stanza.
         both = units + [unit("add", lines=["router ospf 1", " router-id 192.0.2.1"],
                              stanza=True)]
-        assert G.g12_size(both, 50, 1)["operands"] == {"sections": 2, "heal_max_units": 1}
+        assert G.g12_size(both, 50, 1) is None
 
 
 class TestTheAdjacencyRevertsQuestion:

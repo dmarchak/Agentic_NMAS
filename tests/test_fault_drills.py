@@ -145,18 +145,23 @@ class TestTheOperatorsTest:
         assert tagged == [True] * 3 and DS.halted(NET) == {}
 
     def test_the_same_repeat_undeclared_is_stopped_at_the_second(self, auto_lab):
+        """Guard 9 is retired (C3879, 106c117d: no time-based holds; the recurrence finding
+        says a problem that keeps coming back): the same repeat undeclared, inside the hour,
+        is healed again, held by nothing."""
         _inc, first = inject(T0)
         _inc, second = inject(T0 + 20 * MIN)
         assert first["outcome"] == "heal"
-        # Inside the hour guard 9 (the per-device rate) applies first, in section 6's order.
-        assert (second["outcome"], second["guard"]["guard"]) == ("held", 9), second["words"]
+        assert (second["outcome"], second["guard"]) == ("heal", None), second["words"]
+        assert (second.get("applied") or {}).get("outcome") == "healed"
 
     def test_the_same_repeat_undeclared_past_the_hour_halts_by_guard_11(self, auto_lab):
+        """Guard 11's repeat halts nothing (C3879; 70e89a47, round 2: nothing halts a
+        network): past the hour the same repeat undeclared heals again, no halt written."""
         _inc, first = inject(T0)
         _inc, second = inject(T0 + 70 * MIN)
         assert first["outcome"] == "heal"
-        assert (second["outcome"], second["guard"]["guard"]) == ("halted", 11), second["words"]
-        assert DS.halted(NET)["guard"] == 11, "the network's policy is halted"
+        assert (second["outcome"], second["guard"]) == ("heal", None), second["words"]
+        assert DS.halted(NET) == {}, "nothing halts the network's policy"
 
     def test_the_same_repeat_declared_past_the_hour_heals_and_halts_nothing(self, auto_lab):
         for at in (T0, T0 + 70 * MIN):
@@ -174,10 +179,9 @@ class TestTheOperatorsTest:
                 assert declare(at - 30)["ok"]
             got.append(inject(at, running=running)[1])
         assert _departure(GOLDEN + ROUTE6) != _departure(GOLDEN + ROUTE4)
-        if declared:
-            assert [d["outcome"] for d in got] == ["heal", "heal"], got[1]["words"]
-        else:
-            assert (got[1]["outcome"], got[1]["guard"]["guard"]) == ("held", 9)
+        # Guard 9 is retired (C3879, 106c117d): declared or not, both departures heal.
+        assert [(d["outcome"], d["guard"]) for d in got] == [("heal", None)] * 2, \
+            got[1]["words"]
 
 
 # ── Nothing else is exempt ──────────────────────────────────────────────────────────────────
@@ -191,14 +195,19 @@ class TestNothingElse:
 
     @pytest.mark.parametrize("declared", [True, False], ids=("a drill", "a real incident"))
     def test_guard_10_counts_drills_and_halts_a_drill(self, auto_lab, declared):
+        """Guard 10's rate is removed and nothing halts a network (70e89a47, the operator,
+        2026-11-17, round 2): after six drill heals in the hour, a drill and a real incident
+        alike heal, no halt written."""
         self._drill_heals(6)
         if declared:
             assert declare(T0 - 30)["ok"]
         _inc, d = inject(T0)
-        assert (d["outcome"], d["guard"]["guard"]) == ("halted", 10), d["words"]
-        assert d["guard"]["operands"]["heals_last_hour"] == 6
+        assert (d["outcome"], d["guard"]) == ("heal", None), d["words"]
+        assert DS.halted(NET) == {}
 
     def test_the_neighbour_hold_still_holds_a_drill(self, auto_lab):
+        """Guard 5, the neighbour (topology) hold, is gone (106c117d, the operator, 2026-11-16:
+        no time-based holds): it holds a drill no more than a real incident; the drill heals."""
         held = {"held": True, "until": iso(T0 + 3600), "minutes": 60, "changes": [],
                 "words": "held until then: Mercury's deploy of core-a, its intent neighbour"}
         assert declare(T0 - 30)["ok"]
@@ -212,16 +221,17 @@ class TestNothingElse:
         inc = I.claim(NET, seen["incident"], by="test", now=T0 + 120)
         assert FD().tag_of(inc)
         d = DC.decide_one(NET, inc, now=T0 + 130, sources=Fake(GOLDEN + ROUTE6, held=held))
-        assert (d["outcome"], d["guard"]["guard"]) == ("held", 5), d["words"]
+        assert (d["outcome"], d["guard"], d["until"]) == ("heal", None, None), d["words"]
 
     def test_only_guards_9_and_11_are_exempt(self):
+        """The drill exemption is still declared for guards 9 and 11, and both guards are
+        retired (C3879): neither holds, drill or not."""
         assert GD.GUARDS_A_DRILL_PASSES == (9, 11)
         tag = {"id": "fd-1"}
         rows = [{"outcome": "heal", "device": DEV, "departure": "x", "epoch": T0}]
-        assert GD.g9_device_rate(rows, DEV, "heal", T0, 1, drill=tag) is None
-        assert GD.g11_repeat(rows, DEV, "x", "heal", T0, 24, drill=tag) is None
-        assert GD.g9_device_rate(rows, DEV, "heal", T0, 1)["guard"] == 9
-        assert GD.g11_repeat(rows, DEV, "x", "heal", T0, 24)["guard"] == 11
+        for drill in ({"drill": tag}, {}):
+            assert GD.g9_device_rate(rows, DEV, "heal", T0, 1, **drill) is None
+            assert GD.g11_repeat(rows, DEV, "x", "heal", T0, 24, **drill) is None
 
 
 # ── Never in the real figures ───────────────────────────────────────────────────────────────

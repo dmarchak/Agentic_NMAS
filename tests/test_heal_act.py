@@ -306,11 +306,16 @@ class TestTheStops:
         assert "only AUTO sends a heal" in got["words"]
 
     def test_a_policy_that_moved_since_the_decision(self, lab):
+        """The act-time "policy moved" check is removed (70e89a47, the operator, 2026-11-17,
+        round 2): only Stop everywhere, Off, a kind no longer allowed and a person's planned
+        window stop the act; a policy confirmed again in Auto since the decision heals."""
+        from modules.heal import policy
         d = decided(GOLDEN + ROUTE4)
         auto("Default", now=T0, kinds=("added_line", "missing_line"))
+        assert policy.current("Default", T0 + 5)["fingerprint"] != d["policy"]["fingerprint"]
         got, src, _d = act(GOLDEN + ROUTE4, decision=d)
-        assert "the policy moved since the decision (decided under" in got["words"]
-        assert d["policy"]["fingerprint"] in got["words"] and src.apply_kw is None
+        assert got["outcome"] == "healed" and src.apply_kw is not None, got["words"]
+        assert "the policy moved since the decision" not in got["words"]
 
     def test_a_kind_no_longer_allowed(self, lab):
         d = decided(GOLDEN + ROUTE4)
@@ -319,28 +324,43 @@ class TestTheStops:
         assert "added_line is no longer allowed AUTO" in got["words"] and src.apply_kw is None
 
     def test_a_network_not_marked_lab(self, lab):
+        """The lab-stage gate at apply is removed (70e89a47, round 2): a network marked
+        production heals in Auto as a lab one does."""
         d = decided(GOLDEN + ROUTE4)
         got, src, _d = act(GOLDEN + ROUTE4, decision=d, mode=lambda m: dict(
             m, stage={"stage": "production"}))
-        assert "marked production, not lab" in got["words"] and src.apply_kw is None
+        assert got["outcome"] == "healed" and src.apply_kw is not None, got["words"]
+        assert "not lab" not in got["words"]
 
     def test_a_halt_in_force(self, lab):
+        """A halt stops nothing (70e89a47, round 2: every halt removed from the heal path;
+        Off and Stop everywhere are the stops): with a halt recorded the act heals."""
         d = decided(GOLDEN + ROUTE4)
         DS.halt("Default", guard=10, name="rate", words="six an hour", operands={}, now=T0)
         got, src, _d = act(GOLDEN + ROUTE4, decision=d)
-        assert "halted by guard 10" in got["words"] and src.apply_kw is None
+        assert got["outcome"] == "healed" and src.apply_kw is not None, got["words"]
+        assert "halted by guard 10" not in got["words"]
 
-    def test_planned_work(self, lab):
-        got, src, _d = act(GOLDEN + ROUTE4, planned={"words": "edge-b is restarting"})
+    def test_planned_work(self, lab, monkeypatch):
+        """A planned window a person declared still stops the act (70e89a47 keeps "a PERSON's
+        planned windows"), read through guard 3's seam (`restarts.explained_by_person`), never
+        the sources' own planned read; nothing is sent."""
+        d = decided(GOLDEN + ROUTE4)
+        monkeypatch.setattr("modules.restarts.explained_by_person", lambda dev, n, now, **kw: {
+            "end": T0 + 300, "words": "edge-b is restarting"})
+        got, src, _d = act(GOLDEN + ROUTE4, decision=d)
         assert "guard 3, planned work: edge-b is restarting" in got["words"]
-        assert src.apply_kw is None
+        assert got["outcome"] == "refused" and src.apply_kw is None
 
     def test_no_confirming_person(self, lab):
+        """The act-time "no person confirmed" check is removed (70e89a47, round 2): the policy
+        a person confirmed is the decision's authority, and its apply goes on."""
         d = decided(GOLDEN + ROUTE4)
         nobody = dict(d, policy=dict(d["policy"], by=None))
         src = FakeAct(GOLDEN + ROUTE4)
         got = A.apply_decision("Default", nobody, now=T0 + 5, sources=src)
-        assert "nobody is accountable" in got["words"] and src.apply_kw is None
+        assert got["outcome"] == "healed" and src.apply_kw is not None, got["words"]
+        assert "nobody is accountable" not in got["words"]
 
     def test_a_failed_read(self, lab):
         got, src, _d = act(GOLDEN + ROUTE4, read_error="timed out")
@@ -428,10 +448,14 @@ class TestTheOutcome:
         assert DS.halted("Default")["guard"] == 14
 
     def test_a_send_neither_verified_nor_rolled_back_halts(self, lab):
-        got, _src, _d = act(GOLDEN + ROUTE4, result={
+        """The act's halt write is removed (70e89a47, the operator, 2026-11-17, round 2:
+        "guard 14 and every halt write (act, ...)"): a send neither verified nor rolled back is
+        a failure, recorded as failed, R1's to see; it halts nothing."""
+        got, _src, d = act(GOLDEN + ROUTE4, result={
             "outcome": "failed", "stage": "deploy", "commands": ["x"], "rolled_back": False,
             "reason": "the session closed mid-push"})
-        assert got["outcome"] == "failed" and DS.halted("Default")["guard"] == 14
+        assert got["outcome"] == "failed" and applied(d["id"])["outcome"] == "failed"
+        assert DS.halted("Default") == {}
 
     def test_refused_by_the_apply_sends_nothing(self, lab):
         got, _src, _d = act(GOLDEN + ROUTE4, result={
