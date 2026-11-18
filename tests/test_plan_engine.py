@@ -546,10 +546,16 @@ class TestTheRunOnTheOneStepper:
         assert 'class="inc-stepper"' in out and 'aria-busy="true"' in out
         assert ('inc-stepper-step inc-stepper-running working-now" data-step="s1" '
                 'data-state="running"') in out
+        # Ruling 11 (the operator, 2026-11-18: "Restore aria-current="step""): the running
+        # step, and only it, tells a screen reader it is the current step.
+        assert re.search(r'<span aria-current="step" class="[^"]*inc-stepper-running[^"]*" '
+                         r'data-step="s1"', out), out
+        assert out.count('aria-current="step"') == 1, out
         assert "DHCP reservation" in out
         assert kea.recorded
         after = client.get(kw["page"].replace("{job}", "j-1"), headers=HX).get_data(as_text=True)
         assert DONE_STEP in after and 'aria-busy="true"' not in after
+        assert 'aria-current="step"' not in after, "a run that ended has no current step"
 
 
 class TestTheCard:
