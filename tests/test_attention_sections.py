@@ -231,7 +231,8 @@ def test_the_title_is_the_line_and_the_impact_and_ai_status_are_each_one_line_un
     assert what["bottom"] <= impact["top"] + 1 and impact["bottom"] <= ai["top"] + 1, got
     for one in (impact, ai):
         assert one["height"] < 1.8 * one["lh"], f"not one line: {got}"
-    assert ai["text"].startswith("AI: Mercury's fix failed once."), got
+    # Its source as a label, then its words (00c70e0f, C3840).
+    assert ai["text"].startswith("AI Mercury's fix failed once."), got
 
 
 def test_a_closed_warning_section_stays_closed_across_a_redraw(monkeypatch):
