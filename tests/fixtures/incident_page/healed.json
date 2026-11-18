@@ -1,5 +1,5 @@
 {
- "captured": "tests/test_incident_page.py's healed(), the stores as its writers left them (network Default, device edge-b), 2026-11-11",
+ "captured": "tests/test_incident_page.py's healed(), the stores as its writers left them (network Default, device edge-b), 2026-11-18",
  "decisions": [
   {
    "at": "2026-09-21T14:13:20Z",
@@ -19,9 +19,9 @@
    "device": "edge-b",
    "epoch": 1790000000.0,
    "guard": null,
-   "headline": "edge-b: \u201cip route 192.0.2.128 255.255.255.128 192.0.2.10\u201d was added to the global configuration. Mercury is putting it back itself",
-   "id": "hd-478e3517d492",
-   "incident": "hi-b0d5f7467002",
+   "headline": "edge-b: static route added outside Mercury. Mercury is putting it back itself",
+   "id": "hd-5b2ef2507eaf",
+   "incident": "hi-fac8170fa425",
    "kind": "added_line",
    "left_out": {
     "golden_behind": 0,
@@ -84,18 +84,18 @@
    "words": "At 13:56 UTC, edge-b's configuration was changed outside Mercury (the line names the account alice on vty0): \u201cip route 192.0.2.128 255.255.255.128 192.0.2.10\u201d was added to the global configuration. Mercury is putting it back itself: remove \u201cip route 192.0.2.128 255.255.255.128 192.0.2.10\u201d from the global configuration; this kind of fix may run by itself here (Tier 1)"
   },
   {
-   "at": "2026-09-21T14:13:25Z",
+   "at": "2026-09-21T14:13:32Z",
    "by": "heal to intent: the apply",
-   "decision": "hd-478e3517d492",
+   "decision": "hd-5b2ef2507eaf",
    "row": "taken"
   },
   {
-   "at": "2026-09-21T14:13:25Z",
+   "at": "2026-09-21T14:15:24Z",
    "by": "heal to intent (policy set by admin)",
-   "decision": "hd-478e3517d492",
+   "decision": "hd-5b2ef2507eaf",
    "outcome": "healed",
    "row": "applied",
-   "words": "healed and verified, golden cccccccccc committed, at its golden when read again; no symptom named"
+   "words": "healed and verified; no symptom named"
   }
  ],
  "incidents": [
@@ -106,14 +106,46 @@
     "at": "2026-09-21T14:13:20Z",
     "by": "heal to intent"
    },
-   "closed_at": "2026-09-21T14:13:25Z",
-   "closed_why": "healed: healed and verified, golden cccccccccc committed, at its golden when read again; no symptom named (decision hd-478e3517d492)",
+   "closed_at": "2026-09-21T14:15:38Z",
+   "closed_why": "healed: healed and verified; no symptom named (decision hd-5b2ef2507eaf)",
    "device": "edge-b",
+   "fixed": {
+    "act": "hd-5b2ef2507eaf",
+    "at": "2026-09-21T14:15:31Z",
+    "device": "edge-b",
+    "epoch": 1790000131.0,
+    "verify": [
+     {
+      "at": "2026-09-21T14:14:28Z",
+      "result": "ok",
+      "step": "intent",
+      "words": "each healed unit at intent, from the whole configuration read after the change"
+     },
+     {
+      "at": "2026-09-21T14:14:35Z",
+      "result": "ok",
+      "step": "saved",
+      "words": "Saved"
+     },
+     {
+      "at": "2026-09-21T14:14:56Z",
+      "result": "ok",
+      "step": "golden",
+      "words": "At its golden: documentation updated and tested, golden cccccccccc committed and edge-b read again matches it"
+     },
+     {
+      "at": "2026-09-21T14:15:10Z",
+      "result": "none",
+      "step": "symptom",
+      "words": "no symptom named"
+     }
+    ]
+   },
    "fold": {
     "state": "not_judged",
     "why": "no blast radius was given"
    },
-   "id": "hi-b0d5f7467002",
+   "id": "hi-fac8170fa425",
    "network": "Default",
    "opened_at": "2026-09-21T13:56:40Z",
    "opened_epoch": 1789999000.0,
@@ -148,10 +180,10 @@
     }
    ],
    "triggers_seen": 1,
-   "updated_at": "2026-09-21T14:13:25Z"
+   "updated_at": "2026-09-21T14:15:38Z"
   }
  ],
- "page": "hi-b0d5f7467002",
+ "page": "hi-fac8170fa425",
  "steps": [
   {
    "at": "2026-09-21T14:13:20Z",
@@ -166,13 +198,13 @@
     ],
     "hypothesis": null
    },
-   "decision": "hd-478e3517d492",
+   "decision": "hd-5b2ef2507eaf",
    "device": "edge-b",
    "epoch": 1790000000.0,
    "guard": {},
-   "headline": "edge-b: \u201cip route 192.0.2.128 255.255.255.128 192.0.2.10\u201d was added to the global configuration. Mercury is putting it back itself",
-   "id": "hs-3ea3b3f30722",
-   "incident": "hi-b0d5f7467002",
+   "headline": "edge-b: static route added outside Mercury. Mercury is putting it back itself",
+   "id": "hs-2a6b64b4f85e",
+   "incident": "hi-fac8170fa425",
    "kind": "added_line",
    "mode": "auto",
    "network": "Default",
@@ -208,12 +240,12 @@
     {
      "result": "ok",
      "step": "guards",
-     "words": "no topology hold, not many devices at once, no person working, the grace period settled, under every rate"
+     "words": "nothing holds it"
     },
     {
      "result": "ok",
      "step": "read",
-     "words": "edge-b read again: it holds the change the grace period settled on"
+     "words": "edge-b read: the decision is made on what it holds now"
     },
     {
      "result": "ok",
@@ -241,13 +273,13 @@
    "words": "At 13:56 UTC, edge-b's configuration was changed outside Mercury (the line names the account alice on vty0): \u201cip route 192.0.2.128 255.255.255.128 192.0.2.10\u201d was added to the global configuration. Mercury is putting it back itself: remove \u201cip route 192.0.2.128 255.255.255.128 192.0.2.10\u201d from the global configuration; this kind of fix may run by itself here (Tier 1)"
   },
   {
-   "at": "2026-09-21T14:13:25Z",
+   "at": "2026-09-21T14:13:39Z",
    "by": "heal to intent (policy set by admin)",
-   "decision": "hd-478e3517d492",
+   "decision": "hd-5b2ef2507eaf",
    "device": "edge-b",
-   "epoch": 1790000005.0,
-   "id": "hs-10f7ba4b9f14",
-   "incident": "hi-b0d5f7467002",
+   "epoch": 1790000019.0,
+   "id": "hs-0c446244e782",
+   "incident": "hi-fac8170fa425",
    "kind": "added_line",
    "mode": "auto",
    "network": "Default",
@@ -270,25 +302,26 @@
      "words": "taken by heal to intent (policy set by admin)"
     },
     {
-     "at": "2026-09-21T14:13:32Z",
+     "at": "2026-09-21T14:13:46Z",
      "result": "ok",
      "step": "stops",
-     "words": "AUTO on a network marked lab, the policy decided under, nothing held"
+     "words": "AUTO, not stopped everywhere, no planned work a person declared"
     },
     {
-     "at": "2026-09-21T14:13:39Z",
+     "at": "2026-09-21T14:14:00Z",
+     "began": "2026-09-21T14:13:53Z",
      "result": "ok",
      "step": "read",
-     "words": "edge-b read again"
+     "words": "edge-b read again, holding it: the deploy's read before, too"
     },
     {
-     "at": "2026-09-21T14:13:46Z",
+     "at": "2026-09-21T14:14:07Z",
      "result": "ok",
      "step": "plan",
      "words": "the program recomputed from the read: 1 line(s), hash 28fbf29a4f2f8f3b, the decision's"
     },
     {
-     "at": "2026-09-21T14:13:53Z",
+     "at": "2026-09-21T14:14:14Z",
      "result": "ok",
      "step": "authorise",
      "words": "1 removal(s), each with the policy's words as its stated reason"
@@ -303,13 +336,13 @@
    "tier": 1
   },
   {
-   "at": "2026-09-21T14:13:25Z",
+   "at": "2026-09-21T14:15:45Z",
    "by": "heal to intent (policy set by admin)",
-   "decision": "hd-478e3517d492",
+   "decision": "hd-5b2ef2507eaf",
    "device": "edge-b",
-   "epoch": 1790000005.0,
-   "id": "hs-483c4ddfb5f9",
-   "incident": "hi-b0d5f7467002",
+   "epoch": 1790000145.0,
+   "id": "hs-d51321692533",
+   "incident": "hi-fac8170fa425",
    "kind": "added_line",
    "mode": "auto",
    "network": "Default",
@@ -322,7 +355,7 @@
    "policy_by": "admin@example.com",
    "records": {
     "change_record": {
-     "markdown": "# Change record: edge-b, healed to intent by Mercury's self-healing\n\nMercury's record of decision hd-478e3517d492, incident hi-b0d5f7467002: deterministic, written by Mercury's code, no AI call. Program 28fbf29a4f2f: the program is the change.\n\n## Summary\n\nSelf-healing on Default found edge-b departed from its approved state (an added line: an added line (Tier 1): remove 1 line(s) in the global configuration) and returned it to intent: healed and verified. The change it healed was made outside Mercury (the line names the account alice on vty0).\n\n## Scope\n\n1 device: edge-b (cisco_iosxe), network Default. The approved state: golden c0ffee.\n\n## Risk\n\nLevel: high. Mercury's rule: 1 line needing a stated reason, 1 removal, 1 routing protocol touched (static routes).\n\n## Implementation\n\nProgram 28fbf29a4f2f, 1 line(s), recomputed from Mercury's own read of edge-b at apply and compared by its hash with the decision's, sent merge-only as the policy, holding edge-b:\n\n```\nno ip route 192.0.2.128 255.255.255.128 192.0.2.10\n```\n\nThe stated reason for `no ip route 192.0.2.128 255.255.255.128 192.0.2.10`: \"heal to intent on Default: the line was added outside intent, removed under the policy 1326c83d4151da66 confirmed by admin@example.com (Lab 10's dry run)\".\n\n## Verification\n\nFULL: it changes `no ip route 192.0.2.128 255.255.255.128 192.0.2.10`, which can affect forwarding or is not a management section: neighbours, routes and interfaces are watched, BGP is read again after its hold time, and each new line is read back.\n- Each healed unit at intent: ok: each healed unit at intent; intent: matches\n- The symptom read again: none: no symptom named\n- Saved to startup: ok: sent, verified by the pipeline, and saved to startup\n- The golden read again: ok: documentation updated and tested: golden cccccccccc committed after Mercury's config check passed (the configuration repository's CI runs the same check on its push); the device read again matches it\n\n## Rollback plan\n\nOn a failed Verify, or a healed unit not at intent after the change, Mercury undoes what landed, per device, re-adding a removed line from its own read, and says what it achieved:\n\n```\nip route 192.0.2.128 255.255.255.128 192.0.2.10\n```\n\nA manual back-out: restore edge-b's golden c0ffee from its History tab.\n\n## Window and approver\n\nThe standing policy 1326c83d4151da66 for Default, confirmed by admin@example.com (Lab 10's dry run), AUTO until 2026-09-21T15:12:20Z: a verified person previewed and confirmed it by its fingerprint, and this heal's program was decided under it.\n\n## Status\n\nhealed and verified at 2026-09-21T14:13:25Z: healed and verified, golden cccccccccc committed, at its golden when read again; no symptom named Golden cccccccccc committed.\n",
+     "markdown": "# Change record: edge-b, healed to intent by Mercury's self-healing\n\nMercury's record of decision hd-5b2ef2507eaf, incident hi-fac8170fa425: deterministic, written by Mercury's code, no AI call. Program 28fbf29a4f2f: the program is the change.\n\n## Summary\n\nSelf-healing on Default found edge-b departed from its approved state (an added line: an added line (Tier 1): remove 1 line(s) in the global configuration) and returned it to intent: healed and verified. The change it healed was made outside Mercury (the line names the account alice on vty0).\n\n## Scope\n\n1 device: edge-b (cisco_iosxe), network Default. The approved state: golden c0ffee.\n\n## Risk\n\nLevel: high. Mercury's rule: 1 line needing a stated reason, 1 removal, 1 routing protocol touched (static routes).\n\n## Implementation\n\nProgram 28fbf29a4f2f, 1 line(s), recomputed from Mercury's own read of edge-b at apply and compared by its hash with the decision's, sent merge-only as the policy, holding edge-b:\n\n```\nno ip route 192.0.2.128 255.255.255.128 192.0.2.10\n```\n\nThe stated reason for `no ip route 192.0.2.128 255.255.255.128 192.0.2.10`: \"heal to intent on Default: the line was added outside intent, removed under the policy 1326c83d4151da66 confirmed by admin@example.com (Lab 10's dry run)\".\n\n## Verification\n\nFULL: it changes `no ip route 192.0.2.128 255.255.255.128 192.0.2.10`, which can affect forwarding or is not a management section: neighbours, routes and interfaces are watched, BGP is read again after its hold time, and each new line is read back.\n- Each healed unit at intent: ok: each healed unit at intent, from the whole configuration read after the change\n- The symptom read again: none: no symptom named\n- Saved to startup: ok: Saved\n- The golden read again: ok: At its golden: documentation updated and tested, golden cccccccccc committed and edge-b read again matches it\n\n## Rollback plan\n\nOn a failed Verify, or a healed unit not at intent after the change, Mercury undoes what landed, per device, re-adding a removed line from its own read, and says what it achieved:\n\n```\nip route 192.0.2.128 255.255.255.128 192.0.2.10\n```\n\nA manual back-out: restore edge-b's golden c0ffee from its History tab.\n\n## Window and approver\n\nThe standing policy 1326c83d4151da66 for Default, confirmed by admin@example.com (Lab 10's dry run), AUTO until 2026-09-21T15:12:20Z: a verified person previewed and confirmed it by its fingerprint, and this heal's program was decided under it.\n\n## Status\n\nhealed and verified at 2026-09-21T14:13:39Z: healed and verified; no symptom named Golden cccccccccc committed.\n",
      "risk": "high",
      "state": "made",
      "words": "made: 51 line(s), risk high, deterministic (no AI call)"
@@ -333,8 +366,49 @@
      "state": "not_written",
      "words": "not written: NetBox writes are off for every network (Writes allowed, on Settings \u203a Installation \u203a Connections, NetBox connection)"
     },
-    "receipt": "the deploy receipt naming decision hd-478e3517d492",
-    "recheck": "ok: documentation updated and tested: golden cccccccccc committed after Mercury's config check passed (the configuration repository's CI runs the same check on its push); the device read again matches it"
+    "laps": [
+     {
+      "at_s": 0.0,
+      "lap": "act: the plan's checks",
+      "took_s": 0.0
+     },
+     {
+      "at_s": 0.0,
+      "lap": "act: program written to the step log",
+      "took_s": 0.0
+     },
+     {
+      "at_s": 0.0,
+      "lap": "act: apply step announced",
+      "took_s": 0.0
+     }
+    ],
+    "receipt": "the deploy receipt naming decision hd-5b2ef2507eaf",
+    "recheck": "ok: At its golden: documentation updated and tested, golden cccccccccc committed and edge-b read again matches it",
+    "tail": {
+     "flag": "",
+     "state": "ok",
+     "steps": [
+      {
+       "at": "2026-09-21T14:14:35Z",
+       "result": "ok",
+       "step": "saved",
+       "words": "Saved"
+      },
+      {
+       "at": "2026-09-21T14:14:42Z",
+       "result": "ok",
+       "step": "commit",
+       "words": "Golden committed: cccccccccc, from the whole configuration read after the change, after Mercury's config check passed"
+      },
+      {
+       "at": "2026-09-21T14:14:56Z",
+       "result": "ok",
+       "step": "golden",
+       "words": "At its golden: documentation updated and tested, golden cccccccccc committed and edge-b read again matches it"
+      }
+     ]
+    }
    },
    "row": "act",
    "sent": true,
@@ -346,69 +420,78 @@
      "words": "taken by heal to intent (policy set by admin)"
     },
     {
-     "at": "2026-09-21T14:13:32Z",
+     "at": "2026-09-21T14:13:46Z",
      "result": "ok",
      "step": "stops",
-     "words": "AUTO on a network marked lab, the policy decided under, nothing held"
+     "words": "AUTO, not stopped everywhere, no planned work a person declared"
     },
     {
-     "at": "2026-09-21T14:13:39Z",
+     "at": "2026-09-21T14:14:00Z",
+     "began": "2026-09-21T14:13:53Z",
      "result": "ok",
      "step": "read",
-     "words": "edge-b read again"
+     "words": "edge-b read again, holding it: the deploy's read before, too"
     },
     {
-     "at": "2026-09-21T14:13:46Z",
+     "at": "2026-09-21T14:14:07Z",
      "result": "ok",
      "step": "plan",
      "words": "the program recomputed from the read: 1 line(s), hash 28fbf29a4f2f8f3b, the decision's"
     },
     {
-     "at": "2026-09-21T14:13:53Z",
+     "at": "2026-09-21T14:14:14Z",
      "result": "ok",
      "step": "authorise",
      "words": "1 removal(s), each with the policy's words as its stated reason"
     },
     {
-     "at": "2026-09-21T14:14:00Z",
+     "at": "2026-09-21T14:14:21Z",
      "policy_by": "admin@example.com",
      "result": "running",
      "step": "apply",
      "words": "as the policy set by admin, holding edge-b"
     },
     {
-     "at": "2026-09-21T14:14:07Z",
+     "at": "2026-09-21T14:14:28Z",
      "result": "ok",
      "step": "intent",
-     "words": "each healed unit at intent; intent: matches"
+     "words": "each healed unit at intent, from the whole configuration read after the change"
     },
     {
-     "at": "2026-09-21T14:14:14Z",
+     "at": "2026-09-21T14:14:35Z",
      "result": "ok",
      "step": "saved",
-     "words": "sent, verified by the pipeline, and saved to startup"
+     "words": "Saved"
     },
     {
-     "at": "2026-09-21T14:14:21Z",
+     "at": "2026-09-21T14:14:42Z",
+     "result": "ok",
+     "step": "commit",
+     "words": "Golden committed: cccccccccc, from the whole configuration read after the change, after Mercury's config check passed"
+    },
+    {
+     "at": "2026-09-21T14:14:56Z",
+     "began": "2026-09-21T14:14:49Z",
      "result": "ok",
      "step": "golden",
-     "words": "documentation updated and tested: golden cccccccccc committed after Mercury's config check passed (the configuration repository's CI runs the same check on its push); the device read again matches it"
+     "words": "At its golden: documentation updated and tested, golden cccccccccc committed and edge-b read again matches it"
     },
     {
-     "at": "2026-09-21T14:14:28Z",
+     "at": "2026-09-21T14:15:10Z",
+     "began": "2026-09-21T14:15:03Z",
      "result": "none",
      "step": "symptom",
      "words": "no symptom named"
     },
     {
-     "at": "2026-09-21T14:14:35Z",
+     "at": "2026-09-21T14:15:17Z",
      "result": "healed",
      "step": "record",
-     "words": "healed and verified: healed and verified, golden cccccccccc committed, at its golden when read again; no symptom named"
+     "words": "healed and verified: healed and verified; no symptom named"
     }
    ],
    "tier": 1,
-   "words": "healed and verified, golden cccccccccc committed, at its golden when read again; no symptom named"
+   "words": "healed and verified; no symptom named"
   }
  ]
 }

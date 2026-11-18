@@ -83,7 +83,13 @@ def tear(key: str) -> None:
 
 @pytest.fixture
 def planted(client):  # noqa: F811
-    docs = {n: _load(n) for n in ("healed", "failed", "busy")}
+    # Premise corrected (measured 2026-11-18: rolled_back() on this branch leaves its incident
+    # STANDING, 7d54cf24 and C3870, so tests/fixtures/incident_page/failed.json, re-captured
+    # from it for its walks test, is open): the rolled-back heal its STORE closed, which these
+    # tests hold on Closed as "Closed, not confirmed" (C3876), is the capture taken before
+    # C3870, kept as closed_unconfirmed.json, unchanged.
+    docs = {n: _load(f) for n, f in (("healed", "healed"), ("failed", "closed_unconfirmed"),
+                                     ("busy", "busy"))}
     plant(list(docs.values()))
     return docs
 

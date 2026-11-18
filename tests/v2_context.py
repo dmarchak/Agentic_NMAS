@@ -5492,7 +5492,9 @@ def _incidents_list(client, _lab, _mp):
     kept = {p: (open(p, "rb").read() if _os.path.exists(p) else None) for p in paths.values()}
     made = [d for d in {_os.path.dirname(p) for p in paths.values()} if not _os.path.isdir(d)]
     docs = []
-    for name in ("healed", "failed", "busy"):
+    # The rolled-back heal its store closed is the capture taken before C3870
+    # (closed_unconfirmed.json): failed.json, rolled_back()'s capture now, stands (2026-11-18).
+    for name in ("healed", "closed_unconfirmed", "busy"):
         with open(_os.path.join(_os.path.dirname(__file__), "fixtures", "incident_page",
                                 f"{name}.json"), encoding="utf-8") as fh:
             docs.append(_json.loads(fh.read().replace("edge-b", "r3")))
