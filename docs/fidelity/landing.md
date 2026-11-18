@@ -34,7 +34,7 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-dark-page-1440`; `landing-phone-board-LandingPhone-390` and `-NavPhone-390` beside
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
-Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html, templates/v2/_attention_recheck.html, templates/v2/_control_strip.html, templates/v2/_heal_batch.html
+Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html, templates/v2/_heal_analysis.html, templates/v2/_attention_recheck.html, templates/v2/_control_strip.html, templates/v2/_resubscribe.html
 Templates sha256 then (local times' included): `6bd7a689cdf2a7a2164120e15e5288b691024e5160e11a14e545fd50c26e8440`
 
 **Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_attention.html` and `_heal_analysis.html`, a row's "Clears when … (by …)" time, a Grafana silence's end, Seen before's times and the can't-fix analysis's call time are `_macros.clock`'s: the viewer's own time, the zone named once on the screen, the UTC instant on hover, in the same element and position; a row's words that Python builds keep theirs (C3290). Compared by the templates' diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `a2dd9064dceffd54c29c58dc5ebbf1d8d2ac264232a504fd19a344edfb08be0c`.
@@ -235,7 +235,45 @@ new shots; every other region's verdict unchanged. Templates sha256 before:
 | The item's line under its title (C3790) | one line (board NA-R) | the same line; the impact and the AI's status each one line under the title | **deviation** (log: Needs attention: the line's title first, its impact and the AI's status each one line under it (C3790)) |
 | An incident's items (C3791, C3792) | not on board NA-R | one row per incident, its level its impact, each folded item's own level its label | **deviation** (log: Needs attention: one row per incident, its severity its impact, a failed fix not offered again (C3791, C3792)) |
 
-Templates sha256: `fa865767a3eb8424621f3b5fb3c81fba9f3882f5c0345f97b701534de6c3ba6b`
+**Compared again 2026-11-18 (the skip-mode debt, docs/FAST_LANE_DEBT.md; becced07 to d8614a4d,
+fifteen commits, and board R5):** `_heal_batch.html` is gone (70e89a47; guard 6 holds nothing
+since 9ffa279d, the operator, 2026-11-17: "remove guard 4 and guard 6 holds entirely", and its
+route went with d8614a4d), so it leaves the compared list; `_resubscribe.html`, the lost
+stream's Re-subscribe card drawn in place on a row (C2838, its Held line linking a plan run's
+incident card since 93120b2f), joins it (it was in no record). The page is drawn by board R5,
+simple by default (docs/boards/r5-simple-by-default.html, artboard 1, approved by the operator
+2026-11-15 with four changes), and kept on disk for the next start with its own age (3902b7ef);
+rows about Mercury itself fold under "Mercury itself" (7968c7d4), a failed scheduled run's row
+draws its Acknowledge form again (c6905986), recurrence and fight findings can be acknowledged
+(e9902af0), For the record links the incident, decision and hash to the incident's page
+(ffba7114). Shots from this tree: `landing`, `landing-evidence` at 1440 and 1280,
+`landing-brand`, `landing-dark` at 1440, `landing-phone` and `-drawer` at 390, `nar`, `nar-opened`
+at 1440 and 1280 and `nar-phone`, `-opened` at 390 (tests/test_board_shots.py's `test_landing` and
+`test_landing_nar`), and the debt pass's own `debt-r5-needs-attention` at 1280 and 390 (the
+heal's lab with a can't-fix incident standing in dry run) beside `debt-r5-needs-attention-board`
+(R5's file shot whole at 1280 and 390). The redesign and NA-R boards are the canvas's, not on
+disk, so they were not re-shot: their regions above are read against their verdicts, and every
+one stands but the batch card's. Templates sha256 before:
+`fa865767a3eb8424621f3b5fb3c81fba9f3882f5c0345f97b701534de6c3ba6b` (with `_heal_batch.html`,
+without `_resubscribe.html`).
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| R5: the page's sub-heading | dropped (a paragraph) | dropped | **same** |
+| R5: the summary line | "3 items · 3 warning · checked 20 s ago" | "17 items · 2 warning · 15 unknown · 47 sources checked just now", then the sources not read, named | **same** |
+| R5: the batch card (changes 1 and 4) | "Same problem on s1 and s2: …", the held problems one line each, "Fix both (also turns self-healing on)", one Details | not drawn: guard 6 holds nothing since 9ffa279d, so no problem is held for a batch; each incident is its own row | **deviation** (log: Needs attention: no batch card since guard 6 holds nothing) |
+| The batch card (G6, compared 2026-11-15 above) | board G2 part 1 | not drawn, as R5's | **deviation** (log: Needs attention: no batch card since guard 6 holds nothing) |
+| R5: a row's three lines | its level, title, age and primary action; the impact; the status | the same: "Warning", "edge-b: access list added on GigabitEthernet2 outside Mercury", "58 d ago", Open edge-b; the impact; "Waiting for a person: …" cut with an ellipsis, whole on hover | **same** |
+| R5: a row's words | "r7 stopped sending telemetry", "Mercury's re-subscribe didn't bring it back" | Mercury's own tables: the incident's title and its status from what it waits for; a can't-fix's status still names a removal shape and `scripts/nmas-removal-probe` (C3506, open) | **deviation** (log: R5: rows' words are Mercury's own tables, not the board's samples) |
+| R5: below the list | nothing | Mercury itself (folded, its count), What was checked (one closed line) and Recent changes | **deviation** (log: R5: Needs attention keeps What was checked and Recent changes below the list) |
+| Mercury itself (7968c7d4, c6905986) | not drawn (NA-R draws no such section) | rows about Mercury (CI, scheduled jobs, host steps still to do) folded under one line with their count, each with its own action, a failed scheduled run's Acknowledge form among them | **deviation** (log: Needs attention: rows about Mercury itself fold under one line) |
+| The kept page (3902b7ef) | not drawn | after a restart the page is drawn at once from the copy kept on disk, masked, with its own age, while the sources are read again | **same** (the rule "every page draws at once … shows each source's age") |
+| A finding acknowledged (e9902af0) | NA-R: Acknowledge on a row | recurrence and fight findings take Acknowledge too, and return only when their count since reaches the setting again | **same** |
+| For the record (ffba7114) | the row's record one level down | the incident, the decision and the program hash link the incident's own page, never bare ids | **same** |
+| The lost stream's Re-subscribe card (C2838, folded in 2026-11-18) | logged 2026-11-14 as the card's own pattern, no board ("The re-subscribe card gains the collector step's controls") | in place on the row, its preview, the collector step, the result; while the device is held, "Not offered while <device> is held … Open the run", the run's own home | **deviation** (log: The re-subscribe card gains the collector step's controls) |
+| R5: phone (390) | lines wrap rather than cut | the title and the status wrap; the impact line is cut with an ellipsis, whole on hover | **deviation** (log: R5: some of a row's lines are cut at phone width, whole on hover) |
+
+Templates sha256: `a4ce21a025bb69c187ce971863af4c86fbd52e403762a0c012894bb947ab316a`
 (before the combined gate's reviews, 2026-11-15, above: `95963b5612ee0d494c7192eb31a8ade9c34068395adb2cb9bdede8db69638a35`)
 (before the port problem's fold, 2026-11-15, above: `a894c8009f442e454c18b53caaaa6a23a7ad9a59f9a045a201afd44e2459c8c6`)
 (before the lost stream's Start, 2026-11-14, below: `df04b28a2f32a3505d0451f14d5f4dbad62cc0643c8e194e95a2522806aba5bd`)

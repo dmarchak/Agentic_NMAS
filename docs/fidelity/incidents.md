@@ -14,7 +14,7 @@ on the mockups canvas, so tests/test_board_shots.py has no file for it yet. A sh
 at 1440, 1280 and 390 is the operator's review's. The incident page's breadcrumb is compared
 in `incident.md`.
 Compared 2026-11-13.
-Templates compared: templates/v2/incidents.html, templates/v2/_heal_auto_chip.html, templates/v2/base.html, templates/v2/_control_strip.html
+Templates compared: templates/v2/incidents.html, templates/v2/_heal_auto_chip.html, templates/v2/base.html, templates/v2/_control_strip.html, templates/v2/_incidents_board.html
 Compared again 2026-11-15 (Gate 2, C3748, with board G2,
 `~/Documents/nmas-reports/boards/g2-control-strip.html`): the control strip above the tabs,
 the top bar's chip opening Needs attention's strip and saying when AI troubleshooting starts by
@@ -61,7 +61,47 @@ real browser lands on this page's switch), not by new shots; every region's verd
 base.html (the assistant's chat panel), compared by its own build. Templates sha256 before:
 `9319bd3d534aca97b6b2d01e5ed848ef23424b2fe8da9cadacbe8da22081700a`.
 
-Templates sha256: `22671d63f0fea528ab83b514243ff0f0acd1adbd5b898275bfe558e31c64f0c2`
+**Compared again 2026-11-18 (the skip-mode debt, docs/FAST_LANE_DEBT.md; becced07 to 962b2baf,
+fifteen commits; board R5's artboard 2 and the GUI redesign brief's board 4.2):** the page as
+board R5 (docs/boards/r5-simple-by-default.html, approved by the operator 2026-11-15 with four
+changes) draws it, and the fleet view above R5's list (board 4.2, design/incidents-board.html,
+self-signed under the Phase 7 mode 2026-11-18; docs/STANDING_APPROVAL_LOG.md, "The Incidents
+page's fleet view"), whose template `_incidents_board.html` joins the compared list (it was in
+no record). Also since the last comparison: the strip's Self-healing On may last until someone
+turns it off (cd0aa4cc), every switch flips at once and its work runs after (8f1d8006), Fix all
+and the batch card are gone (70e89a47, d8614a4d), a row shows the live step while Mercury works
+on it (bad52d54, 2f368606), the tabs' counts redraw with the list (8f1d8006), and the top bar's
+Auto chip says "until turned off" for an Auto with no expiry (962b2baf). Shots: the debt pass's
+own `debt-incidents` at 1920, 1280 and 390 (the heal's lab with tests/test_incident_page.py's
+healed and can't-fix incidents) beside `debt-incidents-board` (design/incidents-board.html at
+1920, 1280 and 390; the board's own shots are in design/shots/), and R5's file shot whole
+(`debt-r5-needs-attention-board`, its screen 2 this page). Templates sha256 before:
+`22671d63f0fea528ab83b514243ff0f0acd1adbd5b898275bfe558e31c64f0c2` (without
+`_incidents_board.html`).
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| R5: the page's sub-heading | dropped | dropped | **same** |
+| R5: the strip's labels (change 2) | "Self-healing: Off (dry run)" / "On until HH:MM"; "Automatic AI troubleshooting: Off" / "On" | "Self-healing: Off (dry run)", "On" (until turned off) or "On until …" by the clock; "Automatic AI troubleshooting: Off" / "On" | **same** |
+| R5: the strip's one line | "While it's off, a person starts the AI. …" | the same sentence, its second part the catch-up line when there is one | **same** |
+| R5: the strip's (i) | none beside the switches | the (i) beside each switch | **deviation** (log: R5: How does this work? kept beside each switch and button) |
+| R5: the strip's Details | the settings, the three levels, who changed each | each switch's state in words and its settings link | **same** |
+| R5: tabs, summary and Search or filter… | tabs, "3 open · 3 warning", one "Search or filter…" link | tabs "Open · N" and "Closed · N" redrawn with the list, "1 open · 1 needs a person", the search and device filter behind the link | **same** |
+| R5: the batch card (changes 1 and 4) | as on Needs attention | not drawn: guard 6 holds nothing (9ffa279d), each incident its own row | **deviation** (log: Needs attention: no batch card since guard 6 holds nothing) |
+| R5: a row's three lines | badge, title link, impact, status, since | the same; its device and id on the title's hover; while Mercury works on it the status is the live step with its seconds | **same** |
+| R5: a row's badge | its severity, "Warning" | its state, "Needs a person", and under it the row's autonomy ("Manual", "Self-heal", "AI + approval", board 4.2) | **deviation** (log: R5: Incidents' rows keep their state badge) |
+| R5: a row's words | the board's sample words | Mercury's own tables (a can't-fix's status still names `scripts/nmas-removal-probe`, C3506, open) | **deviation** (log: R5: rows' words are Mercury's own tables, not the board's samples) |
+| R5: phone (390) | lines wrap rather than cut | the title is cut with an ellipsis ("edge-b: access list added on GigabitEthernet2 ou…"), whole on hover | **deviation** (log: R5: some of a row's lines are cut at phone width, whole on hover) |
+| 4.2: the head | "Incidents", "Default network · live · 17:58:40 UTC", "Self-healing On (since …) · Automatic AI Off" at the right | the heading and its (i); the network in the top bar; the switches in the control strip under the heading, "checked just now" beside the tabs | **deviation** (log: The Incidents page's fleet view: the 30-day outcome strip, category tiles with their trend, and each row's autonomy) |
+| 4.2: the category tiles | seven: Interfaces, Config drift, Routing, Telemetry, Reachability, Syslog and alerts, SDN, each its open count, "N opened since Nov 7" and a 30-day line; SDN "needs: SDN detections as incidents" | a tile only for a category the store holds an incident of ("Config drift · 1 open · 0 in 30 days", no line drawn for a window with no detection), and SDN and Telemetry each a "needs: …" tile | **deviation** (log: The Incidents page's fleet view: the 30-day outcome strip, category tiles with their trend, and each row's autonomy) |
+| 4.2: the outcome strip | a card: "Nov 11 – now · 63 incidents", "77% of the 56 closed self-healed", then 43 self-healed, 9 AI-fixed, 0 human-fixed, 7 open now, 3 not a fault, 1 closed unfixed | one line: "Last 30 days: 0 self-healed · 0 AI-fixed (approved) · 0 person-fixed · 0 open", those closed without a fix beside them when there are any; no share; "open" counts the incidents detected in the 30 days, so the shot reads "0 open" beside "Open · 1" and the tile's "1 open" (registered by the debt pass: the board's figure is "open now") | **deviation** (log: The Incidents page's fleet view: the 30-day outcome strip, category tiles with their trend, and each row's autonomy) |
+| 4.2: the filters | state chips (All open, Detected, Self-healing, Diagnosing, Fix proposed, Needs a person, Closed), a search box, Export CSV | R5's Open and Closed tabs and "Search or filter…"; no state chips, no Export CSV | **later** (the log's "Not built tonight": CSV export; the chips are R5's tabs and groups) |
+| 4.2: the table | one sortable table: Device, Issue, Lifecycle, Action, Age, Autonomy, Recurred, grouped by Needs a person and Self-healing now, Closed today folded | R5's grouped rows (Needs a person, Mercury working, watching), each its three lines with the autonomy badge; no Lifecycle, Recurred or sorting | **later** (the log's "Not built tonight": column sorting and "recurred ×N") |
+| 4.2: phone (390) | the head, the chips wrapping, the search, Export CSV, each row a stacked card | the strip, the tabs, the outcome line, the tiles two to a row, the summary, the rows | **deviation** (log: The Incidents page's fleet view: the 30-day outcome strip, category tiles with their trend, and each row's autonomy) |
+| Fix all and the switch-on batch | board G2 parts 1 and 2: the strip's run on THE stepper | the switch flips at once and answers "Starting N fixes…" in the strip; the run is each incident's own row and card | **same** (board G2's run part, its words the operator's of 2026-11-16) |
+| The top bar's Auto chip (962b2baf) | board T: "Self-healing: Auto until <time>" | the same, "until turned off" for an Auto with no expiry, sorted after every Auto with one | **same** |
+
+Templates sha256: `ad1623beabe78426a9b62742731020cecad0e1ba928682bfc5d39275fda962d7`
 
 Compared again 2026-11-14 04:2x UTC (the operator's notes on board T, 2026-11-14; provisional,
 operator review pending): "1. Remove the "N open" chip from Incidents in the sidebar. Needs

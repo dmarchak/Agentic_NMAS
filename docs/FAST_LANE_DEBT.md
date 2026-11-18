@@ -84,3 +84,55 @@ working tree and in the saved combined patch; the full pass ships them.
 | Committed and deployed overnight (2026-11-17, the speed pass, read-side) | `redact._compile` keeps each compiled alternation by its exact table (an incident page 1.56 s to 0.31 s on the host's data); the irreversible tier's hand check logged (docs/TIER_HAND_CHECK.md, 2026-11-17) | tests owed: the cache in the suite (a rotated, added and removed secret after a cached pattern; the bound of 8) | modules/redact.py |
 | Committed and deployed overnight (2026-11-17, the speed pass, read-side) | Needs attention's page kept for the next start at most every 30 s (`attention_store.KEEP_S`); the switch, AI switch and Approve presses timed at WARNING | tests owed: the keep's bound (a second recompute within 30 s writes nothing, one after it writes); the timing lines | modules/attention_store.py, routes/control_v2.py, routes/settings_v2.py, routes/fixit_v2.py, modules/control_strip.py |
 | deferred: item 1 | The runner measurement and the derived connect bound (C3741, C3762) | not shipped: the operator deferred it until after the demo walk | modules/nsot/port_connect.py, command_plan(_run).py, command_policy.py, waits.PORT_CONNECT, tests/test_port_connect.py, the fixtures |
+
+## Fidelity paid, 2026-11-18 (the debt pass, branch debt-fidelity)
+
+The rows above owe their board-fidelity records with their tests; one record is owed by many
+rows and one row owes many records, so the records paid are listed here, by row, and the rows
+stay as they are (their tests, boards and manual items still owed where they say). Each record
+was shot again from the GUI branch's tree (tests/test_board_shots.py and the debt pass's own
+untracked shots), compared region by region at the board's width, 1280 and 390, every
+deviation a line in docs/STANDING_APPROVAL_LOG.md, its hash written by
+tests/test_board_fidelity.py's `templates_hash`. Records by commit: alerts-explain,
+alerts-history, sdn, settings-ai (49d9b75f); oob-run, pending, tab-overview, device (924da53c);
+plan, devices, in-progress, history, tab-history (610677bc); fix and fixes, their first records
+(e365ed17); landing, incidents, incident (1bbcccbd).
+
+| Row (its Shipped and Change, shortened) | Fidelity it owed, now paid |
+|---|---|
+| items 2, 5, 6, 7 and R5 (becced07) | incident, incidents, landing; `_inc_step.html` folded into incident (1bbcccbd) |
+| Save is the approval (6b91dc45) | incident (1bbcccbd) |
+| C3805 (b001bb46) | incident (1bbcccbd) |
+| Running state and the closed list (2f368606) | incident, incidents (1bbcccbd) |
+| Needs attention 1 and 4 (7968c7d4) | landing (1bbcccbd) |
+| Needs attention survives a restart (3902b7ef) | landing (1bbcccbd) |
+| The violation as cause (fb8be7e8) | incident (1bbcccbd) |
+| No time-based holds (106c117d) | incidents (1bbcccbd) |
+| Auto until turned off (cd0aa4cc) | incidents, landing (1bbcccbd) |
+| The plan card's exact commands (db800983) | incident (1bbcccbd) |
+| The live stepper on the incident card and the Incidents row (bad52d54) | incident, incidents (1bbcccbd) |
+| The preflight reuses the investigation's reads (55c8a8eb) | incident (1bbcccbd) |
+| C3819, C3821, C3822 (811bbe36) | landing (1bbcccbd) |
+| C3824 and C3823 (9f62b2c7) | incidents, landing (1bbcccbd) |
+| The run's stepper on its incident card, one home for a plan run (93120b2f) | device, devices, history, in-progress, plan, tab-history (924da53c, 610677bc); incident, incidents, landing, `_resubscribe.html` folded into landing (1bbcccbd) |
+| Build 1 (c4948c2c) | device, oob-run, pending, tab-overview (924da53c); history, tab-history, `_history_ai_call.html` folded into history (610677bc); incident, incidents, landing (1bbcccbd) |
+| The display build (00c70e0f) | incident, incidents, landing; `_inc_proof.html` folded into incident (1bbcccbd) |
+| C3849 piece 1 (3a659d6b) | incident (1bbcccbd) |
+| Needs attention fixes (e9902af0) | landing (1bbcccbd) |
+| C3849 pieces 2 to 4 (a61bb071) | in-progress (610677bc); fix and fixes with `_fix_how.html`, `_fix_run.html`, `_macros.html` (e365ed17); incident, incidents (1bbcccbd) |
+| Every switch flips at once (8f1d8006) | incidents, landing (1bbcccbd) |
+| C3849's manual controls (da740aa1) | tab-overview (924da53c); fix and fixes with `_fix_contents.html`, `_fix_form.html` (e365ed17); its board for Set Automatic… is still the operator's (logged "A fix's Set Automatic…, a control no board draws", not signed) |
+| Items 1, 4 and 5 (e400a31f) | incident (1bbcccbd) |
+| C3890, no AI size limit of its own (7b0bb884) | alerts-explain, alerts-history, sdn, settings-ai (49d9b75f); incident (1bbcccbd) |
+| Run… on built-in fixes (fc937efe) | fix (e365ed17) |
+| The speed pass, round 2 (70e89a47) | incidents, landing; `_heal_batch.html` left landing's compared list (1bbcccbd) |
+| The Fixes page as one list (cf4018c2) | fixes (e365ed17) |
+
+Also compared, from commits with no row here: aea00330, d9781394 (`_inc_story.html`, folded into
+incident), 71dde3fb and 962b2baf (`_incidents_board.html`, folded into incidents), c6905986,
+ffba7114, d8614a4d (landing), 1e514200 (incident), 74303566 (history, tab-history), 0d669827,
+639a6b1f (fix). **Not paid:** `_monitoring.html` and `_collector_sessions.html` (17215a95)
+belong to the device page's Monitoring tab, `tab:monitoring`, which tests/test_board_fidelity.py
+holds on UNCHECKED: folding them needs that tab's own record and the test's RECORDS and
+UNCHECKED changed (a test change), and the collector sessions fold has no board. `fix.html` and
+`fixes.html` need RECORDS entries in the same test before it checks their records.

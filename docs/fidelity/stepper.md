@@ -92,8 +92,14 @@ line one level down. It is the `needs` state's precedent (2026-11-13, above) for
 decisions that worked. `_run_stepper.html` and `nmas_stepper.js` are byte for byte as they
 were; nothing the macro lays out moved, so no region's verdict changed. Read from the diff and
 tests/test_incident_page_once.py (`TestADecisionWorkingAsDesignedIsNeverRed`), not a new shot.
-Templates sha256 before: `ba93278e838ddda3a67c5530cc1ee3fd44f126cc6e7107cf3e8928685e1a46c1`.
-Templates sha256: `5963585698efd022a2c1b16561f510750d1fece881e74abbd551fdd64aebff08`
+Compared again 2026-11-18 (the skip-mode debt pass, 517393ba, C4028): modules/run_stepper.py's
+`from_record` draws a step declared after the current one "waiting" (an open ring), where it
+drew "skipped", while a heal waits on its symptom: the board's Marks row ("an open ring
+waiting") now holds for that case too. `_run_stepper.html` and `nmas_stepper.js` are byte for
+byte as they were; nothing the macro lays out moved, so no region's verdict changed. Read from
+the diff and tests/test_run_progress.py (`TestAHealLive`), not a new shot.
+Templates sha256 before: `5963585698efd022a2c1b16561f510750d1fece881e74abbd551fdd64aebff08`.
+Templates sha256: `39c23955013a41004d99bb4e2fabd1ce7a25810d29a44d6630ffc13744ca7e82`
 
 **Hashed again 2026-11-11 after the operator's test of the first slice on the host** ("2. Say
 the failure once. The red summary box and 'Failed at' carry it; the steps list shows each
