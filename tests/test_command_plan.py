@@ -16,6 +16,11 @@ modules/nsot/command_policy.py, modules/nsot/command_plan_run.py).
   check (a plan that leaves a line changed is rolled back and refused; a device that departs
   from intent is bounced, the plan being net zero); the pre-apply hook; Mercury's own session
   attributed as Mercury's; the step reached only through its declaration's ``apply``.
+- **The run's scope (7b300f39)**: the net-zero check scoped to the plan's interface sections on
+  a fake answering the section read, the rollback's compare in the same scope, the whole
+  compare when a section cannot be read; each snapshot rule and the device departing from the
+  access rule; the spanning-tree verdicts; the pooled session refusing another address or
+  account, IPv4 and IPv6.
 
 No device, no network, no AI.
 """
@@ -557,6 +562,225 @@ class TestNetZero:
         assert rec["outcome"] == "failed" and rec["state"] == "failed", rec["why"]
         assert rec["net_zero"]["after_rollback"] == ["+ " + sticky], rec["net_zero"]
         assert "NOT RESTORED" in rec["why"] and sticky.strip() in rec["why"]
+
+
+# ── The scoped net-zero and the pooled session (7b300f39, C3847) ───────────────────────────
+
+class SectionSwitch(Switch):
+    """The fake switch answering an interface's own section read
+    (`pipeline.SECTION_READ`) from its running configuration, as IOS frames it (``Building
+    configuration...``, ``Current configuration : N bytes``, the section, ``end``); an
+    interface the configuration does not hold, or one of *absent* (an interface not created
+    yet, as the section read sees it), answers IOS's ``%`` error."""
+
+    def __init__(self, absent=(), **kw):
+        super().__init__(**kw)
+        self.absent = tuple(absent)
+
+    def answer(self, command: str) -> str:
+        from modules.pipeline import SECTION_READ
+        prefix = SECTION_READ.format(name="")
+        if not command.startswith(prefix):
+            return super().answer(command)
+        self.reads.append(command)
+        name = command[len(prefix):]
+        if name in self.absent:
+            return ("                          ^\n"
+                    "% Invalid input detected at '^' marker.\n")
+        lines, keep = [], False
+        for ln in self.running().splitlines():
+            if ln == f"interface {name}":
+                keep = True
+            elif keep and not ln.startswith(" "):
+                break
+            if keep:
+                lines.append(ln)
+        if not lines:
+            return ("                          ^\n"
+                    "% Invalid input detected at '^' marker.\n")
+        body = "\n".join(lines) + "\n"
+        return (f"Building configuration...\n\nCurrent configuration : {len(body)} bytes\n"
+                f"!\n{body}end\n")
+
+
+class TestTheScopedNetZero:
+    """7b300f39 (C3847, the operator, 2026-11-16): a plan whose every line is a
+    section-confined shape on one interface compares that interface's own section before and
+    after, read on the run's session, never the whole configuration; after a rollback, the
+    same scope; a section that cannot be read keeps the whole compare."""
+
+    def test_a_plan_on_one_interface_compares_that_section_alone(self, lab):
+        lab["sw"] = SectionSwitch()
+        rec = go(lab)
+        assert rec["outcome"] == "done", rec["why"]
+        assert rec["net_zero_scope"] == {"scope": "interfaces", "interfaces": [PORT]}
+        assert rec["net_zero"] == {"checked": True, "differs": [], "scope": "interfaces",
+                                   "interfaces": [PORT]}, rec["net_zero"]
+        assert f"show running-config interface {PORT}" in lab["sw"].reads
+
+    def test_a_sticky_line_in_the_section_is_caught_by_the_scoped_compare(self, lab):
+        sticky = " switchport port-security mac-address sticky aabb.cc00.8099"
+        lab["sw"] = SectionSwitch(sticky=sticky)
+        rec = go(lab)
+        assert rec["outcome"] == "failed", rec["why"]
+        nz = rec["net_zero"]
+        assert nz["scope"] == "interfaces" and nz["differs"] == ["+ " + sticky], nz
+        # The compare after the rollback keeps the run's own scope.
+        assert nz["after_rollback_scope"] == "interfaces", nz
+        assert nz["after_rollback"] == ["+ " + sticky], nz
+        assert "NOT RESTORED" in rec["why"]
+
+    def test_a_section_that_cannot_be_read_keeps_the_whole_compare(self, lab):
+        # The section read answers IOS's `%` error (as for an interface the plan would
+        # create): the whole configuration is compared, the reason said, never a pass on a
+        # section never read.
+        lab["sw"] = SectionSwitch(absent=(PORT,))
+        rec = go(lab)
+        assert rec["net_zero_scope"] == {
+            "scope": "full", "why": "an interface's configuration before could not be read"}
+        assert rec["net_zero"]["scope"] == "full", rec["net_zero"]
+
+    @pytest.mark.parametrize("commands, program, scoped", [
+        (["interface {interface}", " shutdown", " no shutdown"],
+         [f"interface {PORT}", " shutdown", " no shutdown"], [PORT]),
+        (["interface {interface}", " no shutdown"], ["interface Vlan99", " no shutdown"],
+         ["Vlan99"]),
+        (["interface {interface}", " description {interface}"],
+         [f"interface {PORT}", f" description {PORT}"], []),
+        (["interface {interface}", " shutdown"], [f"interface {PORT} x", " shutdown"], []),
+        (["interface {interface}", " shutdown"], [f"interface {PORT}"], [])])
+    def test_the_scope_is_the_interfaces_of_section_confined_lines_only(
+            self, commands, program, scoped):
+        t = dataclasses.replace(CP.builtin()[KEY], commands=tuple(commands))
+        assert CR.net_zero_scope(t, program) == scoped
+
+
+class TestTheSnapshotScope:
+    """7b300f39 (the operator's R3 decision, 2026-11-16): the snapshots are scoped by what the
+    plan touches: an access port in committed intent reads its own state and spanning tree
+    (``access``); a trunk or routed port the full snapshots (``routed``); a port-channel
+    member, an interface intent gives no mode, or a line not confined to a section, the full
+    (``full``); and a device whose own configuration before departs from intent's access
+    mode, or makes the port a member, refuses with nothing sent."""
+
+    @staticmethod
+    def scope(interface, intent=None):
+        class Src:
+            def intent(self, host):
+                return (intent if intent is not None else T.s1_intent()), ""
+
+        class Run:
+            device, sources = "s1", Src()
+        t = CP.builtin()[KEY]
+        program = [f"interface {interface}", " shutdown", " no shutdown"]
+        return CR.snapshot_scope(NET, t, {"program": program}, Run())
+
+    def test_an_access_port_in_intent_is_the_access_rule(self):
+        got = self.scope(PORT)
+        assert (got["rule"], got["interfaces"]) == ("access", [PORT]), got
+        assert CR.ACCESS_UNSEEN in got["words"]
+
+    def test_a_trunk_is_the_routed_rule(self):
+        got = self.scope("GigabitEthernet0/3")
+        assert got["rule"] == "routed" and "(trunk)" in got["words"], got
+
+    def test_an_interface_intent_gives_no_mode_is_the_full_rule(self):
+        got = self.scope("GigabitEthernet0/1")
+        assert got["rule"] == "full" and "no switchport mode" in got["words"], got
+
+    def test_a_port_channel_member_is_the_full_rule(self):
+        intent = T.s1_intent()
+        for i in intent["interfaces"]:
+            if i["name"] == PORT:
+                i["channel_group"] = "1"
+        got = self.scope(PORT, intent)
+        assert got["rule"] == "full" and "port-channel member" in got["words"], got
+
+    @pytest.mark.parametrize("section, said", [
+        (" switchport mode trunk", "does not hold `switchport mode access`"),
+        (" switchport mode access\n channel-group 1 mode active", "port-channel member")])
+    def test_the_device_departing_from_the_access_rule_refuses(self, section, said):
+        scope = {"rule": "access", "interfaces": [PORT]}
+        running = f"hostname s1\n!\ninterface {PORT}\n{section}\n!\nend\n"
+        got = CR._live_mode_refusal(scope, running)
+        assert said in got and got.endswith("Nothing was sent"), got
+        held = f"hostname s1\n!\ninterface {PORT}\n switchport mode access\n!\nend\n"
+        assert CR._live_mode_refusal(scope, held) == ""
+
+
+class TestTheSpanningTreeVerdict:
+    """7b300f39: an access port's spanning tree read again after the settle and judged
+    (`pipeline._stp_verdict`), on s1's captured rows with one edit each: broken or a guard's
+    inconsistency, a role only another bridge gives, forwarding lost are issues; a `%` reply
+    or no state neither passes nor fails, or judges nothing."""
+
+    @pytest.mark.parametrize("edit, said", [
+        (("Desg FWD 4         128.4    P2p \nVLAN0020", "Desg BKN*4        128.4    P2p \n"
+                                                       "VLAN0020"), "broken or held"),
+        (("VLAN0020            Desg FWD 4         128.4    P2p ",
+          "VLAN0020            Desg FWD 4         128.4    P2p *ROOT_Inc"), "broken or held"),
+        (("VLAN0030            Desg FWD", "VLAN0030            Altn BLK"), "a switch is behind"),
+        (("VLAN0030            Desg FWD", "VLAN0030            Root FWD"), "a switch is behind"),
+        (("VLAN0030            Desg FWD", "VLAN0030            Back BLK"), "a switch is behind"),
+        (("VLAN0030            Desg FWD", "VLAN0030            Desg LRN"), "forwarded in")])
+    def test_each_issue_is_named(self, edit, said):
+        from modules import pipeline as P
+        after = STP_ROWS.replace(*edit, 1)
+        assert after != STP_ROWS
+        got = P._stp_verdict(STP_ROWS, after)
+        assert len(got["issues"]) == 1 and said in got["issues"][0], got
+
+    def test_the_same_rows_after_are_no_issue(self):
+        from modules import pipeline as P
+        got = P._stp_verdict(STP_ROWS, STP_ROWS)
+        assert got["issues"] == [] and got["unreadable"] == "", got
+
+    @pytest.mark.parametrize("after", ["% Invalid input detected at '^' marker.\n", None])
+    def test_an_unreadable_answer_neither_passes_nor_fails(self, after):
+        from modules import pipeline as P
+        got = P._stp_verdict(STP_ROWS, after)
+        assert got["issues"] == [] and got["unreadable"], got
+
+    def test_no_state_after_judges_nothing(self):
+        from modules import pipeline as P
+        got = P._stp_verdict(STP_ROWS, "no spanning tree info available for GigabitEthernet1/0")
+        assert got == {"before": P._stp_rows(STP_ROWS)["words"],
+                       "after": "no spanning-tree state (the port takes part in no instance)",
+                       "issues": [], "unreadable": ""}
+
+
+class TestThePooledSession:
+    """7b300f39: the read engine's session rides the run's pooled session, and a read of
+    another address or as another account is refused, never sent on it (IPv4 and IPv6, an
+    IPv6 address written two ways being one)."""
+
+    @pytest.fixture
+    def pooled(self, monkeypatch):
+        got = []
+        monkeypatch.setattr("modules.connection.get_persistent_connection",
+                            lambda dev, pool, lock: (got.append(dev["ip"]), "conn")[1])
+
+        class Ctx:
+            connections_pool, pool_lock = {}, None
+        return Ctx(), got
+
+    @pytest.mark.parametrize("ip, signed", [
+        ("192.0.2.11", "192.0.2.11"), ("2001:db8::11", "2001:DB8:0::11")])
+    def test_the_same_address_and_account_reads_on_the_session(self, pooled, ip, signed):
+        ctx, got = pooled
+        session = CR.pool_session(ctx, {"ip": ip, "username": "mercury"})
+        assert session({"ip": signed, "username": "mercury"}, lambda c: c) == "conn"
+        assert got == [ip]
+
+    @pytest.mark.parametrize("ip, signed, user", [
+        ("192.0.2.11", "192.0.2.12", "mercury"), ("192.0.2.11", "192.0.2.11", "other"),
+        ("2001:db8::11", "2001:db8::12", "mercury"), ("2001:db8::11", "2001:db8::11", "other")])
+    def test_another_address_or_account_is_never_read_on_it(self, pooled, ip, signed, user):
+        ctx, got = pooled
+        session = CR.pool_session(ctx, {"ip": ip, "username": "mercury"})
+        with pytest.raises(ValueError, match="it is not read on that session"):
+            session({"ip": signed, "username": user}, lambda c: c)
+        assert got == [], "nothing was asked of the pool"
 
 
 # ── The review of Gate 1a ───────────────────────────────────────────────────────────────────
