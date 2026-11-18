@@ -388,6 +388,43 @@ class TestTheIncidentsPlan:
         assert len(seam.calls) == 2, seam.calls
         assert engine_runs == [] and jobs_of(kept_jobs, PE.JOB_KIND) == [], "nothing ran"
 
+    @pytest.mark.parametrize("family", sorted(SESSIONS))
+    def test_a_session_that_moves_after_approves_read_is_refused_by_the_engine_naming_both(
+            self, web, monkeypatch, kept_jobs, engine_runs, family):  # noqa: F811
+        """The session moves after Approve's job compared it, before `plan_engine.start`'s
+        preview of the step (`plan_engine._catalog_preview`, the third read): the engine refuses
+        it, naming both, nothing runs (the job's error says "Nothing ran"), and the incident's
+        card says it did not start, naming both (C3976, measured 2026-11-18: the card keeps a
+        failure's first 400 characters and the engine's words put the step's description,
+        about 460 for the collector step, before its reason, so neither session was on the
+        card)."""
+        remote, local = SESSIONS[family]
+        moved = {"IPv4": "192.0.2.7:57002", "IPv6": "[2001:db8::7]:57002"}[family]
+        seam = Seam(monkeypatch, remote, local)
+        iid = FX.plant()
+        proposed(iid)
+        _r, html = FX.page(web, iid)
+        fields, _bluf = drawn_approve(html)
+
+        def moves_after_approves_read(network, device, subs):
+            if len(seam.calls) == 2:          # the proposal's read and Approve's job's
+                seam.set(moved, local)
+            return seam(network, device, subs)
+        monkeypatch.setattr(PE, "collector_session", moves_after_approves_read)
+        r = FX.post(web, iid, "approve", **fields)
+        assert r.status_code == 200 and "Starting…" in words_of(r.get_data(as_text=True))
+        assert len(seam.calls) == 3, seam.calls
+        (job,) = jobs_of(kept_jobs, APPROVE_JOB)
+        assert job["state"] == "failed", job
+        _r, after = FX.page(web, iid)
+        assert "Nothing ran" in job["error"], job["error"]
+        for said in (job["error"], words_of(after)):
+            assert "the approved plan did not start: step 1 is refused by its own preview: " \
+                "the collector's session moved since the plan was approved" in said, said[:1200]
+            assert f"the approval bound the session from {remote}" in said, said[:1200]
+            assert f"the collector holds one from {moved} now" in said, said[:1200]
+        assert engine_runs == [] and jobs_of(kept_jobs, PE.JOB_KIND) == [], "nothing ran"
+
     def test_a_read_that_named_no_session_is_not_approvable_and_says_why(self, web,  # noqa: F811
                                                                          monkeypatch):
         from modules.fixit import plan as FP

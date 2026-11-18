@@ -1700,7 +1700,12 @@ def preview(network: str, plan, params) -> dict:
                  found=redact_payload(list(got.get("found") or [])),
                  choices=redact_payload(list(got.get("choices") or [])))
         if not s["ok"] and not refused:
-            refused = f"step {s['n']} ({s['words']}) is refused by its own preview: {s['refused']}"
+            # Its reason first, the step's own words after it (C3976): a card that keeps a
+            # refusal's first 400 characters (`troubleshoot_job.record_failure`) still names
+            # what was compared and both operands, where a catalog step's words (up to about
+            # 500 characters) left no room for them.
+            refused = (f"step {s['n']} is refused by its own preview: {s['refused']} "
+                       f"(step {s['n']}: {s['words']})")
     return {"ok": not refused, "code": "step_refused" if refused else "", "refused": refused,
             "plan": p.key, "title": p.title(held), "words": p.words, "params": held,
             "network": network,
