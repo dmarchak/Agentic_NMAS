@@ -851,3 +851,21 @@ def test_an_answer_that_is_not_json_is_the_answer_at_fault(world):
     assert first["loc"] == ()
     _failed(world, _answer("not json at all"), "schema",
             f"the answer is not ping.v1: the answer: {first['msg']}")
+
+
+def test_the_count_is_skipped_only_for_a_body_mostly_ascii():
+    """231da1d6 (the operator, 2026-11-16: "never a network round trip per request"): the
+    provider's count is skipped for a task in `COUNTED_ONLY_OVER` only when at most
+    `NON_ASCII_MOST` of the body's characters are not ASCII (`_ascii_enough`), since a
+    non-ASCII character may be a token by itself and the fallback estimate may then be under.
+    At its edge, on the body as the gateway measures it. The debt pass, 2026-11-18
+    (docs/FAST_LANE_DEBT.md's row for 231da1d6)."""
+    def body(ascii_chars: int, other: int) -> dict:
+        return {"messages": [{"content": "a" * ascii_chars + "é" * other}]}
+    size = len(json.dumps(body(0, 0), ensure_ascii=False))
+    n = 1000
+    most = int(gateway.NON_ASCII_MOST * n)
+    assert gateway._ascii_enough(body(n - size - most, most)), "at the share: skipped"
+    assert not gateway._ascii_enough(body(n - size - most - 1, most + 1)), "over it: counted"
+    assert gateway.COUNTED_ONLY_OVER == ("fixit_troubleshoot",), \
+        "the one task whose count is skipped is the investigation's"

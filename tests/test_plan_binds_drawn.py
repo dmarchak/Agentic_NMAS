@@ -363,6 +363,27 @@ class TestTheIncidentsPlan:
             assert "Nothing ran" in said, said[:1200]
         assert engine_runs == [] and jobs_of(kept_jobs, PE.JOB_KIND) == [], "nothing ran"
 
+    def test_the_approve_press_is_timed_at_the_level_the_service_keeps(  # noqa: F811
+            self, web, monkeypatch, kept_jobs, engine_runs, caplog):
+        """5a808325 (the overnight speed pass, 2026-11-17, C3912): Approve's answer is timed
+        in one line at WARNING, the level the host's service keeps. The debt pass, 2026-11-18
+        (docs/FAST_LANE_DEBT.md's row for f123edeb and 5a808325)."""
+        import logging
+        import re
+        remote, local = SESSIONS["IPv6"]
+        Seam(monkeypatch, remote, local)
+        iid = FX.plant()
+        proposed(iid)
+        _r, html = FX.page(web, iid)
+        fields, _bluf = drawn_approve(html)
+        with caplog.at_level(logging.WARNING, logger="routes.fixit_v2"):
+            r = FX.post(web, iid, "approve", **fields)
+        assert r.status_code == 200
+        said = [x.getMessage() for x in caplog.records if x.name == "routes.fixit_v2"
+                and "the Approve press on" in x.getMessage()]
+        assert len(said) == 1 and re.search(
+            rf"the Approve press on {iid} answered in \d+\.\d\d s$", said[0]), said
+
     def test_approve_refuses_a_session_that_moved_naming_both(self, web, monkeypatch,  # noqa: F811
                                                               kept_jobs, engine_runs):
         remote, local = SESSIONS["IPv4"]

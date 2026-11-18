@@ -1241,6 +1241,29 @@ def engine_runs(monkeypatch, lab):
     return got
 
 
+class TestTheRunReadsLive:
+    """55c8a8eb (the operator, 2026-11-16; CLAUDE.md's display-only rule): the approved run
+    reads its device live, always: a `Sources` carrying a proposal's kept reads
+    (`command_plan_run.Reused`) handed to `run` is replaced by a live one, so not one of its
+    reads is answered from the kept store. The kept store here answers every command, so a
+    run that took it would read nothing from the switch. The debt pass, 2026-11-18
+    (docs/FAST_LANE_DEBT.md's row for 55c8a8eb)."""
+
+    class AnswersAll(CR.Reused):
+        def take(self, host, command):
+            self.taken = getattr(self, "taken", 0) + 1
+            return {"answer": "", "at": 0.0, "run": "", "from": "kept", "command": command,
+                    "age_s": 1.0}
+
+    def test_a_run_handed_kept_reads_reads_its_device_live(self, lab):
+        src = sources(lab)
+        src.reuse = kept = self.AnswersAll(clock=lambda: lab["t"])
+        rec = go(lab, sources=src)
+        assert (rec["outcome"], rec["state"]) == ("done", "done"), rec["why"]
+        assert lab["sw"].reads, "the switch was read"
+        assert getattr(kept, "taken", 0) == 0, "no read answered from the kept store"
+
+
 class TestThePreconditionsBatch:
     """f86bcf7f (the operator, 2026-11-16): a run's preconditions ask every device read in ONE
     read-engine run, each check judged from that run's own answers; a refused run leaves every
