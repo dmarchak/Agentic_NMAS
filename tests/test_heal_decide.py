@@ -684,11 +684,16 @@ class TestGuards:
                                         "no ipv6 route 2001:db8:9::/48 2001:db8:0:7::2"]
 
     def test_14_a_rolled_back_heal_halts(self, lab):
+        """Guard 14 is retired (70e89a47, the operator, 2026-11-17, round 2), and the halt
+        `decisions.applied` still wrote for a rolled-back heal is gone too (C3965, the
+        operator's decision 5, 2026-11-18): the rollback is recorded, and no halt. The name is
+        kept: a test renamed and edited counts as deleted."""
         auto("Default", now=T0 - 60)
         rec = DS.record("Default", {"outcome": "heal", "device": "edge-b"}, T0 - 7200)
         DS.applied("Default", rec["id"], "rolled_back", by="the apply",
                    words="an adjacency dropped", now=T0 - 7000)
-        assert DS.halted("Default")["guard"] == 14
+        assert DS.halted("Default") == {}
+        assert DS.find("Default", rec["id"])["applied"]["outcome"] == "rolled_back"
 
     def test_the_first_that_applies_is_named(self, lab, monkeypatch):
         """3 before 4: planned work and a departing golden, and 3 is named."""

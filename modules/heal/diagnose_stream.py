@@ -456,7 +456,7 @@ def _v6only(proc: str) -> bool:
 #: Each session's last receive, from the kernel's socket diagnostics (inet_diag) as `ss -tni`
 #: prints them (C2892; tests/fixtures/diagnose/collector/README.md): a session line, then its
 #: indented detail line holding ``bytes_received:<n>`` and ``lastrcv:<ms>``.
-#: Since 2026-11-16 (r7's wedged session, incident hi-22cfdc299000: its keepalives answered,
+#: Since 2026-11-16 (a router's wedged session, incident hi-22cfdc299000: its keepalives answered,
 #: its data stopped at 227 bytes) with ``-o`` too, the session's timer: `ss -tnio` prints
 #: ``timer:(keepalive,4.7sec,0)`` at the end of the session line (iproute2 6.19.0, captured on
 #: the development laptop's loopback, 2026-11-16), so a session whose keepalives still run can

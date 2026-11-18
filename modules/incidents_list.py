@@ -162,14 +162,14 @@ def _fixit_of(network: str, found: dict) -> dict:
         starts = []
     # The AI's status only while an AI result stands (the operator, 2026-11-16: a status not
     # from the AI never starts "AI:"): an investigation ready to start again ("ready", "none")
-    # draws its incident's own status, as r4's and r7's guard-4 reason after an old start.
+    # draws its incident's own status, as two routers' guard-4 reason after an old start.
     if starts and v.get("state") not in ("", "none", "ready"):
         last = starts[-1]
         since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(last.get("epoch") or 0)))
         if v.get("state") == "investigating":
             ai = {"state": "investigating", "since": since, "words": "AI investigating"}
         elif v.get("status_source") == "AI":
-            # The AI's own finding only (the operator, 2026-11-16: r7's row said "AI: Mercury
+            # The AI's own finding only (the operator, 2026-11-16: a router's row said "AI: Mercury
             # has no fix it runs by itself… Retried at 04:53 UTC", the retry's reason), one
             # sentence, its source drawn once as a label beside it (``source``; the wording
             # rule, 2026-11-16), never a prefix in its words.

@@ -19,6 +19,10 @@ and the strip with the state, the controls disabled, and why.
 
 ## Turn on self-healing and fix all {#fix-all}
 
+Since 2026-11-18 this press is removed too (the operator): there is no **Turn on self-healing
+and fix all** to press, and the steps below run only when the control strip's **Self-healing**
+switch is turned on. What follows describes the card as it was.
+
 On Needs attention, the batch's row offers **Turn on self-healing and fix all…**, which opens
 the card. The card is the preview: before you press, it lists each device Mercury fixes with its program
 (masked, the line count, each one a click away), each held device it cannot fix and why, and

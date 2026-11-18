@@ -70,6 +70,9 @@ def reads(ai, monkeypatch):  # noqa: F811
     """The lab's r2 with its real intent (two subscriptions and their receiver), a read-only
     account, and the reads answered by stand-ins: the device's (a planted hash in one line),
     the collector's and the stream's series."""
+    import dataclasses
+
+    from modules.ai import fixit_reads as FR
     from modules.ai import read_loop as RL
     from modules.ai import router_reads as RR
     from modules.heal import diagnose_stream as DS
@@ -100,6 +103,9 @@ def reads(ai, monkeypatch):  # noqa: F811
         ran.append(("series", dev, sub))
         return {"state": "absent", "count": 0, "why": ""}
     monkeypatch.setattr(RR, "run", device)
+    # One device's several reads go through `FAMILY.run_many` since 4a8bb0df (bound at its
+    # definition, so the stand-in for `RR.run` above never reached them; C3958).
+    monkeypatch.setattr(FR, "FAMILY", dataclasses.replace(FR.FAMILY, run_many=lambda items, scope: [device(op, a, reqs, scope) for op, a, reqs in items]))
     monkeypatch.setattr(DS, "read_collector", collector)
     monkeypatch.setattr(DS, "series_of", series)
     return types.SimpleNamespace(ran=ran)

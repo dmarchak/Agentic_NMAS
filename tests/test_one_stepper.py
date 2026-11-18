@@ -16,6 +16,13 @@ The component: `modules/run_stepper.py` (the model), `templates/v2/_run_stepper.
   current (`aria-current="step"`), the retired `job_stepper` macro, or a stepper or step-list
   class, outside the component; found by parsing the markup, with a planted case;
 - the model's groups, counts, bar and grouping at scale; the script's clock (duktape).
+
+**The incident card's runs** (the operator's decision 7, 2026-11-18, C3975: "`_inc_step.html`
+is THE stepper", for the AI and plan users): an AI investigation, an approved plan's run and a
+saved script's run, drawn on an incident's card or a plan's own page, use
+`templates/v2/_inc_step.html` (steps in `run_stepper.step`'s model; 93120b2f moved plan runs
+onto it), and only the pages on INCIDENT_STEPPER include it; every other operation page keeps
+`run_stepper`.
 """
 
 import os
@@ -25,7 +32,14 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 V2 = os.path.join(ROOT, "templates", "v2")
-COMPONENT = {"templates/v2/_run_stepper.html", "static/js/nmas_stepper.js"}
+COMPONENT = {"templates/v2/_run_stepper.html", "static/js/nmas_stepper.js",
+             "templates/v2/_inc_step.html"}
+#: The pages that draw a run on the incident card's stepper, `_inc_step.html` (the operator's
+#: decision 7, 2026-11-18): template -> the runs it draws. EXACT: no operation page joins it.
+INCIDENT_STEPPER = {
+    "_fixit_section.html": "the AI's investigation and an approved plan's run on the incident card",
+    "_plan_card.html": "a plan's run, on its incident's card or, with no incident, its own page",
+}
 
 #: Every v2 page an operation that runs steps or devices draws its progress or result on (the
 #: survey of 2026-10-12, docs/fidelity/stepper.md): template -> the operations it draws.
@@ -85,8 +99,9 @@ OTHER_PROGRESS: set = set()
 _CLASS = re.compile(r'class="([^"]*)"')
 _STEPPISH = re.compile(r"^(stepper|step-[a-z_]+|[a-z]+-steplist|[a-z]+-step|[a-z]+-steps)$")
 #: Class tokens that name a list of steps that is NOT progress: a preview's program and gates,
-#: a settings card's Test results, setup instructions (`set-steps`).
-NOT_PROGRESS = {"set-steps"}
+#: a settings card's Test results, setup instructions (`set-steps`), a plan's own steps as it
+#: will run them, before it runs (`simple-step`, the fix-it section's plan card).
+NOT_PROGRESS = {"set-steps", "simple-step"}
 
 
 def progress_marks(text: str) -> list:
@@ -124,7 +139,12 @@ def _read(rel):
 
 
 def _uses_component(text: str) -> bool:
-    return _calls(text, "run_stepper") or _calls(text, "run_summary")
+    return _calls(text, "run_stepper") or _calls(text, "run_summary") or _includes_inc_step(text)
+
+
+def _includes_inc_step(text: str) -> bool:
+    """*text* includes the incident card's stepper (`_inc_step.html`)."""
+    return bool(re.search(r'\{%-?\s*include\s+"v2/_inc_step\.html"', text))
 
 
 def _calls(text: str, macro: str) -> bool:
@@ -149,7 +169,8 @@ class TestEveryOperationPageUsesTheOneStepper:
         assert not using & NOT_YET, ("converted: take it off NOT_YET", sorted(using & NOT_YET))
         for f, why in DOES_NOT_FIT.items():
             assert len(why) > 40, f"{f}: say why a stepper does not fit"
-        summary_only = {f for f in using if not _calls(_read(f"templates/v2/{f}"), "run_stepper")}
+        summary_only = {f for f in using if not _calls(_read(f"templates/v2/{f}"), "run_stepper")
+                        and not _includes_inc_step(_read(f"templates/v2/{f}"))}
         assert summary_only == set(SUMMARY_ONLY), (
             "draws only the bar and counts: say why on SUMMARY_ONLY",
             sorted(summary_only - set(SUMMARY_ONLY)),
@@ -173,6 +194,17 @@ class TestEveryOperationPageUsesTheOneStepper:
         assert progress_marks('{{ job_stepper(c.steps) }}') == ["job_stepper("]
         assert progress_marks('<ol class="set-steps">') == [], "a preview's list is not progress"
         assert progress_marks('<ol class="run-steps"><li class="run-step">') == []
+
+    def test_only_the_incident_cards_runs_draw_the_incident_stepper(self):
+        """The operator's decision 7 (2026-11-18): `_inc_step.html` is THE stepper for the AI
+        and plan runs, and only for them; every other operation page keeps `run_stepper`."""
+        including = {f for f in os.listdir(V2) if f.endswith(".html")
+                     and _includes_inc_step(_read(f"templates/v2/{f}"))}
+        assert including == set(INCIDENT_STEPPER), sorted(including ^ set(INCIDENT_STEPPER))
+        for f, why in INCIDENT_STEPPER.items():
+            assert len(why) > 30, f"{f}: say which runs it draws"
+        assert _includes_inc_step('{%- include "v2/_inc_step.html" %}')
+        assert not _includes_inc_step("the incident card's stepper (`_inc_step.html`)")
 
 
 class TestTheBarAndCountsAlone:

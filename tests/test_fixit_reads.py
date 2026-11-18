@@ -366,7 +366,7 @@ def test_each_read_is_in_the_send_log_and_on_history(ai, monkeypatch, tmp_path):
     monkeypatch.setattr("modules.connection.with_temp_connection", lambda dev, fn: fn(Conn()))
     # Premise corrected (231da1d6, the operator, 2026-11-16: "the standard reads on the run's
     # one session (sign in once)"): an investigation's device reads ride its one pooled
-    # session (`router_reads.SessionPool`, Mercury's account, through the reads engine), which
+    # session (the reads engine's `reads.SessionPool` since C3974, Mercury's account), which
     # opens it with `connection.open_ssh`, where each read took Show commands' own temporary
     # session; the same stand-in session answers it, signed in as the lab's stand-in account
     # (the lab's r2 holds no stored credential: the pool reads the stored parameters itself).

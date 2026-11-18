@@ -444,11 +444,14 @@ class TestTheOutcome:
         assert DS.halted("Default") == {}
 
     def test_a_rollback_halts_the_network(self, lab):
+        """Named for the halt guard 14 wrote; since C3965 (the operator's decision 5,
+        2026-11-18) a rollback is recorded and halts nothing. The name is kept: a test renamed
+        and edited counts as deleted."""
         got, _src, d = act(GOLDEN + ROUTE4, result={
             "outcome": "failed", "stage": "verify", "commands": ["x"], "rolled_back": True,
             "reason": "an OSPF adjacency dropped", "rollback_outcome": {"state": "restored"}})
         assert got["outcome"] == "rolled_back"
-        assert DS.halted("Default")["guard"] == 14
+        assert DS.halted("Default") == {}, "a rollback halts nothing (C3965, decision 5)"
 
     def test_a_send_neither_verified_nor_rolled_back_halts(self, lab):
         """The act's halt write is removed (70e89a47, the operator, 2026-11-17, round 2:
@@ -504,7 +507,7 @@ class TestVerify:
     def test_a_unit_not_at_intent_after_the_change_rolls_back(self, lab):
         got, _src, _d = act(GOLDEN + ROUTE4, post=K._stored(GOLDEN + ROUTE4))
         assert got["outcome"] == "rolled_back" and "not at intent" in got["words"]
-        assert DS.halted("Default")["guard"] == 14
+        assert DS.halted("Default") == {}, "a rollback halts nothing (C3965, decision 5)"
 
     def feature(self):
         return changed((LOAD, LOAD + " load-interval 30\n"))
@@ -1176,7 +1179,7 @@ class TestThroughTheRealApply:
         got, _prog, _d = self.run(wired, read, post=read)
         assert wired["state"]["rolled"] and wired["state"]["rolled"][0][1] == "after_verify"
         assert got["outcome"] == "rolled_back"
-        assert DS.halted("Lab")["guard"] == 14
+        assert DS.halted("Lab") == {}, "a rollback halts nothing (C3965, decision 5)"
 
 
 # ── A cosmetic heal: verified by its read-back, its symptom never waited on (R3) ────────────

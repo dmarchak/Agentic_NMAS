@@ -52,7 +52,7 @@ and every call, sent or refused, is one `ai_calls` row. In order, before anythin
    cannot cover that, the refusal naming the cap, its amount and what remains. **Its
    max_tokens is the model's maximum** (`profiles.max_output`, inside the context window),
    and **the caps are enforced live** (the operator's change of 2026-11-16, after a failed
-   restore and s5 starting together were refused on phantom cost): while it streams, its
+   restore and a switch's starting together were refused on phantom cost): while it streams, its
    running cost (prompt plus output so far) is checked against every applicable cap under the
    same lock, counting every other call's hold or live spend (`LIVE_STEP_TOKENS`,
    `reservations.live_check`), and the stream is closed (billing stops) the moment the tokens

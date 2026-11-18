@@ -290,6 +290,16 @@ SIGNED_OFF = {
                                      "provisionally by the operator for initial implementation "
                                      "and testing (2026-11-13, docs/STANDING_APPROVAL_LOG.md, "
                                      "\"Board T\"); compared, docs/fidelity/incidents.md"),
+    "fix.html": ("2026-11-16", "board fix-bpdu-guard (docs/boards/fix-bpdu-guard.html, "
+                               "artboards 1 and 2: a fix's own page and its Run…), approved by "
+                               "the operator 2026-11-16 with six changes (C3849 pieces 3 and "
+                               "4); Delete… and Restore… inside How it runs by the operator's "
+                               "decision the same day. Not compared yet (skip mode, "
+                               "docs/FAST_LANE_DEBT.md)"),
+    "fixes.html": ("2026-11-16", "board fixes-list (docs/boards/fixes-list.html, revised "
+                                 "2026-11-16), approved by the operator 2026-11-16 (\"build it "
+                                 "with the fix page\") with three conditions (C3849 piece 2). "
+                                 "Not compared yet (skip mode, docs/FAST_LANE_DEBT.md)"),
 }
 
 #: built without a recorded sign-off: (why, what happens to it). Only shrinks.

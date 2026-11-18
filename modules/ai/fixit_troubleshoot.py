@@ -136,7 +136,7 @@ PROMPT_SECOND_V6 = (FEATURE, 6)
 #: v11, v12 and v13 (C3797, the same day): the investigation, iterative: v11 its first pass,
 #: v12 a later pass with the reads so far (it may ask again), v13 its last pass (and the plain
 #: one); each answer names the read it lacked. v9 and v10 stay readable, never asked.
-#: v14, v15 and v16 (the operator, 2026-11-16, r7's wedged session): v11, v12 and v13 with a
+#: v14, v15 and v16 (the operator, 2026-11-16, a router's wedged session): v11, v12 and v13 with a
 #: lost stream's stalled session said: test the path first (DF pings at full size and a
 #: traceroute), and, when it is clean, reset one end, least disruptive first, by the ladder
 #: section's first untried rung (`modules/fixit/ladder.py`). v11 to v13 stay readable, never
@@ -1407,7 +1407,7 @@ def unverified(answer, sections: list, topo: dict, pack: dict = None) -> dict:
     ``improvement's step <n>``); ``{}`` when every one resolves. A hypothesis's citations are
     read as Explain's check reads them (`explain.normalised`).
 
-    A MISSING citation is marked too (the operator, 2026-11-16: r7's pass 2 was discarded
+    A MISSING citation is marked too (the operator, 2026-11-16: a router's pass 2 was discarded
     whole for "hypothesis 2 cites nothing in the pack"): a part citing nothing is marked
     `explain.UNCITED`, and, with *pack*, each device the answer names and cites nowhere (as
     Explain's check finds them, Mercury's own citations of it added first, `mercury_cites`)
@@ -1699,8 +1699,8 @@ def loop_feature(prep: dict) -> RL.LoopFeature:
         if not why and any(str(v) not in actable for v in acts_on(answer)):
             # A step on a device or subscription the finding does not name is the read loop's
             # refusal to name (`read_loop._acts_check`, every pass's), never the ladder's: its
-            # "tried" compares a step's class and subscriptions, not its device, so r6's
-            # re-subscribe read as r2's attempt 1 tried again (17215a95).
+            # "tried" compares a step's class and subscriptions, not its device, so edge3's
+            # re-subscribe read as edge2's attempt 1 tried again (17215a95).
             return ""
         if not why:
             why = tried_refusal(answer, prep)
@@ -2001,19 +2001,19 @@ def read_ahead_for(found: dict, incident, requests) -> list:
     return out
 
 
-def read_ahead(network: str, incident, commands: list, *, session=None) -> str:
+def read_ahead(network: str, incident, commands: list, *, pool: str = "") -> str:
     """*commands* on the incident's device through THE reads engine, as the preflight reads
     them (`AHEAD_ACTOR`): the run's id, or ``""`` when nothing was read (refused, said in the
     log: the preflight then reads live, as before). Bounded by the engine's own session
-    bounds. *session* is the investigation's one session (`router_reads.SessionPool`), when
-    it has one."""
+    bounds. *pool* is the investigation's key for the engine's one session per device and
+    account (`reads.SessionPool`, C3974), when it has one."""
     from modules.nsot import reads
 
     if not commands or not incident.device:
         return ""
     try:
         rec = reads.run(network, [incident.device], list(commands), AHEAD_ACTOR,
-                        purpose=AHEAD_PURPOSE, **({"session": session} if session else {}))
+                        purpose=AHEAD_PURPOSE, **({"pool": pool} if pool else {}))
     except Exception as exc:                                  # noqa: BLE001 (read live later)
         log.info("fixit troubleshoot: %s's plan reads were not read ahead: %s", incident.id, exc)
         return ""
@@ -2200,8 +2200,9 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     request_parts = {}
     # The investigation's one device session per account (the operator, 2026-11-16: "sign in
     # once"): its standard reads, the plan's reads read ahead and each later round's ride it;
-    # closed once the last of them has run (`finally` below).
-    pool = RR.SessionPool()
+    # closed once the last of them has run (`finally` below). The pool, its sessions and its
+    # credentials are the reads engine's (C3974): this function holds only its key.
+    pool = f"ai-investigation-{incident.id}-{time.time_ns()}"   # the engine's pool, by key
     side = {}
     behinds = []                                # the read-ahead threads not joined yet
 
@@ -2288,7 +2289,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
             # of reads, so they never hold the device against the loop's own (one operation
             # per device, refused by name).
             behind = (_behind(lambda: read_ahead(network, incident, ahead,
-                                                 session=pool.session("person")))
+                                                 pool=pool))
                       if memo["calls"] == 1 and ahead else None)
             # Kept until joined, so the `finally` below joins it when the call or the loop
             # raises, before the sessions are closed.
@@ -2346,7 +2347,8 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
         # on its own, reusing these reads' answers).
         for join in [b for b in behinds if b is not None]:
             join()
-        pool.close()
+        from modules.nsot import reads as _reads
+        _reads.close_pool(pool)
     marks = retry.get("marks", {}) if retry else marks_of(prep, got.get("answer"))
     said = reads_said(got)
     # A gap for a problem a step Mercury has, not yet tried here, fixes is flagged on the card

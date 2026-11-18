@@ -456,8 +456,9 @@ def client(kea, monkeypatch):
 
 
 HX = {"HX-Request": "true"}
-#: The run's first step, done, as THE stepper draws it (`run_stepper`, `plan_engine.run_card`).
-DONE_STEP = 'run-step run-step-done" data-step="step-1"'
+#: The run's first step, done, as THE stepper for a plan's run draws it: the incident card's
+#: stepper (`_inc_step.html`, since 93120b2f; the operator's decision 7, 2026-11-18, C3975).
+DONE_STEP = 'inc-stepper-step inc-stepper-done" data-step="s1" data-state="done"'
 
 
 class TestTheRunOnTheOneStepper:
@@ -507,8 +508,10 @@ class TestTheRunOnTheOneStepper:
 
     def test_approved_its_page_draws_the_running_step_on_the_stepper(self, kea, monkeypatch):
         """Approve pressed on the real card; while the run's step applies, the run's page (the
-        job's *page*, as In progress opens it) draws it on `run_stepper`, the step running and
-        the card asking for itself again; once it ends, the step done and the redraw stopped."""
+        job's *page*, as In progress opens it) draws it on the incident card's stepper
+        (`_inc_step.html`, the operator's decision 7, 2026-11-18), the step running and the
+        card asking for itself again; once it ends, the step done and the
+        redraw stopped."""
         import dataclasses
         import re
 
@@ -540,9 +543,10 @@ class TestTheRunOnTheOneStepper:
         ((work, kw),) = started
         work("j-1")
         (out,) = during
-        assert "data-run-stepper" in out and 'aria-busy="true"' in out
-        assert 'run-step run-step-running" data-step="step-1"' in out
-        assert 'aria-current="step"' in out and "DHCP reservation" in out
+        assert 'class="inc-stepper"' in out and 'aria-busy="true"' in out
+        assert ('inc-stepper-step inc-stepper-running working-now" data-step="s1" '
+                'data-state="running"') in out
+        assert "DHCP reservation" in out
         assert kea.recorded
         after = client.get(kw["page"].replace("{job}", "j-1"), headers=HX).get_data(as_text=True)
         assert DONE_STEP in after and 'aria-busy="true"' not in after
@@ -629,7 +633,9 @@ class TestTheCard:
         page = client.get(row["href"])
         whole = page.get_data(as_text=True)
         assert page.status_code == 200 and whole.lstrip().lower().startswith("<!doctype html")
-        assert "<title>A plan" in whole and "htmx" in whole
+        # Titled by the plan itself (93120b2f: "a plan with no incident gets the same stepper on
+        # its own page, titled by the plan").
+        assert "<title>Reserve 10.10.20.150 for h5" in whole and "htmx" in whole
         assert "Every step ran and was verified:" in whole and DONE_STEP in whole
 
     def test_a_hash_not_previewed_is_refused_in_place_with_nothing_run(self, client, kea):
