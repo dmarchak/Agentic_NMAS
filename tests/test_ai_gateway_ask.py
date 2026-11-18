@@ -41,9 +41,19 @@ def _counted(body) -> int:
     return A.count_tokens(body, KEY).tokens
 
 
+#: The most a connection_check prompt may be (C3890, 7b0bb884): the model's context window less
+#: the task's typical answer, its pin's max_tokens while none is measured.
+BOUND = (profiles.context_window(MODEL)
+         - profiles.TASKS["connection_check"]["max_tokens"])
+
+
 def _measured(body) -> dict:
-    """What a row past the prompt's measurement adds: its tokens and how they were had."""
-    return {"prompt_tokens": _counted(body), "prompt_count": COUNTED}
+    """What a row past the prompt's measurement adds, and its result says (`gateway.count_of`,
+    C3890): its tokens, how they were had with the masked request's characters, and the most
+    the prompt may be inside the model's context window."""
+    return {"prompt_tokens": _counted(body),
+            "prompt_count": dict(COUNTED, chars=len(json.dumps(body, ensure_ascii=False))),
+            "prompt_bound": BOUND}
 
 
 @pytest.fixture(autouse=True)
@@ -51,12 +61,22 @@ def fixed_id(monkeypatch):
     monkeypatch.setattr(calls, "new_id", lambda: CALL_ID)
 
 
+#: The laps every call's result carries since the speed pass (0093fb8b, measurement only).
+LAPS = {"prepare_s", "count_s", "send_s"}
+
+
 def _ask(world, feature="connection_check", prompt=("ping", 1), schema=connection.Ping,
          parts=None, send=None, today="2026-10-25"):
+    """The call's result, its ``laps`` (seconds, measured: never compared) taken off once
+    their keys are shown, so each test holds the rest whole."""
     with pressed_by(ACTOR):
-        return gateway.ask(feature, prompt, schema, {"word": "w"} if parts is None else parts,
-                           actor=ACTOR,
-                           trigger=triggers.person(ACTOR), send=send or world.send, today=today)
+        got = gateway.ask(feature, prompt, schema, {"word": "w"} if parts is None else parts,
+                          actor=ACTOR,
+                          trigger=triggers.person(ACTOR), send=send or world.send, today=today)
+    if "laps" in got:
+        got = dict(got)
+        assert set(got.pop("laps")) == LAPS
+    return got
 
 
 def _row():
@@ -66,8 +86,54 @@ def _row():
     return row
 
 
-def _refused(kind, detail):
-    return {"ok": False, "error": kind, "detail": detail, "call_id": CALL_ID, "recorded": True}
+def _refused(kind, detail, body=None):
+    """A refusal's result; given the request *body*, one refused after the prompt was measured,
+    which says what it measured (`gateway.count_of`, C3890)."""
+    out = {"ok": False, "error": kind, "detail": detail, "call_id": CALL_ID, "recorded": True}
+    return dict(out, **_measured(body)) if body is not None else out
+
+
+#: connection_check's fixed bound on max_tokens (7b0bb884: "Fixed 64, no retry").
+FIXED = ('a fixed bound of 64 tokens (the operator, 2026-11-16: "Fixed 64, no retry")')
+
+
+def _sized(body) -> dict:
+    """How a sent connection_check call was sized, as its row records it (7b0bb884): its
+    fixed bound of 64 for max_tokens, held at its counted prompt priced as a cache write plus
+    that bound at the output rate, and the typical answer the start was judged by."""
+    tokens = _counted(body)
+    rates = profiles.prices_for(MODEL, tokens)
+    prompt_usd = tokens * rates["cache_write"] / 1_000_000
+    return {"max_tokens": TYPICAL, "by": f"its fixed bound ({FIXED})", "kind": "fixed_bound",
+            "cap_words": "", "thinking": True, "retry": False,
+            "hold_usd": round(prompt_usd + TYPICAL * rates["output"] / 1_000_000, 6),
+            "prompt_tokens": tokens, "prompt_usd": round(prompt_usd, 6),
+            "typical_output": TYPICAL,
+            "typical_basis": (f"not measured yet: no connection_check call on {MODEL} in the "
+                              f"last 30 days; the pin's max_tokens ({TYPICAL}) stands in"),
+            "bound_basis": FIXED,
+            "pricing": ("every prompt token at the cache-write rate of its tier until the "
+                        "stream reports its input, cache-read and cache-write tokens, then as "
+                        "reported")}
+
+
+def _hold_words(body, cap_name, cap, spent, held=0.0, calls_=0, uncapped=""):
+    """A spending limit's refusal of the world's connection_check call, in 7b0bb884's words,
+    each figure from its own source: the provider's count of *body* priced as a cache write
+    (`profiles.prices_for`) and the pin's max_tokens standing in for the typical answer."""
+    tokens = _counted(body)
+    rates = profiles.prices_for(MODEL, tokens)
+    prompt_usd = tokens * rates["cache_write"] / 1_000_000
+    typ = profiles.TASKS["connection_check"]["max_tokens"]
+    answer_usd = typ * rates["output"] / 1_000_000
+    need = prompt_usd + answer_usd
+    remaining = max(0.0, cap - spent - held)
+    return (f"{cap_name} ${cap:.4f}: spent ${spent:.4f} plus ${held:.4f} held by {calls_} "
+            f"call(s) in flight leaves ${remaining:.4f}, under this call's counted prompt "
+            f"(${prompt_usd:.4f}, {tokens:,} tokens, each priced as a cache write) plus its "
+            f"typical answer ({typ:,} tokens, ${answer_usd:.4f}; not measured yet: no "
+            f"connection_check call on {MODEL} in the last 30 days; the pin's max_tokens "
+            f"({typ:,}) stands in), ${need:.4f}{uncapped}; nothing was sent"), need
 
 
 def _request(world, **kw):
@@ -181,47 +247,79 @@ def test_a_stored_secret_left_after_masking_is_refused_before_the_request_is_kep
                           verdict="unmasked_secret", detail=words)
 
 
-def test_a_prompt_over_its_bound_is_refused_with_its_estimate_and_the_long_tier(world):
+#: The pin's max_tokens, the typical answer while none is measured (7b0bb884).
+TYPICAL = profiles.TASKS["connection_check"]["max_tokens"]
+
+
+def _too_long_words(est, window):
+    return (f"this prompt is {est:,} tokens (counted by the provider); with the task's typical "
+            f"answer of {TYPICAL:,} tokens (not measured yet: no connection_check call on "
+            f"{MODEL} in the last 30 days; the pin's max_tokens ({TYPICAL:,}) stands in) it is "
+            f"over {MODEL}'s context window of {window:,} tokens ({profiles.LIMITS_SOURCE}): "
+            f"the prompt may be at most {window - TYPICAL:,}; nothing was sent")
+
+
+def test_a_prompt_over_its_bound_is_refused_with_its_estimate_and_the_long_tier(world,
+                                                                                monkeypatch):
+    """The only size bound is the model's context window (7b0bb884, the operator 2026-11-16:
+    Mercury's per-task prompt bounds are gone): a prompt 4x the pin's old max_prompt_tokens is
+    sent; with the window planted at that old bound (so no million-token prompt is built) the
+    same prompt is refused, its words naming its count, the typical answer, the window and the
+    most the prompt may be, and the row whole."""
     bound = profiles.TASKS["connection_check"]["max_prompt_tokens"]
+    world.answer = _answer('{"echo": "w"}')
+    assert _ask(world, parts={"word": "w", "pack": "x" * (bound * 4)})["ok"] is True
+    assert len(world.sent) == 1, "the pin's old bound refuses nothing"
+    open(calls._path(), "w").close()
+    monkeypatch.setattr(profiles, "context_window", lambda model: bound)
     got = _ask(world, parts={"word": "w", "pack": "x" * (bound * 4)})
     row = _row()
     est = _counted(row["request"])
-    words = (f"this prompt is {est} tokens (counted by the provider), over the task's bound "
-             f"of {bound} ({MODEL} charges every rate at its long tier over "
-             f"{profiles.profile(MODEL)['long_prompt_tokens']}); nothing was sent")
-    assert got == _refused("prompt_too_long", words) and world.sent == []
+    words = _too_long_words(est, bound)
+    assert got == dict(_refused("prompt_too_long", words, row["request"]),
+                       prompt_bound=bound - TYPICAL) and len(world.sent) == 1
     assert row == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=row["request"],
-                       verdict="prompt_too_long", detail=words, **_measured(row["request"]))
+                       verdict="prompt_too_long", detail=words,
+                       **dict(_measured(row["request"]), prompt_bound=bound - TYPICAL))
     assert row["request"]["messages"][0]["content"].count("x" * 100) > 0
 
 
 def test_a_model_with_no_long_tier_says_none(world, monkeypatch):
-    monkeypatch.setattr(profiles, "profile", lambda model: {"provider": profiles.ANTHROPIC})
+    """A refusal for size names the window alone, never a price tier (7b0bb884: the tier is
+    what a call is priced at, `profiles.prices_for`, not a bound): a model with no long tier is
+    refused in the same words."""
+    monkeypatch.setattr(profiles, "profile", lambda model: {
+        "provider": profiles.ANTHROPIC, "context_window": 2000, "max_output_tokens": 1000})
     bound = profiles.TASKS["connection_check"]["max_prompt_tokens"]
     got = _ask(world, parts={"word": "w", "pack": "x" * (bound * 4)})
     est = _row()["prompt_tokens"]
-    assert got["detail"] == (f"this prompt is {est} tokens (counted by the provider), over "
-                             f"the task's bound of {bound}; nothing was sent")
+    assert got["detail"] == _too_long_words(est, 2000) and world.sent == []
+    assert "tier" not in got["detail"]
 
 
 def test_a_prompt_at_its_bound_is_sent(world, monkeypatch):
+    """At the window's edge (7b0bb884): a prompt that with the typical answer fills the context
+    window exactly is sent; one token less of window refuses it."""
     body = _request(world)
     est = _counted(body)
-    monkeypatch.setitem(profiles.TASKS, "connection_check",
-                        dict(profiles.TASKS["connection_check"], max_prompt_tokens=est))
+    monkeypatch.setattr(profiles, "context_window", lambda model: est + TYPICAL)
     world.answer = _answer('{"echo": "w"}')
     assert _ask(world)["ok"] is True and len(world.sent) == 1
+    open(calls._path(), "w").close()
+    monkeypatch.setattr(profiles, "context_window", lambda model: est + TYPICAL - 1)
+    assert _ask(world)["error"] == "prompt_too_long" and len(world.sent) == 1
 
 
 def test_a_worst_case_over_the_call_cap_is_refused_with_both_operands(world, monkeypatch):
+    """No call has a cap of its own (7b0bb884): the task's typical cost per call planted at
+    half this call's worst case refuses nothing; the call is sent and answered, its row an
+    answer, never over_cap."""
     body = _request(world)
     worst = gateway.worst_case_usd(MODEL, body, _counted(body))
     monkeypatch.setattr(profiles, "cap_per_call", lambda name: worst / 2)
-    words = (f"this call's worst case ${worst:.4f} is over the connection_check task's "
-             f"per-call cap ${worst / 2:.4f}")
-    assert _ask(world) == _refused("over_cap", words) and world.sent == []
-    assert _row() == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=body,
-                          verdict="over_cap", detail=words, worst_usd=worst, **_measured(body))
+    world.answer = _answer('{"echo": "w"}')
+    assert _ask(world)["ok"] is True and len(world.sent) == 1
+    assert _row()["verdict"] == "ok"
 
 
 def test_the_worst_case_is_the_counted_prompt_not_the_estimate(world, monkeypatch):
@@ -263,62 +361,64 @@ def test_an_unreadable_record_is_refused_in_its_words(world, monkeypatch):
     days = _spent(monkeypatch, None, "unreadable", "a torn line at 3")
     words = ("the record of AI calls cannot be read, so today's spend is unknown (a torn line "
              "at 3); nothing was sent")
-    assert _ask(world) == _refused("over_cap", words) and world.sent == []
+    assert _ask(world) == _refused("over_cap", words, body) and world.sent == []
     assert _row() == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=body,
                           verdict="over_cap", detail=words, **_measured(body))
     assert days == ["2026-10-25"], "the day given is the day counted"
 
 
 def test_the_day_cap_is_refused_with_its_three_operands(world, monkeypatch):
-    """Today's spend, what calls in flight hold (none here: C2039), this call's worst case and
-    the cap."""
+    """Today's spend, what calls in flight hold (none here: C2039), what remains and this
+    call's hold, its counted prompt plus its typical answer (7b0bb884), and the cap; the row
+    keeps the hold and which cap refused."""
     body = _request(world)
-    worst = gateway.worst_case_usd(MODEL, body, _counted(body))
-    _spent(monkeypatch, 1.5 - worst / 2)
-    words = (f"today's spend ${1.5 - worst / 2:.4f} plus $0.0000 reserved by 0 call(s) in "
-             f"flight plus this call's worst case ${worst:.4f} is over the day cap ${1.5:.4f}")
-    assert _ask(world) == _refused("over_cap", words) and world.sent == []
+    _, need = _hold_words(body, "the installation's day cap", 1.5, 0.0)
+    _spent(monkeypatch, 1.5 - need / 2)
+    words, _ = _hold_words(body, "the installation's day cap", 1.5, 1.5 - need / 2)
+    assert _ask(world) == _refused("over_cap", words, body) and world.sent == []
     assert _row() == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=body,
-                          verdict="over_cap", detail=words, worst_usd=worst, **_measured(body))
+                          verdict="over_cap", detail=words, hold_usd=need,
+                          cap_kind="installation day", **_measured(body))
 
 
 def test_with_no_day_cap_a_call_is_sent_whatever_today_s_spend(world, monkeypatch):
     """No cap (the key stored as null, an admin's typed choice; the operator, 2026-10-27):
     the day's spend refuses nothing. The same spend under a cap is refused, naming it."""
     body = _request(world)
-    worst = gateway.worst_case_usd(MODEL, body, _counted(body))
     world.settings["ai_cap_usd_per_day"] = None
     _spent(monkeypatch, 1_000_000.0)
     world.answer = _answer('{"echo": "w"}')
     assert _ask(world)["ok"] is True and len(world.sent) == 1
     open(calls._path(), "w").close()
     world.settings["ai_cap_usd_per_day"] = 5000.0
-    words = (f"today's spend ${1_000_000.0:.4f} plus $0.0000 reserved by 0 call(s) in flight "
-             f"plus this call's worst case ${worst:.4f} is over the day cap ${5000.0:.4f}")
-    assert _ask(world) == _refused("over_cap", words) and len(world.sent) == 1
+    words, _ = _hold_words(body, "the installation's day cap", 5000.0, 1_000_000.0)
+    assert _ask(world) == _refused("over_cap", words, body) and len(world.sent) == 1
 
 
 def test_with_no_day_cap_a_cap_s_refusal_says_no_day_cap_is_set(world, monkeypatch):
+    """With no day cap (an admin's choice), a refusal by another limit says so, and no call cap
+    stands in for it (7b0bb884: no call has a cap of its own, so a typical cost planted at half
+    the worst case is sent)."""
     body = _request(world)
     worst = gateway.worst_case_usd(MODEL, body, _counted(body))
     world.settings["ai_cap_usd_per_day"] = None
     monkeypatch.setattr(profiles, "cap_per_call", lambda name: worst / 2)
-    words = (f"this call's worst case ${worst:.4f} is over the connection_check task's "
-             f"per-call cap ${worst / 2:.4f}; no day cap is set (an admin chose no cap: Mercury "
-             "does not stop AI spend; the provider's own limit is the backstop)")
-    assert _ask(world) == _refused("over_cap", words) and world.sent == []
+    world.answer = _answer('{"echo": "w"}')
+    assert _ask(world)["ok"] is True and len(world.sent) == 1
     open(calls._path(), "w").close()
     monkeypatch.setattr(profiles, "cap_per_call", lambda name: worst)
     _spent(monkeypatch, None, "unreadable", "a torn line at 3")
     words = ("the record of AI calls cannot be read, so today's spend is unknown (a torn line "
              f"at 3); {gateway.NO_DAY_CAP_WORDS}; nothing was sent")
-    assert _ask(world) == _refused("over_cap", words) and world.sent == []
+    assert _ask(world) == _refused("over_cap", words, body) and len(world.sent) == 1
 
 
 def test_a_days_spend_reaching_the_cap_exactly_is_sent(world, monkeypatch):
+    """A hold (7b0bb884: the counted prompt plus the typical answer) that brings the day to its
+    cap exactly is sent; the cap is what may be spent."""
     body = _request(world)
-    worst = gateway.worst_case_usd(MODEL, body, _counted(body))
-    world.settings["ai_cap_usd_per_day"] = worst
+    _, need = _hold_words(body, "the installation's day cap", 1.5, 0.0)
+    world.settings["ai_cap_usd_per_day"] = need
     _spent(monkeypatch, 0.0)
     world.answer = _answer('{"echo": "w"}')
     assert _ask(world)["ok"] is True and len(world.sent) == 1
@@ -362,10 +462,12 @@ def test_a_provider_failure_is_refused_with_its_attempts_and_headers(world):
         assert key == KEY
         raise A.Overloaded("HTTP 529 after 3 attempts: busy", status=529, attempts=3,
                            headers={"retry-after": "3"})
-    assert _ask(world, send=down) == _refused("overloaded", "HTTP 529 after 3 attempts: busy")
+    assert _ask(world, send=down) == _refused("overloaded", "HTTP 529 after 3 attempts: busy",
+                                              body)
     assert _row() == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=body,
                           verdict="overloaded", detail="HTTP 529 after 3 attempts: busy",
-                          attempts=3, ratelimit={"retry-after": "3"}, **_measured(body))
+                          attempts=3, ratelimit={"retry-after": "3"}, sized=_sized(body),
+                          **_measured(body))
 
 
 def _sending(reply_body, latency=0.1234567, attempts=2, headers=None):
@@ -388,14 +490,14 @@ def test_an_answer_is_returned_and_recorded_whole(world):
     got = _ask(world, send=send)
     cost = profiles.cost_usd(MODEL, 120, 8, cache_write_tokens=30, cache_read_tokens=1000)
     assert got == {"ok": True, "output": connection.Ping(echo="w"), "call_id": CALL_ID,
-                   "cost_usd": cost, "recorded": True}
+                   "cost_usd": cost, "recorded": True, **_measured(body)}
     assert sent == [(body, KEY)]
     assert _row() == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=body,
                           cost_usd=cost, price=profiles.prices_for(MODEL, 1150),
                           tokens=USAGE, latency_s=0.123, attempts=2,
                           ratelimit={"x-ratelimit-limit": "50"}, stop_reason="end_turn",
                           response='{"echo": "w"}', verdict="ok", output={"echo": "w"},
-                          **_measured(body))
+                          sized=_sized(body), **_measured(body))
 
 
 # ------------------------------------------- thinking per task (the batched gateway change)
@@ -587,14 +689,27 @@ def test_every_pin_file_is_exactly_its_keys_and_every_task_has_one(tmp_path):
 
 
 def test_a_pin_file_s_value_is_what_the_request_carries(world, monkeypatch, tmp_path):
-    """The point of the file: a value changed there reaches the body with no code changed."""
+    """The point of the file: a value changed there reaches the body with no code changed.
+    connection_check's max_tokens is its pin's, a fixed bound (7b0bb884: "Fixed 64, no
+    retry"), so a changed pin reaches the body while thinking is on; with thinking off it is a
+    visible-output call, its max_tokens the model's maximum (the caps enforced live), and the
+    pin's thinking reaches the body."""
     good = json.loads(open(f"{profiles.PINS}/connection_check.json", encoding="utf-8").read())
-    (tmp_path / "connection_check.json").write_text(json.dumps(dict(good, max_tokens=77,
-                                                                    thinking="off")))
-    monkeypatch.setattr(profiles, "TASKS", profiles.load_pins(str(tmp_path)))
+    pins = tmp_path / "pins"  # its own folder: the call's record and holds are tmp_path's
+    pins.mkdir()
+    (pins / "connection_check.json").write_text(json.dumps(dict(good, max_tokens=77)))
+    monkeypatch.setattr(profiles, "TASKS", profiles.load_pins(str(pins)))
     send, sent = _sending(_answer('{"echo": "w"}'))
     assert _ask(world, send=send)["ok"] is True
-    assert sent[0][0]["max_tokens"] == 77 and sent[0][0]["thinking"] == {"type": "disabled"}
+    assert sent[0][0]["max_tokens"] == 77
+    open(calls._path(), "w").close()
+    (pins / "connection_check.json").write_text(json.dumps(dict(good, max_tokens=77,
+                                                                thinking="off")))
+    monkeypatch.setattr(profiles, "TASKS", profiles.load_pins(str(pins)))
+    send, sent = _sending(_answer('{"echo": "w"}'))
+    assert _ask(world, send=send)["ok"] is True
+    assert sent[0][0]["thinking"] == {"type": "disabled"}
+    assert sent[0][0]["max_tokens"] == profiles.max_output(MODEL)
 
 
 def test_the_prices_charged_are_the_tier_of_every_prompt_token_counted(world):
@@ -679,11 +794,12 @@ def test_the_answer_kept_is_masked_for_egress(world):
         row["response"]
 
 
-def _failed(world, reply, kind, words):
+def _failed(world, reply, kind, words, **said):
     send, _ = _sending(reply)
     cost = profiles.cost_usd(MODEL, 120, 8)
     assert _ask(world, send=send) == {"ok": False, "error": kind, "detail": words,
-                                      "call_id": CALL_ID, "cost_usd": cost, "recorded": True}
+                                      "call_id": CALL_ID, "cost_usd": cost, "recorded": True,
+                                      **said}
     row = _row()
     assert row["verdict"] == kind and row["detail"] == words and row["cost_usd"] == cost
     assert "output" not in row and row["response"] == reply["content"][0]["text"]
@@ -701,9 +817,14 @@ def test_a_refusal_with_no_category_says_none_given(world, extra):
 
 
 def test_an_answer_past_max_tokens_names_the_bound(world):
+    """A max_tokens stop is never parsed (7b0bb884), its words naming the bound and what set
+    it (connection_check's fixed bound), and the result saying how the call was sized, so the
+    caller knows it is no budget's stop and is not asked again."""
     _failed(world, _answer('{"echo": "w', stop="max_tokens"), "max_tokens",
-            f"the answer ran past max_tokens "
-            f"({profiles.TASKS['connection_check']['max_tokens']})")
+            f"the answer was cut at max_tokens ({TYPICAL}, set by its fixed bound ({FIXED})); "
+            "nothing of it was parsed",
+            sized_kind="fixed_bound", sized_retry=False, sized_by=f"its fixed bound ({FIXED})",
+            sized_cap="")
 
 
 def _pydantic_says(text):

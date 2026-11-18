@@ -98,10 +98,12 @@ class Provider:
     def __init__(self, *answers):
         self.answers, self.sent = list(answers), []
 
-    def send(self, body, key):
+    def send(self, body, key, **kw):
+        # The gateway hands every send the adapter's keywords (7b0bb884: progress, the live
+        # cap's hook); the real adapter takes them.
         self.sent.append(body)
         item = self.answers.pop(0) if self.answers else _limited()
-        return REAL_SEND(body, key, session=_Session(item), sleep=pytest.fail)
+        return REAL_SEND(body, key, session=_Session(item), sleep=pytest.fail, **kw)
 
 
 def _explain(send, actor=ACTOR):
