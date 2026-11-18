@@ -1119,3 +1119,30 @@ class TestARefusedPlansWords:
         got = S._refused_plan_words({"shown": {"rationale": long}}, self.WHY)
         found = got.split("; Mercury refuses")[0]
         assert len(found) <= S.FINDING_CHARS + 1 and found.endswith("word"), found
+
+
+class TestAGapsOverlookedSteps:
+    """c2448124 (the operator, 2026-11-16): a gap the AI reported that Mercury's check flags
+    keeps the overlooked catalog steps on its line (`record_proposal(overlooked=)`, at most
+    `OVERLOOKED_MOST` of at most `OVERLOOKED_CHARS` each), and the card names them from the
+    line, reading its words back only for a line kept before (`section._flagged`). The line by
+    the troubleshooting record's own writer (a Mercury line: an AI line must name its calls).
+    The debt pass, 2026-11-18 (docs/FAST_LANE_DEBT.md's row for c2448124)."""
+
+    def test_the_line_keeps_the_keys_capped(self, web):
+        iid = plant()
+        keys = [f"plan-{n:02d}-" + "x" * 80 for n in range(F.OVERLOOKED_MOST + 3)] + [""]
+        line = F.record_proposal(incident(iid), "mercury", "telemetry-resubscribe",
+                                 {"subs": ["101", "102"], "collector_step": False},
+                                 by=ACTOR, verified="access-proxy", overlooked=keys)
+        kept = F.read(incident(iid))["lines"][-1]
+        assert kept["proposal"] == line["proposal"]
+        assert kept["overlooked"] == [k[:F.OVERLOOKED_CHARS] for k in keys[:F.OVERLOOKED_MOST]]
+
+    def test_the_card_names_them_from_the_line_and_an_old_lines_from_its_words(self):
+        words = ("The AI found no fix; Mercury's catalogue has errdisable-recover and "
+                 "telemetry-readd for this incident's problem, not yet tried here")
+        assert S._flagged({"overlooked": ["errdisable-recover"], "words": words}) == [
+            "errdisable-recover"], "the line's keys, never its words"
+        assert S._flagged({"words": words}) == ["errdisable-recover", "telemetry-readd"]
+        assert S._flagged({"words": "no gap flagged"}) == []
