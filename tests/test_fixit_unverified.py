@@ -104,7 +104,10 @@ class TestMarked:
         assert f"hypothesis 2 cites {BAD}" in json.dumps(ai.sent[1])
         assert FT.RETRY_PART not in json.dumps(ai.sent[0]["messages"])
         assert line["shown"]["retry"]["asked"] is True
-        assert "still cites what was not sent" in line["shown"]["retry"]["words"]
+        # Premise corrected (93120b2f, the operator, 2026-11-16: an uncited claim is marked too,
+        # so the words name a citation "bad or missing").
+        assert "still has a citation that is bad or missing, and is shown marked" in \
+            line["shown"]["retry"]["words"]
         assert len(line["calls"]) == 2, "both calls are the incident's spend"
 
     def test_a_retry_citing_only_what_was_sent_replaces_the_first_answer(self, ai, monkeypatch):
