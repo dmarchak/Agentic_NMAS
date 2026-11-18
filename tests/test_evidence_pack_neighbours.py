@@ -493,8 +493,10 @@ class TestExplainSendsIt:
         whole = explain.budgeted(pack, topo, ("explain", 6), explain.SCHEMA_OF[6])
         full, dropped = whole["said"]["estimate"], []
         for budget in (full - 1, full - 400, full // 2, 10):
-            monkeypatch.setitem(profiles.TASKS, "explain", dict(
-                profiles.TASKS["explain"], max_prompt_tokens=budget))
+            # The budget is the room the model's context window leaves a prompt since 7b0bb884
+            # (the operator, 2026-11-16: "the only prompt bound is the model's context window"),
+            # never the pin's old max_prompt_tokens: that room, made each budget here.
+            monkeypatch.setattr(profiles, "prompt_room", lambda name, b=budget: b)
             got = explain.budgeted(pack, topo, ("explain", 6), explain.SCHEMA_OF[6])
             gone = got["said"]["pack_dropped"]
             dropped.append(gone)
