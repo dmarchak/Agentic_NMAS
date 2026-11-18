@@ -429,7 +429,10 @@ def test_the_estimate_takes_the_first_measured_calls_as_measured(ai, monkeypatch
     # clock (`calls._now`): that morning's.
     monkeypatch.setattr(calls, "_now", lambda: AFTER)
     est = AIT.estimate()
-    # The calls one investigation is expected to make, three since C3797 (it may ask again);
-    # its worst case, four.
+    # The calls one investigation is expected to make, three since C3797 (it may ask again).
+    # Premise corrected (7b0bb884, the operator, 2026-11-16: no worst case): beside it the
+    # least one call costs (`start_usd`, the figure a start is held to), where its worst case,
+    # four calls at the pin's per-call cap, was.
     assert est["measured"] is True and est["usd"] == pytest.approx(3 * 0.035792), est
-    assert est["worst"] == pytest.approx(4 * profiles.cap_per_call("fixit_troubleshoot"))
+    assert "worst" not in est
+    assert est["least"] == pytest.approx(AIT.start_usd())
