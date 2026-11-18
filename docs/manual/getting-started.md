@@ -192,8 +192,9 @@ within itself. The panel shows:
 Every figure is Mercury's own, from the record of AI calls, priced from the dated price table
 in Mercury's code: **the provider bills what is actually spent**, and the provider's own
 spending limit is the backstop. A call still in flight is not counted until it is recorded,
-seconds later; while it runs, its worst case is held against the caps so calls at once never
-pass them together. The chip reads again on each recorded call and on each settings change,
+seconds later; while it runs, its hold (its counted prompt and its task's typical answer), or
+its spend so far once it streams, is held against the caps so calls at once never pass them
+together. The chip reads again on each recorded call and on each settings change,
 over the live connection, and the panel reads again on each recorded call while it is open;
 neither asks on a timer. An evaluation run from a host script records its calls in another
 process, so they appear at your next page load or the next call recorded here.
@@ -212,12 +213,16 @@ Who sees the amounts is not a choice yet: everyone who can make AI calls sees th
 
 While any network's self-healing runs in **Auto** ({{product}} applies the fixes its policy allows
 with no person), the top bar carries an amber chip just before the AI chip, "Self-healing:
-Auto until Nov 14 18:00", the time in your own zone, with UTC on hover. With more than one
+Auto until Nov 14 18:00", the time in your own zone, with UTC on hover; an Auto with no expiry,
+the Self-healing switch's own, says "Self-healing: Auto until turned off". With more than one
 network in Auto it says how many ("Auto on 2 networks until …") and names the one whose Auto
-ends first, the others on hover. Selecting it opens that network's
-[Self-healing tab in Settings](settings#self-healing). It reads the mode that is in force, not
-only the one set: an Auto that has expired, is not confirmed, or is held by the installation's
-stop switch is not Auto, and the chip goes the moment Auto ends. In dry run or off nothing is
+ends first (one until turned off comes after every Auto with a time), the others on hover.
+Selecting it opens that network's control strip at the top of
+[Troubleshooting › Incidents](incidents), where its switches are. It reads the mode that is in
+force, not only the one set: an Auto that has expired, is not confirmed, or is held by the
+installation's stop switch is not Auto, and the chip goes the moment Auto ends; it reads itself
+again once, at the first expiry, and an Auto until turned off gives it nothing to read again
+at. In dry run or off nothing is
 drawn: status is shown in the top bar by exception, and the sidebar is navigation only. Up to
 laptop width (1366 px) the chip says "Auto" alone, its words on hover; on a phone it sits just
 after the AI chip.

@@ -11,7 +11,8 @@ The first card, **AI (hosted)**, holds every installation-wide AI decision: the 
 (**Replace…**, and **Test**, one small recorded call), the installation's day cap and when its
 day begins (**Save**), whether hosted AI is allowed (**Allow** with a reason, or **Turn off**,
 by whom, when and why), today's spend against the day cap, and each task's model, prices and
-cap per call. While hosted AI is off, no AI call runs, background or pressed, whatever the
+typical cost per call (measured; no cap: {{product}} sets no AI size limit of its own, and the
+spending limits govern every call). While hosted AI is off, no AI call runs, background or pressed, whatever the
 switches below say. Every background feature's caps are within the day cap. The card moved
 here from the Connections tab, which keeps one line linking to it. What its actions do, step
 by step: [AI (hosted)](installation-settings#ai) and [The day cap](installation-settings#ai-cap).
@@ -31,8 +32,10 @@ The second card, **AI troubleshooting**, holds every network's defaults:
 - **AI mode**: every network's default, **Manual** (the default) or **Off**, for a network with
   no mode of its own. Each network's own choice is set on its AI troubleshooting card, below.
 - **AI spend per incident**: $1.00 by default, for a network with no per-incident limit of its
-  own. What one incident's AI calls have cost plus the next attempt's worst case is compared
-  with its network's limit, and past it Retry is refused, naming both. It is a positive amount;
+  own. What one incident's AI calls have cost (every call of its investigations, one stopped
+  or failed included), with what its calls in flight hold, is compared with its network's
+  limit: a call whose hold what is left cannot pay is refused, naming both, and a start is
+  refused when what is left cannot pay the least one call costs. It is a positive amount;
   there is no "no cap", and Mercury never raises it.
 - **AI device reads sign in as**: **Mercury's account** (the default), in which the reads the AI
   asks of a device sign in exactly as Show commands does, through the same protections (a read
@@ -58,8 +61,9 @@ drawn on History. How the section uses them: [AI troubleshooting](fixit-troubles
   limit starts from the installation's; the day and month limits from twice the estimate. The
   day limit is within the installation's day cap, which every AI call is held to.
 - **The estimate**, beside the limits: calls a day (how often Mercury's fix failed on this
-  network in the last 7 days, times two calls an investigation), the cost per call (measured,
-  or its worst case said as such) and a month. **Save limits** with **I have read the estimate**
+  network in the last 7 days, times the three calls an investigation is expected to make: an
+  estimate only, since an investigation ends when a pass adds no new evidence or at a cap),
+  the cost per call (measured, or its stand-in said as such) and a month. **Save limits** with **I have read the estimate**
   ticked sets the limits and acknowledges the estimate, recorded; this is the one place the
   estimate is acknowledged, so turning Automatic on does not show it again.
 - **What the acknowledgement binds**: the limits and the cost per call it showed, never the
