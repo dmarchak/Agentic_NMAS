@@ -80,10 +80,18 @@ class TestTheJob:
             _r, html = page(blocked.client, iid)
             sec = section_of(html)
             assert 'data-state="investigating"' in sec
-            assert "The AI is investigating (started" in sec
+            # Premise corrected (bad52d54, the operator, 2026-11-16: "The incident card ... show
+            # a live stepper while the AI investigates: done steps ticked with seconds, the
+            # current one with a spinner and a ticking counter, the next greyed"): the card's
+            # status line is the stepper, where it was "The AI is investigating (started at …)".
+            import re
+            status = re.search(r'data-bluf="status" data-status>(.*?)</div>', sec, re.S).group(1)
+            assert 'class="inc-stepper"' in status, status[:600]
             # The start as an instant the screen draws in the viewer's zone, never a count of
-            # seconds that stays where it was drawn (C3801: "started 0 s ago", nine minutes on).
-            assert "The AI is investigating (started at <time" in sec, sec[:800]
+            # seconds that stays where it was drawn (C3801: "started 0 s ago", nine minutes on):
+            # the running step's counter ticks from its instant (`data-elapsed`).
+            assert re.search(r'data-state="running">[^<]*<time class="muted" data-elapsed="'
+                             r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"', status), status[:800]
             assert " s ago)" not in sec
             assert "/fixit/start" not in sec, "never a fresh button while it runs"
             # A second press while it runs: refused, naming the running one; no second job.
