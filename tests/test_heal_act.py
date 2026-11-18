@@ -672,12 +672,18 @@ def _alerts_doc(at, view=None, am=()):
 
 def _alert_trigger(inst):
     """An alert's trigger as `triggers.from_alerts` makes it from the reader's instance: the
-    rule's name, and the interface its labels name (none: "")."""
+    rule's name, the interface its labels name (none: ""), and, for an instance naming no
+    device, the polled address it was placed by (3d3a8297, C3811: such an instance is judged
+    the device's again only at that address, `act.alert_firing`)."""
+    from modules.heal.attribution import address_of
+
     labels = inst.get("labels") or {}
+    placed = ({"address": address_of(inst["address"]) or str(inst["address"])}
+              if not inst.get("device") and inst.get("address") else {})
     return {"kind": "alert", "key": "alert:1", "epoch": T0 - 60, "at": iso(T0 - 60),
             "source": "grafana-alerts", "rule": inst.get("rule") or "",
             "interface": next((labels[k] for k in TR.INTERFACE_LABELS if labels.get(k)), ""),
-            "related": [], "words": f"the alert {inst.get('rule') or '?'} fired"}
+            "related": [], "words": f"the alert {inst.get('rule') or '?'} fired", **placed}
 
 
 class TestTheJudge:
