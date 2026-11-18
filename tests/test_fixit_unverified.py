@@ -190,14 +190,27 @@ class TestTheRetry:
                             network="n", actor="a", trigger={})
         return a, got, out, asked
 
+    # Premise corrected (7b0bb884, the operator, 2026-11-16: no worst case drawn before the
+    # press; the spending limits govern every call): `retry_once` no longer compares a worst
+    # case or the incident's cap itself; it asks through the gateway, which judges the retry as
+    # every call (the incident's cap its spend cap) and refuses it before any provider request
+    # when a limit cannot pay it (`read_loop.CAP_KINDS`). Such a retry is not asked again,
+    # nothing leaves the host, and the first answer stands, marked.
+
     def test_past_the_investigations_worst_case_it_is_not_asked(self, monkeypatch):
-        a, got, out, asked = self.run(monkeypatch, spent=FT.worst_usd())
-        assert asked == [] and out["asked"] is False and got["answer"] is a
-        assert "would pass the" in out["words"] and "drawn for it before the press" in out["words"]
+        a, got, out, asked = self.run(monkeypatch, reply={
+            "ok": False, "error": "feature_cap",
+            "detail": "fixit_troubleshoot's day cap cannot pay the call's hold"})
+        assert len(asked) == 1, "the retry is asked of the gateway, which judges its spend"
+        assert out["asked"] is False and got["answer"] is a, "nothing left the host"
+        assert out["words"].startswith("not asked again: feature_cap: "), out["words"]
 
     def test_past_the_incidents_cap_it_is_not_asked(self, monkeypatch):
-        a, got, out, asked = self.run(monkeypatch, cap="refused")
-        assert asked == [] and out["words"].startswith("not asked again: this incident's AI")
+        a, got, out, asked = self.run(monkeypatch, reply={
+            "ok": False, "error": "over_cap",
+            "detail": "this incident's AI cap cannot pay the call's hold"})
+        assert out["asked"] is False
+        assert out["words"].startswith("not asked again: over_cap: this incident's AI")
         assert got["answer"] is a
 
     def test_a_retry_not_answered_leaves_the_first_answer_marked(self, monkeypatch):
