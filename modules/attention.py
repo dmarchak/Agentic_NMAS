@@ -2265,11 +2265,11 @@ def baseline_source(log_fn=None, presence=None) -> dict:
     # usable: both say "there is no restore point", and the denial names the
     # blocker, which the usability row's remedy must name too (the operator,
     # 2026-09-28: "take a current one with Save All" was followed and could
-    # not succeed while r2 departed from its intent).
+    # not succeed while a router departed from its intent).
     blocker = ({"reasons": reasons or "the decision recorded no reason",
                 "commit": sha[:10], "at": _iso(at)}
                if decision.startswith("denied") else None)
-    # A partial operation's decision is not a denied Save All (C885, walk W1: s2's Mode B
+    # A partial operation's decision is not a denied Save All (C885, walk W1: a switch's Mode B
     # deploy, "8 device(s) not targeted", read as "the last Save All was denied" with "Save
     # All alone will be refused again"; all nine were at intent and the next Save All earned
     # one). Nothing was judged to depart, so its remedy is Save All alone.
@@ -2360,7 +2360,7 @@ def _denial_remedy(reasons: str, unusable: bool = False) -> str:
 
 def _operation_words(source: str, body: str) -> str:
     """What the commit that decided was, in words: its `Source:` (`device_list.SOURCE_WORDS`)
-    and the devices it named (`Devices:`, else `Devices-Measured:`), as "a deploy to s2"."""
+    and the devices it named (`Devices:`, else `Devices-Measured:`), as "a deploy to access2"."""
     from modules.device_list import SOURCE_WORDS
 
     how = SOURCE_WORDS.get(source, (source or "").replace("_", " ") or "a save")
@@ -3080,8 +3080,8 @@ def grafana_source(cached=None, configuration: dict = None, reachability=None) -
         """The rows one onset group makes: ``[(instances, members, whole_pipeline)]``.
 
         Each member is judged by its OWN device, never by what began beside it (W3, the
-        operator 2026-10-17: r6's alerts in its settle period were raised CRITICAL because
-        s3's live discards alert began within the same 360 s). A device a person marked
+        operator 2026-10-17: a router's alerts in its settle period were raised CRITICAL because
+        a switch's live discards alert began within the same 360 s). A device a person marked
         drained (modules/drained.py, the operator 2026-10-06): its traffic falling is the
         drain, so its alerts are said under What was checked, naming the drain. A device
         restarting as planned (B3): its alerts are the restart, inside its window and the
@@ -7150,7 +7150,7 @@ def _fold_device_rows_into_incidents(rows: list, lst: str = None, listed=None) -
     """C3843 (the operator, 2026-11-16: Needs attention drew 10 rows for 6 problems): a row from
     another source about an open incident's device and problem folds under that incident's row,
     as its evidence (``folded``, ``folded_evidence``, as `_fold_signals_into_problems` folds):
-    - the device's drift row (``drift``/``drifted``: "r3 has drifted from its golden", "r2 was
+    - the device's drift row (``drift``/``drifted``: "edge3 has drifted from its golden", "edge2 was
       changed from outside Mercury, and something broke at the same time"): the departure the
       incident holds, said again. `_fold_drift_into_heal` folds it only under a proposal, a
       can't-fix or a hold row, and runs before the incident's own row is made
@@ -7997,7 +7997,7 @@ def _heal_cant_fix_rows(lst: str, rows: list, now: float, said: list) -> list:
 def _heal_tail_rows(lst: str, now: float, said: list) -> list:
     """ONE row per heal whose tail flagged (the operator, 2026-11-16, decisions (a) and (b);
     `heal.act.tail_card`): fixed on its verify, and its save to startup, its golden commit or
-    its read again failed, did not match, or did not finish within its bound ("r2 fixed, but
+    its read again failed, did not match, or did not finish within its bound ("edge2 fixed, but
     its save to startup failed: ..."). Until a later heal of the device ends with its tail done,
     or a person acknowledges it (`CLEARS`). A read of the step log, never the device."""
     from modules.heal import act, steplog
@@ -9266,7 +9266,7 @@ def _stated_network(r: dict, names: set) -> str:
 
 def _with_networks(rows: list) -> list:
     """Every row naming a device names each device's network (C493, the operator, 2026-10-05:
-    tw-ztp-a's rows read as Default's): ``networks`` maps each device to its network, from the
+    a throwaway ZTP device's rows read as Default's): ``networks`` maps each device to its network, from the
     row's own source where it says, else from every network's inventory (a name two networks
     hold maps to both; a name none holds to none, drawn as such). A row about ONE network keeps
     it in its action's address, so following it lands in that network, never the active one."""
@@ -9304,7 +9304,7 @@ def _with_networks(rows: list) -> list:
 
 def _standing_acknowledgements(hiding: list, held: tuple = None) -> list:
     """The band acknowledgements IN FORCE that hide nothing now (C433, the operator,
-    2026-10-05: s3's discards were acknowledged, the alert stopped, and the acknowledgement
+    2026-10-05: a switch's discards were acknowledged, the alert stopped, and the acknowledgement
     showed nowhere). Each holds while its series stays at or under its band, firing or not,
     so a person can find and review it. One already listed as hiding a row is not repeated.
     An unreadable record lists nothing here: the row that says so is `_without_acknowledged`'s.
