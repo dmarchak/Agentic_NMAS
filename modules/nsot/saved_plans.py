@@ -1040,8 +1040,13 @@ def authority_refusal(key: str, authority, network: str = "") -> str:
                 f"run is on {network or 'no network'}")
     if CP.parse(e["template"]).digest != e.get("digest"):
         return f"{key}'s plan is not the one promoted"
-    # The promoter-still-holds-the-right check is gone (the operator, 2026-11-17, round 2): an
-    # approved fix runs the moment self-healing is On.
+    # The promoter's current right (the operator's ruling 4, 2026-11-18, C4043): a promotion
+    # authorises a fire only while its promoter still holds the self-healing right.
+    who = e.get("promoted_by") or ""
+    if not identity.holds("self_healing", who):
+        return (f"{who or 'nobody recorded'}, who promoted {key}, no longer holds self-healing "
+                "rights (the self_healing right, read now, does not name them), so the "
+                "promotion authorises nothing; a person who holds it promotes it again")
     return ""
 
 
