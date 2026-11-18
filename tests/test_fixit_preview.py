@@ -301,7 +301,8 @@ def test_with_the_class_off_it_builds_the_reads_pass_and_says_so(ai, reads,  # n
     got = _preview(iid)
     assert got["class"]["now"] == "off" and "an admin turns it on" in got["class"]["why_off"]
     # Pass 1 is the investigation's first pass: v11 (C3797; v10, v8 flattened, before).
-    assert got["first"]["prompt"] == "fixit_troubleshoot.v11"
+    # Premise corrected (231da1d6, v17's one shape: every pass one prompt; C3918's v18).
+    assert got["first"]["prompt"] == "fixit_troubleshoot.v18"
     assert "collector_sessions" in json.dumps(got["first"]["body"]["system"]), "the read set"
     said = " ".join(got["said"])
     assert "is off for" in said and "did not change it" in said and "at most 3" in said
