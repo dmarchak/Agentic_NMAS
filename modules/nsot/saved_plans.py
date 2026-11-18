@@ -1593,7 +1593,8 @@ def offer(network: str, incident_id: str, *, actor: str, actor_verified: str,
     reusable actions, *unset* the rights `access_rights` names no one for (every verified
     person holds each, and the card says so), *saved* what is saved from the run already
     (`saved_from`), *name* the name Save gives it by default (`default_name`) and *dismissed*
-    whether Not now put the offer off (`put_off`). A read."""
+    whether Not now put the offer off (`put_off`), *runs_on* what the default Save runs on
+    besides this incident (`runs_on`). A read."""
     from modules import identity, incident_page
     from modules import problem as P
     from modules.fixit import incident as F
@@ -1608,7 +1609,8 @@ def offer(network: str, incident_id: str, *, actor: str, actor_verified: str,
            "rights": {"script": identity.right_refusal("self_healing", **who),
                       "action": identity.right_refusal("admin", **who)},
            "unset": identity.rights_unset(), "actions": sorted(actions(network)),
-           "saved": {"script": None, "action": None}, "name": "", "dismissed": None}
+           "saved": {"script": None, "action": None}, "name": "", "dismissed": None,
+           "runs_on": {"count": 0, "devices": [], "words": ""}}
     found = incident_page.resolve(network, incident_id)
     if found.get("found") != "page":
         return dict(out, why=f"{incident_id} has no page")
@@ -1638,8 +1640,41 @@ def offer(network: str, incident_id: str, *, actor: str, actor_verified: str,
                fills=default_fills(t, prob, rec.get("params") or {}),
                preview=match_preview(network, match), saved=saved_from(network, run_id),
                name=default_name(prob, rec.get("title") or t.title),
-               dismissed=put_off(inc))
+               dismissed=put_off(inc), runs_on=runs_on(network, match, incident_id))
     return out
+
+
+#: The most devices Save's line names; the rest are counted ("and 3 more").
+RUNS_ON_NAMED = 10
+
+
+def runs_on(network: str, match: dict, incident_id: str) -> dict:
+    """What the default Save (Automatic, *match*) runs on besides *incident_id*, said before
+    the press (ruling 3, the operator, 2026-11-18: "Save names the count and the devices it
+    will run on. No new confirm"): ``{"count", "devices", "words"}``, read from the
+    script-saved retry's own selection (`heal.retry.would_run`), never a second matching. A
+    read."""
+    from modules.heal import retry
+
+    try:
+        got = retry.would_run(network, match, exclude=(incident_id,))
+    except Exception as exc:                            # noqa: BLE001 (said on the card)
+        log.error("saved plans: what %s's Save runs on could not be read: %s", incident_id, exc)
+        got = {"auto": False, "incidents": [], "devices": [], "error": str(exc)}
+    n, devices = len(got["incidents"]), got["devices"]
+    if got["error"]:
+        words = f"Which other open incidents Save runs it on could not be read ({got['error']})"
+    elif not n:
+        words = "It runs on no other open incident now"
+    else:
+        named = devices[:RUNS_ON_NAMED]
+        more = len(devices) - len(named)
+        on = (", ".join(named[:-1]) + " and " + named[-1] if len(named) > 1 and not more
+              else ", ".join(named) + (f" and {more} more" if more else ""))
+        what = f"{n} other open incident{'s' if n != 1 else ''}" + (f", on {on}" if on else "")
+        words = (f"Save runs it now on {what}" if got["auto"]
+                 else f"It runs on {what}, once self-healing is on")
+    return {"count": n, "devices": devices, "words": words}
 
 
 def default_name(problem, plan_title: str) -> str:

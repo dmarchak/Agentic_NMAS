@@ -53,7 +53,7 @@ def _draw(network: str, incident: str, code: int = 200, *, show: bool = False, *
     # What the card draws, and nothing it does not (the run's id and the problem stay the
     # offer's: a save reads them again).
     c = {k: got[k] for k in ("state", "why", "plan", "match", "optional", "fills", "rights",
-                             "scripts", "unset", "saved", "name", "dismissed")}
+                             "scripts", "unset", "saved", "name", "dismissed", "runs_on")}
     c.update(preview={"matched": len((got.get("preview") or {}).get("matched") or []),
                       "read": (got.get("preview") or {}).get("read") or 0},
              list=network, incident=incident, shapes=command_policy.provisional(network),
