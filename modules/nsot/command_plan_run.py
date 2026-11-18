@@ -1312,6 +1312,16 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
     # The template this run runs, by the digest its hash binds: a Save of the run stores this
     # plan, never a later version (the correctness review's G3-H2, `saved_plans.save_fix`).
     rec["template_digest"] = t.digest
+    # A switch its SDN controller manages is refused by the authority rule, naming the
+    # controller, whatever its row's dialect lets the raw-line rule pass (the correctness
+    # review's G3-H1, 2026-11-18): every path to this runner (a saved fix's press, its Automatic
+    # fire, an AI plan's step) asks it here, once.
+    from modules.sdn import authority as _authority
+    managed = _authority.of(dict(p.get("device_row") or {}, hostname=device), network)
+    if managed["kind"] != "direct":
+        why = f"{managed['words']} Nothing was sent"
+        _step(rec, "approve", "refused", why)
+        return _finish(network, rec, "refused", why)
     _step(rec, "approve", "ok", f"the plan is the one approved ({p['hash']})")
     from modules.pipeline import lap
     lap(rec["laps"], "approve")
