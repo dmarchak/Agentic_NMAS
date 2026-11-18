@@ -1342,6 +1342,24 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
                 _step(rec, "hold", "refused", why)
                 return _finish(network, rec, "refused", why, t)
             time.sleep(HOLD_POLL_S)
+        # Judged again once the device is free (the correctness review's G2-H1, 2026-11-18): a
+        # person's window, a Delete… of the fix or an Off may have landed during the wait, and
+        # the judgement the fire made before it no longer stands. The same three the fire asks:
+        # the fix's own approval (`saved_plans.authority_refusal`), the heal's guards for the
+        # device (`decide.script_hold`), and Stop and Off (`stopped_now`).
+        from modules.heal import decide
+        again = saved_plans.authority_refusal(key, authority, network)
+        if not again:
+            held = decide.script_hold(network, dict(incident or {}, device=device)
+                                      if isinstance(incident, dict) else {"device": device},
+                                      batch=bool(authority.get("batch")))
+            again = (f"held by guard {held['guard']} ({held['name']}): {held['words']}"
+                     if held else "")
+        again = again or stopped_now(network)
+        if again:
+            why = f"{again}, judged again once {device} was free. Nothing was sent"
+            _step(rec, "hold", "refused", why)
+            return _finish(network, rec, "refused", why, t)
     check_run = CheckRun(network, device, dev, p["derived"], incident, src)
     ctx = None
     try:
