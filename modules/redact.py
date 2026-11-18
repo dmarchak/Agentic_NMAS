@@ -418,17 +418,17 @@ _POSITIONAL = (
 #: Already redacted, or a marker — replacing these again would nest markers.
 _ALREADY = re.compile(r"^<(?:redacted|missing-secret)[:>]")
 
+#: A diff's marked line (C3989): one ``+`` or ``-`` at a line's start (a unified diff's
+#: ``+line``, difflib.ndiff's ``+ line``). The positional patterns are anchored at a line's
+#: start, so the marker hid the line from them: an enable secret, a type-7 or type-0 line
+#: password and a plaintext enable password came through a masked diff unmasked (measured
+#: 2026-11-18, the fast-lane correctness review). No IOS line starts with either character, and
+#: masking a line that is not a diff's (a ``+++``/``---`` header among them) hides nothing that
+#: should show, so every such line is masked as the line after its marker too.
+_DIFF_MARKED = re.compile(r"^([+\-])([^\r\n]*)$", re.M)
 
-def redact_positional(text: str) -> str:
-    """Mask whatever occupies a secret position, regardless of length.
 
-    Structure-preserving: ``snmp-server community`` and the trailing ``RO`` both
-    survive, so the model still sees what the line *is*. Idempotent — a token
-    that is already a placeholder is left alone.
-    """
-    if not text:
-        return text
-
+def _positional(text: str) -> str:
     def _sub(label):
         def _replace(match):
             token = match.group(2)
@@ -440,6 +440,20 @@ def redact_positional(text: str) -> str:
     for label, pattern in _POSITIONAL:
         text = pattern.sub(_sub(label), text)
     return text
+
+
+def redact_positional(text: str) -> str:
+    """Mask whatever occupies a secret position, regardless of length.
+
+    Structure-preserving: ``snmp-server community`` and the trailing ``RO`` both
+    survive, so the model still sees what the line *is*. Idempotent — a token
+    that is already a placeholder is left alone. A diff's marked line is masked as the line
+    it carries, its marker kept (`_DIFF_MARKED`, C3989).
+    """
+    if not text:
+        return text
+    text = _positional(text)
+    return _DIFF_MARKED.sub(lambda m: m.group(1) + _positional(m.group(2)), text)
 
 
 def replace_positional_values(text: str, replace) -> str:

@@ -4732,3 +4732,41 @@ rotated secret): **39 differences, died**. The aimed tests: test_provider_redact
 test_redact_egress, test_redact_ios_shapes, test_redact_typed, test_reveal_and_log_redaction,
 test_sealed_values_masked, test_masked_lines_not_compared, test_previews_mask_secrets and
 test_commit_message_masked, **1173 passed** in CI's interpreter.
+
+## 2026-11-18: a diff's marked line masked as the line it carries (C3989), by hand
+
+**The change.** `redact.redact_positional` runs its patterns over the text, then over the rest
+of every line starting with one `+` or `-` (`_DIFF_MARKED`, the marker kept), the body moved
+into `_positional`. Found by the fast-lane correctness review: with a diff's marker before it,
+an enable secret, a type-7 or type-0 line password and a plaintext enable password came through
+`redact_text` unmasked (measured with every marker), in `command_plan_run.net_zero`'s run-record
+lines, `intent_normalise`'s differing lines and any diff masked as one text.
+
+**The method.** Each mutant written by hand into the copy of modules/redact.py in a throwaway
+worktree of the uncommitted change (`scripts/nmas-control`, so the checkout is never written),
+then tests/test_redact_diff_lines.py, test_redact_ios_shapes and test_redact_typed run with
+`-x` in CI's interpreter, confined; killed when the run fails, the first failing test named.
+
+| # | Mutant | Result, the first failing test |
+|---|---|---|
+| 0 | the canary: `redact_positional` raises | **died**: test_a_marked_line_is_masked_as_its_configuration_line |
+| 1 | the marked lines' pass dropped | died: the same |
+| 2 | only `+` marks a line | died: the same, its `-` case |
+| 3 | only `-` marks a line | died: the same, its `+` case |
+| 4 | a marker anywhere, not at the line's start | died: test_redact_ios_shapes, a C2074 neighbour left whole |
+| 5 | the marker dropped from the masked line | died: test_a_marked_line_is_masked_as_its_configuration_line |
+| 6 | the marked line's rest not masked | died: the same |
+| 7 | `re.M` dropped (only the text's first line) | died: test_a_whole_unified_diff_is_masked_line_by_line |
+| 8 | one character after the marker | died: test_a_marked_line_is_masked_as_its_configuration_line |
+| 9 | the first, unmarked pass dropped | died: the same |
+| 10 | the empty-text guard dropped | died: test_nothing_to_mask_is_returned_as_it_came |
+
+A first draft kept diff headers (`+++`, `---`) out of the marked pass by a lookahead; its mutant
+(the lookahead dropped) survived and was equivalent (a header holds file names, and masking one
+hides nothing that should show), so the lookahead was removed rather than listed. **11 of 11
+died**, the canary first. The aimed tests: the test_redact* files, test_provider_redaction,
+test_previews_mask_secrets, test_masked_lines_not_compared, test_sealed_values_masked,
+test_netbox_mask_context, test_commit_message_masked, test_reveal_and_log_redaction,
+test_command_plan, the drift, roundtrip and intent-normalise tests, test_device_v2, the
+no-GET/no-POST secret tests, test_ai_never and the golden tests: **1897 passed, 1 skipped** in
+CI's interpreter.
