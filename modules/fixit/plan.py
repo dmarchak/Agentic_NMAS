@@ -62,6 +62,15 @@ def as_catalog(operation: str, params: dict, device: str) -> dict:
     for k, v in (params or {}).items():
         if k in AS_CATALOG:
             out[AS_CATALOG[k]] = list(v) if isinstance(v, (list, tuple)) else v
+    # A command plan's step named by the plan's own parameter names (C3978): kept by those
+    # names, as the plan's YAML declares them (`catalog.COMMAND_PLANS`), never another name;
+    # an attempt's short name above wins where both are given.
+    from modules.heal.catalog import COMMAND_PLANS
+    if operation in COMMAND_PLANS:
+        own = {p.name for p in COMMAND_PLANS[operation].params} - {"device"}
+        for k, v in (params or {}).items():
+            if k in own and k not in out:
+                out[k] = list(v) if isinstance(v, (list, tuple)) else v
     if operation == R.READD_KEY:
         out.pop("subscriptions", None)
     return out
