@@ -4494,6 +4494,94 @@ def _saved_plans(client, _lab, _mp):
                 _os.remove(path)
 
 
+def _fixes(client, _lab, _mp):
+    """Troubleshooting › Fixes and a saved fix's page (C3849; boards fixes-list,
+    fix-bpdu-guard and fix-manual-controls) in the states their loops draw: the fix saved in
+    Dry run from a verified recovery on r3 (tests/test_saved_plans.py's match and fills, as
+    `_saved_plans` saves it), then run once by a person (its run record, the runner's shape),
+    and a second version kept (the store's own version entry, its lines a minimal edit);
+    its list, its page (its record, versions and changes), Run… on the open incident it
+    matches and on a chosen port, Edit…, and New fix… with a condition and a provisional
+    line. s1's committed intent (tests/fixtures/committed/s1.yml, the host's file) stands in
+    for r3's, so r3 has access ports; the incident's readers are stood in as `_saved_plans`
+    stands them in. The runs and the store are removed after."""
+    import os as _os
+
+    import pytest
+    import yaml
+
+    from modules import config
+    from modules import problem as P
+    from modules.nsot import command_plan as CP
+    from modules.nsot import privileged, reads
+    from modules.nsot import saved_plans as S
+    from tests.test_saved_plans import BPDU, FILLS, MATCH
+
+    hx = {"HX-Request": "true"}
+    mp = pytest.MonkeyPatch()
+    mp.setattr("modules.config.list_data_path", config.get_list_data_dir)
+    with open(_os.path.join(ROOT, "tests", "fixtures", "committed", "s1.yml"),
+              encoding="utf-8") as fh:
+        s1 = yaml.safe_load(fh)
+    prob = P.Problem(**dict(BPDU.as_dict(), device="r3", object="Gi1/0"))
+    inc = "hi-0f1e2d3c"
+    rec = {"id": reads.new_id(), "list": "Lab", "device": "r3", "key": "errdisable-recover",
+           "kind": "command_plan", "state": "done", "outcome": "done", "actor": "a person",
+           "at": "2026-11-15T10:00:00Z", "title": "Recover r3 Gi1/0, err-disabled by bpduguard",
+           "params": {"device": "r3", "interface": "GigabitEthernet1/0", "cause": "bpduguard"}}
+    key = "fix-bpdu-guard-recovery"
+    ran = dict(rec, id=reads.new_id(), key=key, at="2026-11-16T10:00:00Z")
+    folder = _os.path.join(config.get_list_data_dir("Lab"), "privileged")
+    try:
+        privileged.record("Lab", rec)
+        privileged.record("Lab", ran)
+        S.save_script("Lab", run_id=rec["id"], name="BPDU guard recovery", match=MATCH,
+                      fills=FILLS, dry_run=True, actor="person@example.invalid",
+                      actor_verified="access", person=True)
+
+        def second(doc):
+            e = doc["plans"][key]
+            v1 = S.versions(e)[0]
+            t = dict(v1["template"], steps=[
+                dict(st, commands=list(st["commands"]) + [" description recovered"])
+                if st.get("mode") == "config" else st
+                for st in v1["template"].get("steps") or []])
+            # As `saved_plans.edit_fix` keeps a new version (its words and shape).
+            e["versions"] = [v1, {"version": 2, "digest": CP.parse(t).digest,
+                                  "at": "2026-11-17T10:00:00Z", "by": "person@example.invalid",
+                                  "why": "commands, checks or verify changed", "template": t}]
+            e["template"] = t
+        S._update(second)
+        mp.setattr("modules.neighbours.committed_intents_of", lambda name: ({"r3": s1}, ""))
+        mp.setattr(S, "_incidents_problems", lambda network: [(inc, prob)])
+        mp.setattr(S, "incident_problems", lambda network, closed=False: [
+            ({"id": inc, "device": "r3", "state": "watching",
+              "opened_at": "2026-11-18T10:00:00Z"}, prob)])
+        mp.setattr("modules.incident_page.resolve", lambda network, iid: {
+            "found": "page", "incident": {"id": iid, "device": "r3", "state": "watching"},
+            "entry": {}, "decisions": []})
+        mp.setattr(P, "classify", lambda found: prob)
+        listed = client.get("/v2/fixes?list=Lab").get_data(as_text=True)
+        assert f'data-fix="{key}"' in listed, listed[:400]
+        page = client.get(f"/v2/fixes/{key}?list=Lab").get_data(as_text=True)
+        assert "Versions, each kept" in page and "Open the run" in page, page[:400]
+        for q in ("", "&port=1"):
+            r = client.get(f"/v2/fixes/{key}/run?list=Lab{q}", headers=hx)
+            assert r.status_code == 200 and "Run this fix" in r.get_data(as_text=True), q
+        r = client.get(f"/v2/fixes/{key}/edit?list=Lab", headers=hx)
+        assert r.status_code == 200 and "fix-form-edit" in r.get_data(as_text=True)
+        r = client.get("/v2/fixes/new", headers=hx, query_string={
+            "list": "Lab", "drafted": "1", "name": "Describe the port", "condition":
+            "err_disabled", "n": "1", "l0": "__other__", "o0": "description recovered"})
+        assert r.status_code == 200 and "fix-form-new" in r.get_data(as_text=True)
+    finally:
+        mp.undo()
+        for path in (_os.path.join(folder, f"{rec['id']}.json"),
+                     _os.path.join(folder, f"{ran['id']}.json"), S._path()):
+            if _os.path.exists(path):
+                _os.remove(path)
+
+
 def _resubscribe(client, _lab, _mp):
     """C2838: a lost telemetry stream's Re-subscribe card on r3, in each state it draws: the
     preview (r2's real intent standing in for r3's: its two subscriptions), one of them
@@ -5625,7 +5713,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _ai_spend, _assistant, _plans, _oob_onboard, _sdn, _sdn_apps,
                    _nsot_export_and_code_repo, _dhcp_steering, _heal_and_notify,
                    _heal_proposal, _resubscribe, _heal_run, _incident_page, _fixit_section, _saved_plans,
-                   _incidents_list,
+                   _fixes, _incidents_list,
                    _sdn_no_topology, _sdn_evidence, _sdn_trace, _sdn_switches, _sdn_analyse,
                    _sdn_policies, _sdn_links_and_caps,
                    _deploy,
