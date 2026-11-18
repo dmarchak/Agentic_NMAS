@@ -271,6 +271,10 @@ def test_loading_and_refreshing_every_page_with_an_ai_control_calls_no_model(wor
                                                                               monkeypatch):
     world.answer = _answer(world.pack)
     c = world.lab["client"]
+    # The Assistant drawn, its switch on (a61bb071, the operator 2026-11-16: off by default,
+    # its panel refused while off): its control is one of the pages' too.
+    from modules import installation_settings as I
+    world.settings[I.ASSISTANT_KEY] = True
     # The metrics builder asks Prometheus for its limits and series, which the pack's captures
     # do not hold: the builder is drawn as for a network with no Prometheus (its Ask in words
     # row drawn as ever; no AI is near it).
