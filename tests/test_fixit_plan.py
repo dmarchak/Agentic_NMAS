@@ -120,7 +120,10 @@ class TestApprove:
         plan = FP.preflight(incident(iid), line)
         r = post(web, iid, "approve", proposal=line["proposal"], hash=plan["hash"])
         assert r.status_code == 200, r.get_data(as_text=True)
-        assert web.started["job"] == 1
+        # Premise corrected (C3867, 8f1d8006, the operator, 2026-11-16: Approve "starts the
+        # plan engine's job at once and answers 'Starting…' in place"): two jobs, Approve's
+        # start (its session read again, the engine's start) and the engine's run.
+        assert web.started["job"] == 2
         (ap,) = [ln for ln in F.read(incident(iid))["lines"] if ln.get("choice") == "approve"]
         assert ap["plan_hash"] == plan["hash"] and ap["run"]
         rec = PE.record_of(NET, ap["run"])
