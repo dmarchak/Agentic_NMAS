@@ -218,7 +218,15 @@ def test_a_pass_1_the_gateway_refuses_prints_no_body_and_runs_no_read(ai, reads,
     got = _preview(iid)
     first = got["first"]
     assert first["body"] is None and first["refused"]["kind"] == "prompt", first
-    assert reads.ran == [], f"a read ran for a pass 1 that is never sent: {reads.ran}"
+    # Premise corrected (93120b2f, the operator, 2026-11-16: "a failed run's steps and the state
+    # after it are evidence"): building the request reads the state after attempt 1's failed
+    # run from Mercury's own sources, each subscription's collector sessions and series
+    # (`after_run_section`), before any gateway verdict. Those are the pack's, read on
+    # Mercury's host; no read of the loop runs, and nothing of the device is read.
+    assert [(r[0], r[-1]) if r[0] == "series" else (r[0],) for r in reads.ran] == [
+        ("collector",), ("series", "101"), ("collector",), ("series", "102")], \
+        f"a read ran for a pass 1 that is never sent: {reads.ran}"
+    assert not [r for r in reads.ran if r[0] == "device"], reads.ran
     assert got["second"] is None
     assert not [r for r in got["reads"] if r.get("verdict") == "run"], got["reads"]
 
