@@ -22,6 +22,14 @@ every value that hash binds is drawn for them first, and the press runs those va
   session now, and starts the plan with the session drawn when it holds the same; a read that
   named no session leaves the plan unapprovable, saying why; a read that raises is kept as its
   reason. A secret-shaped value in a bound row is masked.
+- **Approve's press as two jobs** (C3867, 8f1d8006, the operator, 2026-11-16: Approve "checks
+  the posted hash against the plan as shown ... starts the plan engine's job at once and
+  answers 'Starting…' in place"): its live checks run after its answer, in its own job
+  (`fixit_v2._start_approved`), so a refusal there is that job's failed state and the
+  incident's card, never the press's status. These tests run every job a press starts on the
+  real `capture_job` (`kept_jobs`), with the real `plan_engine.start` (its preview of every
+  step, the bound session read again, and its hash compared with the one approved); only the
+  engine's run, which would apply each step, is stood in (`engine_runs`).
 - **The walker is judged:** rendered with a step's own hash left out of the drawn rows (no
   request made), the walk names that hash.
 
@@ -35,6 +43,7 @@ from html import unescape
 import pytest
 
 from modules import plan_engine as PE
+from modules.nsot import capture_job
 from tests import test_fixit_section_v2 as FX
 from tests.test_dhcp_reservations import kea_dir  # noqa: F401 (a fixture)
 from tests.test_fixit_section_v2 import web  # noqa: F401 (the fixture)
@@ -67,6 +76,56 @@ def started(monkeypatch):
         return {"run": "r-walk", "job": "j-walk"}
     monkeypatch.setattr(PE, "start", start)
     return got
+
+
+#: `capture_job.start` as the host runs it, taken when this file is imported, before `web`
+#: replaces it with a stand-in that runs the work in the request and lets its error out.
+REAL_JOB_START = capture_job.start
+#: The kind of Approve's own job (`fixit_v2._start_approved`).
+APPROVE_JOB = "approved plan start"
+#: How long a test waits for a job to end: each ended in 0.1 s or less on the laptop
+#: (2026-11-18, the whole file in 5 s); far above it, for a loaded run.
+JOB_WAIT_S = 10
+
+
+@pytest.fixture
+def kept_jobs(web, monkeypatch):  # noqa: F811
+    """Every job a press starts run by the real `capture_job` (its own thread, waited here), so
+    a raising work is the job's ``failed`` state with its error, as on the host. Each job's
+    id, in the order each ended."""
+    ids = []
+
+    def start(*a, **kw):
+        jid = REAL_JOB_START(*a, **kw)
+        assert capture_job.wait(jid, JOB_WAIT_S), f"job {jid} did not end in {JOB_WAIT_S} s"
+        ids.append(jid)
+        return jid
+    monkeypatch.setattr(capture_job, "start", start)
+    return ids
+
+
+def jobs_of(ids, kind):
+    """The kept jobs of *kind*, as `capture_job.get` reads them."""
+    return [j for j in (capture_job.get(i) for i in ids) if j and j["kind"] == kind]
+
+
+@pytest.fixture
+def engine_runs(monkeypatch):
+    """`plan_engine.run` stood in (the run the engine's job starts, which applies each step):
+    each run's ``(network, plan, params, hash)``. Everything before it is real, so a refusal
+    still refuses and nothing reaches a device."""
+    got = []
+
+    def run(network, plan, params, confirmed, **kw):
+        got.append({"network": network, "plan": plan, "params": json.loads(json.dumps(params)),
+                    "hash": confirmed})
+        return {"id": kw.get("run_id"), "outcome": "done"}
+    monkeypatch.setattr(PE, "run", run)
+    return got
+
+
+def words_of(html: str) -> str:
+    return " ".join(unescape(re.sub(r"<[^>]+>", " ", html)).split())
 
 
 def _leaves(x):
@@ -229,7 +288,7 @@ def drawn_approve(html):
 class TestTheIncidentsPlan:
     @pytest.mark.parametrize("family", sorted(SESSIONS))
     def test_the_session_is_read_once_at_the_proposal_drawn_and_started_as_drawn(
-            self, web, monkeypatch, captured, started, family):  # noqa: F811
+            self, web, monkeypatch, captured, kept_jobs, engine_runs, family):  # noqa: F811
         remote, local = SESSIONS[family]
         seam = Seam(monkeypatch, remote, local)
         iid = FX.plant()
@@ -253,13 +312,20 @@ class TestTheIncidentsPlan:
         assert remote in said and local in said and "quiet for 2130 s" in said, said
         call = next(c for c in reversed(captured) if c["plan"] == PE.INCIDENT_FIX)
         assert remote in bound_values(call) and undrawn(call, html) == []
-        # Pressed: the collector holds the same session, so the plan starts with it.
+        # Pressed: the collector holds the same session, so the plan starts with it. Premise
+        # corrected (C3867, 8f1d8006): Approve answers "Starting…" at once and its live reads
+        # follow in its own job, which ends done; the engine's run is the second job.
         r = FX.post(web, iid, "approve", **fields)
-        assert r.status_code == 200, r.get_data(as_text=True)[:600]
-        # Approve read it again: its own comparison, then the step's own preview
-        # (`plan_engine._catalog_preview`, which checks the bound session once more).
+        assert r.status_code == 200 and "Starting…" in words_of(r.get_data(as_text=True)), \
+            r.get_data(as_text=True)[:600]
+        (job,) = jobs_of(kept_jobs, APPROVE_JOB)
+        assert job["state"] == "done" and job["error"] == "", job
+        assert len(jobs_of(kept_jobs, PE.JOB_KIND)) == 1, "the engine's run is its own job"
+        # Read twice after the proposal, each for its own check: Approve's job compares it
+        # with the one bound (`fixit_v2._start_approved`), then `plan_engine.start`'s preview
+        # of the step (`plan_engine._catalog_preview`) checks the bound session once more.
         assert len(seam.calls) == 3, seam.calls
-        (run,) = started
+        (run,) = engine_runs
         (step,) = run["params"]["steps"]
         assert step["session"] == remote and remote in drawn_rows(html).values()
         assert run["params"]["proposal"] == fields["proposal"] == line["proposal"]
@@ -267,7 +333,7 @@ class TestTheIncidentsPlan:
         assert run["hash"] == fields["hash"]
 
     def test_approve_refuses_when_the_engine_previews_another_hash(self, web, monkeypatch,  # noqa: F811
-                                                                  started):
+                                                                  kept_jobs, engine_runs):
         # The second review of the verify-speed gate, 2026-11-15: the run starts on the hash
         # the person approved, never on one the engine computed after it.
         remote, local = SESSIONS["IPv6"]
@@ -283,13 +349,22 @@ class TestTheIncidentsPlan:
             return dict(got, hash="f" * 16) if got.get("ok") else got
         monkeypatch.setattr(PE, "preview", moved)
         r = FX.post(web, iid, "approve", **fields)
-        said = " ".join(unescape(re.sub(r"<[^>]+>", " ", r.get_data(as_text=True))).split())
-        assert r.status_code == 409, said[:600]
-        assert f"you approved the plan {fields['hash']}" in said and "f" * 16 in said, said[:800]
-        assert started == [], "nothing ran"
+        # Premise corrected (C3867, 8f1d8006): the hash the page drew is the plan as shown, so
+        # Approve answers "Starting…"; `plan_engine.start`, in Approve's job, previews the plan
+        # and refuses the hash it computes now, naming both: the job's failed state and the
+        # incident's card say it, where it was the press's 409.
+        assert r.status_code == 200 and "Starting…" in words_of(r.get_data(as_text=True))
+        (job,) = jobs_of(kept_jobs, APPROVE_JOB)
+        assert job["state"] == "failed", job
+        _r, after = FX.page(web, iid)
+        for said in (job["error"], words_of(after)):
+            assert f"you approved {fields['hash']}" in said, said[:1200]
+            assert f"the plan previewed now is {'f' * 16}" in said, said[:1200]
+            assert "Nothing ran" in said, said[:1200]
+        assert engine_runs == [] and jobs_of(kept_jobs, PE.JOB_KIND) == [], "nothing ran"
 
     def test_approve_refuses_a_session_that_moved_naming_both(self, web, monkeypatch,  # noqa: F811
-                                                              started):
+                                                              kept_jobs, engine_runs):
         remote, local = SESSIONS["IPv4"]
         seam = Seam(monkeypatch, remote, local)
         iid = FX.plant()
@@ -298,11 +373,20 @@ class TestTheIncidentsPlan:
         fields, _bluf = drawn_approve(html)
         seam.set("192.0.2.7:57002", local)
         r = FX.post(web, iid, "approve", **fields)
-        said = " ".join(unescape(re.sub(r"<[^>]+>", " ", r.get_data(as_text=True))).split())
-        assert r.status_code == 409, said[:600]
-        assert f"the plan read the session from {remote}" in said, said[:800]
-        assert "the collector holds the one from 192.0.2.7:57002 now" in said, said[:800]
-        assert started == [], "nothing ran"
+        # Premise corrected (C3867, 8f1d8006): Approve answers "Starting…" and its job reads
+        # the session again (`fixit_v2._start_approved`), refusing before the engine starts:
+        # the job's failed state and the incident's card name both, where it was a 409.
+        assert r.status_code == 200 and "Starting…" in words_of(r.get_data(as_text=True))
+        (job,) = jobs_of(kept_jobs, APPROVE_JOB)
+        assert job["state"] == "failed", job
+        _r, after = FX.page(web, iid)
+        for said in (job["error"], words_of(after)):
+            assert f"the plan read the session from {remote}" in said, said[:1200]
+            assert "the collector holds the one from 192.0.2.7:57002 now" in said, said[:1200]
+            assert "Nothing ran" in said, said[:1200]
+        # Read at the proposal and by Approve's job: refused there, before the engine's preview.
+        assert len(seam.calls) == 2, seam.calls
+        assert engine_runs == [] and jobs_of(kept_jobs, PE.JOB_KIND) == [], "nothing ran"
 
     def test_a_read_that_named_no_session_is_not_approvable_and_says_why(self, web,  # noqa: F811
                                                                          monkeypatch):
