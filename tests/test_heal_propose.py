@@ -557,7 +557,7 @@ class TestTheApprovedAct:
         got, _a, _v = run_approved(d, src)
         assert got["outcome"] == "rolled_back", got["words"]
         assert "put back: nothing is left half applied" in got["words"]
-        assert DS.halted("Default")["guard"] == 14, "a rolled-back heal halts (guard 14)"
+        assert DS.halted("Default") == {}, "a rolled-back heal halts nothing (C3965, decision 5)"
 
     def test_a_reset_made_whose_adjacencies_stay_down_is_kept(self, lab, measured):
         d = proposed()

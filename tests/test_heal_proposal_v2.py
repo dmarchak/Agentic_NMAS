@@ -463,6 +463,18 @@ def test_needs_attention_draws_lift_the_halt_with_its_reason_outside_any_form(ap
     assert DS.halted("Default") == {}
 
 
+def test_a_rolled_back_heal_draws_no_lift_the_halt_row(app_client):
+    """C3965 (the operator's decision 5, 2026-11-18): since 70e89a47 nothing halts, so a heal
+    rolled back writes no halt and Needs attention draws no danger "Lift the halt" row for it;
+    the rollback stays in the heal's record."""
+    rec = DS.record("Default", {"outcome": "heal", "device": "edge-b"}, 1000.0)
+    DS.applied("Default", rec["id"], "rolled_back", by="the apply", words="verify failed",
+               now=1100.0)
+    assert DS.halted("Default") == {}
+    assert _halted_rows() == []
+    assert DS.find("Default", rec["id"])["applied"]["outcome"] == "rolled_back"
+
+
 def test_lift_pressed_is_recorded_as_the_person_and_the_row_clears(app_client):
     from tests.conftest import TEST_PERSON
 

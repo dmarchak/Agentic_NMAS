@@ -224,15 +224,14 @@ def take(network: str, decision_id: str, *, by: str, now: float = None) -> dict:
 def applied(network: str, decision_id: str, outcome: str, *, by: str, words: str,
             now: float = None) -> dict:
     """H4 records what a taken heal did (``healed``, ``partial``, ``refused``,
-    ``rolled_back``, ...). A rolled-back heal halts the network (guard 14)."""
+    ``rolled_back``, ...). A rolled-back heal halts nothing: guard 14 and every halt write were
+    removed by 70e89a47 (the operator, 2026-11-17, round 2), and this one, which it missed,
+    drew a danger "Lift the halt" row for a halt that held nothing (C3965; the operator's
+    decision 5, 2026-11-18). The failure is the incident's, which R1 sees."""
     now = time.time() if now is None else float(now)
-    d = find(network, decision_id)
+    find(network, decision_id)
     _append(network, {"row": "applied", "decision": decision_id, "outcome": outcome,
                       "by": by, "words": words, "at": _iso(now)})
-    if outcome == "rolled_back":
-        halt(network, guard=14, name="a rolled-back heal",
-             words=f"the heal of {d.get('device')} ({decision_id}) was rolled back: {words}",
-             operands={"decision": decision_id, "device": d.get("device")}, now=now)
     return find(network, decision_id)
 
 
