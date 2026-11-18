@@ -366,6 +366,26 @@ def test_the_measured_cost_is_the_mean_of_the_tasks_sent_calls_on_its_model(bg):
     assert est["suggested"] == {"day_cap_usd": 0.02, "month_cap_usd": 0.6}
 
 
+def test_a_held_measure_is_computed_again_once_a_row_is_recorded(bg):
+    """C3788 holds each measure until the record changes (`calls.version`); 7b0bb884's shared
+    `_held_measure` held it under a key without the version, so the first answer of a day was
+    kept whatever was recorded after it (a gateway call's hold sized on a stale median). A row
+    appended moves the version, and the mean cost and the typical output are read again."""
+    model = profiles.TASKS[TASK]["model"]
+    # A record that exists (another task's call), so it has a version and the measure is held.
+    calls.record({"id": calls.new_id(), "feature": "explain", "model": model, "actor": "a",
+                  "verdict": "ok", "cost_usd": 0.5, "tokens": {"input_tokens": 1}})
+    assert calls.version() is not None
+    assert B.measured_cost(TASK)["measured"] is False
+    assert B.typical_output(TASK)["measured"] is False
+    calls.record({"id": calls.new_id(), "feature": TASK, "model": model, "actor": "a",
+                  "verdict": "ok", "cost_usd": 0.004, "stop_reason": "end_turn",
+                  "tokens": {"input_tokens": 1, "output_tokens": 7}})
+    cost, typical = B.measured_cost(TASK), B.typical_output(TASK)
+    assert cost["measured"] is True and cost["usd_per_call"] == pytest.approx(0.004)
+    assert typical["measured"] is True and typical["tokens"] == 7
+
+
 def test_an_unmeasured_frequency_is_unknown_never_guessed(bg):
     B.FEATURES["fake_loop"]["frequency"] = lambda n: {"per_day": None, "basis": "never fired"}
     est = B.estimate("Lab", "fake_loop")
