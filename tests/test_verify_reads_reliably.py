@@ -25,6 +25,15 @@ from modules import config_read, pipeline
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIX = os.path.join(ROOT, "tests", "fixtures", "operational")
+#: r3's running configuration as kept from the fleet (tests/fixtures/configs/fleet/), which
+#: ends with `end` as the device prints it; the operational captures hold no
+#: `show running-config` (C3972).
+R3_CONFIG = os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", "r3.cfg")
+
+
+def r3_running_config() -> str:
+    with open(R3_CONFIG, encoding="utf-8") as fh:
+        return fh.read()
 
 
 def capture(host, command):
@@ -309,19 +318,46 @@ class TestVerifysRouteCountIsReadOnce:
 
 
 class TestPostPushReadsUseANewSession:
-    def test_the_pushs_session_is_closed_before_the_post_snapshot(self, monkeypatch):
+    @staticmethod
+    def _post_snapshot(monkeypatch, fresh):
         from modules.pipeline import PipelineContext
         push_session = Device(prompt="\x00", reread_prompt="\x00")
         ctx = PipelineContext(config_type="interface", device_ips=["x"], params={},
                               ip_params_map={}, selected_devices=[{"ip": "x", "hostname": "r3"}],
                               connections_pool={"x": push_session},
                               pool_lock=threading.Lock(), config_id="t")
-        fresh = Device()
         monkeypatch.setattr("modules.connection.get_persistent_connection",
                             lambda dev, pool, lock: pool.setdefault("x", fresh))
         pipeline._stage_post_snapshot(ctx)
+        return push_session, ctx.post_snapshots["x"]
+
+    def test_the_pushs_session_is_closed_before_the_post_snapshot(self, monkeypatch):
+        """The new session answers the configuration read with r3's configuration: since
+        e400a31f (the review of 2026-11-16) an answer not ending `end` is unreadable, and this
+        fake answered "" for a command it held no capture of, which the read before e400a31f
+        took as the configuration (C3972)."""
+        fresh = Device(answers={"show running-config": r3_running_config()})
+        push_session, snap = self._post_snapshot(monkeypatch, fresh)
         assert push_session.disconnected and push_session.sent == []
-        assert pipeline._unreadable(ctx.post_snapshots["x"]) == []
+        assert pipeline._unreadable(snap) == []
+        assert "show running-config" in fresh.sent
+        assert snap["running_config"] == r3_running_config()
+
+    @pytest.mark.parametrize("answer, why", [
+        ("", "did not end with `end`"),
+        ("\n".join(r3_running_config().splitlines()[:120]), "did not end with `end`"),
+        (capture("r3", "show foobar"), "the device refused `show running-config`"),
+    ], ids=["empty", "cut-short", "refused"])
+    def test_a_configuration_read_after_the_push_that_is_not_one_is_unreadable(
+            self, monkeypatch, answer, why):
+        """An empty, cut or refused answer is never taken for the configuration after the push
+        (e400a31f): verify says it could not read it, and nothing feeds a golden (C3972)."""
+        fresh = Device(answers={"show running-config": answer})
+        _, snap = self._post_snapshot(monkeypatch, fresh)
+        assert snap["running_config"] == ""
+        unreadable = pipeline._unreadable(snap)
+        assert len(unreadable) == 1 and unreadable[0].startswith("`show running-config`: ")
+        assert why in unreadable[0], unreadable
 
     def test_the_pool_replaces_a_spent_session(self, monkeypatch):
         from modules import connection
