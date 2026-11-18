@@ -457,7 +457,11 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
                # C3870: a start that Mercury's own read closed ends there (``closed``), so
                # the card never reads "investigating" after it.
                or ln.get("state") in ("started", "capped", "failed", "closed")]
-    newest = max(events, key=lambda e: (e[0], e[1])) if events else None
+    # Ties go to the later event: every step of one plan run carries the run's one start, so
+    # its attempts tie, and the later step is the newer (the correctness review's G7-D6,
+    # 2026-11-18: `max` takes the first of a tie, and a plan whose deploy failed after its
+    # intent change passed was drawn "passed").
+    newest = max(reversed(events), key=lambda e: (e[0], e[1])) if events else None
     if resolved is not None:
         out["state"] = "resolved"
         _contract(out, network, found, inc, rec, tried, drawn, None, resolved, now)

@@ -234,6 +234,21 @@ class TestTheRepeat:
         page_stands_in(monkeypatch, incident())
         assert detect.verified_fix("Lab", {"id": INCIDENT, "device": "r2"}) == {}
 
+    def test_a_plan_whose_deploy_failed_is_never_drawn_passed(self, lab, monkeypatch):
+        """The correctness review's G7-D6 (2026-11-18; C3809): every step of one plan run
+        carries the run's one start, so its attempts tie on the section's newest-event key, and
+        `max` took the first, the intent change that passed: the card read "passed" with the
+        deploy failed and the plan stopped. The later step is the newer."""
+        from modules.fixit import section
+        lab["seams"]["verify"] = False
+        rec = run_line(line_of(EDIT, DEPLOY))
+        assert rec["outcome"] == "stopped", rec
+        monkeypatch.setattr(section, "incident_of", lambda network, found: {
+            "incident": incident(), "why": ""})
+        got = section.view("Lab", {"found": "page", "id": INCIDENT,
+                                   "incident": {"id": INCIDENT, "device": "r2"}})
+        assert got["state"] != "passed", (got["state"], got.get("why"))
+
     def test_a_plan_that_ran_to_its_end_closes_the_incident(self, lab, monkeypatch):
         from modules.heal import detect
         from tests.test_fixit_incident import page_stands_in
