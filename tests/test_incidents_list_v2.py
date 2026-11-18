@@ -228,6 +228,26 @@ class TestPageSpeedAndReads:
         assert ">second<" in body and "second@example.invalid" not in body
         assert identity.viewer() is other
 
+    def test_every_open_incident_is_a_row_with_no_batch_card(self, planted, client,  # noqa: F811
+                                                             monkeypatch):
+        """d2093c59 (the operator, 2026-11-17: "Remove that card entirely: the incidents
+        show as the normal list rows"): with Needs attention holding a batch over an open
+        incident, the page still draws that incident as its own row, folded into no card."""
+        import routes.incidents_v2 as R
+
+        busy = planted["busy"]["page"]
+        monkeypatch.setattr(R, "_batch_rows", lambda network: [
+            {"batch": True, "card": {"held": [{"incident": busy}]}}])
+        seen = []
+        real = L.page
+
+        def spy(*a, **k):
+            seen.append(tuple(k.get("batched") or ()))
+            return real(*a, **k)
+        monkeypatch.setattr(L, "page", spy)
+        body = client.get(f"/v2/incidents?list={NET}").get_data(as_text=True)
+        assert seen == [()], seen
+        assert busy in listed(real(NET, "open")) and busy in body
 
 CHIP = "/v2/incidents/heal-auto"
 
