@@ -739,7 +739,10 @@ class TestTheShippedScripts:
                                                     # runs (console_ztp).
                                                     "/v2/onboard/console/7?list_name=Lab&run="
                                                     "20261022T000000000000Z-" + "0" * 32
-                                                    + "&job=x"))
+                                                    + "&job=x",
+                                                    # R5 (becced07): Troubleshooting ›
+                                                    # Incidents' list (ai_step).
+                                                    "/v2/incidents?list=Lab"))
         from modules import device_page
         from modules.nsot import rotate_op
         from routes import device_v2
@@ -809,7 +812,9 @@ class TestTheShippedScripts:
         # +2 2026-11-13: read_account (board R: Credentials' Read-only account on the devices
         # redraws when its coverage reader reads again) and read_account_probe (a probe's card
         # reads its job when the probe ends).
-        assert len(keys) == 58
+        # +1 2026-11-15: ai_step (R5, becced07: an AI investigation's live step, which the
+        # Incidents list and an incident's stepper read again).
+        assert len(keys) == 59
         # Diagnose…'s card while its run runs (H16) is the one that listens for `diagnosis`;
         # it reads its job's network and kind, which the shared stand-in above does not carry.
         monkeypatch.setattr(capture_job, "get", lambda job: {
