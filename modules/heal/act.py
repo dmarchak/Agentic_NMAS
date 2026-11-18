@@ -1159,15 +1159,13 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
     inc = _incident(network, decision["incident"])
     # C2839: classed at apply as it was decided, the network's answer read again (a no since
     # makes a security_revert unit Tier 2, refused below as not the decision's tier).
-    c = kinds.classify(golden["text"], text, intended["text"], platform=platform,
-                       mgmt_ip=dev.get("ip", ""), related=bool(inc.get("related")),
+    # Classed against the approved state its lines come from, as the decision classed it
+    # (`decide.restore_source`; C3910): a golden that departs from intent is restored to
+    # intent, every line it sends judged by its kind.
+    c = kinds.classify(decide.restore_source(golden, intended), text, intended["text"],
+                       platform=platform, mgmt_ip=dev.get("ip", ""),
+                       related=bool(inc.get("related")),
                        revert=decide.revert_scope(src.mode(now), inc))
-    if golden.get("state") != "at_intent":
-        # Not a wait: the golden departed from intent since the decision (the review of C3909:
-        # a restore from intent is not built until it classifies every line it sends, C3910),
-        # a failure R1 starts on, nothing sent.
-        return refuse("plan", f"{device}'s golden departs from its committed intent now "
-                              f"({golden.get('words') or golden.get('state')})")
     prog = decide.program(decide.restore_source(golden, intended), text, c["units"],
                           c["removal_ids"], mgmt_ip=dev.get("ip", ""), platform=platform)
     from modules.drift_check import departure, drift_diff

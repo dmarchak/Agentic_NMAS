@@ -559,13 +559,34 @@ class TestGuards:
 
     def test_4_a_golden_that_departs_from_intent_n5(self, lab):
         """C3909 (the operator, 2026-11-17: "remove the hold, but don't restore a golden that
-        departs from intent"): guard 4 holds nothing for it; its Tier 1 departure is a
-        can't-fix of Mercury's own (Tier 3), the AI's to investigate, never a send of lines no
-        kind judged."""
+        departs from intent. The restore targets intent (intent is the source of truth); when
+        golden and intent disagree, render from intent. If intent can't render for that
+        device, that's a failure -> R1"): guard 4 holds nothing for it, and with intent that
+        renders, its departure is healed from committed intent, judged as the at-intent case
+        is (restored by the correctness review's test audit, half 1 row 36, 2026-11-18: the
+        interim can't-fix had been pinned as correct)."""
         d = one(GOLDEN + ROUTE4, src=Fake(GOLDEN + ROUTE4, state="departs"))
-        assert (d["outcome"], d["guard"], d["until"], d["tier"]) == ("cant_fix", None, None, 3)
-        assert "golden departs from its committed intent" in d["words"], d["words"]
-        assert d["program"] == []
+        assert (d["outcome"], d["guard"], d["until"]) == ("would_heal", None, None), d["words"]
+        assert d["program"] == ["no ip route 192.0.2.128 255.255.255.128 192.0.2.10"]
+
+    def test_4_an_intent_line_the_golden_lacks_is_restored_from_intent(self, lab):
+        """C3910 (the operator, 2026-11-17: "decide a restore to intent (same render), never
+        'nothing to heal'"): the golden departs from intent by lacking a line intent holds,
+        and the device is at its golden; the restore adds intent's line, judged by its kind
+        as every line it sends is (the review of C3909: never a stanza sent unjudged)."""
+        d = one(GOLDEN, src=Fake(GOLDEN, intended=GOLDEN + ROUTE6, state="departs"))
+        assert d["outcome"] == "would_heal", d["words"]
+        assert d["program"] == ["ipv6 route 2001:db8:9::/48 2001:db8:0:7::2"], d["program"]
+        assert "nothing to heal" not in d["words"]
+
+    def test_4_an_intent_only_account_line_is_never_restored_by_itself(self, lab):
+        """The review of C3909's HIGH, held: a restore from intent never sends a line its kind
+        forbids. An account intent holds and the golden lacks is credentials (Tier 4): never
+        automatic, in Auto with every Tier 1 kind allowed."""
+        auto("Default", now=T0 - 60, kinds=("missing_line", "changed_line", "added_line"))
+        account = "username heal-test privilege 15 secret 9 $9$abcdefghijklmn$opqrstuvwxyz\n"
+        d = one(GOLDEN, src=Fake(GOLDEN, intended=GOLDEN + account, state="departs"))
+        assert d["outcome"] != "heal" and d["tier"] == 4, (d["outcome"], d["tier"], d["words"])
 
     @pytest.mark.parametrize("mark,words", [
         ({"_management": "observe", "_management_from": "the device's local config context"},

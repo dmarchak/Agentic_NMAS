@@ -563,7 +563,11 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
                        f"many devices at once resolved, and the grace dropped, by "
                        f"{batch.get('by_shown') or 'a person'}'s approval of the batch; ")
     passed("guards", batch_words + "nothing holds it", "read")
-    if at_golden:
+    # C3910 (the operator, 2026-11-17: "a device at a golden that departs from intent is a
+    # departure; decide a restore to intent (same render), never 'nothing to heal'"): settled
+    # at a golden that departs from intent, it is decided on its read against intent below; a
+    # port problem its own read confirmed keeps its judgement.
+    if at_golden and (base["settled"] == "confirmed" or golden.get("state") == "at_intent"):
         base["phase"] = "decide"
         symptom = _symptom(incident)
         judged = judged_triggers(incident)
@@ -613,8 +617,13 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
     if not intended.get("text"):
         return dict(base, outcome="cant_fix",
                     words=f"committed intent cannot be rendered: {intended.get('why')}")
-    c = kinds.classify(golden["text"], text, intended["text"], platform=platform,
-                       mgmt_ip=dev.get("ip", ""), related=bool(incident.get("related")),
+    # Judged against the approved state the restore's lines come from (`restore_source`: the
+    # golden at its intent, else committed intent; C3909, C3910): every line the restore sends,
+    # an intent-only line included, is a unit its kind judges (an ACL, a credential, a secret
+    # each at its own tier), never a stanza sent unjudged (the review of C3909).
+    c = kinds.classify(restore_source(golden, intended), text, intended["text"],
+                       platform=platform, mgmt_ip=dev.get("ip", ""),
+                       related=bool(incident.get("related")),
                        revert=revert_scope(mode, incident))
     base.update(units=[kinds.masked_unit(u) for u in c["units"]], kind=c["kind"],
                 tier=c["tier"], left_out=c["left_out"])
@@ -630,17 +639,6 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
         from modules.pipeline import dangerous_commands
         from modules.redact import redact_text
 
-        if golden.get("state") != "at_intent":
-            # The review of C3909 (HIGH): a whole stanza restored from intent would carry
-            # intent-only lines no kind judged (an ACL, a secret, a QoS policy) under Tier 1.
-            # Until that restore classifies every line it sends (C3910), a golden departing
-            # from intent is no fix of Mercury's own: R1's failure, the AI investigates; never
-            # a hold, never a send of unjudged lines.
-            return dict(base, tier=3, outcome="cant_fix",
-                        words=(f"{device}'s golden departs from its committed intent, and a "
-                               "restore to intent that adds lines the golden never held is "
-                               "not built yet: no fix of Mercury's own, so the AI "
-                               "investigates"))
         prog = program(restore_source(golden, intended), text, c["units"], c["removal_ids"],
                        mgmt_ip=dev.get("ip", ""), platform=platform)
         base.update(program=[redact_text(x) for x in prog["commands"]],
