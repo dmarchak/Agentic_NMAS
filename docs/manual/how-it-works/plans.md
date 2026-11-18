@@ -100,6 +100,14 @@ matches, with **Promote <name>**, and the network's line shapes waiting on an ad
 proposed it, why, and what its first run measured, with **Approve the shape**. A right you do
 not hold is said beside its button, which is drawn disabled.
 
+**Saving is the approval** (the operator, 2026-11-15). Once a fix verified, the incident's card
+asks "Save this fix so Mercury handles it automatically?". **Save** saves it as a self-heal
+script in **Automatic**, with the problem's name and its match ticked, promoted by you: it runs
+when its match holds while the network's self-healing is on. **Customize…** holds the same form
+with **Dry run** as a choice. **Not now** puts the offer off for this incident, saving nothing,
+and the card then says so in one line with **Save this fix…**, which shows the offer again.
+Every saved fix is listed on [Fixes](fixes).
+
 **When a script fires.** After each self-healing decision, and again before the AI is asked
 on an incident, every saved script of the network whose match the incident's problem holds
 fires once for that incident, under self-healing's mode: while self-healing is off, nothing;
@@ -113,8 +121,8 @@ what it sends and checks, asking nothing of the device, then **Run <title>**, bo
 preview. It runs as a job, the device held, through the same runner as every command plan,
 and its record is on History. Any verified person may run one.
 
-**Not built yet:** a page listing every saved script with its record, a page of every
-network's waiting shapes, and the screen that sets who holds each right.
+**Not built yet:** a page of every network's waiting shapes, and the screen that sets who
+holds each right. Every saved fix, with its record, is on [Fixes](fixes).
 
 ## Approve the plan
 

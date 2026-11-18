@@ -1,5 +1,5 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon, badge, clock, how -%}
+{%- from "v2/_macros.html" import icon, badge, clock, how, info -%}
 {#- Troubleshooting › Fixes (C3849 piece 2; board docs/boards/fixes-list.html, approved by the
     operator 2026-11-16 with conditions): every fix the network has, saved and built-in, one
     summary line, then one list, each row its name (the fix's own page), how it runs, its
@@ -10,10 +10,10 @@
     the saved plans or a run record change. Nothing here acts on a device. -#}
 {% block title %}Fixes · {{ brand.short }}{% endblock %}
 {% block main %}
-<div class="page-head"><div class="page-title"><h1>Fixes</h1></div>
+<div class="page-head"><div class="page-title"><h1>Fixes {{ info('fixes') }}</h1></div>
   {#- New fix… (board fix-manual-controls screen 2): its form drawn in place below, outside the
       live list, so a redraw of the list never takes it away. -#}
-  <div class="page-acts"><span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fix-new" aria-haspopup="true" hx-get="{{ url_for('fixes_v2.new', list=p.network) }}" hx-target="#fix-new" hx-swap="outerHTML" hx-disabled-elt="this" title="Write a fix from Mercury's own choices: what it fixes, its lines, its checks and verify; it starts Manual only"><span class="op-idle">New fix…</span><span class="op-busy">Opening…</span></button>{{ how('plans', compact=True, op='writing a fix') }}</span></div>
+  <div class="page-acts"><span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="plans" aria-haspopup="true" hx-get="{{ url_for('fixes_v2.new', list=p.network) }}" hx-target="#fix-new" hx-swap="outerHTML" hx-disabled-elt="this" title="Write a fix from Mercury's own choices: what it fixes, its lines, its checks and verify; it starts Manual only"><span class="op-idle">New fix…</span><span class="op-busy">Opening…</span></button>{{ how('plans', compact=True, op='writing a fix') }}</span></div>
 </div>
 <div id="fix-new" hidden></div>
 <div class="tab-body" id="fixes-live" hx-disinherit="*" hx-get="{{ url_for('fixes_v2.page', list=p.network, q=p.q or none, mode=p.mode or none, kind=p.kind or none) }}" hx-select="#fixes-live" hx-trigger="nmas:saved_plans from:body, nmas:privileged from:body" hx-swap="outerHTML">

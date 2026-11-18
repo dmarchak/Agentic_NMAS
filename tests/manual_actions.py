@@ -423,6 +423,23 @@ NOT_AN_OPERATION = {
     ("_in_progress_panel.html", "btn btn-small"): "Open its card, or Open <device>: opens the "
                                                   "device's page, where a running operation's "
                                                   "card reopens, a read",
+    ("_in_progress_panel.html", "Open its card"): "opens the page a page-level job was started "
+                                                  "on, where its card reopens on the job, a read",
+    # The control strip's finished run line (c4948c2c, C3844): the line leaves this person's
+    # strip; the run's record stays on each incident and in History.
+    ("_control_strip.html", "Dismiss"): "takes the finished run's line off the person's own "
+                                        "strip; no device, incident or record is touched",
+    # C3839: History's AI call view, the prompt and the answer each copied as they were.
+    ("_history_ai_call.html", "Copy"): "copies the call's prompt, or its answer, to the "
+                                       "clipboard",
+    # Troubleshooting › Fixes and a fix's page (C3849; boards fixes-list, fix-bpdu-guard and
+    # fix-manual-controls, approved by the operator 2026-11-16).
+    ("fixes.html", "Show"): "narrows the Fixes list to words, a way it runs and saved, built-in "
+                            "or deleted, a read of the saved plans and the run records",
+    ("_fix_form.html", "Close"): "closes New fix's saved answer, a read; nothing more is saved",
+    ("_fix_form.html", "Cancel"): "closes New fix's or Edit's form: nothing was saved",
+    ("_fix_run.html", "btn btn-small"): "Cancel or Close (one macro): closes Run's card, a read; "
+                                        "nothing is sent",
     ("_console_ztp.html", "Open this run's page – the run continues"): (
         "opens the run's own page while it runs (C1595), a read; the run goes on"),
     ("_oob_onboard.html", "Open this run's page – the run continues"): (

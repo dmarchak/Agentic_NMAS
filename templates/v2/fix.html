@@ -1,5 +1,5 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon, badge, how, clock -%}
+{%- from "v2/_macros.html" import icon, badge, how, clock, info -%}
 {#- A fix's own page (C3849 piece 3; board docs/boards/fix-bpdu-guard.html, artboard 1,
     approved by the operator 2026-11-16 with changes): the BLUF card (its name, what it
     fixes, how it runs and its record, Run…, and where it was saved from), then Contents,
@@ -19,12 +19,12 @@
 {%- else %}
 <div id="fix-live" class="inc" hx-disinherit="*" hx-get="{{ url_for('fixes_v2.fix', key=p.key, list=p.network) }}" hx-select="#fix-live" hx-trigger="nmas:saved_plans from:body, nmas:privileged from:body" hx-swap="outerHTML">
 <section class="card inc-bluf simple" aria-labelledby="fx-title" data-fix="{{ p.key }}">
-  <h1 class="simple-title" id="fx-title">{{ p.name }}</h1>
+  <h1 class="simple-title" id="fx-title">{{ p.name }} {{ info('fixes', 'fix') }}</h1>
   <p class="simple-impact" title="{{ p.fixes }}">Fixes: {{ p.fixes }}</p>
   <p class="simple-status" role="status">{{ badge(p.words, p.badge, title=p.hover) }} {{ p.said }}{% if p.heal_now and p.how == 'automatic' and not p.deleted %} (self-healing on {{ p.network }}: {{ p.heal_now }} now){% endif %}{% if p.version %} · version {{ p.version }}{% endif %} · {{ p.record.summary }}</p>
   <div class="simple-acts">
     {%- if p.runnable %}
-    <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="fix-run" aria-haspopup="true" hx-get="{{ url_for('fixes_v2.run', key=p.key, list=p.network) }}" hx-target="#fix-run" hx-swap="outerHTML" hx-disabled-elt="this" title="Choose a device and an interface, then see exactly what it sends before anything runs"><span class="op-idle">Run…</span><span class="op-busy">Opening…</span></button>{{ how('plans', compact=True, op='running a saved fix') }}</span>
+    <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="plans" aria-haspopup="true" hx-get="{{ url_for('fixes_v2.run', key=p.key, list=p.network) }}" hx-target="#fix-run" hx-swap="outerHTML" hx-disabled-elt="this" title="Choose a device and an interface, then see exactly what it sends before anything runs"><span class="op-idle">Run…</span><span class="op-busy">Opening…</span></button>{{ how('plans', compact=True, op='running a saved fix') }}</span>
     {%- endif %}
     {%- if p.from %}
     <a class="bluf-link" href="{{ url_for('incident_v2.incident', incident_id=p.from.id, list=p.network) }}">Saved from: {{ p.from.title }} ({{ clock(p.from.at, 'day') }})</a>
