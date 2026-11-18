@@ -2001,19 +2001,19 @@ def read_ahead_for(found: dict, incident, requests) -> list:
     return out
 
 
-def read_ahead(network: str, incident, commands: list, *, session=None) -> str:
+def read_ahead(network: str, incident, commands: list, *, pool: str = "") -> str:
     """*commands* on the incident's device through THE reads engine, as the preflight reads
     them (`AHEAD_ACTOR`): the run's id, or ``""`` when nothing was read (refused, said in the
     log: the preflight then reads live, as before). Bounded by the engine's own session
-    bounds. *session* is the investigation's one session (`router_reads.SessionPool`), when
-    it has one."""
+    bounds. *pool* is the investigation's key for the engine's one session per device and
+    account (`reads.SessionPool`, C3974), when it has one."""
     from modules.nsot import reads
 
     if not commands or not incident.device:
         return ""
     try:
         rec = reads.run(network, [incident.device], list(commands), AHEAD_ACTOR,
-                        purpose=AHEAD_PURPOSE, **({"session": session} if session else {}))
+                        purpose=AHEAD_PURPOSE, **({"pool": pool} if pool else {}))
     except Exception as exc:                                  # noqa: BLE001 (read live later)
         log.info("fixit troubleshoot: %s's plan reads were not read ahead: %s", incident.id, exc)
         return ""
@@ -2200,8 +2200,9 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
     request_parts = {}
     # The investigation's one device session per account (the operator, 2026-11-16: "sign in
     # once"): its standard reads, the plan's reads read ahead and each later round's ride it;
-    # closed once the last of them has run (`finally` below).
-    pool = RR.SessionPool()
+    # closed once the last of them has run (`finally` below). The pool, its sessions and its
+    # credentials are the reads engine's (C3974): this function holds only its key.
+    pool = f"ai-investigation-{incident.id}-{time.time_ns()}"   # the engine's pool, by key
     side = {}
     behinds = []                                # the read-ahead threads not joined yet
 
@@ -2288,7 +2289,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
             # of reads, so they never hold the device against the loop's own (one operation
             # per device, refused by name).
             behind = (_behind(lambda: read_ahead(network, incident, ahead,
-                                                 session=pool.session("person")))
+                                                 pool=pool))
                       if memo["calls"] == 1 and ahead else None)
             # Kept until joined, so the `finally` below joins it when the call or the loop
             # raises, before the sessions are closed.
@@ -2346,7 +2347,8 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
         # on its own, reusing these reads' answers).
         for join in [b for b in behinds if b is not None]:
             join()
-        pool.close()
+        from modules.nsot import reads as _reads
+        _reads.close_pool(pool)
     marks = retry.get("marks", {}) if retry else marks_of(prep, got.get("answer"))
     said = reads_said(got)
     # A gap for a problem a step Mercury has, not yet tried here, fixes is flagged on the card
