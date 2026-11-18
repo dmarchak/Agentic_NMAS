@@ -135,14 +135,23 @@ def test_the_cards_table_is_each_task_s_pin_its_model_and_its_cap_whole():
     got = profiles.table(today=profiles.PRICES_AS_OF)
     assert {k: v for k, v in got.items() if k != "rows"} == {
         "as_of": profiles.PRICES_AS_OF, "source": profiles.PRICES_SOURCE, "age_days": 0,
-        "stale": False, "stale_days": profiles.PRICES_STALE_DAYS}
+        "stale": False, "stale_days": profiles.PRICES_STALE_DAYS,
+        # Where each model's context window and most output come from (7b0bb884).
+        "limits_source": profiles.LIMITS_SOURCE}
     rows = {r["task"]: r for r in got["rows"]}
     assert [r["task"] for r in got["rows"]] == sorted(profiles.TASKS)
     assert rows["connection_check"] == {
         "task": "connection_check", "words": "Test connection", "model": "claude-haiku-5-5",
         "model_words": "Claude Haiku 5.5", "price": profiles.MODELS["claude-haiku-5-5"]["price"],
-        "long_prompt_tokens": 100_000, "max_prompt_tokens": 2_000, "max_tokens": 64,
-        "cap_usd": profiles.cap_per_call("connection_check")}
+        # 7b0bb884: the model's limits in place of the pin's bounds, and the figure once a cap
+        # now the measured typical cost per call, labelled, with its basis.
+        "long_prompt_tokens": 100_000, "context_window": 1_000_000,
+        "max_output_tokens": 128_000,
+        "cap_usd": profiles.cap_per_call("connection_check"),
+        "cap_label": "typical cost per call (measured)", "cap_measured": False,
+        "cap_basis": ("not measured yet: no connection_check call on claude-haiku-5-5 in the "
+                      "last 30 days; its pin's 2,000 prompt tokens and 64 answer tokens stand "
+                      "in")}
     sonnet = [r for r in got["rows"] if r["model"] == "claude-sonnet-5-5"]
     assert sonnet and all(r["long_prompt_tokens"] is None for r in sonnet), \
         "a model with no long tier says none"

@@ -261,9 +261,11 @@ def test_a_call_keeps_the_five_minute_mark():
 
 def test_a_request_the_gateway_refuses_is_refused_alone_and_the_rest_sent(world, monkeypatch):
     """Each request passes `ask`'s own gates: one over its prompt's bound is refused, recorded,
-    and the others go in the batch."""
-    monkeypatch.setitem(profiles.TASKS, "connection_check",
-                        dict(profiles.TASKS["connection_check"], max_prompt_tokens=400))
+    and the others go in the batch. The bound is the model's context window less the task's
+    typical answer (7b0bb884: the pin's max_prompt_tokens enforces nothing), here planted so it
+    is 400 tokens."""
+    typical = profiles.TASKS["connection_check"]["max_tokens"]   # none measured yet
+    monkeypatch.setattr(profiles, "context_window", lambda model: 400 + typical)
     fake = FakeBatches()
     got = _batch(_requests("short", "x" * 4000), fake)
     assert [r["custom_id"] for r in fake.created[0]] == ["r0"]
@@ -419,19 +421,18 @@ def test_the_reservation_lives_as_long_as_the_batch_could_bill(world, monkeypatc
 
 
 def test_a_per_call_cap_holds_each_batched_request(world, monkeypatch):
-    """Just under the request's worst case refuses it; just over sends it (the control)."""
+    """No batched request has a cap of its own (7b0bb884, the operator 2026-11-16: "No
+    per-call cap ... the batch's whole worst case is judged against the evaluation's stop and
+    the day cap", `gateway.ask_batch`): the task's typical cost planted just under the
+    request's worst case refuses nothing, and the batch is sent; the day cap is what refuses
+    (test_a_batch_that_would_pass_the_day_cap_is_refused_whole_naming_both)."""
     reqs = _requests("a")
     worst = _worst_total(world, reqs)
     monkeypatch.setattr(profiles, "cap_per_call", lambda name: worst * 0.99)
     fake = FakeBatches()
     got = _batch(reqs, fake)
-    assert got["error"] == "nothing_sent" and fake.created == []
-    assert got["results"]["r0"]["error"] == "over_cap"
-    assert got["results"]["r0"]["detail"] == (
-        f"this batched request's worst case ${worst:.4f} is over the connection_check task's "
-        f"per-call cap ${worst * 0.99:.4f}; nothing was sent")
-    monkeypatch.setattr(profiles, "cap_per_call", lambda name: worst * 1.01)
-    assert _batch(reqs, FakeBatches())["ok"] is True
+    assert got["ok"] is True and [r["custom_id"] for r in fake.created[0]] == ["r0"], got
+    assert got["results"]["r0"]["ok"] is True and "error" not in got["results"]["r0"]
 
 
 def test_a_row_that_could_not_be_recorded_keeps_the_batchs_reservation_unexpiring(
