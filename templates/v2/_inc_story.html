@@ -65,7 +65,7 @@
           <dt>Model</dt><dd>{{ s.ai.model }}</dd>
           <dt>Prompt</dt><dd>{{ s.ai.prompt }}</dd>
           <dt>Tokens</dt><dd>{{ s.ai.tokens.input }} in · {{ s.ai.tokens.cache_write }} cache write · {{ s.ai.tokens.cache_read }} cache read · {{ s.ai.tokens.output }} out</dd>
-          <dt>Cost</dt><dd>${{ '%.4f' | format(s.ai.usd) }}</dd>
+          <dt>Cost</dt><dd>{{ s.ai.usd | usd(true) }}</dd>
           <dt>Latency</dt><dd>{{ '%.1f' | format(s.ai.latency_s) }} s</dd>
           <dt>Calls</dt><dd>{{ s.ai.calls }} · <span class="mono">{{ s.ai.id }}</span> · <a href="{{ url_for('v2.history_page') }}">History</a></dd>
         </dl>
