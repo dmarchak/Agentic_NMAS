@@ -795,11 +795,13 @@ def test_the_answer_kept_is_masked_for_egress(world):
 
 
 def _failed(world, reply, kind, words, **said):
-    send, _ = _sending(reply)
+    send, sent = _sending(reply)
     cost = profiles.cost_usd(MODEL, 120, 8)
-    assert _ask(world, send=send) == {"ok": False, "error": kind, "detail": words,
-                                      "call_id": CALL_ID, "cost_usd": cost, "recorded": True,
-                                      **said}
+    got = _ask(world, send=send)
+    # An answered call's prompt was measured, so its result says what (C3890, `count_of`), as
+    # an answer's and a refusal's do.
+    assert got == {"ok": False, "error": kind, "detail": words, "call_id": CALL_ID,
+                   "cost_usd": cost, "recorded": True, **_measured(sent[0][0]), **said}
     row = _row()
     assert row["verdict"] == kind and row["detail"] == words and row["cost_usd"] == cost
     assert "output" not in row and row["response"] == reply["content"][0]["text"]

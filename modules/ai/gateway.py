@@ -1013,7 +1013,10 @@ def _joined(row: dict, kept: dict, schema_model, why: str, scope: str) -> dict:
     own = {k: v for k, v in row.items() if k != "request"}
     out = calls.record(dict(own, verdict=calls.JOINED, cost_usd=0.0, joined=kept["id"],
                             scope=scope, detail=f"joined call {kept['id']}: {why}"))
-    return dict(from_row(kept, schema_model), recorded=out.get("recorded", False))
+    # The joined call's measured prompt too (`count_of`, C3890), so a joiner gets exactly what
+    # the press it joined got.
+    return dict(from_row(kept, schema_model), recorded=out.get("recorded", False),
+                **count_of(kept))
 
 
 #: The live cap check's cadence (the operator, 2026-11-16: "the cap is enforced live"): a
@@ -1497,9 +1500,12 @@ def count_of(row: dict) -> dict:
 
 
 def _answered(row, kind, detail):
+    # An answered call's prompt was measured, so its result says what (`count_of`, C3890), as
+    # an answer's, a refusal's and a partial's do.
     out = calls.record(dict(row, verdict=kind, detail=detail))
     return {"ok": False, "error": kind, "detail": detail, "call_id": row["id"],
-            "cost_usd": row["cost_usd"], "recorded": out.get("recorded", False)}
+            "cost_usd": row["cost_usd"], "recorded": out.get("recorded", False),
+            **count_of(row)}
 
 
 # ── Evaluation rounds through the Message Batches API (the operator's decision of 2026-10-29,
