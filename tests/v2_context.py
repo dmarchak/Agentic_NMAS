@@ -4304,12 +4304,19 @@ def _heal_and_notify(client, _lab, _mp):
             assert client.get(url, headers=hx).status_code == 200, url
         for data in ({"part": "mode", "heal_mode": "off"},
                      {"part": "kinds", "heal_kinds_auto": "", "heal_kinds_propose": ""},
-                     # Two Tier 1 kinds at once: drawn, and not confirmable (its refusal).
+                     # Two Tier 1 kinds at once: drawn, and confirmable since round 2 (the
+                     # operator, 2026-11-17: no one-kind-per-confirm refusal).
                      {"part": "kinds", "heal_kinds_auto": ["", "missing_line", "added_line"]},
                      # A kind's toggle: its modal's lists, that one kind flipped.
                      {"part": "kinds", "modal": "heal-kind-qos_policy", "heal_kinds_auto": "",
                       "heal_kinds_propose": ["", "process_reset"]}):
             assert client.post(base + "/preview", data=data, headers=hx).status_code == 200
+        # The mode as it is confirmed (dry run, above): nothing to confirm, its refusal drawn
+        # (`policy.plan`'s one gate that still refuses, "something to confirm").
+        r = client.post(base + "/preview", data={"part": "mode", "heal_mode": "dry_run"},
+                        headers=hx)
+        assert r.status_code == 200 and "Not confirmable:" in r.get_data(as_text=True), \
+            r.status_code
         # Auto's modal, its picker sent empty with no quick choice: was refused (Lab not marked
         # lab, no time chosen); now AUTO until turned off, on any network (cd0aa4cc, the
         # operator's change to N8, 2026-11-16), drawn.
