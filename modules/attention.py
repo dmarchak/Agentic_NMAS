@@ -7679,6 +7679,10 @@ def _heal_finding_rows(lst: str, rows: list, now: float, said: list, mode=None) 
                    + (since_ack(a, len(f["incidents"])) if again else "")),
             action={"label": "Open its newest incident and find what keeps causing it",
                     "href": INC.incident_href(lst, newest.get("id") or "", device=device)},
+            # It clears by time (CLEARS): once the oldest of its last *count* incidents leaves
+            # the window, unless another opens first.
+            clears_at=findings.started(f["incidents"][len(f["incidents"]) - count])
+            + float(hours) * 3600,
             operands={"list": lst, "incidents": [i.get("id") for i in f["incidents"]],
                       "count": count, "hours": hours}))
         out[-1]["ack_placeholder"] = FINDING_ACK_NOTE
@@ -7711,6 +7715,9 @@ def _heal_finding_rows(lst: str, rows: list, now: float, said: list, mode=None) 
             action={"label": f"Find what keeps changing {f['what']} on {f['device']}",
                     "href": INC.incident_href(lst, newest.get("id") or "",
                                               device=f["device"])},
+            # It clears by time (CLEARS): once the oldest of its last *count* undone fixes
+            # leaves the window, unless another is undone first.
+            clears_at=f["ats"][f["times"] - s["heal_fight_count"]] + float(hours) * 3600,
             operands={"list": lst, "fixed": [i.get("id") for i in f["fixes"]],
                       "back": [i.get("id") for i in f["back"]],
                       "operation": f["operation"], "stop": bool(s["heal_fight_stop"])}))

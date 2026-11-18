@@ -275,7 +275,7 @@ class TestAPendingRowReadsItsProgress:
         self._pending(monkeypatch, self.R7)
         self._stored(monkeypatch, [self.R7])
         r7 = self._rows()["r7"]
-        assert r7["intent"]["words"] == "answering: ready to Verify", r7["intent"]
+        assert r7["intent"]["words"] == "reachable: ready to Verify", r7["intent"]
         assert "fetched its config 12 time(s)" in r7["intent"]["why"]
         assert "accepted a TCP connection on port 22" in r7["intent"]["why"]
         assert r7["address"] == "awaiting ZTP (192.0.2.17)", "a ZTP device said DHCP"
@@ -285,8 +285,8 @@ class TestAPendingRowReadsItsProgress:
         self._pending(monkeypatch, self.R7, self.R8)
         self._stored(monkeypatch, [self.R7, self.R8], answers=False)
         rows = self._rows()
-        assert rows["r7"]["intent"]["words"] == "ZTP: fetched its config; not answering yet"
-        assert rows["r8"]["intent"]["words"] == "pending: not answering yet"
+        assert rows["r7"]["intent"]["words"] == "ZTP: fetched its config; not reachable yet"
+        assert rows["r8"]["intent"]["words"] == "pending: not reachable yet"
         assert rows["r8"]["address"] == "192.0.2.18"
 
     def test_a_read_of_an_earlier_device_of_the_name_is_not_its_progress(self, inv,
@@ -314,14 +314,14 @@ class TestAPendingRowReadsItsProgress:
         asked = self._stored(monkeypatch, [self.R7, *many])
         rows = self._rows()
         assert asked == ["onboarding-progress"], asked
-        assert sum(r["intent"]["words"] == "answering: ready to Verify"
+        assert sum(r["intent"]["words"] == "reachable: ready to Verify"
                    for r in rows.values()) == 31
 
     def test_the_fragment_draws_the_words_and_the_values_age(self, inv, monkeypatch):
         self._pending(monkeypatch, self.R7)
         self._stored(monkeypatch, [self.R7])
         html = inv["client"].get("/v2/devices/table").get_data(as_text=True)
-        assert "answering: ready to Verify" in html and "awaiting ZTP (192.0.2.17)" in html
+        assert "reachable: ready to Verify" in html and "awaiting ZTP (192.0.2.17)" in html
         assert f'read <time class="stamp" datetime="{self.VALUE_AT}"' in html
         assert "nmas:pending from:body" in re.search(r'hx-trigger="([^"]*)"', html).group(1)
 
@@ -439,14 +439,15 @@ class TestThePage:
         assert re.search(r'<a class="nav-item active" href="/v2/devices" aria-current="page">', html)
 
     def test_a_held_device_s_row_reads_as_its_operation_linked(self, inv):
-        # Board PS (C2274): the row names the operation and its step (the person on hover);
-        # it opens the page whose card is the operation's. The other row is as it was.
+        # Board PS (C2274): the row names the operation and its step (the person on hover, by
+        # display name: C3838, c4948c2c); it opens the page whose card is the operation's. The
+        # other row is as it was.
         from modules.nsot import device_ops as D
         with D.hold("Lab", "r2", "deploy", "ops@example.com"):
             D.note("verify")
             _r, html = self._get(inv, "/v2/devices/table")
         assert ('<a class="status-op" href="/v2/device/r2"><span class="badge badge-warn" '
-                'title="Deploying, by ops@example.com: its card is on r2&#39;s page">'
+                'title="Deploying, by ops: its card is on r2&#39;s page">'
                 'Deploying · step ') in html, html
         assert html.count('class="status-op"') == 1
         _r, html = self._get(inv, "/v2/devices/table")

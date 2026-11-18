@@ -1069,8 +1069,9 @@ def test_v9_says_which_level_it_sent_and_what_it_dropped(world, monkeypatch):
     # 7,950 tokens by the provider's count (C1898; the tests' typical count), near the 8,000.
     # The levels here are sized against 8,000, the bound before the operator's raise to 9,500
     # (2026-10-28, C2048): held at it, so what is tested stays which level fits and is said.
-    monkeypatch.setitem(profiles.TASKS, nl_query.FEATURE,
-                        dict(profiles.TASKS[nl_query.FEATURE], max_prompt_tokens=8000))
+    # The bound is the room the context window leaves a prompt since 7b0bb884, planted.
+    from tests.test_ai_explain import room
+    room(monkeypatch, 8000, nl_query.FEATURE)
     world.answer = _v8_choices()
     got = _ask(world, prompt=nl_query.CANDIDATE)
     assert got["ok"] is True, got
@@ -1186,8 +1187,10 @@ def test_v10_holds_the_answer_to_the_metrics_it_sent(world, monkeypatch):
         __import__("modules.ai.prompts", fromlist=["load"]).load(*nl_query.CANDIDATE),
         nl_query.SCHEMA_OF[10], dict(floor["data"], looked_up=nl_query.looked_up([])),
         profiles.TASKS[nl_query.FEATURE], floor["ctx"]), KEY).tokens
-    monkeypatch.setitem(profiles.TASKS, nl_query.FEATURE,
-                        dict(profiles.TASKS[nl_query.FEATURE], max_prompt_tokens=at_floor))
+    # The fit's bound is the room the context window leaves a prompt since 7b0bb884, planted
+    # at the floor.
+    from tests.test_ai_explain import room
+    room(monkeypatch, at_floor, nl_query.FEATURE)
     world.answer = _v8_choices(metric=offered[-1][0])
     got = _ask(world, question, prompt=nl_query.CANDIDATE)
     assert got["error"] == "not_offered" and got["offered"] == [o[0] for o in offered[:15]], got
@@ -1197,6 +1200,11 @@ def test_v10_holds_the_answer_to_the_metrics_it_sent(world, monkeypatch):
     assert got["ok"] is True and got["context"]["dropped"][-1] == (
         "the offer's 5 lowest-ranked metrics"), got
     sent = len(world.sent)
+    # v9 is not fitted, so the gateway's own bound refuses it: the context window less the
+    # task's typical answer (7b0bb884), planted so that bound is the floor too.
+    from modules.ai import background
+    typical = background.typical_output(nl_query.FEATURE)["tokens"]
+    monkeypatch.setattr(profiles, "context_window", lambda model: at_floor + typical)
     got = _ask(world, question, prompt=("nl_metrics", 9))
     assert got["error"] == "prompt_too_long" and len(world.sent) == sent, got
 

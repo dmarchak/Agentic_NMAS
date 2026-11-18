@@ -115,6 +115,27 @@ PAGE_RECORD = {
     "fixit_v2.approve": ("templates/v2/_fixit_section.html",
                          ('class="bluf-answer"', "answer.done", "answer.refused", "x.attempts"),
                          "incident_v2.incident"),
+    # Fix with: <saved fix> on an incident (C3805, C3849; routes/fixit_v2.fix_with_script): the
+    # same answer under the BLUF's buttons, its run an attempt of the one card; pressed on a
+    # fix's own page (``view=fix``) the answer is drawn on Run's card (`fixes_v2.run_answer`).
+    "fixit_v2.fix_with_script": ("templates/v2/_fixit_section.html",
+                                 ('class="bluf-answer"', "answer.done", "answer.refused",
+                                  "x.attempts"), "incident_v2.incident"),
+    # A fix's own page (C3849; boards fix-bpdu-guard and fix-manual-controls, the operator
+    # 2026-11-16): Set Automatic, Delete and Restore answer in How it runs, in place, its
+    # Changed line the record; New fix's save answers in its card, naming the fix and linking
+    # its page; Edit's save answers in Contents on the whole fix page drawn again. The fix's
+    # page reads each again (`fixes_v2.fix`).
+    **{f"fixes_v2.{name}": ("templates/v2/_fix_how.html",
+                            ('data-holds-live="review"', "said.words", "p.changed"),
+                            "fixes_v2.fix")
+       for name in ("automatic", "delete", "restore")},
+    "fixes_v2.new_save": ("templates/v2/_fix_form.html",
+                          ('data-holds-live="review"', "saved.name", "said.words"),
+                          "fixes_v2.fix"),
+    "fixes_v2.edit_save": ("templates/v2/_fix_contents.html",
+                           ('data-holds-live="review"', "contents_said.words", "p.versions"),
+                           "fixes_v2.fix"),
     # The Update button: the request is answered 202, the page waits on
     # /health, and the updater's record is drawn as "The last update" (its
     # outcome and reason) on the Update page, whose panel route re-reads it.
@@ -228,11 +249,12 @@ PAGE_RECORD = {
                              ('data-holds-live="review"', "c.record", "s.verify", "r.why"),
                              "device_v2.history"),
     # The plan engine: answered in place on the plan's card in the assistant's panel (its job,
-    # then its record's outcome and each step's own, on THE stepper); the run read again on
-    # History.
+    # then its record's outcome and each step's own, on the incident card's stepper since
+    # 93120b2f: `_inc_step.html`, the operator 2026-11-16, "the same stepper on its own page");
+    # the run read again on History.
     "plans_v2.approve": ("templates/v2/_plan_card.html",
-                         ('data-holds-live="review"', "c.record", "run_stepper(c.stepper)",
-                          "r.why"),
+                         ('data-holds-live="review"', "c.record",
+                          'include "v2/_inc_step.html"', "r.why"),
                          "v2.history_page"),
     # C3078: the re-subscribe with the collector step, answered on the same card, its close
     # helper's receipt beside the outcome.

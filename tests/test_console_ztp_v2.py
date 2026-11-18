@@ -431,7 +431,7 @@ class TestAnOutOfBandDeviceHasNoStandaloneConsole:
             "finished_at": "2026-10-23T23:56:17Z"} if (l, h) == (LIST, "edge1") else None)
         html = self._actions(client)
         assert "Onboarded out of band: its console run" in html, html
-        assert "onboarded, answering: ready to Verify" in html
+        assert "onboarded, reachable: ready to Verify" in html  # c4948c2c: "Answering" is "Reachable"
         assert re.search(r'href="/v2/[^"]*run\?list=' + LIST + r'&amp;device=edge1"', html), html
         for offer in ("Kick-start edge1", "Survey edge1", "/v2/onboard/console/"):
             assert offer not in html, offer

@@ -375,7 +375,7 @@ def test_the_logs_schema_is_registered_and_committed():
 def test_an_answer_stopped_at_max_tokens_fills_nothing(world):
     """A complete, valid answer whose stop is max_tokens fills nothing (the operator,
     2026-10-25; tests/test_ai_truncated_answers.py has the metrics half and the route)."""
-    from tests.test_ai_truncated_answers import _cut
+    from tests.test_ai_truncated_answers import _cut, cut_twice
     with pressed_by("operator@example.com"):
         got = nl_query.logs("Lab", "OSPF adjacency changes per device",
                             actor="operator@example.com",
@@ -384,8 +384,7 @@ def test_an_answer_stopped_at_max_tokens_fills_nothing(world):
                             client=world.loki, now=NOW, today="2026-10-25")
     assert got["ok"] is False and got["error"] == "max_tokens"
     assert "values" not in got and "view" not in got and "choices" not in got
-    (row,) = calls.read()["rows"]
-    assert row["verdict"] == "max_tokens" and "output" not in row
+    cut_twice(got, "nl_query")  # 7b0bb884: a thinking call stopped at its bound, retried once
 
 
 # ---------------------------------------------------- the operator's walk, 2026-10-26 (C1804)

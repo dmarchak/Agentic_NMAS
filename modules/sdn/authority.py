@@ -102,6 +102,17 @@ NOT_DIRECT = {
                               "configures no device (its runs are self-healing's)",
     "saved_plans_v2.approve_shape": "approves a line shape into Mercury's rule for raw lines; "
                                     "configures no device",
+    # Troubleshooting › Fixes (the Fixes page as one list, the operator 2026-11-16): a saved
+    # fix's own record, written by `saved_plans.new_fix`, `edit_fix` and `retire`, which write
+    # the fix store alone; Set Automatic… is `saved_plans_v2.promote`'s own path
+    # (`saved_plans.promote`, then the retry pass of its open matches, `heal.retry.run_soon`).
+    "fixes_v2.new_save": "records a new saved fix, Manual only; configures no device",
+    "fixes_v2.edit_save": "changes a saved fix's record (a new version for a changed line); "
+                          "configures no device",
+    "fixes_v2.delete": "marks a saved fix deleted, its record kept; configures no device",
+    "fixes_v2.restore": "clears a saved fix's deletion; configures no device",
+    "fixes_v2.automatic": "changes a saved fix's mode and binds its plan's digest; configures "
+                          "no device (its runs are self-healing's, as saved_plans_v2.promote's)",
     "adopt_v2.confirm": "adoption names an address, not an inventory device",
     "oob_onboard_v2.confirm": "out-of-band onboarding names a console port, not an inventory "
                               "device",

@@ -123,23 +123,32 @@ class TestTheRows:
         assert busy["folded"] not in rows
 
     def test_open_groups_by_what_each_waits_for_and_closed_by_how_it_ended(self, planted):
+        """C3876 (the operator, 2026-11-16): the tabs follow the incidents store, so the
+        rolled-back heal its capture holds closed (closed before C3870 kept such an incident
+        open) is on Closed, "Closed, not confirmed", never Open and never Fixed."""
         p = L.page(NET, "open")
         assert [(g["key"], g["n"], g["open"]) for g in p["groups"]] == [
-            ("needs_person", 2, True), ("watching", 1, True)]
-        assert (p["total"], p["summary"], p["folded"]) == (3, ["2 needs a person",
+            ("needs_person", 1, True), ("watching", 1, True)]
+        assert (p["total"], p["summary"], p["folded"]) == (2, ["1 needs a person",
                                                                "1 watching"], 1)
         closed = L.page(NET, "closed")
-        assert [(g["key"], g["n"]) for g in closed["groups"]] == [("fixed_mercury", 1)]
+        assert [(g["key"], g["n"]) for g in closed["groups"]] == [("fixed_mercury", 1),
+                                                                  ("closed_unconfirmed", 1)]
         (row,) = closed["groups"][0]["rows"]
         assert row["by"] == "Mercury" and row["ttr"] and row["ended"], row
-        assert [(t["key"], t["n"]) for t in p["tabs"]] == [("open", 3), ("closed", 1)]
+        (past,) = closed["groups"][1]["rows"]
+        assert past["id"] == planted["failed"]["page"], past
+        assert [(t["key"], t["n"]) for t in p["tabs"]] == [("open", 2), ("closed", 2)]
 
     def test_search_and_the_device_filter_narrow_it(self, planted):
+        """The filters narrow each tab (the failed capture is on Closed since C3876)."""
         busy = planted["busy"]
         assert list(listed(L.page(NET, "open", q=busy["related"]))) == [busy["related"]]
         p = L.page(NET, "open", device="edge-b")
-        assert sorted(listed(p)) == sorted([planted["failed"]["page"], busy["page"]])
-        assert (p["matched"], p["total"]) == (2, 3)
+        assert sorted(listed(p)) == [busy["page"]]
+        assert (p["matched"], p["total"]) == (1, 2)
+        assert sorted(listed(L.page(NET, "closed", device="edge-b"))) == sorted([
+            planted["healed"]["page"], planted["failed"]["page"]])
         assert p["devices"] == sorted({"edge-b", "dist-c"}), p["devices"]
 
     def test_an_unreadable_store_is_said_never_read_as_empty(self, planted):

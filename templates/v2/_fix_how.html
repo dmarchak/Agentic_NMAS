@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, clock -%}
+{%- from "v2/_macros.html" import icon, clock, how -%}
 {#- A fix's How it runs fold (board fix-bpdu-guard, artboard 1, approved 2026-11-16): the ways
     a fix runs, this one's marked, what changed it and when, and what its checks cannot prove
     on a port that is down (the operator's change 1). A saved fix's Delete… or Restore… is
@@ -51,14 +51,14 @@
         <p>Not yet: {{ auto.why }}.</p>
         {%- endif %}
         {%- if auto.right %}<p class="small bluf-refused" data-refused="automatic">{{ auto.right }}</p>{% endif %}
-        <span class="op-act"><button type="submit" class="btn btn-small" data-op="fix-automatic" hx-disabled-elt="this"{% if auto.right or not auto.ran %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">Set Automatic</span><span class="op-busy">Setting…</span></button></span>
+        <span class="op-act"><button type="submit" class="btn btn-small" data-op="plans" hx-disabled-elt="this"{% if auto.right or not auto.ran %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">Set Automatic</span><span class="op-busy">Setting…</span></button>{{ how('plans', compact=True, op='setting a fix Automatic') }}</span>
       </form>
     </details>
   {%- endif %}
   {%- if form %}
     {%- set restoring = form.action == 'restore' %}
     <details class="small" data-keep="fx-delete-{{ p.key }}"{% if said and said.level == 'danger' %} open{% endif %}><summary>{{ 'Restore…' if restoring else 'Delete…' }}</summary>
-      <form class="simple-form" hx-post="{{ url_for('fixes_v2.restore' if restoring else 'fixes_v2.delete', key=p.key, list=p.network) }}" hx-target="#fix-how" hx-swap="outerHTML">
+      <form class="simple-form" hx-post="{{ url_for('fixes_v2.restore', key=p.key, list=p.network) if restoring else url_for('fixes_v2.delete', key=p.key, list=p.network) }}" hx-target="#fix-how" hx-swap="outerHTML">
         {%- if restoring %}
         <p>Restoring brings {{ p.name }} back as it was: offered, matched and run again by its own mode, and in the AI's catalog. Its deletion stays in its record and in History.</p>
         {%- else %}
@@ -66,7 +66,7 @@
         {%- endif %}
         <label class="heal-field" for="fx-reason-{{ p.key }}">Why ({{ form.rule }}; kept in History)<textarea id="fx-reason-{{ p.key }}" name="reason" rows="2" maxlength="500" minlength="8" required autocomplete="off"></textarea></label>
         {%- if form.right %}<p class="small bluf-refused" data-refused="{{ form.action }}">{{ form.right }}</p>{% endif %}
-        <span class="op-act"><button type="submit" class="btn btn-small{{ '' if restoring else ' btn-danger' }}" data-op="fix-{{ form.action }}" hx-disabled-elt="this"{% if form.right %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">{{ 'Restore this fix' if restoring else 'Delete this fix' }}</span><span class="op-busy">{{ 'Restoring…' if restoring else 'Deleting…' }}</span></button></span>
+        <span class="op-act"><button type="submit" class="btn btn-small{{ '' if restoring else ' btn-danger' }}" data-op="plans" hx-disabled-elt="this"{% if form.right %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">{{ 'Restore this fix' if restoring else 'Delete this fix' }}</span><span class="op-busy">{{ 'Restoring…' if restoring else 'Deleting…' }}</span></button>{{ how('plans', compact=True, op=('restoring a fix' if restoring else 'deleting a fix')) }}</span>
       </form>
     </details>
   {%- endif %}

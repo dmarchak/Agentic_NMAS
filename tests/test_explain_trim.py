@@ -38,8 +38,10 @@ def _whole(pack, prompt=("explain", 4)):
 
 
 def _bound(monkeypatch, tokens):
-    monkeypatch.setitem(profiles.TASKS, explain.FEATURE,
-                        dict(profiles.TASKS[explain.FEATURE], max_prompt_tokens=tokens))
+    """The room Explain's prompt has, lowered to *tokens* (tests/test_ai_explain.py `room`:
+    the context window's room since 7b0bb884, never the pin's old max_prompt_tokens)."""
+    from tests.test_ai_explain import room
+    room(monkeypatch, tokens)
 
 
 class TestTheTrim:

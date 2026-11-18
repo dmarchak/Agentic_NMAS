@@ -257,6 +257,9 @@ class TestThePackFromTheCaptures:
         monkeypatch.setattr(IM, "intent_match", lambda *a, **k: {
             "state": "match", "adds": 0, "removes": 0, "reordered": 0, "lines": lines,
             "why": ""})
+        # The check is held per commit (231da1d6, `_INTENT_HELD`): a different answer is a
+        # different commit in life, so the hold is let go here, as a new HEAD would.
+        monkeypatch.setattr(EP, "_INTENT_HELD", {})
         (st,) = _section(_build(_alerts(heartbeat=True)), "intent")["pieces"]
         assert st["state"] == "match" and st["lines"] == []
 

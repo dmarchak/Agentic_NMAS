@@ -138,7 +138,8 @@ def fights(incidents: list, decisions: list, now: float, count: int, minutes: fl
            hours: float, after: float = None) -> list:
     """Each fix verified and then undone *count* times or more since *hours* ago (the same
     problem back within *minutes* of it): ``{"device", "object", "operation", "what",
-    "times", "fixes", "back"}``, *back* the incidents it came back in, oldest first. *after*
+    "times", "fixes", "back", "first", "ats"}``, *back* the incidents it came back in and *ats*
+    each fix's moment, oldest first. *after*
     (a person's acknowledgement of the fight) starts the count there, as `recurrences`'."""
     since = max(now - float(hours) * 3600, float(after or 0))
     within = float(minutes) * 60
@@ -162,7 +163,7 @@ def fights(incidents: list, decisions: list, now: float, count: int, minutes: fl
             out.append({"device": device, "object": obj, "operation": op,
                         "what": f"{obj or key_words(got[-1][3])}", "times": len(got),
                         "fixes": [g[1] for g in got], "back": [g[2] for g in got],
-                        "first": got[0][0]})
+                        "first": got[0][0], "ats": [g[0] for g in got]})
     return out
 
 

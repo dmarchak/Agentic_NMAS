@@ -1571,6 +1571,10 @@ def _within_room(records: list, room: int, newest: list) -> bool:
             keep = max(0, len(answer) - over - len(json.dumps(ROOM_CUT)))
         r["answer"] = kept[:keep] + ROOM_CUT
         r["cut"] = cut = True
+        # What is sent is the cut answer: its size and digest are the send log's (the whole's
+        # stay as read, ``bytes`` and ``sha256``), so the log never says the whole was sent.
+        data = r["answer"].encode("utf-8")
+        r["sent_bytes"], r["sent_sha256"] = len(data), hashlib.sha256(data).hexdigest()
     return cut
 
 

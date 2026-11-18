@@ -10,6 +10,8 @@ the store's own counter), and the store's clock is the test's. C1262's propertie
 tabs, each network its own, each caller its own copy) are tests/test_attention_shared.py's.
 """
 
+import os
+
 import pytest
 
 from modules import attention as A
@@ -291,7 +293,10 @@ class TestNeverWrongLookingRight:
         assert all(s["read_at"] for s in page["sources"])
 
     def test_before_its_first_value_it_says_reading_and_fills_itself(self, world, monkeypatch):
+        """With no page kept from before the start (3902b7ef keeps one; the next test draws
+        it): nothing is claimed until the first value lands."""
         S.clear()
+        _no_kept_page()
         calls = dict(world.calls)
         page = S.read()
         assert page["store"]["state"] == "reading" and page["rows"] == []
@@ -301,12 +306,39 @@ class TestNeverWrongLookingRight:
         assert world.pushed[-1][1]["badge"]["n"] == 0, "the count pushed when it lands"
         assert S.read()["store"]["state"] == "read"
 
+    def test_a_page_kept_before_a_start_is_drawn_at_once_restored(self, world):
+        """3902b7ef (the operator, 2026-11-16: "never a blank inbox after a deploy"): the page
+        held before a start, kept on disk, is drawn at once after it, marked restored with its
+        own age, while nothing is computed; the first value then replaces it."""
+        world.rows["approvals_source"] = [_row("q8")]
+        world.now += S.SLOW_S
+        S.step()
+        kept_at = S.read()["store"]["checked_at"]
+        S.clear()                                    # a start: nothing held in memory
+        calls = dict(world.calls)
+        page = S.read()
+        assert page["store"]["state"] == "read" and page["store"]["restored"] is True, page
+        assert "approvals:q8" in _ids(page) and page["store"]["checked_at"] == kept_at
+        assert world.calls == calls, "drawing the kept page computes nothing"
+        world.rows["approvals_source"] = []
+        S.step()
+        assert "approvals:q8" not in _ids(S.read()) and not S.read()["store"].get("restored")
+
+
+def _no_kept_page():
+    """No page kept on disk from before this start."""
+    try:
+        os.remove(S._kept_path("Lab"))              # noqa: SLF001 (the store's own file)
+    except FileNotFoundError:
+        pass
+
 
 class TestNoRequestComputes:
     def test_the_three_routes_draw_what_is_held_and_compute_nothing(self, world):
         import app as APP
         client = APP.app.test_client()
         S.clear()
+        _no_kept_page()
         before = dict(world.calls)
         for url in ("/v2/", "/v2/attention", "/v2/attention-count"):
             body = client.get(url).get_data(as_text=True)

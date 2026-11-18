@@ -24,7 +24,13 @@ READ_BY = {
     "modules/fault_drills.py": "the owner: the field, the declarations and the accessors",
     "modules/heal/incidents.py": "the one writer: the tag at creation (tag_for), a member's "
                                  "own carried, and drill_of for the guards' callers",
-    "modules/heal/guards.py": "guards 9 and 11: the exemption, and their count of real heals",
+    # modules/heal/guards.py left: guards 9 and 11, the exemption's home, hold nothing since
+    # 106c117d and 70e89a47 (the operator, 2026-11-16 and 17: no time-based holds).
+    "modules/heal/findings.py": "the recurrence and fight findings that replaced guards 9 and "
+                                "11 leave drills out (C3842, the operator 2026-11-16: drills "
+                                "count toward no recurrence or fight)",
+    "modules/heal/batch.py": "a held decision the batch takes keeps its decision's tag on the "
+                             "decision it makes (8f1d8006), a record; it decides nothing",
     "modules/heal/decide.py": "a guards' caller: the incident's tag to guards 9 and 11 and "
                               "onto its decision",
     "modules/heal/bounce.py": "a guards' caller: the incident's tag to guard 9 and onto its "

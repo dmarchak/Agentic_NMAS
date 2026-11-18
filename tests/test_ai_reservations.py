@@ -60,15 +60,22 @@ def _ask(world, word="w", send=None):
 def _worst(world, word="w"):
     """The worst case `ask` reserves for the call with *word*: its request's counted tokens
     (the tests' typical count) as cache writes, plus all of max_tokens."""
+    return _worst_and_body(world, word)[0]
+
+
+def _worst_and_body(world, word="w"):
+    """`_worst`'s figure and the request it was read from (the body a refusal's words are
+    priced from, tests/test_ai_gateway_ask.py `_hold_words`)."""
     seen = {}
 
-    def keep(body, key):
+    def keep(body, key, **_kw):
         seen["body"] = body
         return A.Reply(status=200, body=PING, attempts=1, latency_s=0.01)
     _ask(world, word, send=keep)
     open(calls._path(), "w").close()                      # nothing spent by the measurement
     body = seen["body"]
-    return gateway.worst_case_usd(body["model"], body, A.count_tokens(body, KEY).tokens)
+    return (gateway.worst_case_usd(body["model"], body, A.count_tokens(body, KEY).tokens),
+            body)
 
 
 def _in_thread(fn):
@@ -88,9 +95,12 @@ def test_two_calls_at_once_cannot_pass_the_day_cap_together(world):
     """The first call is in flight (its send held open) when the second is judged: each alone
     fits the day cap, both would pass it, so the second is refused before any provider request,
     naming what the first reserved. The first, released, is sent and recorded; nothing is left
-    reserved."""
+    reserved. A call's hold is its counted prompt plus its typical answer (7b0bb884; the pin's
+    64 tokens while none is measured, so equal to the fixed-bound worst case here)."""
+    from tests.test_ai_gateway_ask import _hold_words
     worst = _worst(world, "a")
-    assert _worst(world, "b") == pytest.approx(worst), "the two calls cost the same"
+    second_worst, second_body = _worst_and_body(world, "b")
+    assert second_worst == pytest.approx(worst), "the two calls cost the same"
     world.settings["ai_cap_usd_per_day"] = worst * 1.5
     inside, release, sent = threading.Event(), threading.Event(), []
 
@@ -108,9 +118,10 @@ def test_two_calls_at_once_cannot_pass_the_day_cap_together(world):
     t.join(10)
     assert first["got"]["ok"] is True and len(sent) == 1, "only the first reached the provider"
     assert second["ok"] is False and second["error"] == "over_cap"
-    assert second["detail"] == (
-        f"today's spend $0.0000 plus ${worst:.4f} reserved by 1 call(s) in flight plus this "
-        f"call's worst case ${worst:.4f} is over the day cap ${worst * 1.5:.4f}")
+    words, need = _hold_words(second_body, "the installation's day cap", worst * 1.5, 0.0,
+                              held=worst, calls_=1)
+    assert need == pytest.approx(worst)
+    assert second["detail"] == words
     assert reservations.open_reservations()["held"] == {}, "the first was settled"
 
 
@@ -164,7 +175,8 @@ def test_a_reservation_another_process_makes_under_the_lock_is_waited_for_and_co
         child.wait(10)
     got = out["got"]
     assert got["error"] == "over_cap" and world.sent == []
-    assert f"plus ${worst:.4f} reserved by 1 call(s) in flight" in got["detail"], got
+    assert (f"the installation's day cap ${worst * 1.5:.4f}: spent $0.0000 plus ${worst:.4f} "
+            "held by 1 call(s) in flight") in got["detail"], got
 
 
 # ── a background feature's caps ──────────────────────────────────────────────────────────
@@ -188,8 +200,8 @@ def test_a_background_features_day_cap_counts_its_calls_in_flight_and_only_those
     plant()
     got = TB._call(w)
     assert got["error"] == "feature_cap" and len(w.sent) == 2
-    assert "plus $0.5000 reserved by its 1 call(s) in flight plus this call's worst case" \
-        in got["detail"], got
+    assert ("fake_loop's day cap on lab $0.5000: spent $0.0000 plus $0.5000 held by 1 call(s) "
+            "in flight leaves $0.0000, under this call's counted prompt") in got["detail"], got
 
 
 # ── settled to the actual cost ────────────────────────────────────────────────────────────
@@ -287,8 +299,9 @@ def test_an_unrecorded_call_still_counts_against_the_day_cap_after_its_reservati
     world.settings["ai_cap_usd_per_day"] = cost + worst * 0.99
     second = _ask(world, "b", send=world.send)
     assert second["error"] == "over_cap" and world.sent == []
-    assert (f"today's spend $0.0000 plus ${cost:.4f} reserved by 1 call(s) in flight plus "
-            f"this call's worst case ${worst:.4f}") in second["detail"], second["detail"]
+    assert (f"the installation's day cap ${cost + worst * 0.99:.4f}: spent $0.0000 plus "
+            f"${cost:.4f} held by 1 call(s) in flight") in second["detail"], second["detail"]
+    assert second["detail"].endswith(f", ${worst:.4f}; nothing was sent"), second["detail"]
     # The control: the cap with room for both, the second is sent (it, too, unrecorded).
     world.settings["ai_cap_usd_per_day"] = cost + worst * 1.01
     monkeypatch.setattr(calls, "record", real)
@@ -504,7 +517,8 @@ def test_a_reservation_not_yet_expired_is_held_against_the_cap(world):
     _plant(1.50, 60)
     got = _ask(world)
     assert got["error"] == "over_cap" and world.sent == []
-    assert "plus $1.5000 reserved by 1 call(s) in flight" in got["detail"]
+    assert ("the installation's day cap $1.5000: spent $0.0000 plus $1.5000 held by 1 call(s) "
+            "in flight") in got["detail"]
     assert list(reservations.open_reservations()["held"]) == ["ai-deadprocess00001"], \
         "a refused call reserves nothing and drops nothing live"
 
@@ -621,4 +635,5 @@ def test_two_background_calls_at_once_cannot_pass_the_features_day_cap_together(
     th.join(10)
     assert first["got"]["ok"] is True and len(bg.sent) == 1, "only the first was sent"
     assert second["error"] == "feature_cap", second
-    assert f"plus ${worst:.4f} reserved by its 1 call(s) in flight" in second["detail"], second
+    assert (f"fake_loop's day cap on lab ${worst * 1.5:.4f}: spent $0.0000 plus ${worst:.4f} "
+            "held by 1 call(s) in flight") in second["detail"], second

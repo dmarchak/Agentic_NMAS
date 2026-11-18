@@ -43,7 +43,7 @@
       <h3>Versions, each kept</h3>
       <ul class="small">
       {%- for v in p.versions %}
-        <li>Version {{ v.version }}{% if v.now %} {{ badge('runs now', 'info') }}{% endif %} · {{ v.why }} · by {{ v.by }}, {{ clock(v.at, 'date') }} <span class="info-link" tabindex="0" title="Its template's digest {{ v.digest }}: every run of this version binds it">{{ icon('info', 15) }}</span></li>
+        <li>Version {{ v.version }}{% if v.now %} {{ badge('runs now', 'info') }}{% endif %} · {{ v.why }} · by {{ v.by | people }}, {{ clock(v.at, 'date') }} <span class="info-link" tabindex="0" title="Its template's digest {{ v.digest }}: every run of this version binds it">{{ icon('info', 15) }}</span></li>
       {%- endfor %}
       </ul>
     </div>

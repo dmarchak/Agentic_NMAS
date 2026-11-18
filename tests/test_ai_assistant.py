@@ -45,7 +45,10 @@ def world(monkeypatch, tmp_path):
     lab = lab_setup(monkeypatch, tmp_path)
     lab["settings"].update(ai_hosted={"by": PERSON, "at": "2026-10-25T05:00:00Z",
                                       "reason": "the lab's proof of concept"},
-                           ai_cap_usd_per_day=1.50)
+                           ai_cap_usd_per_day=1.50,
+                           # The Assistant is behind its switch, off by default (a61bb071, the
+                           # operator 2026-11-16): these tests are of it on.
+                           ai_assistant_on=True)
     monkeypatch.setattr(gateway, "_api_key", lambda: KEY)
     monkeypatch.setattr("modules.ai.controls._key_set", lambda: True)
     monkeypatch.setattr(calls, "_path", lambda: str(tmp_path / "ai_calls.jsonl"))
@@ -84,7 +87,11 @@ def test_the_passages_chosen_are_sent_after_the_cached_screens(world):
                              "heading": chosen[0]["heading"]}]
     (req,) = world["sent"]
     text = req["bytes"]
-    assert all(json.dumps(p["text"])[1:40] in text for p in chosen), "every passage chosen"
+    # Every passage relevance keeps is sent whole (7b0bb884: no passage count or budget), each
+    # as its text appears in the passages part (the part's list drawn as `gateway._delimited`
+    # draws it: a passage with an apostrophe is quoted as Python quotes it).
+    content = req["body"]["messages"][0]["content"]
+    assert all(repr(p["text"]) in content for p in chosen), "every passage chosen"
     assert text.index('\\"screens\\"') < text.index('\\"passages\\"') or \
         text.index('"screens"') < text.index('"passages"'), "the screens, cached, first"
     assert "203.0.113" not in text, "nothing of the network: no device's address"

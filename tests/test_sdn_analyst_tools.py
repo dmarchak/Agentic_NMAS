@@ -269,17 +269,38 @@ def test_two_calls_at_most_and_the_second_cannot_ask_again(tw):
 
 
 def test_the_loop_s_total_token_cap_stops_pass_two_before_it_is_sent(tw):
+    """The loop's own token cap is gone (7b0bb884, the operator 2026-11-16: the spending limits
+    govern each pass): a *cap* given is unused and pass 2 is sent; what stops pass 2 before it
+    is sent is a spending limit, here the installation's day cap lowered by pass 1's spend
+    (the gateway refuses pass 2 at its start, a cap kind, so the loop says "second pass not
+    run" and keeps pass 1's answer)."""
+    from modules.settings_schema import write_settings
+
     snap, _s = collected_snapshot()
     port = f"port:ctl-1:{OVS3}:3"
-    tw.script = [{"findings": [finding([port])], "reads": [ask("switch_flows", dpid=OVS3)]}]
+    tw.script = [{"findings": [finding([port])], "reads": [ask("switch_flows", dpid=OVS3)]},
+                 {"findings": [finding([port])]}]
     with pressed_by(PERSON):
         r = AT.ask_snapshot(NET, snap, actor=PERSON, trigger=triggers.person(PERSON),
                             send=tw.send, cap=20000)
-    assert len(tw.sent) == 1 and r["ok"] and r["passes"] == 1
-    assert "second pass not run: a cap is reached" in r["words"]
-    assert "over its total cap of 20000" in r["words"]
+    assert len(tw.sent) == 2 and r["ok"] and r["passes"] == 2, r["words"]
+    assert "a cap is reached" not in r["words"]
+    first = tw.send
+
+    def spends_the_day(body, key, **kw):
+        got = first(body, key, **kw)
+        assert write_settings({"ai_cap_usd_per_day": 0.0001})["ok"]
+        return got
+    tw.script = [{"findings": [finding([port])], "reads": [ask("switch_flows", dpid=OVS3)]}]
+    with pressed_by(PERSON):
+        r = AT.ask_snapshot(NET, snap, actor=PERSON, trigger=triggers.person(PERSON),
+                            send=spends_the_day)
+    assert len(tw.sent) == 3 and r["ok"] and r["passes"] == 1
+    assert "second pass not run: a cap is reached: the installation's day cap $0.0001" \
+        in r["words"]
     assert [x["verdict"] for x in r["reads"]] == ["run"]
-    (row,) = [x for x in read_log.read()["rows"] if x["row"] == "sent"]
+    # The first press's reads left the host with its pass 2; this press's never did.
+    (row,) = [x for x in read_log.read()["rows"] if x["row"] == "sent" and x["loop"] == r["loop"]]
     assert row["left_host"] is False
 
 

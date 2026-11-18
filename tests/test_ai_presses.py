@@ -196,6 +196,10 @@ def test_a_joiner_has_its_own_row_costing_nothing_and_the_join_is_logged(world, 
         "trigger": call["trigger"],
         # Its own prompt's size, measured before it joined (C1898): the count, as the call's.
         "prompt_tokens": call["prompt_tokens"], "prompt_count": call["prompt_count"],
+        # And the most it may be (7b0bb884, C3890): the model's window less the task's typical
+        # answer when it was measured, the first call's 8 tokens now measured.
+        "prompt_bound": (gateway.profiles.context_window(call["model"])
+                         - gateway.background.typical_output("connection_check")["tokens"]),
         "verdict": "joined", "cost_usd": 0.0, "joined": first["call_id"], "scope": scope,
         "detail": f"joined call {first['call_id']}: {why}"}
     assert join["id"] != first["call_id"] and again["recorded"] is True

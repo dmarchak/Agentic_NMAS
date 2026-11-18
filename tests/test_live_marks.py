@@ -183,14 +183,25 @@ def test_a_right_mark_is_recorded_and_kept_through_a_live_refresh(served, marks,
 def _later_held(marks, same_incident):
     """A later decision on r3, held (guard 4: its golden departs from intent): in the same
     incident (C2813's standing incident sent back to watching by another change), or in a later
-    incident (before C2813 the first closed at its decision, so the next change opened another)."""
+    incident (before C2813 the first closed at its decision, so the next change opened another).
+    Since C3909 the decision makes a departing golden a can't-fix; held decisions of that guard
+    stay in the records the pages draw, so its guard 4 is judged by `guards.g4_golden` (the hold
+    as it was) in place of `decide._g4`."""
+    from modules.heal import decide as DC
+    from modules.heal import guards
     from modules.heal import incidents as I
+
+    def g4_as_recorded_before(network, device, src, dev):
+        golden = src.golden(device, dev)
+        return guards.g4_golden(golden), golden
     now = time.time()
     if not same_incident:
         I.close(NET, _incident()["id"], "decided (an incident closed at its decision, before "
                                         "C2813)", now=now - 30)
     _change(now - 20, 2)
-    d = _decide(GOLDEN + ROUTE4, now - 10, state="departs")
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(DC, "_g4", g4_as_recorded_before)
+        d = _decide(GOLDEN + ROUTE4, now - 10, state="departs")
     assert d["outcome"] == "held", d
     return d
 

@@ -65,8 +65,13 @@ def test_the_limit_and_the_budget_hold():
     assert len(got) == 3
     small = M.select(q, limit=20, budget=3000)
     assert small and sum(len(s["text"]) for s in small) <= 3000
+    # With none named, no count or size bound (7b0bb884, the operator 2026-11-16: evidence by
+    # relevance, never cut for size): every ranked passage the no-padding rule keeps is sent.
     whole = M.select(q)
-    assert len(whole) <= M.LIMIT and sum(len(s["text"]) for s in whole) <= M.BUDGET_CHARS
+    ranked = M.ranked(q)["passages"]
+    kept = [p for p in ranked if p["score"] >= ranked[0]["score"] * M.PAD_SHARE]
+    key = lambda p: (p["slug"], p["anchor"], p["part"])  # noqa: E731
+    assert [key(p) for p in whole] == [key(p) for p in kept] and len(whole) > len(got)
 
 
 def test_a_long_section_is_split_into_passages_that_keep_its_link():
@@ -96,14 +101,16 @@ def test_an_alias_reaches_the_manual_s_word():
 
 
 def test_weaker_passages_never_pad_the_answer():
-    """On the recorded questions whose best LIMIT passages hold one under PAD_SHARE of the
-    best (a floor: the two measured 2026-11-02), none of those is sent."""
+    """On the recorded questions whose ranked passages hold one under PAD_SHARE of the best (a
+    floor: the two measured 2026-11-02), none of those is sent. Every ranked passage is in
+    reach since no count bounds the list (7b0bb884: `LIMIT` is gone), so the no-padding rule is
+    what keeps a weak one out."""
     import json
     with open("tests/fixtures/manual_retrieval/cases.json", encoding="utf-8") as fh:
         cases = [c for c in json.load(fh)["cases"] if c["expect"]]
     weak = 0
     for c in cases:
-        ranked = M.ranked(c["q"], c["screen"])["passages"][:M.LIMIT]
+        ranked = M.ranked(c["q"], c["screen"])["passages"]
         low = [p for p in ranked if p["score"] < ranked[0]["score"] * M.PAD_SHARE]
         if not low:
             continue

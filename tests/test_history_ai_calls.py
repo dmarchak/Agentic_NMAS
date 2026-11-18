@@ -211,7 +211,9 @@ def test_the_window_adds_only_what_the_record_lacks(world):  # noqa: F811
 
 def test_an_answer_cut_at_max_tokens_says_so_and_is_drawn_failed(world, monkeypatch):  # noqa: F811
     """C1754's case: an answer stopped at the bound is incomplete, said in the window and drawn
-    in danger on the row, whatever its kind's colour."""
+    in danger on the row, whatever its kind's colour. Premise corrected (7b0bb884, the operator
+    2026-11-17: Mercury sets no AI size limit of its own): a thinking call cut at max_tokens is
+    asked once more, both calls recorded; here the second is cut too, so each says so."""
     import re
     world.answer = _answer(world.pack)
     send = world.send
@@ -223,9 +225,10 @@ def test_an_answer_cut_at_max_tokens_says_so_and_is_drawn_failed(world, monkeypa
     world.send = cut
     got = _explain(world)
     assert got["error"] == "couldnt_analyse" or got.get("ok") is False, got
-    (row,) = calls.read()["rows"]
-    assert row["verdict"] == "max_tokens"
-    assert dict(HS.ai_call(row["id"])["meta"])["Stopped"].startswith("cut off at the most")
+    rows = calls.read()["rows"]
+    assert [r["verdict"] for r in rows] == ["max_tokens", "max_tokens"], rows
+    for row in rows:
+        assert dict(HS.ai_call(row["id"])["meta"])["Stopped"].startswith("cut off at the most")
     html = world.lab["client"].get("/v2/history?kind=ai_calls&since=").get_data(as_text=True)
     assert re.search(r'badge-danger[^>]*>[^<]*AI call', html), "a cut-off answer is danger"
 

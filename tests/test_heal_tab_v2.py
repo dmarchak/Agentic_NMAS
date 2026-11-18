@@ -114,9 +114,14 @@ def test_the_tab_draws_every_control_the_board_draws(networks):
     # Premise corrected (C3158, the operator's rule of 2026-11-12: "The mode is a dropdown
     # (Off / Dry run / Auto) opening the same modal"): Change mode… is the mode's dropdown.
     assert '<select id="heal-mode-pick" data-modal-select' in tab
-    # Ten, as the board draws them: section 6's eight and the amendment's flap and bounce rows
-    # (19.4, H19); each a button opening its modal (C3158: never a card in the right column).
-    assert outside_modals(tab).count(">Edit…</button>") == 10
+    # Eight since 106c117d (the operator, 2026-11-16: the rates, the topology hold and a person
+    # working hold nothing; the recurrence and fight findings in their place, `GUARD_ROWS`):
+    # the grace, the two findings, the repeat window, devices at once, the largest heal, and
+    # the amendment's flap and bounce rows (19.4, H19); each a button opening its modal
+    # (C3158: never a card in the right column).
+    assert outside_modals(tab).count(">Edit…</button>") == 8
+    assert "A problem back this often is a finding" in tab
+    assert "A fix undone this often is a fight" in tab
     assert "A flap: transitions of one interface within" in tab and "3 in 10 min" in tab
     # Premise corrected (2026-11-13): the port bounce is built (H20, `actions.NOT_BUILT` empty),
     # so the row names what a second need becomes and never says it is unbuilt.
@@ -306,13 +311,15 @@ def test_the_fix_kinds_and_a_hard_stop_are_changed_the_same_way(networks):
         "heal_kinds_propose": ["", "process_reset", "secret_added_back"]})
     assert r.status_code == 200, tab
     assert H.current("Default")["kinds_propose"] == ["process_reset", "secret_added_back"]
-    card = modal_of(tab, "heal-guard-heal_max_per_network_hour")
-    assert "Change “Heals per network per hour” on Default" in card
-    assert 'name="heal_max_per_network_hour"' in card
-    r, tab = _preview_and_confirm(networks, "Default", {"part": "heal_max_per_network_hour",
-                                                        "heal_max_per_network_hour": "4"})
+    # A hard stop the tab still draws (the per-network rate's row is gone since 106c117d):
+    # devices departing at once, changed the same way.
+    card = modal_of(tab, "heal-guard-heal_max_devices_drifting")
+    assert "Change “Devices departing at once: stop above” on Default" in card
+    assert 'name="heal_max_devices_drifting"' in card
+    r, tab = _preview_and_confirm(networks, "Default", {"part": "heal_max_devices_drifting",
+                                                        "heal_max_devices_drifting": "4"})
     assert r.status_code == 200, tab
-    assert H.current("Default")["guards"]["heal_max_per_network_hour"]["value"] == 4
+    assert H.current("Default")["guards"]["heal_max_devices_drifting"]["value"] == 4
     # A part that is not one is refused naming the parts there are.
     from modules import heal_page
     with pytest.raises(H.PolicyRefused, match="'nonsense' is not a part of the heal policy"):
@@ -607,9 +614,11 @@ def test_a_quick_choice_is_resolved_once_drawn_into_the_picker_and_confirmed_as_
     # Seven days is the longest choice and is never past the policy's limit.
     _r, week = _post(networks, base + "/preview", dict(data, heal_mode_for="168"))
     assert "Turn on Auto for Default until" in week and "Not confirmable" not in week
-    # No time chosen at all is no expiry, refused naming it.
+    # No time chosen at all is no expiry: AUTO until turned off (C3750, cd0aa4cc: the
+    # operator's change to N8, 2026-11-16), confirmable, never refused.
     _r, none = _post(networks, base + "/preview", dict(data, heal_mode_for=""))
-    assert "none was given" in none
+    assert "none was given" not in none and "Not confirmable" not in none, none[-1500:]
+    assert "Turn on Auto for Default until" in none
 
 
 def test_the_conversions_one_each_way():

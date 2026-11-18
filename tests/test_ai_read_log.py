@@ -111,13 +111,19 @@ def test_every_request_is_logged_before_pass_2_its_sizes_and_digests_never_its_t
 
 
 def test_a_cut_answers_logged_digest_is_of_what_was_sent_beside_the_wholes():
+    """A read is sent whole since 7b0bb884 (its 4,096-byte cap gone), cut only to fit the room
+    the context window leaves for reads (`LoopFeature.read_room`, here declared): the send log
+    keeps the cut answer's size and digest, as sent, beside the whole's."""
+    from tests.test_ai_read_loop import _roomy
     whole = ("flow table 0 priority 10 packets 900 bytes 1200\n" * 200).encode()
     gw = FakeGateway(_first(_ask("switch_flows", dpid=DPID1)), _second())
-    _loop(gw, family=_family(run=Runner({"switch_flows": whole.decode()})))
+    _loop(gw, family=_family(run=Runner({"switch_flows": whole.decode()})),
+          feature=_roomy(2000))
     (e,) = _rows("reads")[0]["reads"]
     (carried,) = json.loads(gw.calls[1]["parts"]["mercury_reads"])
     data = carried["answer"].encode("utf-8")
-    assert e["cut"] is True and len(data) <= RL.AI_READ_CAP < len(whole)
+    assert e["cut"] is True and carried["answer"].endswith(RL.ROOM_CUT)
+    assert len(data) < len(whole)
     assert (e["sent_bytes"], e["sent_sha256"]) == (len(data), hashlib.sha256(data).hexdigest())
     assert (e["bytes"], e["sha256"]) == (len(whole), hashlib.sha256(whole).hexdigest())
 

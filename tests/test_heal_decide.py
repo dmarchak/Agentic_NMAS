@@ -439,23 +439,23 @@ class TestOutcomes:
         # once the incident's last trigger is the flap window old (10 minutes by default).
         trig = [{"kind": "adjacency", "key": "adj:1", "epoch": T0 - 120, "at": iso(T0 - 120),
                  "source": "adjacencies", "words": "the adjacency is down"}]
-        # C2825 (H11 W5): read gone inside the window is never called cleared, and is not a
-        # can't-fix either (no Critical row, no "could not fix" message for what Mercury reads
-        # gone): the physical symptom is checked again once the window has passed. Once: an
-        # incident deferred so before is a can't-fix, so a link that keeps flapping is told.
+        # The flap window's deferral is gone (106c117d, the operator, 2026-11-16: "an incident
+        # whose device read finds no problem closes at once on that read, never on a quiet
+        # timer"): read gone inside the window is nothing to heal at once, never deferred and
+        # never a can't-fix (no Critical row, no "could not fix" for what Mercury reads gone),
+        # whether or not it was deferred so before; a link that keeps flapping opens again.
         src = Fake(GOLDEN)
         src.symptom_now = lambda device, triggers: "gone"
         d = one(GOLDEN, src=src, how="at_golden", triggers=trig)
-        assert (d["outcome"], d["kind"], d["tier"]) == ("deferred", "physical", 3), d
-        assert d["until"] == T0 - 120 + 600 and d["quiet"], d
-        assert "never called cleared" in d["words"], d["words"]
+        assert (d["outcome"], d["until"]) == ("nothing", None), d
+        assert "has cleared by itself" in d["words"], d["words"]
         inc = settle(GOLDEN, how="at_golden", triggers=trig, device="edge-c")
         I._mutate("Default", lambda doc: next(i for i in doc["incidents"]
                                               if i["id"] == inc["id"]).update(
             quiet_deferred=True))
         inc = dict(inc, quiet_deferred=True)
         d = DC.decide_one("Default", inc, now=T0, sources=src)
-        assert (d["outcome"], d["kind"], d["tier"]) == ("cant_fix", "physical", 3), d
+        assert (d["outcome"], d["until"]) == ("nothing", None), d
 
     @pytest.mark.parametrize("state", ["present", "stale", "unreadable"])
     def test_a_symptom_not_read_gone_is_still_physical(self, lab, state):
@@ -491,9 +491,14 @@ class TestOutcomes:
         assert d["outcome"] == "nothing" and src.reads == 0
 
     def test_a_device_moved_since_it_settled_is_checked_again(self, lab):
+        """No grace (70e89a47, the operator, 2026-11-17: the decision is made on its own read,
+        never deferred because the device moved since a grace settled): a device that moved
+        is decided on what it holds now, its program the read's."""
         inc = settle(GOLDEN + ROUTE4)
         d = DC.decide_one("Default", inc, now=T0, sources=Fake(GOLDEN + ROUTE6))
-        assert d["outcome"] == "deferred" and "changed since its grace period" in d["words"]
+        assert d["outcome"] == "would_heal", d["words"]
+        assert "changed since its grace period" not in d["words"]
+        assert d["program"] == ["no ipv6 route 2001:db8:9::/48 2001:db8:0:7::2"]
 
     def test_a_read_that_fails_is_checked_again(self, lab):
         d = one(GOLDEN + ROUTE4, src=Fake(GOLDEN + ROUTE4, read_error="timed out"))
@@ -519,9 +524,13 @@ class TestGuards:
         assert (d["outcome"], d["guard"]["guard"]) == ("off", 2)
 
     def test_2_a_halt_in_force_until_a_person_lifts_it(self, lab):
+        """A halt holds nothing now (70e89a47, the operator, 2026-11-17, round 2: guard 2's
+        halt branch removed; Off and Stop everywhere are the stops): with a halt recorded the
+        decision goes on. Lifting a halt stays a verified person's, with a reason."""
         h = DS.halt("Default", guard=10, name="rate: per network", words="six heals",
                     operands={})
-        assert one(GOLDEN + ROUTE4)["outcome"] == "halted"
+        d = one(GOLDEN + ROUTE4)
+        assert (d["outcome"], d["guard"]) == ("would_heal", None), d["words"]
         with pytest.raises(DS.Refused):
             DS.lift("Default", h["id"], by="op@example.com", actor_verified="none",
                     person=False, reason="x")
@@ -540,14 +549,23 @@ class TestGuards:
         assert d["until"] == T0 + 300 + restarts.SETTLE_SECONDS
 
     def test_3_another_operation_holding_the_device(self, lab, monkeypatch):
+        """Another operation holding the device is the act's wait (`act.hold_device`), never a
+        hold of the decision (C3909 and 70e89a47, the operator, 2026-11-17: one operation per
+        device is "a wait, never a refusal or hold")."""
         monkeypatch.setattr("modules.nsot.device_ops.holder",
                             lambda n, d: {"operation": "deploy", "actor": "op@example.com"})
-        assert one(GOLDEN + ROUTE4)["guard"]["guard"] == 3
+        d = one(GOLDEN + ROUTE4)
+        assert (d["outcome"], d["guard"]) == ("would_heal", None), d["words"]
 
     def test_4_a_golden_that_departs_from_intent_n5(self, lab):
+        """C3909 (the operator, 2026-11-17: "remove the hold, but don't restore a golden that
+        departs from intent"): guard 4 holds nothing for it; its Tier 1 departure is a
+        can't-fix of Mercury's own (Tier 3), the AI's to investigate, never a send of lines no
+        kind judged."""
         d = one(GOLDEN + ROUTE4, src=Fake(GOLDEN + ROUTE4, state="departs"))
-        assert (d["outcome"], d["guard"]["guard"], d["until"]) == ("held", 4, None)
-        assert d["guard"]["operands"]["intent_match"] == "departs"
+        assert (d["outcome"], d["guard"], d["until"], d["tier"]) == ("cant_fix", None, None, 3)
+        assert "golden departs from its committed intent" in d["words"], d["words"]
+        assert d["program"] == []
 
     @pytest.mark.parametrize("mark,words", [
         ({"_management": "observe", "_management_from": "the device's local config context"},
@@ -568,26 +586,30 @@ class TestGuards:
         held = {"held": True, "until": iso(T0 + 600), "words": "held until then",
                 "minutes": 60, "changes": []}
         d = one(GOLDEN + ROUTE4, src=Fake(GOLDEN + ROUTE4, held=held))
-        assert (d["guard"]["guard"], d["until"]) == (5, T0 + 600)
+        # Guard 5 is gone (106c117d, the operator, 2026-11-16: no time-based holds): a
+        # topology hold in force holds nothing; verify and rollback are the safety.
+        assert (d["outcome"], d["guard"], d["until"]) == ("would_heal", None, None), d["words"]
 
     def test_6_many_devices_at_once(self, lab):
+        """C3909 (the operator, 2026-11-17: "remove guard 4 and guard 6 holds entirely (mass
+        change, etc.)"): four devices departed at once hold nothing; each is decided on its
+        own."""
         for n in ("a-1", "a-2", "a-3", "a-4"):
             I.sight("Default", n, {"kind": "drift", "key": f"d:{n}", "epoch": T0 - 30},
                     now=T0 - 30)
         d = one(GOLDEN + ROUTE4)
-        assert (d["guard"] or {}).get("guard") == 6, d["words"]
-        assert d["guard"]["operands"]["devices"] == 4, d["words"]
-        assert d["guard"]["operands"]["heal_max_devices_drifting"] == 3
+        assert (d["outcome"], d["guard"]) == ("would_heal", None), d["words"]
 
     def test_7_a_person_working(self, lab):
+        """Guard 7 is retired (C3879, 106c117d: no time-based holds): three changes by a
+        person in minutes hold nothing and defer nothing."""
         trig = [{"kind": "config_change", "key": f"cfg:{n}", "epoch": T0 - 60 * n,
                  "at": iso(T0 - 60 * n), "attribution": {"by": "outside"},
                  "person": {"words": "the line names the account alice"}, "words": "x"}
                 for n in (1, 2, 3)]
         d = one(GOLDEN + ROUTE4, triggers=trig)
-        assert (d["guard"] or {}).get("guard") == 7, d["words"]
-        assert "a person appears to be working" in d["words"]
-        assert d["until"] == T0 - 60 + 600
+        assert (d["outcome"], d["guard"], d["until"]) == ("would_heal", None, None), d["words"]
+        assert "a person appears to be working" not in d["words"]
 
     def test_8_a_device_that_could_not_be_judged(self, lab):
         d = one(GOLDEN + ROUTE4, how="unreadable")
@@ -599,58 +621,67 @@ class TestGuards:
                       T0 - 100)
 
     def test_9_the_rate_per_device(self, lab):
+        """Guard 9 is retired (C3879, 106c117d: no time-based holds; the recurrence finding
+        says a problem that keeps coming back): a device healed in the last hour is healed
+        again."""
         auto("Default", now=T0 - 60)
         self._heals(1)
         d = one(GOLDEN + ROUTE4)
-        assert (d["guard"] or {}).get("guard") == 9
-        assert "edge-b was healed 1 time(s) in the last hour, the most" in d["words"]
+        assert (d["outcome"], d["guard"]) == ("heal", None), d["words"]
+        assert "in the last hour, the most" not in d["words"]
 
     def test_9_in_dry_run_never_says_a_heal_ran(self, lab):
-        """C2814 (the operator, H11 W2): in dry run guard 9 counts the would-heal decisions,
-        as Auto counts heals, and says so, never "was healed"."""
+        """C2814 (the operator, H11 W2) with guard 9 retired (C3879): in dry run a would-heal
+        decision before holds nothing, and the words never say a heal ran."""
         self._heals(1, outcome="would_heal")
         d = one(GOLDEN + ROUTE4)
-        assert (d["guard"] or {}).get("guard") == 9 and d["mode"] == "dry_run"
-        assert ("edge-b would have been healed 1 time(s) in the last hour (dry run's would-heal "
-                "decisions, counted as Auto counts heals), the most") in d["words"], d["words"]
-        assert "was healed" not in d["words"]
+        assert (d["outcome"], d["guard"], d["mode"]) == ("would_heal", None, "dry_run")
+        assert "was healed" not in d["words"], d["words"]
 
     def test_10_the_rate_per_network_halts_in_auto_only(self, lab):
+        """Guard 10's rate is removed and nothing halts a network (70e89a47, the operator,
+        2026-11-17, round 2): six heals in the hour on other devices, and this one heals in
+        Auto, no halt written."""
         auto("Default", now=T0 - 60)
         for n in range(6):
             self._heals(1, device=f"o-{n}")
         inc = settle(GOLDEN + ROUTE4)
         d = DS.record("Default", DC.decide_one("Default", inc, now=T0,
                                                sources=Fake(GOLDEN + ROUTE4)), T0)
-        assert (d["outcome"], d["guard"]["guard"]) == ("halted", 10)
+        assert (d["outcome"], d["guard"]) == ("heal", None), d["words"]
         DC._act("Default", inc, d, T0)
-        assert DS.halted("Default")["guard"] == 10
+        assert DS.halted("Default") == {}
 
     def test_10_in_dry_run_records_and_halts_nothing(self, lab):
+        """As above in dry run (70e89a47): six would-heal decisions in the hour, and this one is
+        a would-heal, nothing halted and no rate in its words."""
         for n in range(6):
             self._heals(1, device=f"o-{n}", outcome="would_heal")
         inc = settle(GOLDEN + ROUTE4)
         d = DS.record("Default", DC.decide_one("Default", inc, now=T0,
                                                sources=Fake(GOLDEN + ROUTE4)), T0)
         DC._act("Default", inc, d, T0)
-        assert d["outcome"] == "halted" and DS.halted("Default") == {}
-        assert ("had 6 would-heal decision(s) (dry run's would-heal decisions, counted as Auto "
-                "counts heals) in the last hour") in d["words"], d["words"]
+        assert (d["outcome"], d["guard"]) == ("would_heal", None) and DS.halted("Default") == {}
+        assert "would-heal decision(s)" not in d["words"], d["words"]
 
     def test_11_the_same_deviation_twice(self, lab):
+        """Guard 11's repeat is retired (C3879, 106c117d; the recurrence finding names it): the
+        same departure decided two hours ago is decided again, held by nothing."""
         from modules.drift_check import departure, drift_diff
 
         dep = departure(drift_diff(GOLDEN, GOLDEN + ROUTE4, "edge-b"))
         DS.record("Default", {"outcome": "would_heal", "device": "edge-b", "departure": dep},
                   T0 - 7200)
         d = one(GOLDEN + ROUTE4)
-        assert d["guard"]["guard"] == 11 and dep in d["words"]
-        assert f"(departure {dep}) would have been healed (dry run's" in d["words"], d["words"]
+        assert (d["outcome"], d["guard"], d["departure"]) == ("would_heal", None, dep)
 
     def test_12_more_than_one_removal_unit(self, lab):
+        """Guard 12 is retired (70e89a47: a program's size refuses nothing; verify and rollback
+        are the safety): two removal units are one program, both removals in it."""
         d = one(GOLDEN + ROUTE4 + ROUTE6)
-        assert d["guard"], d["words"]
-        assert (d["outcome"], d["guard"]["guard"]) == ("cant_fix", 12)
+        assert (d["outcome"], d["guard"]) == ("would_heal", None), d["words"]
+        assert sorted(d["program"]) == ["no ip route 192.0.2.128 255.255.255.128 192.0.2.10",
+                                        "no ipv6 route 2001:db8:9::/48 2001:db8:0:7::2"]
 
     def test_14_a_rolled_back_heal_halts(self, lab):
         auto("Default", now=T0 - 60)
@@ -725,14 +756,26 @@ class TestTheRecordAndTheSeams:
         assert inc["state"] == "closed" and d["decision"] in inc["closed_why"]
 
     def test_a_heal_stays_claimed_for_h4_who_takes_it_once(self, lab):
+        """The pass takes the heal it decides at once and starts its act (e400a31f item 4,
+        C3865: `act.start_decided`): taken once, so none is left to apply and a second take
+        is refused; its incident stays claimed until the act's outcome is recorded."""
+        from tests.test_heal_act import FakeAct, acts_with
+
         auto("Default", now=T0 - 60)
-        self.run(GOLDEN + ROUTE4)
-        (d,) = DS.to_apply("Default")
-        assert I.read("Default")["incidents"][0]["state"] == "claimed"
-        DS.take("Default", d["id"], by="the apply")
-        with pytest.raises(DS.Refused):
-            DS.take("Default", d["id"], by="the apply")
+        with acts_with(FakeAct(GOLDEN + ROUTE4), wait_s=None) as jobs, \
+                pytest.MonkeyPatch.context() as mp:
+            # Its act's job held before it runs, so the claim is read while it waits.
+            mp.setattr("modules.heal.act._apply_for", lambda *a, **kw: claimed.append(
+                I.read("Default")["incidents"][0]["state"]) or {"outcome": "refused"})
+            claimed = []
+            got = self.run(GOLDEN + ROUTE4)
+            from modules.nsot import capture_job
+            assert capture_job.wait(jobs[0], 30)
+        (d,) = got["decided"]
+        assert claimed == ["claimed"], claimed
         assert DS.to_apply("Default") == []
+        with pytest.raises(DS.Refused):
+            DS.take("Default", d["decision"], by="the apply")
 
     def test_a_proposal_is_h5s(self, lab):
         self.run(changed((" router-id 192.0.2.6\n", " router-id 192.0.2.99\n")))
@@ -765,8 +808,10 @@ class TestTheRecordAndTheSeams:
         assert reads == [] and early["waiting"][0]["state"] == "deferred"
         later = detect.run("Default", now=inc["defer_until"] + 1, check=check,
                            clock=lambda: inc["defer_until"] + 1)
-        assert reads == ["edge-b"] and later["waiting"][0]["state"] == "waiting", \
-            "its grace period restarts at the deferral's end: one read is not enough"
+        # No grace (70e89a47, the operator, 2026-11-17, round 2: "a drifted read settles the
+        # incident at once, on its first read"): read once after its deferral, it is ready.
+        assert reads == ["edge-b"] and later["waiting"] == [], later
+        assert [r["incident"] for r in later["ready"]] == [inc["id"]], later
 
     def test_a_decision_that_fails_defers_its_incident(self, lab):
         class Broken(Fake):

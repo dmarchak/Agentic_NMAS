@@ -58,15 +58,26 @@ def unclassified_alert():
 KINDS = dict(TT.PLANTS, lost_stream=lost_stream, alert=unclassified_alert)
 
 
+#: The page's heading, ``<h1 ... id="inc-title" ...>`` with its attributes (board R5's simple
+#: card, becced07: ``class="simple-title"``, the bottom line's ``data-bluf="what"``, its title
+#: on the hover).
+H1 = re.compile(r'<h1\b[^>]*\bid="inc-title"[^>]*>(.*?)</h1>', re.S)
+
+
 def heading(body: str) -> str:
-    return T.text_of(body.split('<h1 id="inc-title">', 1)[1].split("</h1>", 1)[0])
+    return T.text_of(H1.search(body).group(1))
 
 
 def bluf_what(body: str) -> str:
-    """The bottom line's What happened, without its since."""
-    dd = body.split('data-bluf="what"', 1)[1].split("<dd>", 1)[1].split("</dd>", 1)[0]
-    dd = re.sub(r'<span class="muted small">since .*?</span>', "", dd, flags=re.S)
-    return T.text_of(dd)
+    """The bottom line's What happened, without its since: since board R5 (becced07) the
+    heading is the bottom line's What happened (``data-bluf="what"``); a page that still draws
+    it as its own line (``<dd>``) is read there."""
+    m = re.search(r'<(\w+)\b[^>]*\bdata-bluf="what"[^>]*>(.*?)</\1>', body, re.S)
+    part = m.group(2)
+    if "<dd>" in part:
+        part = part.split("<dd>", 1)[1].split("</dd>", 1)[0]
+    part = re.sub(r'<span class="muted small">since .*?</span>', "", part, flags=re.S)
+    return T.text_of(part)
 
 
 def listed(client, iid: str) -> str:

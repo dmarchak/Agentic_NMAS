@@ -145,7 +145,7 @@ def dev(name, ip, answering, misses=0, since="2026-09-28T21:00:00Z"):
 class TestTheSource:
     def test_everyone_answering_is_no_row(self):
         res = A.reachability_source(cached=stored({"a": dev("r1", "a", True)}))
-        assert res["rows"] == [] and "1 answering, 0 not answering" in res["checked"]
+        assert res["rows"] == [] and "1 reachable, 0 not reachable" in res["checked"]
 
     def test_several_not_answering_is_one_row_that_names_each(self):
         res = A.reachability_source(cached=stored({
@@ -153,7 +153,7 @@ class TestTheSource:
             "b": dev("r2", "b", False, 3, "2026-09-28T21:00:05Z"),
             "c": dev("s1", "c", True)}))
         (row,) = res["rows"]
-        assert row["what"] == "2 devices are not answering" and row["devices"] == ["r1", "r2"]
+        assert row["what"] == "2 devices are not reachable" and row["devices"] == ["r1", "r2"]
         assert "4 consecutive misses" in row["cause"] and "path from Mercury" in row["cause"]
 
     def test_nothing_stored_is_unreadable(self):
