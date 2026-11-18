@@ -509,7 +509,10 @@
       <div class="att-record" data-keep="att-rec-{{ r.id }}">
       <h3>For the record</h3>
       <dl class="att-ops">
-        {%- for k, v in ops.items() if k != 'members' %}<div><dt>{{ k }}</dt><dd>{{ v if v is string else (v|join('; ' if k == 'steps' else ', ') if v is iterable and v is not mapping else v) }}</dd></div>{% endfor %}
+        {#- C3961 (the operator's decision 11, 2026-11-18): the record's ids are links to the
+            incident's own page, which draws the incident, its decisions and their programs. -#}
+        {%- set inc_href = url_for('incident_v2.incident', incident_id=ops.incident, list=ops.list) if (ops.incident is string and ops.incident.startswith('hi-') and ops.list is string and ops.list) else '' %}
+        {%- for k, v in ops.items() if k != 'members' %}<div><dt>{{ k }}</dt><dd>{% if inc_href and k in ('incident', 'decision', 'program_hash') and v is string and v %}<a href="{{ inc_href }}">{{ v }}</a>{% else %}{{ v if v is string else (v|join('; ' if k == 'steps' else ', ') if v is iterable and v is not mapping else v) }}{% endif %}</dd></div>{% endfor %}
       </dl>
       </div>
       {%- endif %}
