@@ -93,6 +93,63 @@ def test_a_red_smoke_puts_the_previous_release_back(world, capsys):
     assert "the smoke check was RED, so it was reverted" in capsys.readouterr().err
 
 
+def test_a_red_smoke_with_a_swapped_venv_puts_the_venv_and_the_units_back(world, capsys):
+    """The correctness review's G7-D4 (2026-11-18): a red smoke's revert reset the checkout
+    and restarted the app, but left the venv link on the new release's venv and the ZTP
+    responder running the new release's code, and said "reverted … (running again)": a mixed
+    version drawn as a rollback done. The revert puts back what the deploy moved: the venv
+    link, the app, and each unit that runs the checkout."""
+    world.advance({"app.py": "v = 2\n"})
+    plan = {"state": "swap", "from": "aaa", "to": "bbb"}
+    moved = []
+
+    def venv(mod):
+        mod.venv_plan = lambda *a, **k: dict(plan)
+        mod.swap_venv = lambda p, *a, **k: moved.append(("swap", p["to"]))
+        mod.unswap_venv = lambda p, *a, **k: moved.append(("unswap", p["from"]))
+        mod.prune_venvs = lambda keep, *a, **k: ([], [])
+    pid = {"n": 300}
+
+    def restart_unit(u):
+        moved.append(("restart", u))
+        pid["n"] += 1
+
+    def unit_of(u):
+        return {"MainPID": pid["n"], "start": "", "load": "loaded"}
+    code, restarted, _calls = _run(world, {}, extra=("--fast-lane", TESTS), setup=venv,
+                                   units=(restart_unit, unit_of),
+                                   smoke=lambda repo, target: (False, "SMOKE FAILED: /v2/ 500"))
+    err = capsys.readouterr().err
+    assert code == 5, err
+    assert _git(world.host, "rev-parse", "HEAD") == world.base, "put back"
+    assert moved == [("swap", "bbb"), ("restart", "nmas-ztp-responder.service"),
+                     ("unswap", "aaa"), ("restart", "nmas-ztp-responder.service")], moved
+    row = _record(world)[-1]
+    assert row["reverted"]["venv"] == "aaa", row["reverted"]
+    assert any("nmas-ztp-responder.service: restarted" in w
+               for w in row["reverted"]["checkout_units"]), row["reverted"]
+
+
+def test_a_fast_lane_release_not_ready_says_its_smoke_and_revert_did_not_run(world, capsys):
+    """The correctness review's G7-D9 (2026-11-18): a fast-lane release whose readiness failed
+    returned before the smoke block, so neither the smoke check nor its revert ran, and the
+    verdict said only "Needs attention offers the rollback", though the fast lane promises a
+    smoke and a revert. Whether such a release is smoked and reverted is the operator's (their
+    2026-11-05 rule: a release not ready is never rolled back automatically); until then the
+    verdict says neither ran, and names the command that puts it back."""
+    world.advance({"app.py": "v = 2\n"})
+    smoked = []
+    code, _restarted, _calls = _run(
+        world, {}, extra=("--fast-lane", TESTS),
+        smoke=lambda repo, target: smoked.append(target) or (True, "SMOKE OK"),
+        readiness=lambda n, now: {"ready": False, "warming": False,
+                                  "not_ready": [{"step": "reader", "error": "a test's own"}]})
+    err = capsys.readouterr().err
+    assert code != 0 and not smoked, err
+    assert "The fast lane's smoke check and its revert did not run" in err, err
+    assert f"nmas-deploy --revert puts back {world.base[:10]}" in err, err
+
+
 def test_revert_puts_back_the_previous_deployed_commit_with_no_verdict(world, capsys):
     target = world.advance({"app.py": "v = 2\n"})
     assert _run(world, {}, extra=("--fast-lane", TESTS), smoke=_green)[0] == 0
@@ -103,6 +160,26 @@ def test_revert_puts_back_the_previous_deployed_commit_with_no_verdict(world, ca
     assert not [c for c in calls if "head_sha=" in c]
     row = _record(world)[-1]
     assert row["gate"] == "revert" and row["from"] == target and row["to"] == world.base
+
+
+def test_a_second_revert_goes_further_back_never_to_the_release_it_reverted_from(world,
+                                                                                  capsys):
+    """The correctness review's G7-D5 (2026-11-18): `previous_deployed` took the newest row
+    that moved the checkout to HEAD, and after a revert C -> B that row is the revert itself,
+    so a second `--revert` deployed C again: the release just reverted away from, with no
+    verdict and no smoke. A revert goes back, to the release deployed before HEAD's, an
+    ancestor of HEAD."""
+    b = world.advance({"app.py": "v = 2\n"})
+    assert _run(world, {}, extra=("--fast-lane", TESTS), smoke=_green)[0] == 0
+    c = world.advance({"app.py": "v = 3\n"})
+    assert _run(world, {}, extra=("--fast-lane", TESTS), smoke=_green)[0] == 0
+    assert _git(world.host, "rev-parse", "HEAD") == c
+    assert _run(world, {}, extra=("--revert",))[0] == 0
+    assert _git(world.host, "rev-parse", "HEAD") == b
+    code, _restarted, _calls = _run(world, {}, extra=("--revert",))
+    assert _git(world.host, "rev-parse", "HEAD") != c, "never the release reverted from"
+    assert code == 0 and _git(world.host, "rev-parse", "HEAD") == world.base, \
+        capsys.readouterr()
 
 
 def test_revert_with_no_deploy_recorded_is_refused(world, capsys):

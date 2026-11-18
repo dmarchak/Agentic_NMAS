@@ -1658,6 +1658,14 @@ def shown(answer, said: dict = None, pass_: int = 1, fit=(), marks: dict = None,
     imp = getattr(answer, "improvement", None)
     if imp is not None:
         out["improvement"] = {"what": _cut(imp.what), "saves": _cut(imp.saves)}
+        if imp.steps:
+            # Its steps marked as the plan's are (the correctness review's G5 HIGH-2,
+            # 2026-11-18): the alternative's line carries them, so its preflight refuses a step
+            # resting on nothing sent (`fix_proposal.plan_for_incident`).
+            out["improvement"]["steps"] = [
+                dict(_marked(s.evidence_refs, marks.get(f"improvement's step {n}")), n=n,
+                     operation=s.operation, why=_cut(s.why))
+                for n, s in enumerate(imp.steps, 1)]
     if answer.gap is not None:
         out["gap"] = _cut(answer.gap.what)
         out["cites"] = list(answer.gap.evidence_refs)[:8]

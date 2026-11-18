@@ -1309,6 +1309,19 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
         return _finish(network, rec, "refused", why)
     t = CP.template_of(key)
     rec["hash"] = p["hash"]
+    # The template this run runs, by the digest its hash binds: a Save of the run stores this
+    # plan, never a later version (the correctness review's G3-H2, `saved_plans.save_fix`).
+    rec["template_digest"] = t.digest
+    # A switch its SDN controller manages is refused by the authority rule, naming the
+    # controller, whatever its row's dialect lets the raw-line rule pass (the correctness
+    # review's G3-H1, 2026-11-18): every path to this runner (a saved fix's press, its Automatic
+    # fire, an AI plan's step) asks it here, once.
+    from modules.sdn import authority as _authority
+    managed = _authority.of(dict(p.get("device_row") or {}, hostname=device), network)
+    if managed["kind"] != "direct":
+        why = f"{managed['words']} Nothing was sent"
+        _step(rec, "approve", "refused", why)
+        return _finish(network, rec, "refused", why)
     _step(rec, "approve", "ok", f"the plan is the one approved ({p['hash']})")
     from modules.pipeline import lap
     lap(rec["laps"], "approve")
@@ -1342,6 +1355,24 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
                 _step(rec, "hold", "refused", why)
                 return _finish(network, rec, "refused", why, t)
             time.sleep(HOLD_POLL_S)
+        # Judged again once the device is free (the correctness review's G2-H1, 2026-11-18): a
+        # person's window, a Delete… of the fix or an Off may have landed during the wait, and
+        # the judgement the fire made before it no longer stands. The same three the fire asks:
+        # the fix's own approval (`saved_plans.authority_refusal`), the heal's guards for the
+        # device (`decide.script_hold`), and Stop and Off (`stopped_now`).
+        from modules.heal import decide
+        again = saved_plans.authority_refusal(key, authority, network)
+        if not again:
+            held = decide.script_hold(network, dict(incident or {}, device=device)
+                                      if isinstance(incident, dict) else {"device": device},
+                                      batch=bool(authority.get("batch")))
+            again = (f"held by guard {held['guard']} ({held['name']}): {held['words']}"
+                     if held else "")
+        again = again or stopped_now(network)
+        if again:
+            why = f"{again}, judged again once {device} was free. Nothing was sent"
+            _step(rec, "hold", "refused", why)
+            return _finish(network, rec, "refused", why, t)
     check_run = CheckRun(network, device, dev, p["derived"], incident, src)
     ctx = None
     try:

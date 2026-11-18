@@ -1397,8 +1397,10 @@ def backup_window_words(now: float) -> str:
 
 def previous_deployed(repo, head):
     """The commit this checkout was deployed from to reach *head*: the deploy record's newest
-    row whose deploy ended well (exit 0) and moved it to *head* from another commit; "" when
-    the record names none."""
+    row whose deploy ended well (exit 0) and moved it to *head* from another commit, never a
+    revert's own row (the correctness review's G7-D5, 2026-11-18: after a revert C -> B the
+    revert's row names C, the release just reverted away from, so a second revert deployed it
+    again); "" when the record names none."""
     path = os.path.join(repo, "data", "deploy_audit.jsonl")
     try:
         with open(path, encoding="utf-8") as fh:
@@ -1407,7 +1409,7 @@ def previous_deployed(repo, head):
         return ""
     for r in reversed(rows):
         if r.get("exit") == OK and r.get("to") == head and r.get("from") \
-                and r.get("from") != head:
+                and r.get("from") != head and r.get("gate") != "revert":
             return r["from"]
     return ""
 
@@ -1838,6 +1840,13 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
             return finish(LOCAL_REFUSED, f"--revert: the deploy record names no deploy that "
                                          f"moved this checkout to {head[:10]} from another "
                                          "commit, so there is nothing to put it back to. Refused.")
+        # A revert goes back: its target is an ancestor of HEAD, never a release after it.
+        if subprocess.run(["git", "-C", repo, "merge-base", "--is-ancestor", target,
+                           head]).returncode != 0:
+            return finish(LOCAL_REFUSED, f"--revert: the release the deploy record names "
+                                         f"before {head[:10]}, {target[:10]}, is not an "
+                                         f"ancestor of {head[:10]}, so putting it back would "
+                                         "deploy forward with no verdict. Refused.")
     row.update({"from": head, "to": target})
     if not back and subprocess.run(["git", "-C", repo, "merge-base", "--is-ancestor", head,
                                     target]).returncode != 0:
@@ -1964,11 +1973,21 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
     row.update(pid_after=state.get("MainPID"), systemd_start=state.get("start"),
                running_pid=body.get("pid"), running_commit=body.get("commit"),
                app_started_at=body.get("started_at"))
+
+    def unsmoked(why):
+        # The fast lane promises a smoke check and its revert; a return before them says they
+        # did not run, and the one command that puts the release back (the correctness
+        # review's G7-D9, 2026-11-18). Whether such a release is reverted at once is the
+        # operator's (their 2026-11-05 rule: a release not ready is never rolled back here).
+        return (f" The fast lane's smoke check and its revert did not run ({why}): "
+                f"nmas-deploy --revert puts back {head[:10]}." if fast and head != target
+                else "")
     if not ok:
         moved = (f" The venv link names {venv['to']}; scripts/host-steps/venv-rollback.sh points "
                  f"it back at {venv['from']}." if venv["state"] == "swap" else "")
         return finish(UNHEALTHY, _mixed_headline(health or _health, target)
-                      + f"{what}, restart issued, but NOT confirmed running: {reason}.{moved}")
+                      + f"{what}, restart issued, but NOT confirmed running: {reason}.{moved}"
+                      + unsmoked("the release is not confirmed running"))
     # Can it serve (C2514)? Asked once it is confirmed running, and only READ: a release that
     # is not ready is reported FAILED and left running; the rollback is a person's, offered by
     # Needs attention, never taken here (the operator, 2026-11-05).
@@ -1992,14 +2011,16 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
                                  "not every unit that runs the checkout was: "
                                  + "; ".join(w for w in units_words if "NOT" in w)
                                  + (f"; and it is NOT READY: {ready_now['words']}"
-                                    if not_ready else ""))
+                                    if not_ready else "")
+                                 + unsmoked("a unit that runs the checkout is not confirmed"))
     if not_ready:
         back = (f"the previous release, {head[:10]}" if head != target
                 else "the release before it")
         return finish(NOT_READY,
                       f"FAILED, NOT READY: {what}, restarted and running {target[:10]} as pid "
                       f"{state.get('MainPID')}, but {ready_now['words']}. It was NOT rolled "
-                      f"back: Needs attention offers the rollback to {back}. {message}")
+                      f"back: Needs attention offers the rollback to {back}."
+                      + unsmoked("the release is not ready") + f" {message}")
     pruned = ""
     if venv["state"] == "swap":
         # Keep the current venv and the previous one (the operator, 2026-10-09).
@@ -2017,6 +2038,21 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
         print(said)
         if not smoked:
             git(repo, "reset", "--hard", "--quiet", head)
+            # What the deploy moved goes back with the checkout (the correctness review's
+            # G7-D4, 2026-11-18): the venv link before the app restarts, the checkout's other
+            # units once it runs the release put back; never a mixed version said as reverted.
+            venv_back = ""
+            if venv["state"] == "swap":
+                try:
+                    unswap_venv(venv)
+                    venv_back = venv["from"]
+                    print(f"venv: {VENV_LINK} -> mercury-venv-{venv['from']} (put back)")
+                except (subprocess.CalledProcessError, OSError) as exc:
+                    return finish(UNHEALTHY, f"{what}, the smoke check was RED, and the venv "
+                                             f"link could not be put back from {venv['to']} to "
+                                             f"{venv['from']} ({exc}); the checkout is at "
+                                             f"{head[:10]} and nothing restarted: "
+                                             "scripts/host-steps/venv-rollback.sh points it back")
             again = unit()
             try:
                 (restart or (lambda: subprocess.run(["sudo", "systemctl", "restart", SERVICE],
@@ -2027,11 +2063,25 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
                                          f"{head[:10]} did not restart: {exc}")
             back_ok, _seen, back_why = wait_for_running(head, again["MainPID"],
                                                         health or _health, unit, clock, sleep)
-            row["reverted"] = {"to": head, "running": back_ok, "why": back_why}
+            # The units load the checkout, which is the release put back whether or not the
+            # app is confirmed running on it, so each is restarted either way.
+            units_back_ok, units_back = restart_checkout_units(
+                restart_unit or (lambda u: subprocess.run(["sudo", "systemctl", "try-restart", u],
+                                                          check=True, capture_output=True,
+                                                          text=True, timeout=120)),
+                unit_of or (lambda u: unit_state(u)), clock, sleep)
+            for line in units_back:
+                print(line)
+            row["reverted"] = {"to": head, "running": back_ok, "why": back_why,
+                               "venv": venv_back, "checkout_units": units_back}
+            back_words = ("running again" if back_ok and units_back_ok else
+                          f"NOT confirmed running: {back_why}" if not back_ok else
+                          "running again, but not every unit that runs the checkout was: "
+                          + "; ".join(w for w in units_back if "NOT" in w))
             return finish(UNHEALTHY, f"{what}, but the smoke check was RED, so it was reverted "
-                                     f"to {head[:10]} ("
-                                     + ("running again" if back_ok else
-                                        f"NOT confirmed running: {back_why}") + f"). {said[-300:]}")
+                                     f"to {head[:10]} (" + back_words
+                                     + (f"; venv {venv_back}" if venv_back else "")
+                                     + f"). {said[-300:]}")
     return finish(OK, f"{what}, restarted: pid {before['MainPID']} -> {state.get('MainPID')}, "
                       f"running {target[:10]} since {state.get('start')} (systemd). {message}"
                       + pruned)

@@ -206,6 +206,58 @@ def _operations(network: str, device: str) -> list:
     return [r for r in got["runs"] if r.get("config_change")]
 
 
+#: What `alert_attribute` answers while a Mercury operation holds the device: no judgement yet.
+HELD = "held"
+
+
+def alert_attribute(network: str, device: str, iface: str, fired: float, now: float) -> dict:
+    """Whether a firing alert on *device* naming *iface*, fired at *fired*, is Mercury's own
+    (the correctness review's G6-H1, 2026-11-18): ``{"by", "words"}``. `attribute` judges a
+    change line by the device and the time alone; an alert is judged by what the run did:
+
+    - `HELD`: a Mercury operation holds *device* and held it before *fired*: judged once it
+      ends, when its record says what it configured and how it ended;
+    - `MERCURY`: a finished run of *device*'s whose program configured *iface*, which ended
+      verified (``done``), spans *fired* (to `AFTER_RECEIPT_SECONDS` after its end), and the
+      alert's catch-up after it (`waits.HEAL_BOUNDS["alert-after-fix"]`) is still open at *now*;
+    - ``""``: anything else, an alert naming no interface and a record that cannot be read
+      included: the alert is sighted as any other, never excused."""
+    from modules.nsot.ifnames import canonical, canonicalise_line
+    from modules.waits import HEAL_BOUNDS
+
+    try:
+        h = _holder(network, device)
+    except Exception as exc:                          # noqa: BLE001 (sighted: never excused)
+        log.info("heal: what holds %s could not be read: %s", device, exc)
+        h = None
+    if h and float(h.get("started") or 0) <= fired:
+        return {"by": HELD, "words": (f"{h.get('operation') or 'an operation'} holds {device} "
+                                      "since before the alert fired: judged once it ends")}
+    if not iface:
+        return {"by": "", "words": "the alert names no interface a run could have configured"}
+    header = f"interface {canonical(iface)}"
+    catch_up = float(HEAL_BOUNDS["alert-after-fix"]["seconds"])
+    try:
+        runs = _operations(network, device)
+    except Exception as exc:                          # noqa: BLE001 (sighted: never excused)
+        log.info("heal: %s's operation records could not be read: %s", network, exc)
+        runs = []
+    for r in runs:
+        try:
+            start, end = float(r.get("started_at") or 0), float(r.get("finished_at") or 0)
+        except (TypeError, ValueError):
+            continue
+        if not (start and end and start <= fired <= end + AFTER_RECEIPT_SECONDS):
+            continue
+        touched = any(canonicalise_line(str(x)).strip() == header for x in r.get("program") or [])
+        if touched and r.get("outcome") == "done" and now <= end + catch_up:
+            return {"by": MERCURY, "words": (
+                f"Mercury's own: {r.get('command') or 'a run'} (run {r.get('id')}) configured "
+                f"{iface} from {_iso(start)} to {_iso(end)} and verified; its alert catches up "
+                f"within {int(catch_up)} s")}
+    return {"by": "", "words": "no verified run of Mercury's configured it then"}
+
+
 def attribute(network: str, device: str, at: float, *, holder=None, receipts=None,
               rotations=None, operations=None) -> dict:
     """Whose change a configuration-change line of *device*'s, received at *at*, records:

@@ -213,6 +213,51 @@ class TestTheRepeat:
                                                                   "changes": [V6]})))
         assert other["approvable"], other["why_refused"]
 
+    def test_a_plan_stopped_at_its_deploy_never_closes_the_incident(self, lab, monkeypatch):
+        """The correctness review's G7-D1 (2026-11-18; C3812, 003f3292): a plan whose deploy
+        step moved at apply (`plan_engine.run`: refused, outcome ``moved``, the plan
+        ``stopped``, nothing sent) leaves its committed intent change as the newest attempt
+        (a refused step is no attempt), and `verified_fix` closed the incident "verified on r2"
+        on it. A plan step closes its incident only when its plan ran to the end, ``done``. A
+        real run, its deploy step's record rewritten as the move would leave it."""
+        from modules.heal import detect
+        from modules.nsot import privileged
+        from tests.test_fixit_incident import page_stands_in
+        lab["seams"]["verify"] = False
+        rec = privileged.get("Lab", run_line(line_of(EDIT, DEPLOY))["id"])
+        assert rec["outcome"] == "stopped", rec
+        rec["plan_steps"][1].update(state="refused", outcome="moved",
+                                    words_said="step 2 moved since the plan was approved")
+        privileged.record("Lab", rec)
+        got = F.attempts(incident())["attempts"]
+        assert [(a["operation"], a["passed"]) for a in got] == [("intent-edit", True)], got
+        page_stands_in(monkeypatch, incident())
+        assert detect.verified_fix("Lab", {"id": INCIDENT, "device": "r2"}) == {}
+
+    def test_a_plan_whose_deploy_failed_is_never_drawn_passed(self, lab, monkeypatch):
+        """The correctness review's G7-D6 (2026-11-18; C3809): every step of one plan run
+        carries the run's one start, so its attempts tie on the section's newest-event key, and
+        `max` took the first, the intent change that passed: the card read "passed" with the
+        deploy failed and the plan stopped. The later step is the newer."""
+        from modules.fixit import section
+        lab["seams"]["verify"] = False
+        rec = run_line(line_of(EDIT, DEPLOY))
+        assert rec["outcome"] == "stopped", rec
+        monkeypatch.setattr(section, "incident_of", lambda network, found: {
+            "incident": incident(), "why": ""})
+        got = section.view("Lab", {"found": "page", "id": INCIDENT,
+                                   "incident": {"id": INCIDENT, "device": "r2"}})
+        assert got["state"] != "passed", (got["state"], got.get("why"))
+
+    def test_a_plan_that_ran_to_its_end_closes_the_incident(self, lab, monkeypatch):
+        from modules.heal import detect
+        from tests.test_fixit_incident import page_stands_in
+        rec = run_line(line_of(EDIT, DEPLOY))
+        assert rec["outcome"] == "done", rec
+        page_stands_in(monkeypatch, incident())
+        got = detect.verified_fix("Lab", {"id": INCIDENT, "device": "r2"})
+        assert (got["run"], got["operation"]) == (rec["id"], "intent-deploy"), got
+
     def test_a_step_refused_before_its_apply_is_no_attempt(self, lab, monkeypatch):
         rec = run_line(line_of(EDIT, DEPLOY), reason="no")
         assert rec["outcome"] == "refused"

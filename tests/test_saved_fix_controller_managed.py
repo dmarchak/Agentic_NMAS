@@ -25,6 +25,17 @@ MARKS = {
     "platform names its controller": dict(DIRECT_ROW, platform=f"openflow via {CONTROLLER}"),
     "device type openflow": dict(DIRECT_ROW, device_type="openflow", platform=""),
 }
+#: The correctness review's G3-H1 (2026-11-18): the OpenFlow mark in ``device_type`` with a CLI
+#: dialect from elsewhere on the row (`platform.platform_for_device`: ``platform`` first, then
+#: NetBox's slug ``_platform``, which every NetBox-sourced row carries). The raw-line rule then
+#: finds shapes for the dialect and lets the plan through, so only the authority rule refuses.
+WITH_A_DIALECT = {
+    "device type openflow, NetBox platform slug": dict(DIRECT_ROW, device_type="openflow",
+                                                       _platform="cisco-ios"),
+    "device type openflow, platform cisco_ios": dict(DIRECT_ROW, device_type="openflow",
+                                                     platform="cisco_ios"),
+}
+MARKS.update(WITH_A_DIALECT)
 
 
 def _run(lab, monkeypatch, row):  # noqa: F811
@@ -53,6 +64,17 @@ def test_the_runner_sends_nothing_to_a_controller_managed_switch(lab, monkeypatc
         f"{rec['outcome']}: {rec.get('why')}")
     assert rec["outcome"] == "refused" and "Nothing was sent" in str(rec.get("why")), rec
     assert [s["step"] for s in rec["steps"] if s["result"] == "refused"] == ["approve"]
+
+
+@pytest.mark.parametrize("mark", sorted(WITH_A_DIALECT))
+def test_a_managed_switch_with_a_dialect_is_refused_by_the_authority_rule(lab, monkeypatch,  # noqa: F811
+                                                                          mark):
+    """Refused by the authority rule itself, naming the controller (invariant: controller-
+    managed switches are refused by the authority rule), never by the raw-line rule's chance."""
+    rec = _run(lab, monkeypatch, WITH_A_DIALECT[mark])
+    assert lab["sw"].batches == [], lab["sw"].batches
+    assert rec["outcome"] == "refused", rec
+    assert f"is managed by its controller, {CONTROLLER}" in str(rec.get("why")), rec["why"]
 
 
 def test_the_control_the_same_run_on_a_direct_switch_sends_its_plan(lab, monkeypatch):  # noqa: F811

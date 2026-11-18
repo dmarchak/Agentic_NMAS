@@ -282,6 +282,65 @@ class TestAlerts:
         assert T.from_alerts("grafana-alerts", {"instances": [alert()]},
                              now=T0 + 60)["sighted"] == 0
 
+    # The correctness review's G6-H1 (2026-11-18; 7cc49a1b): an alert was Mercury's own by the
+    # device and the time alone (`attribution.attribute`, written for change lines), and its key
+    # went into ``seen`` for good, so a real outage on a device Mercury had just touched never
+    # became an incident. An alert is Mercury's own only while a finished run that configured
+    # the interface it names, and ended verified, explains it; a hold is a wait, judged again
+    # once it ends.
+
+    def _down(self, iface="GigabitEthernet2", at=T0 - 300):
+        return alert(rule="Interface down", rule_uid="ifdown", active_at=iso(at),
+                     labels={"device": "core-b", "ifName": iface})
+
+    def _stores(self, monkeypatch, hold=None, receipts=(), runs=()):
+        monkeypatch.setattr("modules.heal.attribution._holder", lambda n, d: hold)
+        monkeypatch.setattr("modules.heal.attribution._receipts", lambda n, d: list(receipts))
+        monkeypatch.setattr("modules.heal.attribution._operations", lambda n, d: list(runs))
+
+    @staticmethod
+    def _run(outcome, iface="GigabitEthernet2", start=T0 - 400, end=T0 - 250):
+        return {"id": "run1", "kind": "command_plan", "key": "errdisable-recover",
+                "command": "command_plan: errdisable-recover", "actor": "op@example.com",
+                "config_change": True, "outcome": outcome, "started_at": start,
+                "finished_at": end, "program": [f"interface {iface}", " shutdown",
+                                                " no shutdown"]}
+
+    def test_an_unrelated_alert_in_a_receipts_window_opens_an_incident(self, world,
+                                                                        monkeypatch):
+        self._stores(monkeypatch, receipts=[{"id": "rc1", "action": "deploy", "at": iso(T0)}])
+        got = T.from_alerts("grafana-alerts", {"instances": [self._down()]}, now=T0 + 60)
+        assert got["sighted"] >= 1 and got["mercury"] == 0, got
+
+    def test_an_alert_during_a_hold_waits_and_opens_once_the_run_touched_another_port(
+            self, world, monkeypatch):
+        self._stores(monkeypatch, hold={"operation": "command_plan", "actor": "op@example.com",
+                                        "started": T0 - 350})
+        got = T.from_alerts("grafana-alerts", {"instances": [self._down()]}, now=T0 - 200)
+        assert got["sighted"] == 0, "judged once the hold ends, never in its middle"
+        self._stores(monkeypatch, runs=[self._run("done", iface="GigabitEthernet1",
+                                                  end=T0 - 150)])
+        got = T.from_alerts("grafana-alerts", {"instances": [self._down()]}, now=T0 - 100)
+        assert got["sighted"] >= 1 and got["mercury"] == 0, got
+
+    def test_an_alert_a_failed_run_left_firing_opens_an_incident(self, world, monkeypatch):
+        self._stores(monkeypatch, runs=[self._run("failed")])
+        got = T.from_alerts("grafana-alerts", {"instances": [self._down()]}, now=T0 - 200)
+        assert got["sighted"] >= 1 and got["mercury"] == 0, got
+
+    def test_a_verified_runs_own_alert_opens_nothing_until_its_window_closes(self, world,
+                                                                              monkeypatch):
+        """The operator's case (2026-11-16): s2's recovery's own shutdown fired Interface down
+        inside its run; the alert catches up within `waits.HEAL_BOUNDS["alert-after-fix"]`
+        after the verified run. Past it, still firing, it is a finding of its own."""
+        from modules.waits import HEAL_BOUNDS
+        self._stores(monkeypatch, runs=[self._run("done")])
+        got = T.from_alerts("grafana-alerts", {"instances": [self._down()]}, now=T0 - 200)
+        assert (got["sighted"], got["mercury"]) == (0, 1), got
+        late = T0 - 250 + HEAL_BOUNDS["alert-after-fix"]["seconds"] + 1
+        got = T.from_alerts("grafana-alerts", {"instances": [self._down()]}, now=late)
+        assert got["sighted"] >= 1 and got["mercury"] == 0, got
+
     def test_a_condition_not_firing_is_no_trigger(self, world):
         got = T.from_alerts("grafana-alerts", {"instances": [alert(kind="no_data")]}, now=T0)
         assert got["sighted"] == 0

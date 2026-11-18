@@ -145,6 +145,34 @@ class TestApprovable:
         assert "/fixit/approve" not in sec and "rests only on evidence Mercury could not find" \
             in sec, "the person sees why"
 
+    @pytest.mark.parametrize("cites", [[], [BAD]], ids=["citing nothing", "citing only BAD"])
+    def test_an_improvement_step_resting_on_nothing_sent_is_never_approvable(self, ai, cites):
+        """The correctness review's G5 HIGH-2 (2026-11-18; 93120b2f, a0f9a54b): the marks
+        were written for the main plan's steps only (`shown`), and the improvement's shorter
+        route was kept as a second line with no steps marked, so its step citing nothing (or
+        only what was not sent) drew approvable, with a hash: a device change the AI tied to
+        nothing it was sent. The alternative's steps carry their marks as the plan's do."""
+        from modules.fixit import plan as FP
+        iid = stopped(ai)
+        step = {"operation": CLOSE,
+                "params": {"device": "r2", "subscriptions": ["101"], "subscription": None,
+                           "interface": None, "cause": None, "changes": None, "remove": None}}
+        ai.answer = dict(partial(), plan=[dict(step, why="attempt 1 shows the session held.",
+                                               evidence_refs=["attempt:1"])],
+                         improvement={"what": "close the collector's session alone",
+                                      "saves": "one step", "shapes": [],
+                                      "steps": [dict(step, why="a shorter route.",
+                                                     evidence_refs=list(cites))]})
+        press(ai, iid)
+        lines = [ln for ln in F.read(incident(iid))["lines"] if "proposal" in ln]
+        alt = [ln for ln in lines if (ln.get("shown") or {}).get("alternative_of")]
+        assert alt, "the improvement is kept as its own line"
+        got = FP.preflight(incident(iid), alt[-1])
+        assert not got["approvable"], got
+        assert got["steps"][0]["preflight"]["code"] == "unverified", got["steps"][0]
+        main = FP.preflight(incident(iid), [ln for ln in lines if ln not in alt][-1])
+        assert main["steps"][0]["preflight"]["code"] != "unverified", "the plan's step cites"
+
     def test_a_step_with_a_citation_that_resolves_is_not_refused_for_the_other(self, ai):
         from modules.fixit import plan as FP
         iid = stopped(ai)

@@ -1618,6 +1618,19 @@ def _saved_read(dev: dict, device: str) -> dict:
         "line(s) not in startup), so the save did not hold")}
 
 
+def golden_not_proof(device: str, golden: dict) -> str:
+    """Why a read of *device* at *golden* (`Sources.golden`'s) proves nothing about its intent,
+    or ``""`` when it may: only a golden at its intent makes a read at it the approved state
+    (C3909: a golden departing from intent holds nothing, so a device at it is not at intent).
+    The one judgement of it: this confirmation and the drift run's clean read
+    (`triggers.clean_ended`, the correctness review's G4-D3)."""
+    golden = golden or {}
+    if golden.get("state") == "at_intent":
+        return ""
+    return (f"{device}'s golden is not at its intent now "
+            f"({golden.get('words') or golden.get('state')}), so a read at it proves nothing")
+
+
 def _confirm_read(network: str, src, device: str, tail_step: str = None,
                   check_saved: bool = False) -> dict:
     """*device* read, held as the act holds it (`hold_device`; released before anything is
@@ -1647,10 +1660,9 @@ def _confirm_read(network: str, src, device: str, tail_step: str = None,
         return {"state": "unread", "at": _iso(time.time()), "words": busy}
     try:
         golden = src.golden(device, dev)
-        if golden.get("state") != "at_intent":
-            return {"state": "fail", "at": _iso(time.time()), "words": (
-                f"{device}'s golden is not at its intent now "
-                f"({golden.get('words') or golden.get('state')}), so a read at it proves nothing")}
+        nothing = golden_not_proof(device, golden)
+        if nothing:
+            return {"state": "fail", "at": _iso(time.time()), "words": nothing}
         got = src.read_at_golden(device, dev)
         at = _iso(time.time())
         saved = _saved_read(dev, device) if (tail_step == "saved" or check_saved) and \
@@ -2281,7 +2293,9 @@ def reap_tails(network: str, *, now: float = None, by: str = "heal to intent") -
     longer runs (`interrupted.mark_state` not ``held``: its job ended, a restart among the
     causes), recorded flagged with `tail_stale`'s words as a closing ``act`` row, so its
     incident's card and Needs attention say it (`run` asks it at every pass, the first after
-    a restart included). Returns the decisions marked. Never raises."""
+    a restart included); a healed act's incident, closed at Fixed, is reopened on it
+    (`reopen_on_tail`, the correctness review's G4-D2). Returns the decisions marked. Never
+    raises."""
     from modules.heal import decisions, interrupted, steplog
 
     now = time.time() if now is None else float(now)
@@ -2310,14 +2324,21 @@ def reap_tails(network: str, *, now: float = None, by: str = "heal to intent") -
         try:
             d = next((x for x in decisions.decisions(network) if x.get("id") == decision_id),
                      {"id": decision_id, "device": device, "incident": e.get("incident")})
+            flagged = dict(tail, state="flagged", flag=words, ended=_iso(now))
             steplog.record_act(network, d, {
                 "outcome": e.get("outcome") or "", "words": e.get("words") or "", "steps": [],
-                "sent": True, "records": dict(e.get("records") or {}, tail=dict(
-                    tail, state="flagged", flag=words, ended=_iso(now)))}, by=by, now=now)
+                "sent": True, "records": dict(e.get("records") or {}, tail=flagged)},
+                by=by, now=now)
             marked.append(decision_id)
         except Exception as exc:                      # noqa: BLE001 (the next pass)
             log.error("heal: %s's unfinished tail on %s was not recorded: %s", network,
                       device, exc)
+            continue
+        if e.get("outcome") == "healed":
+            # The correctness review's G4-D2: closed at Fixed, its tail cut short, so the fix
+            # may not be saved: reopened as a tail failing in the running job is (`finish`),
+            # through the one home (`reopen_on_tail`, which logs a refusal and never raises).
+            reopen_on_tail(network, d, flagged)
     return marked
 
 

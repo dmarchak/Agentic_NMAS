@@ -186,13 +186,15 @@ def change(device="core-b", ts=T0):
 
 
 class TestDetect:
-    def test_off_closes_what_is_watching_and_reads_nothing(self, world):
+    def test_off_reads_nothing_and_leaves_what_is_watching_open(self, world):
+        # The correctness review's G4-D1 (C3880; the operator, 2026-11-16: "Self-healing Off
+        # must not close standing incidents"): Off is no fix, so it closes nothing.
         change()
         P.turn_off("Default", actor="op@example.com")
         dev = Device()
         got = D.run("Default", now=T0 + 10, check=dev)
-        assert got["mode"] == "off" and dev.calls == [] and len(got["closed"]) == 1
-        assert "nothing new starts" in I.read("Default")["incidents"][0]["closed_why"]
+        assert got["mode"] == "off" and dev.calls == [] and got["closed"] == []
+        assert I.read("Default")["incidents"][0]["state"] == "watching"
 
     # No grace (70e89a47, the operator, 2026-11-17, round 2: "a drifted read settles the
     # incident at once, on its first read; no second read, no person's grace"): the waits these

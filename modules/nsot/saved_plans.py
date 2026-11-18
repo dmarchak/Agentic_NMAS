@@ -681,6 +681,15 @@ def save_fix(network: str, *, run_id: str, name: str, actor: str, actor_verified
         if why:
             raise Refused(why)
     rec = _verified_run(network, run_id)
+    # The plan saved is the one the run verified (the correctness review's G3-H2, 2026-11-18):
+    # a plan changed since (an edited fix's new version, a built-in plan a deploy changed) is
+    # no verified fix. A record from before runs kept their digest names none, and is saved as
+    # before.
+    ran, now = rec.get("template_digest") or "", CP.template_of(rec.get("key")).digest
+    if ran and ran != now:
+        raise Refused(f"{rec.get('key')} has changed since this run verified it (it ran "
+                      f"{ran}, the plan is {now} now): its lines are not the ones verified; "
+                      "run the plan again and save that run")
     key = _key(FIX, name)
     doc = _template_doc(rec, key, name, words)
     t = CP.parse(doc)
@@ -1348,7 +1357,11 @@ def close_fixed(network: str, incident_id: str, run: dict, e: dict, by: str) -> 
         (f"fixed: saved script {e.get('name')}'s run {rid[-8:]} verified on "
          f"{run.get('device') or '?'} at {hhmm} UTC"), now=now, by=by,
         read_words=f"the script's run {rid} read the device back and verified",
-        fixed={"run": rid, "device": run.get("device") or "", "at": _iso(),
+        # The correctness review's G4-D5: the moment its verify passed (``epoch``) and the fix
+        # that made it (``operation``), as every verified fix's proof carries them, so the
+        # findings count it (`heal.findings._fixes`: a later fix, a fight).
+        fixed={"run": rid, "device": run.get("device") or "", "at": _iso(), "epoch": now,
+               "operation": f"saved script {e.get('name') or e.get('key') or '?'}",
                "script": e.get("key") or "", "name": e.get("name") or ""})
 
 
