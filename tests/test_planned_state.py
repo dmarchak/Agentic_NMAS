@@ -21,6 +21,9 @@ from modules.nsot import device_ops as D
 from tests.test_attribution_b2 import b2  # noqa: F401 - the fixture
 
 OPERATOR = "ops@example.com"
+#: How a screen names the operator: by display name, never the identity (C3715; the planned
+#: state's words through `display_names.people` since 93120b2f).
+SHOWN = OPERATOR.split("@", 1)[0]
 NET = "lab"
 
 
@@ -81,7 +84,7 @@ class TestAHeldDevice:
             got = PS.state(PS.read(NET, now), "r8", NET, DOWN, now)
         until = now - 60 + 13 * 60
         assert got["level"] == "plan" and got["link"] == "r8", got
-        assert got["words"] == (f"Reloading · by {OPERATOR} · step 4 of 6 (wait) · back by "
+        assert got["words"] == (f"Reloading · by {SHOWN} · step 4 of 6 (wait) · back by "
                                 f"~{_clock(until)}")
         # A list row names no person; the map, the operation and when it is back.
         assert got["short"] == f"Reloading · step 4 of 6 (wait) · back by ~{_clock(until)}"
@@ -92,7 +95,7 @@ class TestAHeldDevice:
             D.note("verify")
             got = PS.state(PS.read(NET), "r2", NET, UP)
         assert got["level"] == "plan", got
-        assert got["words"].startswith(f"Deploying · by {OPERATOR} · step ")
+        assert got["words"].startswith(f"Deploying · by {SHOWN} · step ")
         assert "(verify)" in got["words"] and "back by" not in got["words"]
 
     def test_a_read_hold_draws_nothing(self, windows):
@@ -108,7 +111,7 @@ class TestAWindowWithNoHold:
         now = time.time()
         windows["planned"] = [_window(now - 60, unreachable=())]
         got = PS.state(PS.read(NET, now), "r8", NET, DOWN, now)
-        assert got["words"] == (f"Restarting as planned · by {OPERATOR} · back by "
+        assert got["words"] == (f"Restarting as planned · by {SHOWN} · back by "
                                 f"~{_clock(now - 60 + 13 * 60)}")
         assert got["level"] == "plan" and got["link"] == "r8"
 
@@ -162,7 +165,7 @@ class TestOverdue:
         got = PS.state(PS.read(NET, now), "s5", NET, down, now)
         back = start + 13 * 60 + R.SETTLE_SECONDS
         assert got["level"] == "danger", got
-        assert got["words"] == f"Not answering · overdue after r8's reload (back by {_clock(back)})"
+        assert got["words"] == f"Not reachable · overdue after r8's reload (back by {_clock(back)})"
 
     def test_its_own_device_past_its_window_is_red_at_once(self, windows):
         # Needs attention raises it when the window ends (tests/test_planned_restart_quiet.py):
@@ -172,7 +175,7 @@ class TestOverdue:
         now = start + 13 * 60 + 60
         down = {"answering": False, "since": R._iso(start + 30)}
         got = PS.state(PS.read(NET, now), "r8", NET, down, now)
-        assert got["words"] == (f"Not answering · overdue after its reload (back by "
+        assert got["words"] == (f"Not reachable · overdue after its reload (back by "
                                 f"{_clock(start + 13 * 60)})")
 
     def test_down_since_after_the_window_is_not_its_doing(self, windows):
@@ -211,7 +214,7 @@ class TestTheCardsExpectedEffects:
         assert whats == sorted([
             "1 alert(s) on r2: Device unreachable (SNMP)",
             "1 alert(s) on s2: Device unreachable (SNMP)",
-            "r2 not answering", "s2 out of Mercury's reach",
+            "r2 not reachable", "s2 out of Mercury's reach",
             "OSPF r1–r2 not up", "OSPFv3 r1–r2 not up", "r2's protocols not measured",
             f"r1 logged its OSPF adjacency to r2 down (1)",
             f"r1 logged its OSPFv3 adjacency to r2 down (1)",
@@ -224,7 +227,7 @@ class TestTheCardsExpectedEffects:
         assert by["r1 logged its OSPF adjacency to r2 down (1)"]["predicted_by"] == \
             "the peer's window"
         # Its own device is back by the window's end; a predicted one, the settle time later.
-        assert by["r2 not answering"]["back_by"] == R._iso(B.UNTIL)
+        assert by["r2 not reachable"]["back_by"] == R._iso(B.UNTIL)
         assert by["s2 out of Mercury's reach"]["back_by"] == R._iso(B.UNTIL + R.SETTLE_SECONDS)
         assert got["unexpected"] == [] and got["overdue"] == [] and got["errors"] == []
 
