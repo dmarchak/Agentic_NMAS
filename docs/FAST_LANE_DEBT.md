@@ -1,5 +1,9 @@
 # Checks skipped by the operator's decision of 2026-11-15
 
+**The fast lane ended on 2026-11-18** (the operator: "Turn fastlane off and restore full CI
+gating"); it is now a reusable mode, off by default (docs/FASTLANE.md). The rows below stay
+owed until the catch-up clears them: tests, fidelity, a full gate and CI green.
+
 The operator, 2026-11-15, temporary until the operator says otherwise: "skip tests and checks to
 get the feature working ... No test runs, no new tests, no red-green proofs, no boards/fidelity/
 manual updates, no independent review. Write and deploy the code. Keep only: the commit hooks as

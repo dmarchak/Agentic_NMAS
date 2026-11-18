@@ -17,9 +17,24 @@ network, no service.
 import json
 import os
 
+import pytest
+
 from tests.test_nmas_deploy import _git, _run, world  # noqa: F401 (the fixture)
 
 TESTS = "pytest 3 files for the touched modules: 42 passed"
+#: The operator's mode file, turned on until far ahead (docs/FASTLANE.md, "Turning it on").
+ON = {"by": "the operator", "at": "2026-11-15T00:00:00Z", "until": "2099-01-01T00:00:00Z",
+      "why": "a supervised lab window"}
+
+
+@pytest.fixture(autouse=True)
+def mode(tmp_path, monkeypatch):
+    """The fast lane on for this file's tests (off by default since 2026-11-18): its mode file
+    in the test's own folder, never the person's home (`NMAS_FAST_LANE_FILE`)."""
+    path = tmp_path / "fast-lane.json"
+    path.write_text(json.dumps(ON), encoding="utf-8")
+    monkeypatch.setenv("NMAS_FAST_LANE_FILE", str(path))
+    return path
 
 
 def _record(world):
@@ -94,3 +109,52 @@ def test_revert_with_no_deploy_recorded_is_refused(world, capsys):
     code, restarted, _calls = _run(world, {}, extra=("--revert",))
     assert code == 4 and not restarted
     assert "nothing to put it back to" in capsys.readouterr().err
+
+
+class TestOffByDefault:
+    """The operator, 2026-11-18: "Turn fastlane off and restore full CI gating" (docs/FASTLANE.md):
+    `--fast-lane` deploys only while the operator's mode file says it is on; otherwise it is
+    refused before anything moves, naming the file and why. `--revert` is recovery and asks no
+    mode. The deploy record carries the mode's words."""
+
+    def _refused(self, world, capsys, why):
+        world.advance({"app.py": "v = 2\n"})
+        code, restarted, calls = _run(world, {}, extra=("--fast-lane", TESTS), smoke=_green)
+        err = capsys.readouterr().err
+        assert code == 4 and not restarted, err
+        assert _git(world.host, "rev-parse", "HEAD") == world.base
+        assert not calls, "refused before asking anything"
+        assert "--fast-lane refused: the fast lane is off" in err and why in err, err
+        return err
+
+    def test_no_mode_file_is_off(self, world, capsys, mode):
+        mode.unlink()
+        err = self._refused(world, capsys, "does not exist")
+        assert str(mode) in err and "docs/FASTLANE.md" in err
+
+    def test_a_mode_past_its_until_is_off(self, world, capsys, mode):
+        mode.write_text(json.dumps(dict(ON, until="2026-11-17T00:00:00Z")), encoding="utf-8")
+        self._refused(world, capsys, "it ended at 2026-11-17T00:00:00Z")
+
+    def test_a_mode_naming_no_person_or_reason_is_off(self, world, capsys, mode):
+        mode.write_text(json.dumps(dict(ON, by="", why=" ")), encoding="utf-8")
+        self._refused(world, capsys, "names no by, why")
+
+    def test_an_unreadable_mode_is_off(self, world, capsys, mode):
+        mode.write_text("{not json", encoding="utf-8")
+        self._refused(world, capsys, "cannot be read (JSONDecodeError)")
+
+    def test_revert_asks_no_mode(self, world, capsys, mode):
+        target = world.advance({"app.py": "v = 2\n"})
+        assert _run(world, {}, extra=("--fast-lane", TESTS), smoke=_green)[0] == 0
+        mode.unlink()
+        code, restarted, _calls = _run(world, {}, extra=("--revert",))
+        assert code == 0 and restarted, capsys.readouterr()
+        assert _git(world.host, "rev-parse", "HEAD") == world.base != target
+
+    def test_the_record_carries_the_modes_words(self, world, capsys):
+        world.advance({"app.py": "v = 2\n"})
+        assert _run(world, {}, extra=("--fast-lane", TESTS), smoke=_green)[0] == 0
+        assert _record(world)[-1]["fast_lane"]["mode"] == (
+            "the fast lane is on until 2099-01-01T00:00:00Z, by the operator: a supervised "
+            "lab window")

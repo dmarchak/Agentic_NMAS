@@ -93,6 +93,7 @@ how the target was verified, the verdict and the exit code.
 """
 
 import argparse
+import datetime
 import getpass
 import json
 import os
@@ -1309,12 +1310,58 @@ def offline_verdict(repo, target, run=subprocess.run):
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# The fast lane (the operator, 2026-11-15, temporary until the operator ends it)
+# The fast lane: a reusable mode, OFF by default (docs/FASTLANE.md; first used 2026-11-15 to
+# 11-17, retired 2026-11-18 by the operator: "Turn fastlane off and restore full CI gating")
 # ---------------------------------------------------------------------------
 
 #: The fewest words a fast-lane deploy's TESTS may say (the tests run for the touched files
 #: and their result: "pytest 12 files, 340 passed" is five).
 FAST_LANE_MIN_WORDS = 4
+#: The mode's switch, on the machine that runs this script: absent, unreadable, incomplete or
+#: past its ``until`` is OFF, and `--fast-lane` is refused naming why (docs/FASTLANE.md, "Turning
+#: it on"). Its keys: ``by`` (who decided it), ``at`` and ``until`` (ISO 8601 or epoch
+#: seconds), ``why``. Not inside the checkout: a commit never turns it on.
+FAST_LANE_FILE = os.environ.get("NMAS_FAST_LANE_FILE",
+                                os.path.expanduser("~/.config/nmas/fast-lane.json"))
+
+
+def _instant(value):
+    """Epoch seconds from an ISO 8601 text or a number; None when it is neither."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    try:
+        return datetime.datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def fast_lane_mode(now=None) -> tuple:
+    """``(on, words)``: whether the fast lane is on (`FAST_LANE_FILE`), and the words that say
+    so or say why not, naming the file. Off unless the file holds ``by``, ``at``, ``why`` and an
+    ``until`` still ahead."""
+    now = time.time() if now is None else now
+    path = FAST_LANE_FILE
+    if not os.path.exists(path):
+        return False, (f"the fast lane is off: {path} does not exist (docs/FASTLANE.md, "
+                       "\"Turning it on\")")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            mode = json.load(fh)
+    except (OSError, ValueError) as exc:
+        return False, f"the fast lane is off: {path} cannot be read ({type(exc).__name__})"
+    if not isinstance(mode, dict):
+        return False, f"the fast lane is off: {path} is not a mapping"
+    missing = [k for k in ("by", "at", "why", "until") if not str(mode.get(k) or "").strip()]
+    if missing:
+        return False, f"the fast lane is off: {path} names no {', '.join(missing)}"
+    until = _instant(mode.get("until"))
+    if until is None:
+        return False, f"the fast lane is off: {path}'s until {mode.get('until')!r} is no time"
+    if now >= until:
+        return False, (f"the fast lane is off: it ended at {mode.get('until')} ({path}; "
+                       "docs/FASTLANE.md's catch-up is owed)")
+    return True, (f"the fast lane is on until {mode.get('until')}, by {mode.get('by')}: "
+                  f"{mode.get('why')}")
 #: The smoke check's bound, reasoned, not measured yet: it reads the running release's own
 #: answers after its readiness, which the deploy has already waited for; the first fast-lane
 #: deploy's run measures it (recorded in its row), and the bound moves to 2.5x that.
@@ -1597,6 +1644,15 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
         print(f"--fast-lane needs the tests run and their result, at least "
               f"{FAST_LANE_MIN_WORDS} words; given {args.fast_lane!r}. Refused.", file=sys.stderr)
         return LOCAL_REFUSED
+    if args.fast_lane is not None:
+        # Off by default (docs/FASTLANE.md): only the operator's mode file turns it on. A
+        # --revert asks no mode: going back to the previous deployed release is recovery.
+        on, words = fast_lane_mode()
+        if not on:
+            print(f"--fast-lane refused: {words}. Deploy with the gate's or CI's verdict "
+                  "instead (`nmas-deploy --wait`).", file=sys.stderr)
+            return LOCAL_REFUSED
+        args.fast_lane_mode = words
     # The final SDN lab's laptop kit (the operator, 2026-11-05: "nmas-deploy refuses to run from
     # this installation"): its worktree carries LAB_KIT_MARKER, and nothing is ever deployed
     # from it, whichever checkout it would deploy (lab/sdn-laptop/kit init writes the marker).
@@ -1797,6 +1853,7 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
         changed = ([] if head == target else
                    git(repo, "diff", "--name-only", head, target).split())
         row["fast_lane"] = {"tests": args.fast_lane if fast else "", "files": changed,
+                            "mode": getattr(args, "fast_lane_mode", "") if fast else "",
                             "commits": len(git(repo, "log", "--format=%H",
                                                f"{target}..{head}" if back
                                                else f"{head}..{target}").split())}
