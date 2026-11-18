@@ -1206,7 +1206,8 @@ def fire(network: str, key: str, problem, incident: str, *, sources=None,
                 # Every verified script run closes its incident Fixed, whichever path fired it
                 # (the heal decision, a re-decide): one close (the operator, 2026-11-16).
                 close_fixed(network, incident, {"id": out["run"],
-                                                "device": values.get("device")},
+                                                "device": values.get("device"),
+                                                "interface": values.get("interface")},
                             e, e.get("promoted_by") or "")
     _settle(key, row["id"], ok=out["ok"], sent=out["sent"], hash=out["hash"],
             run=out["run"], words=out["words"][:300])
@@ -1344,11 +1345,23 @@ def release(key: str, row_id: str, words: str) -> dict:
 
 
 def close_fixed(network: str, incident_id: str, run: dict, e: dict, by: str) -> dict:
-    """Close *incident_id* as Fixed by the script *e*'s verified *run* (``{"id", "device"}``)
-    through the one close path (`decide.end_standing`, the close keeping ``fixed``); ``{}``
-    when it is not standing (the detect pass ends it then)."""
-    from modules.heal import decide
+    """Close *incident_id* as Fixed by the script *e*'s verified *run* (``{"id", "device",
+    "interface"?}``) through the one close path (`decide.end_standing`, the close keeping
+    ``fixed``); ``{}`` when it is not standing (the detect pass ends it then), or when the run
+    fixed one port and the incident holds more than that port's events
+    (`errdisable.beyond_port`): it stands on them, and the detect pass ends it once they are
+    gone (the correctness review's G3 M3, 2026-11-18)."""
+    from modules.heal import decide, errdisable, incidents
 
+    port = str(run.get("interface") or "")
+    if port:
+        inc = next((i for i in incidents.read(network).get("incidents") or []
+                    if i.get("id") == incident_id), None)
+        left = errdisable.beyond_port(inc, port) if inc else []
+        if left:
+            log.info("saved plans: %s's %s is not closed on %s's verified run on %s: it "
+                     "holds %s", network, incident_id, run.get("id"), port, "; ".join(left))
+            return {}
     now = time.time()
     hhmm = time.strftime("%H:%M", time.gmtime(now))
     rid = str(run.get("id") or "")

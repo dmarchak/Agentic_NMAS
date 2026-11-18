@@ -776,3 +776,47 @@ class TestPortSecurityWhileDown:
             "at": E._iso(AT + 60), "epoch": AT + 60}]
         result, words = E.check_cause_cleared(None, psec_run(lines))
         assert result == "fail" and "Port stays down" in words, (result, words)
+
+
+# ── One port's verified fix closes only an incident of that port (the correctness review's
+# G3 M3, 2026-11-18) ─────────────────────────────────────────────────────────────────────────
+
+def _standing(incident_id: str) -> None:
+    from modules.heal import incidents
+
+    def change(doc):
+        inc = next(i for i in doc["incidents"] if i["id"] == incident_id)
+        inc.update(state="standing", standing={"decision": "d-1", "outcome": "would_heal",
+                                               "words": "a saved script fixes it"})
+    incidents._mutate(NET, change)
+
+
+class TestOnePortsFixClosesOnlyItsPort:
+    """Incidents are one per device; a saved script's verified run recovers one port. An
+    incident holding another port's symptom is not healed by it, so it stays standing."""
+
+    def close(self, iid):
+        from modules.heal import incidents
+        from modules.nsot import saved_plans
+        got = saved_plans.close_fixed(NET, iid, {"id": "run-00000001", "device": "s1",
+                                                 "interface": "Gi1/0"},
+                                      {"key": "sp-1", "name": "recover the port"}, "test")
+        inc = next(i for i in incidents.read(NET)["incidents"] if i["id"] == iid)
+        return got, inc
+
+    def test_a_verified_port_fix_leaves_another_ports_symptom_standing(self, store):
+        iid = opened("Critical syslog received")["incident"]
+        opened("Interface down", "GigabitEthernet1/0", at=AT + 20)
+        opened("Interface down", "GigabitEthernet2/0", at=AT + 25)
+        _standing(iid)
+        got, inc = self.close(iid)
+        assert inc["state"] == "standing", (got, inc.get("closed"))
+        assert got == {}, got
+
+    def test_a_verified_port_fix_closes_an_incident_of_that_port_alone(self, store):
+        iid = opened("Critical syslog received")["incident"]
+        opened("Interface down", "GigabitEthernet1/0", at=AT + 20)
+        _standing(iid)
+        got, inc = self.close(iid)
+        assert inc["state"] == "closed" and got, (got, inc.get("state"))
+        assert inc["fixed"]["run"] == "run-00000001", inc.get("fixed")

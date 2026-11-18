@@ -231,7 +231,8 @@ def fix_with_script(incident_id):
                              f"{offer['name']} pressed on incident {incident_id}"), **who)
         if S.run_verified(rec):     # a run that sent nothing closes nothing (C3)
             S.close_fixed(network, incident_id, {"id": rec.get("id"),
-                                                 "device": offer["values"].get("device")},
+                                                 "device": offer["values"].get("device"),
+                                                 "interface": offer["values"].get("interface")},
                           e, who["actor"])
         return {"run": rec.get("id"), "state": rec.get("state"),
                 "words": CR.OUTCOME_WORDS.get(rec.get("outcome") or "", "")

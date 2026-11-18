@@ -539,6 +539,21 @@ def _alert_ports(inc: dict) -> list:
             if isinstance(t, dict) and t.get("kind") in PORT_TRIGGERS and t.get("interface")]
 
 
+def beyond_port(inc: dict, port: str) -> list:
+    """What incident *inc* holds besides port *port*'s own events, as words: each judged
+    trigger (`decide.judged_triggers`) that is no port event (`PORT_TRIGGERS`) or names another
+    port, and each attached member's device; ``[]`` when it holds only *port*'s. A fix verified
+    on *port* heals none of them, so it never closes the incident while one is there (the
+    correctness review's G3 M3, 2026-11-18: s1's Gi1/0 recovered, Gi2/0's cable still out)."""
+    from modules.heal import decide
+
+    left = [t.get("words") or t.get("key") or t.get("kind") or "a trigger"
+            for t in decide.judged_triggers(inc) if isinstance(t, dict)
+            and (t.get("kind") not in PORT_TRIGGERS
+                 or (t.get("interface") and not same_port(t["interface"], port)))]
+    return left + [f"{m.get('device')}, attached" for m in inc.get("attached") or []]
+
+
 def _due(inc: dict, now: float) -> bool:
     """Whether *inc* is read for this problem now: open, an alert among its triggers, and no
     classification, or an unclassified one older than `RECHECK_S` or with a newer trigger."""
