@@ -25,7 +25,7 @@ import pytest
 from modules import fanout
 from modules.heal import batch as B
 from tests.test_heal_decide import GOLDEN, ROUTE4, Fake, lab, settle  # noqa: F401
-from tests.test_heal_policy import T0, auto, iso
+from tests.test_heal_policy import T0, auto, confirm, iso
 from tests.test_sdn_connections import networks  # noqa: F401  (the fixture `lab` builds on)
 from tests.v2_context import batch_fixture
 
@@ -124,6 +124,127 @@ class TestEachUntilFailure:
             return True
         assert fanout.each_until_failure(fn, range(4), bool) == [True] * 4
         assert most[0] == 4, "the rest run at once"
+
+
+class TestEveryDeviceAtOnce:
+    """c4948c2c (the operator, 2026-11-16; CLAUDE.md's heal-batch clause): the batch's job
+    (`batch.run`) fixes every device at once, each through its own act, and a failure stops no
+    other; each device's outcome is recorded on its own incident (``batches``) and the batch
+    says how many were fixed. Three would-heals decided by the real decision in dry run, Auto
+    then turned on (the batch's own step done, as the switch's request does it: *pre*); each
+    act a stand-in (`act_start`) that waits at a barrier of three, so the run passes only if
+    all three acts are live at once, and its outcome read by the stand-in *wait*. The debt
+    pass, 2026-11-18 (docs/FAST_LANE_DEBT.md's row for c4948c2c)."""
+
+    DEVICES = ("edge-a", "edge-b", "edge-c")
+
+    def test_every_device_at_once_and_a_failure_stops_none(self, lab, monkeypatch):  # noqa: F811
+        import threading
+
+        from modules.heal import decide, decisions, incidents, retry
+
+        monkeypatch.setattr(retry, "run_soon", lambda *a, **k: None)
+        # The three devices' rows, as guard 4's judgement at the batch reads them (managed).
+        monkeypatch.setattr("modules.device.load_saved_devices", lambda path=None: [
+            {"hostname": d, "ip": f"192.0.2.{n + 1}", "device_type": "cisco_ios"}
+            for n, d in enumerate(self.DEVICES)])
+        items = []
+        for device in self.DEVICES:
+            inc = settle(GOLDEN + ROUTE4, device=device, claim=False)
+            (d,) = decide.run("Default", now=T0, sources=Fake(GOLDEN + ROUTE4))["decided"]
+            assert d["outcome"] == "would_heal", d
+            items.append({"device": device, "incident": inc["id"], "decision": d["decision"],
+                          "from": "would_heal",
+                          "program_hash": decisions.find("Default", d["decision"])[
+                              "program_hash"]})
+        # On until turned off (C3750): the batch's devices are judged at the real clock.
+        confirm("Default", now=T0 + 5, heal_mode="auto", heal_kinds_auto=["added_line"])
+        barrier, started = threading.Barrier(len(items), timeout=10), []
+
+        def act_start(network, taken):
+            started.append(taken["device"])
+            barrier.wait()                            # all three live at once, or it breaks
+            return f"job-{taken['device']}"
+
+        def wait(job, bound):
+            outcome = "failed" if job == "job-edge-b" else "healed"
+            return True, {"state": "done", "payload": {"result": {"outcome": outcome}}}
+        out = B.run("Default", {"items": items}, actor="op@example.com", verified="access",
+                    person=True, act_start=act_start, wait=wait,
+                    pre={"steps": [], "batch": "hb-1", "devices": [], "scripts": [],
+                         "claims": {}, "approval": {"id": "hb-1", "by": "op@example.com",
+                                                    "named": ""}})
+        assert sorted(started) == list(self.DEVICES), (started, out)
+        got = {d["device"]: d["outcome"] for d in out["devices"]}
+        assert got == {"edge-a": "healed", "edge-b": "failed", "edge-c": "healed"}, out
+        assert out["outcome"] == "partial" and out["words"].startswith(
+            "2 of 3 fixed and verified; did not: edge-b"), out["words"]
+        held = {i["id"]: i for i in incidents.read("Default")["incidents"]}
+        for item in items:
+            (entry,) = held[item["incident"]]["batches"]
+            assert entry["batch"] == "hb-1" and entry["outcome"] == got[item["device"]]
+
+
+class TestAsPreviewed:
+    """8f1d8006 (C3866, the operator, 2026-11-16: "every switch flips at once"): a restore of
+    the batch is decided from the decision the batch previewed, no device read
+    (`batch._as_previewed`): its program and hash the previewed ones, judged again by THE tier
+    rule as self-healing is now and by guard 4; one that cannot be so is None, and `_one`
+    decides it again in full. A would-heal decided by the real decision in dry run. The debt
+    pass, 2026-11-18 (docs/FAST_LANE_DEBT.md's row for 8f1d8006)."""
+
+    APPROVAL = {"id": "hb-2", "by": "op@example.com", "named": "self-healing switched on"}
+
+    @pytest.fixture
+    def restore(self, lab, monkeypatch):  # noqa: F811
+        from modules.heal import decide, decisions, incidents, retry
+
+        monkeypatch.setattr(retry, "run_soon", lambda *a, **k: None)
+        monkeypatch.setattr("modules.device.load_saved_devices", lambda path=None: [
+            {"hostname": "edge-b", "ip": "192.0.2.2", "device_type": "cisco_ios"}])
+        inc = settle(GOLDEN + ROUTE4, device="edge-b", claim=False)
+        (d,) = decide.run("Default", now=T0, sources=Fake(GOLDEN + ROUTE4))["decided"]
+        full = decisions.find("Default", d["decision"])
+        item = {"device": "edge-b", "incident": inc["id"], "decision": full["id"],
+                "from": "would_heal", "program_hash": full["program_hash"]}
+        confirm("Default", now=T0 + 5, heal_mode="auto", heal_kinds_auto=["added_line"])
+        held = next(i for i in incidents.read("Default")["incidents"] if i["id"] == inc["id"])
+        return held, item, full
+
+    def made(self, restore):
+        inc, item, _full = restore
+        return B._as_previewed("Default", inc, item, self.APPROVAL, time.time())
+
+    def test_a_would_heal_is_its_previewed_heal_with_no_second_read(self, restore):
+        _inc, _item, full = restore
+        got = self.made(restore)
+        assert got is not None and got["outcome"] == "heal", got
+        assert (got["program"], got["program_hash"], got["previewed"]) == (
+            full["program"], full["program_hash"], full["id"])
+        assert got["batch"]["id"] == "hb-2" and got["batch"]["named"] == self.APPROVAL["named"]
+        assert "decided as the batch previewed it, with no second read" in got["steps"][1][
+            "words"]
+
+    def test_a_moved_program_is_decided_again(self, restore):
+        inc, item, _full = restore
+        moved = dict(item, program_hash="0" * 16)
+        assert B._as_previewed("Default", inc, moved, self.APPROVAL, time.time()) is None
+
+    def test_not_in_auto_is_decided_again(self, restore):
+        confirm("Default", now=T0 + 6, heal_mode="dry_run", reason="back to watching")
+        assert self.made(restore) is None
+
+    def test_a_kind_auto_does_not_fix_is_decided_again(self, restore):
+        confirm("Default", now=T0 + 6, heal_mode="auto", heal_kinds_auto=["missing_line"],
+                reason="another kind only")
+        assert self.made(restore) is None
+
+    def test_guard_4_holding_is_decided_again(self, restore, monkeypatch):
+        from modules.heal import decide
+
+        monkeypatch.setattr(decide, "guard_holds", lambda network, inc, guard, now=None: {
+            "guard": 4, "name": "observe only", "words": "Mercury changes nothing on it"})
+        assert self.made(restore) is None
 
 
 class TestThePress:

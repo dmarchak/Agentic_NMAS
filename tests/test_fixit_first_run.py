@@ -312,6 +312,25 @@ class TestTheErrDisabledPort:
         (row,) = missing.for_incident(s1.iid)
         assert row["overlooked"] == ["errdisable-recover"], "the row says a plan exists"
 
+    def test_a_flagged_gaps_line_keeps_its_overlooked_steps_for_the_card(self, s1, monkeypatch):
+        """c2448124 (the operator, 2026-11-16): the gap's proposal line keeps the overlooked
+        catalog steps' keys, so the card names them from the record (`section._flagged`), not
+        from its words. The debt pass, 2026-11-18 (docs/FAST_LANE_DEBT.md's row for
+        c2448124)."""
+        from modules.fixit import incident as F
+        from modules.fixit import section
+        gap = {"what": "no operation recovers an err-disabled port", "evidence_refs": []}
+
+        def make(body):
+            a = own_answer(body)
+            return dict(a, gap=dict(gap, evidence_refs=a["hypotheses"][0]["evidence_refs"]))
+        got, found = self.investigate(s1, monkeypatch, make)
+        assert got["state"] == "gap", got["words"]
+        line = F.read(section.incident_of(NET, found)["incident"])["lines"][-1]
+        assert line["proposal"] == got["proposal"]["proposal"]
+        assert line["overlooked"] == ["errdisable-recover"], line
+        assert section._flagged(dict(line, words="")) == ["errdisable-recover"]
+
     def test_it_reads_the_err_disable_status_confirms_bpduguard_and_proposes_the_plan(
             self, s1, monkeypatch):
         """C3797 (the operator, 2026-11-15: "Test with this incident shape: the AI reads

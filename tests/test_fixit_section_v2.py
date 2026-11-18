@@ -1086,3 +1086,63 @@ class TestTheModals:
         assert confirmed and "Hand-over 1 kept" in confirmed, confirmed
         assert [ln.get("version") for ln in F.read(incident(iid))["lines"]
                 if "version" in ln] == [1]
+
+
+class TestARefusedPlansWords:
+    """4a8bb0df (the operator, 2026-11-16): a plan Mercury refuses at its preflight is said as
+    the AI's finding and why its fix can't run, in one sentence, never "Mercury would refuse a
+    step of it": its finding the first sentence of the AI's rationale (its meta-leads dropped,
+    cut at `FINDING_CHARS` on a whole word), the reason the refusal's first sentence with its
+    step and preflight wording dropped (`section._refused_plan_words`; the words as the
+    operator's wording rule of 2026-11-16 changed them). The debt pass, 2026-11-18
+    (docs/FAST_LANE_DEBT.md's row for 4a8bb0df)."""
+
+    WHY = ("step 1 (errdisable-recover): refused at its preflight: the cause has not cleared: "
+           "a new violation at 18:22:40. Port stays down.")
+
+    def test_the_finding_and_the_plain_reason_in_one_sentence(self):
+        answer = {"shown": {"rationale": "AI: s5 Gi0/3 was err-disabled by port security. "
+                                         "The MAC aabb.cc00.8099 tripped it."}}
+        assert S._refused_plan_words(answer, self.WHY) == (
+            "s5 Gi0/3 was err-disabled by port security; Mercury refuses its fix as it stands: "
+            "the cause has not cleared: a new violation at 18:22:40.")
+
+    def test_no_finding_is_the_reason_alone_and_no_reason_the_refusal_alone(self):
+        assert S._refused_plan_words({}, self.WHY) == (
+            "Mercury refuses its fix as it stands: the cause has not cleared: a new violation "
+            "at 18:22:40.")
+        assert S._refused_plan_words({"words": "The port is err-disabled."}, "") == (
+            "The port is err-disabled; Mercury refuses its fix as it stands.")
+
+    def test_a_long_finding_is_cut_on_a_whole_word(self):
+        long = "s5 " + " ".join(["word"] * 60)
+        got = S._refused_plan_words({"shown": {"rationale": long}}, self.WHY)
+        found = got.split("; Mercury refuses")[0]
+        assert len(found) <= S.FINDING_CHARS + 1 and found.endswith("word"), found
+
+
+class TestAGapsOverlookedSteps:
+    """c2448124 (the operator, 2026-11-16): a gap the AI reported that Mercury's check flags
+    keeps the overlooked catalog steps on its line (`record_proposal(overlooked=)`, at most
+    `OVERLOOKED_MOST` of at most `OVERLOOKED_CHARS` each), and the card names them from the
+    line, reading its words back only for a line kept before (`section._flagged`). The line by
+    the troubleshooting record's own writer (a Mercury line: an AI line must name its calls).
+    The debt pass, 2026-11-18 (docs/FAST_LANE_DEBT.md's row for c2448124)."""
+
+    def test_the_line_keeps_the_keys_capped(self, web):
+        iid = plant()
+        keys = [f"plan-{n:02d}-" + "x" * 80 for n in range(F.OVERLOOKED_MOST + 3)] + [""]
+        line = F.record_proposal(incident(iid), "mercury", "telemetry-resubscribe",
+                                 {"subs": ["101", "102"], "collector_step": False},
+                                 by=ACTOR, verified="access-proxy", overlooked=keys)
+        kept = F.read(incident(iid))["lines"][-1]
+        assert kept["proposal"] == line["proposal"]
+        assert kept["overlooked"] == [k[:F.OVERLOOKED_CHARS] for k in keys[:F.OVERLOOKED_MOST]]
+
+    def test_the_card_names_them_from_the_line_and_an_old_lines_from_its_words(self):
+        words = ("The AI found no fix; Mercury's catalogue has errdisable-recover and "
+                 "telemetry-readd for this incident's problem, not yet tried here")
+        assert S._flagged({"overlooked": ["errdisable-recover"], "words": words}) == [
+            "errdisable-recover"], "the line's keys, never its words"
+        assert S._flagged({"words": words}) == ["errdisable-recover", "telemetry-readd"]
+        assert S._flagged({"words": "no gap flagged"}) == []

@@ -650,6 +650,52 @@ class TestUnderSelfHealingsMode:
         again = S.fire_matching(NET, {"incident": rec})
         assert again[0]["already"] and len(seen["run"]) == 1
 
+    @pytest.mark.parametrize("outcome,state,closes", [
+        ("done", "done", True), ("failed", "failed", False),
+        ("not_needed", "done", False), ("rolled_back", "rolled_back", False)])
+    def test_a_can_t_fix_fires_it_as_a_job_and_only_its_verified_run_closes_the_incident(
+            self, store, monkeypatch, outcome, state, closes):
+        """49e955d5 (the operator, 2026-11-16): the heal decision's can't-fix fires a promoted
+        script, which runs as a job of its own (the incident's page its page, so the incident
+        reads Mercury working), and a verified run closes its incident Fixed through
+        `close_fixed` with the run as its fix; a run that failed, sent nothing (``not_needed``,
+        recorded ``done``) or rolled back closes nothing. The incident is a real one in the
+        incidents store, watching on s1 (as self-healing Off or a fresh one leaves it)."""
+        import time
+
+        from modules.heal import incidents as I
+        from modules.nsot import capture_job
+
+        e, _seen, out, _c = self._decided(store, monkeypatch, "cant_fix")
+        assert [s["key"] for s in out["scripts"]] == [e["key"]], "the decision fired it"
+        now = time.time()
+        iid = I.sight(NET, "s1", {"kind": "alert", "key": "alert:crit", "epoch": now,
+                                  "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+                                  "source": "grafana-alerts",
+                                  "rule": "Critical syslog received",
+                                  "words": "the alert Critical syslog received fired on s1"},
+                      now=now)["incident"]
+        jobs = []
+        real_start = capture_job.start
+
+        def start(network, label, actor, work, **kw):
+            jobs.append(dict(kw, network=network))
+            return real_start(network, label, actor, work, **kw)
+        monkeypatch.setattr(capture_job, "start", start)
+        monkeypatch.setattr("modules.nsot.command_plan_run.run", lambda network, key, values,
+                            **kw: {"id": "run-9", "kind": "command_plan", "state": state,
+                                   "outcome": outcome, "why": f"the run {outcome}"})
+        got = S.fire(NET, e["key"], BPDU, iid)
+        assert [(j["kind"], j["page"]) for j in jobs] == [
+            (S.JOB_KIND, f"/v2/incident/{iid}?list={NET}")], jobs
+        assert got["ok"] is closes and got["run"] == "run-9", got
+        inc = next(i for i in I.read(NET)["incidents"] if i["id"] == iid)
+        if closes:
+            assert inc["state"] == "closed", inc["state"]
+            assert (inc["fixed"]["run"], inc["fixed"]["script"]) == ("run-9", e["key"])
+        else:
+            assert inc["state"] == "watching" and not inc.get("fixed"), inc["state"]
+
 
 class TestAnotherProcessSeesASave:
     def test_a_sync_while_another_thread_walks_the_kinds_never_breaks_its_walk(self):
