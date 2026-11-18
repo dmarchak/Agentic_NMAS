@@ -75,6 +75,11 @@ def fix(operation="telemetry-resubscribe", device="r2", subscriptions=("101", "1
 #: A stand-in where a case is about something other than the ladder (a check, a citation, a
 #: guard); `fix()`'s re-subscribe repeats attempt 1 and is refused by the ladder.
 CLOSE = "telemetry-collector-close"
+#: The least one AI call of the investigation costs before any is measured (7b0bb884:
+#: `fixit_troubleshoot.start_usd`, the pin's stand-in typical output at its output rate), the
+#: one figure the per-incident cap compares, and a cap under it.
+LEAST = "$0.0576"
+UNDER_THE_LEAST = 0.02
 
 
 @pytest.fixture
@@ -320,31 +325,33 @@ class TestRefusedAtThePress:
     def test_past_the_cap_nothing_is_sent_and_both_figures_are_named(self, ai):
         from modules.settings_schema import write_settings
         iid = stopped(ai)
-        assert write_settings({"ai_cap_usd_per_incident": 0.10})["ok"]
+        assert write_settings({"ai_cap_usd_per_incident": UNDER_THE_LEAST})["ok"]
         r, html = press(ai, iid, drawn_spent="0.000000", drawn_cap="1.000000")
         assert r.status_code == 409
         said = sec_of(html)
-        # The worst case is four calls since C3797 (the investigation's rounds and last pass).
-        assert "Not asked" in said and "$0.5004" in said and "$0.10" in said
+        # Premise corrected (7b0bb884): the figure is the least one call costs, no worst case.
+        assert "Not asked" in said and LEAST in said and "$0.02" in said
         assert "the per-incident cap was $1.00 when the panel was drawn" in said
         assert ai.sent == [] and calls.read()["rows"] == []
         assert F.read(incident(iid))["state"] == "absent"
 
     def test_the_figure_drawn_is_the_figure_compared(self, ai):
-        """The worst case drawn is two calls at the pin's per-call cap, the figure the route's
-        cap compares (the board's "at most $0.25"; the price table makes it $0.2502)."""
+        """Premise corrected again (7b0bb884, the operator, 2026-11-16: no worst case; "a
+        start is refused only if the remaining budget can't cover the counted prompt plus the
+        task's measured typical output"): the figure the route's cap compares is the least one
+        call costs (`fixit_troubleshoot.start_usd`), and the card draws this incident's spend
+        after it ("this incident's spend after its first call at least $0.0576", nothing spent
+        yet), where it drew four calls' worst case at the pin's per-call cap."""
         from modules.ai import fixit_troubleshoot as AIT
-        from modules.ai import profiles
         from modules.fixit import policy as P
         iid = stopped(ai)
         _r, html = page(ai.client, iid)
         sec = sec_of(html)
-        worst = AIT.worst_usd()
-        # Premise corrected (C3797): the investigation's worst case is its rounds and its last
-        # pass, four calls at the pin's per-call cap ($0.5004), drawn so.
-        assert worst == round(4 * profiles.cap_per_call("fixit_troubleshoot"), 6)
-        assert f"at most {P.money(worst)} (one investigation: at most 4 calls" in sec
-        assert P.cap_state(incident(iid), worst)["worst"] == worst
+        least = AIT.start_usd()
+        assert P.money(least) == LEAST
+        assert f"this incident's spend after its first call at least {LEAST}" in sec, sec
+        got = P.cap_state(incident(iid), least)
+        assert (got["worst"], got["total"], got["spent"]) == (least, least, 0.0)
         assert 'name="drawn_cap" value="1.000000"' in sec
 
     def test_the_mode_off_sends_nothing(self, ai):
@@ -388,16 +395,16 @@ class TestRefusedAtThePress:
         drawn = {"drawn_spent": hidden(html, "drawn_spent"),
                  "drawn_cap": hidden(html, "drawn_cap")}
         assert drawn == {"drawn_spent": "0.000000", "drawn_cap": "1.000000"}
-        assert write_settings({"ai_cap_usd_per_incident": 0.10})["ok"]
+        assert write_settings({"ai_cap_usd_per_incident": UNDER_THE_LEAST})["ok"]
         kept = F.read(incident(iid))["lines"]
         r = post(ai.client, iid, what, **data, **drawn)
         said = sec_of(r.get_data(as_text=True))
         assert r.status_code == 409, said[:400]
         assert said.count("Not asked") == 1, said[:400]
         assert ("Since the panel was drawn, the per-incident cap was $1.00 when the panel was "
-                "drawn and is $0.10 now") in said
-        # Four calls' worst case since C3797.
-        assert "$0.5004" in said and "against the cap of $0.10" in said, said[:600]
+                "drawn and is $0.02 now") in said
+        # Premise corrected (7b0bb884): the least call's figure, no worst case.
+        assert LEAST in said and "against the cap of $0.02" in said, said[:600]
         assert ai.sent == [], "the model is not asked past the cap"
         assert calls.read()["rows"] == []
         assert F.read(incident(iid))["lines"] == kept, "nothing is recorded"
