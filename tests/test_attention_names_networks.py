@@ -81,9 +81,10 @@ def _page(client, monkeypatch, *sources):
 
 
 def _article(text, row_id):
-    # Board NA-R (2026-11-02): a row is a <details>, its one line and its body inside it.
+    # Board NA-R (2026-11-02): a row is a <details>, its one line and its body inside it; R5's
+    # card marks after its key (becced07: data-card, data-card-details).
     m = re.search(r'<details class="att[^"]*" data-attention-row="' + re.escape(row_id)
-                  + r'" data-keep="[^"]*">.*?</details>', text, re.S)
+                  + r'" data-keep="[^"]*"[^>]*>.*?</details>', text, re.S)
     assert m, f"no row {row_id!r} on the page"
     return re.sub(r"\s+", " ", m.group(0))
 
