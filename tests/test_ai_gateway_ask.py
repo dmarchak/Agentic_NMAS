@@ -128,12 +128,16 @@ def _hold_words(body, cap_name, cap, spent, held=0.0, calls_=0, uncapped=""):
     answer_usd = typ * rates["output"] / 1_000_000
     need = prompt_usd + answer_usd
     remaining = max(0.0, cap - spent - held)
+    # How the cap clears and where it is changed (C3873; the correctness review's test audit,
+    # half 1 row 11, 2026-11-18): the installation's day cap's own words.
+    clears = ("; it stops until the day ends or an admin raises the cap in Settings › AI"
+              if cap_name == "the installation's day cap" else "")
     return (f"{cap_name} ${cap:.4f}: spent ${spent:.4f} plus ${held:.4f} held by {calls_} "
             f"call(s) in flight leaves ${remaining:.4f}, under this call's counted prompt "
             f"(${prompt_usd:.4f}, {tokens:,} tokens, each priced as a cache write) plus its "
             f"typical answer ({typ:,} tokens, ${answer_usd:.4f}; not measured yet: no "
             f"connection_check call on {MODEL} in the last 30 days; the pin's max_tokens "
-            f"({typ:,}) stands in), ${need:.4f}{uncapped}; nothing was sent"), need
+            f"({typ:,}) stands in), ${need:.4f}{uncapped}{clears}; nothing was sent"), need
 
 
 def _request(world, **kw):

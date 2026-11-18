@@ -197,6 +197,35 @@ class TestTheAggregate:
         store.write_text("{not json\n")
         assert receipts.prior_authorisations("Lab", "s4")["state"] == "unreadable"
 
+    def test_a_command_plan_run_counts_unless_it_ended_net_zero_and_verified(self, store):
+        """A command plan's receipt is left out of the count only when its run ended with the
+        configuration as before, verified (``done``), or rolled back with nothing still
+        differing; one that failed, was not verified, re-tripped or was rolled back NOT
+        RESTORED may have left its authorised line in the configuration, and counts (the
+        correctness review's G6 M1; 7968c7d4's own premise: "net zero, verified")."""
+        from modules.nsot import receipts
+
+        def plan(at, outcome, after_rollback=None):
+            nz = {} if after_rollback is None else {"after_rollback": after_rollback}
+            return dict(self._row(at, [{"line": "shutdown", "reason": "err-disable recovery"}],
+                                  device="s1", outcome="deployed" if outcome == "done"
+                                  else "failed"),
+                        action="command_plan",
+                        command_plan={"plan": "errdisable-recovery", "outcome": outcome,
+                                      "net_zero": nz})
+        rows = [plan("2026-11-16T01", "done"),                          # net zero, verified
+                plan("2026-11-16T02", "rolled_back", after_rollback=[]),  # restored
+                plan("2026-11-16T03", "not_net_zero", after_rollback=[]),  # restored
+                plan("2026-11-16T04", "failed"),                         # counts
+                plan("2026-11-16T05", "unverified"),                     # counts
+                plan("2026-11-16T06", "retripped"),                      # counts
+                plan("2026-11-16T07", "failed", after_rollback=["shutdown"])]  # counts
+        store.write_text("".join(json.dumps(r) + "\n" for r in rows))
+        got = receipts.prior_authorisations("Lab", "s1", ["shutdown"])
+        assert got["state"] == "ok"
+        assert (got["lines"].get("shutdown") or {}).get("count") == 4, got
+        assert got["lines"]["shutdown"]["last_at"] == "2026-11-16T07"
+
     def test_the_plan_carries_it(self, store, monkeypatch):
         """THE plan carries each line's prior authorisations. Today's renderer drew them on
         the deploy preview ("authorised on this device 1 time(s) before", the last stated

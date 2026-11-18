@@ -1097,7 +1097,11 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
                     f"today's spend is unknown ({spent['error']}){uncapped}; nothing was sent"}
         if cap["per_day"] is not None:
             flying = reservations.in_flight(held)
+            # Each cap says how it clears and where it is changed (C3873; the correctness
+            # review's test audit, half 1 row 11, restored what e4e09698 dropped).
             out.append({"kind": "over_cap", "cap_kind": "installation day",
+                        "clears": ("it stops until the day ends or an admin raises the cap in "
+                                   "Settings › AI"),
                         "name": "the installation's day cap", "cap": float(cap["per_day"]),
                         "spent": float(spent["usd"]), "held": flying["usd"],
                         "calls": flying["calls"],
@@ -1110,6 +1114,8 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
             for which in ("day", "month"):
                 r = got[which]
                 out.append({"kind": "feature_cap", "cap_kind": which,
+                            "clears": (f"it stops until the {which} ends or an admin raises "
+                                       "the cap in Settings › AI"),
                             "name": f"{r['name']}'s {which} cap on {r['network']}",
                             "cap": r["cap"], "spent": r["spent"], "held": r["held"],
                             "calls": r["calls"], "remaining": r["cap"] - r["spent"] - r["held"]})
@@ -1158,7 +1164,9 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
                     f"${max(0.0, c['remaining']):.4f}, under this call's counted prompt "
                     f"(${prompt_usd:.4f}, {size['tokens']:,} tokens, each priced as a cache "
                     f"write) plus its typical answer ({typ:,} tokens, ${typ * rate:.4f}; "
-                    f"{typical['basis']}), ${need:.4f}{uncapped}; nothing was sent")}
+                    f"{typical['basis']}), ${need:.4f}{uncapped}"
+                    + (f"; {c['clears']}" if c.get("clears") else "")
+                    + "; nothing was sent")}
         if not thinking:
             return None
         top = max(1, min(most, window - size["tokens"]))

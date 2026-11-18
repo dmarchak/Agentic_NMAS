@@ -796,11 +796,14 @@ def calls_of(incident: Incident) -> dict:
     name, each time: ``{"state": "ok"|"partial"|"unreadable", "calls", "missing", "error"}``,
     *calls* in the order the record first names them, each ``{"id", "usd", "joined",
     "about_other"}`` (``joined``: a call that joined another's and cost nothing of its own;
-    ``about_other``: a call about another incident, or one that joined one). Read within the
-    incident (`calls.rows_since` from when it was detected), never the whole record; no
-    proposal naming a call reads nothing. ``unreadable`` (this record or the calls') holds no
-    calls, never none in their place; ``partial`` when the calls' record holds no row for an
-    id named (``missing``)."""
+    ``about_other``: a call about another incident, or one that joined one). Every call of
+    this incident's own investigations (`investigates`) is its call too, though no line names
+    it: one its watchdog stopped, or one that raised after its calls, keeps no proposal (the
+    correctness review's G5 MEDIUM-1). Read within the incident (`calls.rows_since` from when
+    it was detected), never the whole record; a record with no start line and no proposal
+    naming a call reads nothing (every investigation takes a start line first, the one start
+    path). ``unreadable`` (this record or the calls') holds no calls, never none in their
+    place; ``partial`` when the calls' record holds no row for an id named (``missing``)."""
     _check(incident)
     rec = read(incident)
     if rec["state"] == "unreadable":
@@ -810,7 +813,7 @@ def calls_of(incident: Incident) -> dict:
         for c in (line.get("calls") or []) if "proposal" in line else []:
             if c not in ids:
                 ids.append(c)
-    if not ids:
+    if not ids and not any("start" in line for line in rec["lines"]):
         return {"state": "ok", "calls": [], "missing": [], "error": ""}
     from modules.ai import calls
 
@@ -819,9 +822,12 @@ def calls_of(incident: Incident) -> dict:
     if got["state"] == "unreadable":
         return {"state": "unreadable", "calls": [], "missing": [],
                 "error": (f"the record of AI calls could not be read ({got['error']}), so what "
-                          f"{incident.id}'s {len(ids)} call(s) cost is not known")}
+                          + (f"{incident.id}'s {len(ids)} call(s)" if ids else
+                             f"{incident.id}'s investigations") + " cost is not known")}
     rows = {r.get("id"): r for r in got["rows"]}
     missing = [c for c in ids if c not in rows]
+    ids += [r["id"] for r in got["rows"]
+            if r.get("id") and r["id"] not in ids and investigates(r, incident)]
 
     def about(row) -> str:
         subject = (row or {}).get("subject")
@@ -848,11 +854,22 @@ def calls_of(incident: Incident) -> dict:
                       if missing else "")}
 
 
+def investigates(row: dict, incident: Incident) -> bool:
+    """Whether *row*, a call in the record of AI calls, is one of *incident*'s own
+    investigations' (a person's press or R1's, `fixit_troubleshoot.FEATURE` and
+    `AUTO_FEATURE`): its subject this incident, as the investigation writes it on every call."""
+    from modules.ai import fixit_troubleshoot as AIT
+
+    subject = (row or {}).get("subject")
+    return (row.get("feature") in (AIT.FEATURE, AIT.AUTO_FEATURE) and isinstance(subject, dict)
+            and subject.get("kind") == "heal_incident" and subject.get("id") == incident.id)
+
+
 def cost_so_far(incident: Incident) -> dict:
     """What *incident*'s AI calls cost (`calls_of`), summed each time: ``{"state":
     "ok"|"partial"|"unreadable", "usd", "calls", "missing", "error"}``. ``unreadable`` has no
-    sum, never 0; ``partial`` the sum of the calls the record holds; no proposal naming a call
-    is 0 with nothing read."""
+    sum, never 0; ``partial`` the sum of the calls the record holds; a record with no start
+    line and no proposal naming a call is 0 with nothing read."""
     got = calls_of(incident)
     if got["state"] == "unreadable":
         return {"state": "unreadable", "usd": None, "calls": 0, "missing": [],

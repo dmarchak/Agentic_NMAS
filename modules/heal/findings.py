@@ -275,7 +275,8 @@ def notice(network: str, f: dict, *, stop: bool) -> dict:
             "device": f["device"], "title": headline(f)[:120],
             "happened": (f"{f['operation']} fixed {f['what']} on {f['device']} and it came "
                          f"back {f['times']} times since {_hhmm(f['first'])} UTC"),
-            "outcome": ("self-healing stops fixing it (heal_fight_stop is on)" if stop else
-                        "self-healing keeps fixing it"),
+            # The fight's stop holds nothing since round 2 (`guards.g11_fight`; the
+            # correctness review's G2-L5), so *stop* changes nothing said.
+            "outcome": "self-healing keeps fixing it",
             "todo": f"find what keeps changing {f['what']} on {f['device']}",
             "link": incident_href(network, str(newest.get("id") or ""), device=f["device"])}

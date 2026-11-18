@@ -152,14 +152,19 @@ def test_no_hard_stop_row_claims_a_guard_that_holds_nothing(networks):
 
     assert decide._g6({}, [], 0, 0, 0) is None and guards.g12_size([1, 2], 0, 0) is None
     assert guards.g14_rolled_back([{"outcome": "rolled_back"}], "s1", 0) is None
-    r = networks["client"].get("/v2/settings/network/Default?tab=heal")
-    tab = r.get_data(as_text=True).split('id="heal-tab"', 1)[1]
-    for retired in ("Grace: a change must persist", "Devices departing at once",
-                    "Largest heal", "always halts the policy"):
-        assert retired not in tab, retired
+    # What the card is drawn from (`heal_page.view`, the tab's own data; a test of the data,
+    # docs/TEST_INTEGRITY.md item 4: the card has no control of its own to press).
+    from modules import heal_page
+    v = heal_page.view("Default")
+    rows = [g["label"] for g in v["guards"]]
+    retired = {"heal_grace_seconds", "heal_max_devices_drifting", "heal_max_removed_units",
+               "heal_max_units"}
+    assert not [g["keys"] for g in v["guards"] if retired & set(g["keys"])], rows
+    always = {label: words for label, words in v["always"]}
+    assert not any("halts the policy" in w for w in always.values()), always
     # What still holds is still drawn: a person's planned window and a no-change window
     # (`guards.g3_planned`).
-    assert "Planned work a person declared, and no-change windows" in tab
+    assert "Planned work a person declared, and no-change windows" in always, always
 
 
 def test_another_networks_tab_is_its_own(networks):

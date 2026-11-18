@@ -324,6 +324,68 @@ class TestNeverWrongLookingRight:
         S.step()
         assert "approvals:q8" not in _ids(S.read()) and not S.read()["store"].get("restored")
 
+    def test_a_restored_page_is_not_known_to_the_incident_page_or_run_the_check_again(
+            self, world):
+        """The page kept before a start is drawn restored, never as a current read (the
+        correctness review's G6 M3): until the first value of this start lands, the incident
+        page says its item is not known ("reading"), never that it cleared, and Run the check
+        again's answer waits for the held list, never "cleared", whatever the kept page
+        lacks."""
+        from modules import incident_page, recheck
+        world.now += S.SLOW_S
+        S.step()                                     # kept with no rows
+        S.clear()                                    # a start
+        page = S.read_masked("Lab")
+        assert page["store"].get("restored") is True
+        assert incident_page.item_of(page, "hi-x", [], "Lab", "s5")["state"] == "reading"
+        got = recheck.checked_answer({"read_ok": True, "at": A._iso(world.now),
+                                      "reader": "drift"}, "drift:s5")
+        assert got.get("busy") is True and "cleared" not in (got.get("checked") or {}), got
+
+    def test_a_network_that_held_a_value_never_draws_the_start_s_page_again(self, world,
+                                                                             monkeypatch):
+        """The kept page is drawn only before this start's first value of its network (the
+        correctness review's G6 M3): a network forgotten after FORGET_S unviewed draws
+        "Reading" on its next view, never the page read from disk at the start."""
+        world.rows["approvals_source"] = [_row("q7")]
+        world.now += S.SLOW_S
+        S.step()
+        S.clear()                                    # a start
+        assert S.read("Lab")["store"].get("restored") is True
+        world.rows["approvals_source"] = []
+        S.step()                                     # this start's first value lands
+        assert not S.read("Lab")["store"].get("restored")
+        monkeypatch.setattr(S, "_current", lambda: "Other")   # Lab no longer the own network
+        world.now += S.FORGET_S + 1
+        S._known(world.now)                          # noqa: SLF001 (the store's own forgetting)
+        page = S.read("Lab")
+        assert page["store"]["state"] == "reading", page["store"]
+        assert "approvals:q7" not in _ids(page)
+
+    def test_a_change_inside_the_keep_window_is_kept_before_the_next_start(self, world):
+        """The page kept for the next start is the newest held, at most KEEP_S late (the
+        correctness review's G6 M4; 8814c5b5's stated bound): an assembly skipped inside the
+        window is written by the worker's next pass once KEEP_S has passed, with nothing
+        computed for it. Planted: a row that clears inside the window, its source then read
+        only at the idle cadence (a raised row's source alerts, and is read again within
+        FAST_S anyway), so a restart would restore a row that had cleared."""
+        import json
+        world.rows["approvals_source"] = [_row("q9")]
+        world.now += S.SLOW_S
+        S.step()                                     # written: the row
+        world.rows["approvals_source"] = []
+        world.now += 10
+        S.refresh("Lab")                             # cleared inside the window: not written
+        with open(S._kept_path("Lab"), encoding="utf-8") as fh:  # noqa: SLF001
+            assert "approvals:q9" in [r["id"] for r in json.load(fh)["rows"]]
+        world.now += S.KEEP_S
+        calls = dict(world.calls)
+        S.step()
+        assert world.calls == calls, "the keep computes nothing"
+        with open(S._kept_path("Lab"), encoding="utf-8") as fh:  # noqa: SLF001
+            assert "approvals:q9" not in [r["id"] for r in json.load(fh)["rows"]]
+        assert S._seconds_to_next(world.now) > 0                # noqa: SLF001 (nothing left due)
+
 
 def _no_kept_page():
     """No page kept on disk from before this start."""

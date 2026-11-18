@@ -5,9 +5,10 @@
 # documents no command restarting the telemetry process (pubd) alone; turning netconf-yang off
 # and on stops and starts the NETCONF-YANG (DMI) processes, pubd among them, and leaves IOSd,
 # routing and forwarding running. Never a reload.
-# Its two lines are NOT measured shapes: each is PROVISIONAL (modules/nsot/command_policy.py)
-# until an admin approves it, after scripts/nmas-telemetry-reset-probe measures it on r2, so
-# this plan's preview refuses it, naming each, and nothing runs before.
+# Its two lines are NOT measured shapes (scripts/nmas-telemetry-reset-probe measures them on
+# r2): until each is proposed (held PROVISIONAL, modules/nsot/command_policy.py) the plan's
+# preview refuses it, naming each; once proposed, a person's Approve of the plan, its lines
+# shown, is their approval and sends them (32ad9360; the operator, 2026-11-17).
 # What is NOT restored if `no netconf-yang` takes other lines: the pipeline's rollback inverts
 # the lines it pushed and restores from the pre-change snapshot what the program's own `no`
 # lines removed (the transient restore: `netconf-yang` itself), but not a line the device drops
@@ -26,7 +27,8 @@ words: >-
   the collector's stale session is closed: for a lost stream whose receiver re-add and
   subscription re-creation already failed in the incident. NETCONF, RESTCONF and every telemetry
   subscription on the device pause while the processes restart (unmeasured); routing and
-  forwarding are unaffected. Its two lines wait on an admin's approval before it can run
+  forwarding are unaffected. Its two lines are unmeasured shapes: once proposed, a person's
+  Approve of this plan, its lines shown, sends them
 net_zero: true
 parameters:
   device:

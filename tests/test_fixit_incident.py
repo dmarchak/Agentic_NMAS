@@ -995,6 +995,36 @@ class TestTheCost:
                                        "error": ""}
         assert F.cost_so_far(inc("hi-0000000000ee"))["usd"] == 0.0 and asked == []
 
+    def test_an_investigations_calls_no_line_names_are_its_own_and_no_others(self, lab):
+        """The correctness review's G5 MEDIUM-1: once an investigation took its start line,
+        every call of this incident's own investigations (a person's press and R1's, by their
+        features and this incident's subject) is its spend though no proposal names it (a
+        stopped or failed one keeps none); another incident's call, another feature's call
+        about this incident (the self-healing analysis) and a call whose subject is another
+        kind under the same id are not."""
+        mine = {"kind": "heal_incident", "id": ID}
+        a_call(CALL_A, 0.30, subject=mine)
+        a_call(CALL_B, 0.20, subject=mine, feature="fixit_auto")
+        a_call(CALL_C, 0.50, subject={"kind": "heal_incident", "id": "hi-0000000000ee"})
+        a_call("ai-00000000000000ee", 0.40, subject=mine, feature="heal_analysis")
+        a_call("ai-00000000000000ff", 0.60, subject={"kind": "evaluation_case", "id": ID})
+        assert F.cost_so_far(inc())["usd"] == 0.0, "no start line: nothing read"
+        F.claim_start(inc(), "person:start", trigger="person", state="started", by=ACTOR,
+                      verified="access")
+        got = F.cost_so_far(inc())
+        assert (got["state"], got["usd"], got["calls"]) == ("ok", pytest.approx(0.50), 2), got
+
+    def test_the_live_cap_adds_this_investigations_calls_once(self, lab):
+        """The gateway's live incident cap (`fixit_troubleshoot.incident_cap`): the incident's
+        calls (`calls_of`) and each of this investigation's own so far that those do not hold,
+        each once (the correctness review's G5 MEDIUM-1)."""
+        from modules.ai import fixit_troubleshoot as AIT
+        a_call(CALL_A, 0.30, subject={"kind": "heal_incident", "id": ID})
+        F.claim_start(inc(), "person:start", trigger="person", state="started", by=ACTOR,
+                      verified="access")
+        cap = AIT.incident_cap(inc(), lambda: {CALL_A: 0.30, CALL_B: 0.05})
+        assert cap["spent"]()["usd"] == pytest.approx(0.35)
+
     def test_the_record_of_calls_is_read_from_the_incidents_start_never_whole(self, lab,
                                                                              monkeypatch):
         import datetime

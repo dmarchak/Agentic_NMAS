@@ -598,6 +598,20 @@ def current_rows(list_name: str, rows: list, cut: dict = None) -> list:
             if not retire.before_retirement(cut, r.get("device", ""), r.get("at", ""))]
 
 
+def _net_zero_verified(row: dict) -> bool:
+    """Whether a command plan's receipt *row* ended with the configuration as before, by its
+    run's own outcome (`command_plan_run._outcome`, kept as ``command_plan.outcome``): ran and
+    verified (``done``), nothing to do (``not_needed``), or rolled back with the configuration
+    read again and nothing still differing (``net_zero.after_rollback`` read and empty)."""
+    cp = row.get("command_plan") or {}
+    outcome = cp.get("outcome")
+    if outcome in ("done", "not_needed"):
+        return True
+    if outcome in ("rolled_back", "not_net_zero"):
+        return (cp.get("net_zero") or {}).get("after_rollback") == []
+    return False
+
+
 def _authorisation_counts(rows: list, want=None) -> dict:
     """``{device: {line: {count, first_at, last_at, last_actor, last_reason}}}``
     from receipt rows given NEWEST FIRST: the one counting both readers use
@@ -608,10 +622,12 @@ def _authorisation_counts(rows: list, want=None) -> dict:
     for row in reversed(rows):                         # oldest first
         if row.get("outcome") == "refused" or not row.get("sent"):
             continue
-        if row.get("action") == "command_plan":
-            # A command plan is net zero, verified (shutdown then no shutdown, the configuration
-            # as before): a transient run, never a line authorised into the device's config (the
-            # operator, 2026-11-16).
+        if row.get("action") == "command_plan" and _net_zero_verified(row):
+            # A command plan that ended net zero, verified (shutdown then no shutdown, the
+            # configuration as before): a transient run, never a line authorised into the
+            # device's config (the operator, 2026-11-16). One that failed, was not verified,
+            # re-tripped or was rolled back NOT RESTORED may have left its line in the
+            # configuration, and counts (the correctness review's G6 M1).
             continue
         for a in authorisation.normalise(
                 [a if isinstance(a, dict) else {"line": a, "reason": ""}

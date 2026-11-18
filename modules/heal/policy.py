@@ -131,7 +131,10 @@ GUARD_WORDS = {
     "heal_recurrence_hours": "a recurrence or a fight: within (hours)",
     "heal_fight_count": "a fix undone this many times is a fight",
     "heal_fight_minutes": "a fix undone: the problem back within (minutes)",
-    "heal_fight_stop": "stop fixing what something keeps undoing",
+    # Retired in round 2 (the operator, 2026-11-17; `guards.g11_fight` holds nothing), kept so
+    # a policy confirmed with it still reads (expand, then contract; the correctness review's
+    # G2-L5).
+    "heal_fight_stop": "retired: changes nothing since round 2 (a fight is a finding only)",
 }
 #: N1 and N3: on a network marked lab, a hard stop the network does not set reads these.
 LAB_DEFAULTS = {"heal_grace_seconds": 120, "heal_topology_hold_minutes": 60}
@@ -149,13 +152,14 @@ GUARDS = (
     (8, "the grace period", ("heal_grace_seconds",)),
     # The operator, 2026-11-16: guards 5 and 7 to 11 hold or defer nothing; the rates (9 to 11)
     # are replaced by the findings (`heal.findings`), named here with the guards they replace.
-    # Guard 11 stops a fix only when the network's heal_fight_stop is on, a person's setting.
+    # Round 2 (the operator, 2026-11-17): guards 11 and 12 hold nothing either (`g11_fight`,
+    # `g12_size`); the fight finding still says a fix something keeps undoing.
     (9, "rate: per device (replaced: a problem that keeps coming back)",
      ("heal_max_per_device_hour", "heal_recurrence_count", "heal_recurrence_hours")),
     (10, "rate: per network (no longer holds)", ("heal_max_per_network_hour",)),
-    (11, "a fix something keeps undoing", ("heal_repeat_halts_hours", "heal_fight_count",
-                                            "heal_fight_minutes", "heal_fight_stop")),
-    (12, "the program's size", ("heal_max_removed_units", "heal_max_units")),
+    (11, "a fix something keeps undoing (no longer holds: a finding)",
+     ("heal_repeat_halts_hours", "heal_fight_count", "heal_fight_minutes", "heal_fight_stop")),
+    (12, "the program's size (no longer holds)", ("heal_max_removed_units", "heal_max_units")),
     # With its action guards, 13a to 13e (19.4; `heal.actions.GUARDS`, their own table).
     (13, "the tier", (KINDS_AUTO_KEY, KINDS_PROPOSE_KEY) + ACTION_GUARD_KEYS
      + (SECURITY_REVERT_KEY,)),
@@ -483,18 +487,28 @@ def plan(network: str, proposed: dict, now: float = None) -> dict:
     gates = []
     if after[MODE_KEY] == "auto":
         # AUTO on any network (N8 as changed by the operator, 2026-11-16): no lab gate.
-        # Round 2 (the operator, 2026-11-17): AUTO heals every Tier 1 and Tier 2 kind, so no
-        # kind list is needed to turn it on (`decide._outcome`).
-        gates.append({"name": "AUTO heals every Tier 1 and Tier 2 kind",
+        # Round 2 (the operator, 2026-11-17): no kind list is needed to turn it on. What Auto
+        # heals is the kind lists' (226477ad, `decide._outcome`): a Tier 1 kind allowed Auto
+        # heals by itself, one not listed stays a dry run, a Tier 2 fix is proposed; the words
+        # say so (the correctness review's G2 M1), and the gate refuses nothing.
+        allowed = list(after[KINDS_AUTO_KEY] or [])
+        if len(allowed) == 1:
+            heals = f"1 kind heals by itself ({allowed[0]})"
+        elif allowed:
+            heals = f"{len(allowed)} kinds heal by themselves ({', '.join(allowed)})"
+        else:
+            heals = "no kind is allowed Auto, so nothing heals by itself"
+        gates.append({"name": "AUTO heals the kinds allowed Auto",
                       "state": "pass",
-                      "why": "no kind list is read: every fix of Tier 1 or 2 runs in Auto"})
+                      "why": heals + "; a Tier 1 kind not listed stays a dry run, and a Tier 2 "
+                                     "fix is proposed for a person"})
         gates.append({"name": "AUTO's expiry: until turned off, or at most 7 days (N8)",
                       "state": "pass",
                       "why": (f"until {after[UNTIL_KEY]}, then dry run" if after[UNTIL_KEY]
                               else "until a person turns it off")})
     added = [k for k in after[KINDS_AUTO_KEY] if k not in (before.get(KINDS_AUTO_KEY) or [])]
     # Round 2 (the operator, 2026-11-17): no one-kind-per-confirm refusal.
-    gates.append({"name": "kinds allowed AUTO (read no more)", "state": "pass",
+    gates.append({"name": "kinds allowed AUTO", "state": "pass",
                   "why": f"this change allows {len(added)} more"
                          + (f" ({', '.join(added)})" if added else "")})
     something = bool(changes) or (after[MODE_KEY] != "off" and not in_force)
