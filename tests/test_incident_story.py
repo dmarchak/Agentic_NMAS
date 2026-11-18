@@ -74,7 +74,7 @@ def test_a_self_heal_skips_the_ai_stages():
 def test_a_failed_verify_is_never_healed():
     header = HEADER[:3] + [{"name": "Verified", "state": "failed", "at": "2026-11-17T18:02:13Z"}]
     nodes = S.lifecycle(_model(header=header), LINES)
-    assert nodes[-1]["state"] == "failed" and nodes[-1]["words"] == "verify failed"
+    assert nodes[-1]["state"] == "failed" and nodes[-1]["words"] == "not healed"
 
 
 def test_the_summary_names_the_ais_first_hypothesis_and_four_evidence_lines():

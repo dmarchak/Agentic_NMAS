@@ -116,7 +116,9 @@ def lifecycle(model: dict, lines: list) -> list:
         ("Verifying", verify.get("since") or (verified.get("at") if verified.get("at") else None),
          verify.get("words") or ""),
         ("Healed", verified.get("at") if not failed else None,
-         "verify failed" if failed else (verified.get("words") or "")),
+         # "not healed", never "verify failed": the page says that once, on its attempt line
+         # (tests/test_incident_titles.py, each fact once).
+         "not healed" if failed else (verified.get("words") or "")),
     ]
     resolved = bool(model.get("resolved"))
     out, now_set = [], False
