@@ -1086,6 +1086,99 @@ class TestTheRecoveryTable:
         assert result == "fail" and "does not race it" in words, words
 
 
+# ── Preconditions batching (f86bcf7f) ───────────────────────────────────────────────────────
+
+@pytest.fixture
+def engine_runs(monkeypatch, lab):
+    """Each read-engine run (`reads.run`) a plan run makes, with how many batches the switch
+    had been sent when it was asked (0: before the send)."""
+    from modules.nsot import reads
+
+    real, got = reads.run, []
+
+    def spy(network, hosts, commands, *a, **k):
+        got.append({"commands": list(commands), "sent": len(lab["sw"].batches)})
+        return real(network, hosts, commands, *a, **k)
+    monkeypatch.setattr(reads, "run", spy)
+    return got
+
+
+class TestThePreconditionsBatch:
+    """f86bcf7f (the operator, 2026-11-16): a run's preconditions ask every device read in ONE
+    read-engine run, each check judged from that run's own answers; a refused run leaves every
+    command unanswered and the plan refuses; a read beside the device's (G7's Loki lines) that
+    raises or overruns its bound refuses; the run's sources are restored before verify, which
+    reads live."""
+
+    def test_the_preconditions_are_one_engine_run(self, lab, engine_runs):
+        rec = go(lab)
+        assert rec["outcome"] == "done", rec["why"]
+        before = [r for r in engine_runs if r["sent"] == 0]
+        assert len(before) == 1, before
+        asked = before[0]["commands"]
+        assert T.E.CONFIRM_READ in asked and T.E.RECOVERY_READ in asked, asked
+
+    def test_each_check_is_judged_from_its_own_answer(self, lab):
+        rec = go(lab)
+        got = {p["name"]: p for p in rec["preconditions"]}
+        assert got["The port is err-disabled by the cause now"]["result"] == "pass"
+        assert got["The switch does not recover the cause itself"]["result"] == "pass"
+        assert "Disabled" in got["The switch does not recover the cause itself"]["words"]
+
+    def test_a_refused_engine_run_leaves_every_command_unanswered(self, monkeypatch):
+        """The review's finding (2026-11-16): one refused run leaves EVERY command unanswered,
+        never the rest answered one by one, also when the list is asked in runs of
+        `reads.MAX_COMMANDS`."""
+        from modules.nsot import reads
+
+        monkeypatch.setattr(reads, "MAX_COMMANDS", 1)
+        src = CR.Sources(NET, model=Model())
+        monkeypatch.setattr(src, "_engine_run", lambda host, cmds: (
+            None if "show b" in cmds else {c: "answered" for c in cmds}))
+        assert src.read("s1", ["show a", "show b", "show c"]) == {
+            "show a": None, "show b": None, "show c": None}
+        monkeypatch.setattr(src, "_engine_run", lambda host, cmds: {c: "answered"
+                                                                    for c in cmds})
+        assert src.read("s1", ["show a", "show b"]) == {"show a": "answered",
+                                                        "show b": "answered"}
+
+    def test_a_read_beside_the_devices_that_raises_refuses(self, lab, monkeypatch):
+        lab["sw"] = Switch(state="err-disabled", cause="psecure-violation")
+
+        def raises(self, dev, since, until):
+            raise ConnectionError("Loki answered nothing")
+        monkeypatch.setattr("modules.heal.errdisable.Sources.lines", raises)
+        rec = go(lab, values=dict(VALUES, cause="psecure-violation"))
+        assert rec["outcome"] == "refused" and lab["sw"].batches == [], rec["why"]
+        assert "Loki answered nothing" in rec["why"], rec["why"]
+
+    def test_a_read_beside_the_devices_that_overruns_refuses(self, lab, monkeypatch):
+        import threading
+        lab["sw"] = Switch(state="err-disabled", cause="psecure-violation")
+        release = threading.Event()
+
+        def slow(self, dev, since, until):
+            release.wait(5)
+            return {"error": "", "cut": False, "lines": []}
+        monkeypatch.setattr("modules.heal.errdisable.Sources.lines", slow)
+        monkeypatch.setattr(CR, "AHEAD_JOIN_S", 0.05)
+        try:
+            rec = go(lab, values=dict(VALUES, cause="psecure-violation"))
+        finally:
+            release.set()
+        assert rec["outcome"] == "refused" and lab["sw"].batches == [], rec["why"]
+        assert "did not answer within" in rec["why"], rec["why"]
+
+    def test_verify_reads_live_after_the_preconditions(self, lab, engine_runs):
+        rec = go(lab)
+        assert rec["outcome"] == "done", rec["why"]
+        after = [r for r in engine_runs if r["sent"] > 0]
+        assert after, "verify asked the device through the engine after the send"
+        # The re-trip check reads `show interfaces status err-disabled` again after the send,
+        # live, never the precondition's answer of the same command from before it.
+        assert any(T.E.CONFIRM_READ in r["commands"] for r in after), after
+
+
 # ── The review of Gate 1a ───────────────────────────────────────────────────────────────────
 
 class TestTheReview:
