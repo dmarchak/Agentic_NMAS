@@ -60,8 +60,13 @@ class FakeAct:
 
     def __init__(self, running, *, post=None, recheck="clean", symptom=None, plan=None,
                  result=None, mode=None, planned=None, golden=GOLDEN, intended=GOLDEN,
-                 read_error="", commit="c" * 40, saved=None):
+                 read_error="", commit="c" * 40, saved=None, at=T0 + 5):
         self.d = Fake(running, golden=golden, intended=intended, read_error=read_error)
+        # The act's clock (e400a31f): its stops are judged again at `clock()` once the device
+        # is held, and the hold's wait counts by it. The test's time, never the wall clock, so
+        # an AUTO confirmed for an hour around T0 is in force; `sleep` moves it. *at*: the
+        # time the test acts at.
+        self.t = float(at)
         self.running, self.post, self.recheck = running, post, recheck
         self._symptom, self._plan, self._result = symptom, plan, result
         self._mode, self._planned, self.commit, self.saved = mode, planned, commit, saved
@@ -70,6 +75,12 @@ class FakeAct:
 
     def __getattr__(self, name):
         return getattr(self.d, name)
+
+    def clock(self):
+        return self.t
+
+    def sleep(self, seconds):
+        self.t += seconds
 
     def mode(self, now):
         from modules.heal import policy

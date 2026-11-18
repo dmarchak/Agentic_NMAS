@@ -102,7 +102,7 @@ def inject(at, running=GOLDEN + ROUTE6, device=DEV):
     (one,) = [x for x in ran["decided"] if x["incident"] == seen["incident"]]
     d = DS.find(NET, one["decision"])
     if d["outcome"] == "heal":
-        got = A.act_one(NET, d["id"], now=at + 140, sources=FakeAct(running))
+        got = A.act_one(NET, d["id"], now=at + 140, sources=FakeAct(running, at=at + 140))
         assert got["outcome"] == "healed", got
     inc = next(i for i in I.read(NET)["incidents"] if i["id"] == seen["incident"])
     return inc, DS.find(NET, d["id"])
