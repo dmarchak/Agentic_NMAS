@@ -16,6 +16,14 @@ modules/nsot/command_policy.py, modules/nsot/command_plan_run.py).
   check (a plan that leaves a line changed is rolled back and refused; a device that departs
   from intent is bounced, the plan being net zero); the pre-apply hook; Mercury's own session
   attributed as Mercury's; the step reached only through its declaration's ``apply``.
+- **The run's scope (7b300f39)**: the net-zero check scoped to the plan's interface sections on
+  a fake answering the section read, the rollback's compare in the same scope, the whole
+  compare when a section cannot be read; each snapshot rule and the device departing from the
+  access rule; the spanning-tree verdicts; the pooled session refusing another address or
+  account, IPv4 and IPv6.
+- **C3847's follow-ups (ec92d62b)**: the pipeline's stage callback; verify recorded as its own
+  step with its seconds; stage 7 reading no configuration after a transient run, BGP's hold
+  from before; the cosmetic scope per program; the switch's own recovery table read.
 
 No device, no network, no AI.
 """
@@ -557,6 +565,756 @@ class TestNetZero:
         assert rec["outcome"] == "failed" and rec["state"] == "failed", rec["why"]
         assert rec["net_zero"]["after_rollback"] == ["+ " + sticky], rec["net_zero"]
         assert "NOT RESTORED" in rec["why"] and sticky.strip() in rec["why"]
+
+
+class PartialSwitch(Switch):
+    """The fake switch whose first config batch stops part-way: its first *landed* lines take
+    effect, then the session drops (the push never reaches verify)."""
+
+    def __init__(self, landed=2, sticky_on_shut="", **kw):
+        super().__init__(**kw)
+        self.landed, self.failed_once = landed, False
+        #: A line the port keeps once it is shut (one no rollback of the pushed lines
+        #: removes), to tell the compare after the rollback ran.
+        self.sticky_on_shut = sticky_on_shut
+
+    def apply(self, lines):
+        if self.failed_once:
+            return super().apply(lines)
+        self.failed_once = True
+        super().apply(lines[:self.landed])
+        if self.sticky_on_shut:
+            self.base = self.base.replace(f"interface {PORT}\n",
+                                          f"interface {PORT}\n{self.sticky_on_shut}\n", 1)
+        raise OSError("Socket is closed")
+
+
+class TestTheCompareAfterEveryRollback:
+    """17215a95 (the review of 2026-11-16): after EVERY rollback, whether or not the run's own
+    net-zero check ran (a push that stopped part-way never reaches verify), the configuration
+    is read again and compared with the one before, in the whole where the run's check never
+    ran; a line still differing fails the run, NOT RESTORED, never "rolled back"."""
+
+    def test_a_partial_push_is_compared_after_its_rollback(self, lab):
+        lab["sw"] = PartialSwitch()
+        rec = go(lab)
+        nz = rec.get("net_zero") or {}
+        assert nz.get("after_rollback") == [] and nz.get("after_rollback_scope") == "full", nz
+        assert lab["sw"].admin_down is False, "the rollback undid the shutdown that landed"
+        assert rec["outcome"] == "rolled_back", rec["why"]
+
+    def test_a_line_left_after_a_partial_pushs_rollback_is_not_restored(self, lab):
+        left = " description left by the stopped push"
+        lab["sw"] = PartialSwitch(sticky_on_shut=left)
+        rec = go(lab)
+        assert rec["outcome"] == "failed", rec["why"]
+        assert rec["net_zero"]["after_rollback"] == ["+ " + left], rec["net_zero"]
+        assert "NOT RESTORED" in rec["why"] and left.strip() in rec["why"]
+
+
+# ── A person's Approve covers a plan's provisional shapes (32ad9360) ───────────────────────
+
+PROVISIONAL = "provisional-test"
+#: A shape no probe has measured, held provisional by the AI's proposal in each test.
+SHAPE = "interface {interface} > description x"
+
+
+@pytest.fixture
+def provisional(monkeypatch, lab):
+    """A planted plan holding one provisional shape (`SHAPE`) beside the bounce's measured
+    lines, its shape proposed by the AI (held PROVISIONAL)."""
+    t = CP.parse({"kind": "command_plan", "key": PROVISIONAL, "title": "Mark {device}",
+                  "words": "a bounce with a provisional line, for the test", "net_zero": True,
+                  "parameters": {"device": {"type": "device"},
+                                 "interface": {"type": "interface"}},
+                  "steps": [{"mode": "config", "commands": LAUNCH + [" description x"]}],
+                  "verify": [{"name": "connected", "read": "show interfaces status",
+                              "expect_line": "{interface_short} * connected *",
+                              "poll": "errdisable-poll", "within": "errdisable-connect"}],
+                  "reason": "a provisional line for the test, never saved"})
+    monkeypatch.setitem(CP._BUILTIN, PROVISIONAL, t)
+    assert POL.propose(NET, "cisco_ios", SHAPE, by="the AI (call c-1)",
+                       why="a test")["state"] == "provisional"
+    return {"device": "s1", "interface": "Gi1/0"}
+
+
+class TestAPersonsPlan:
+    """32ad9360 (the operator, 2026-11-17: "A person's Approve on a shown plan is the only
+    approval. It covers any provisional shapes in that plan"): a person's plan previews and
+    runs its provisional shapes; refused words, literal objects and unknown shapes still
+    refuse; the hash and the program are the same either way."""
+
+    def test_a_provisional_shape_refuses_only_outside_a_persons_plan(self, provisional):
+        strict = CP.preview(NET, PROVISIONAL, provisional, sources=Model())
+        person = CP.preview(NET, PROVISIONAL, provisional, sources=Model(), person_plan=True)
+        assert not strict["ok"] and any("PROVISIONAL" in r for r in strict["refusals"]), \
+            strict["refusals"]
+        assert person["ok"], person["refusals"]
+        # The flag changes no hash: the same plan once an admin approves the shape.
+        assert POL.approve(NET, "cisco_ios", SHAPE, actor=ACTOR, actor_verified="access",
+                           person=True, admin=True)["ok"]
+        approved = CP.preview(NET, PROVISIONAL, provisional, sources=Model())
+        assert approved["ok"], approved["refusals"]
+        assert person["hash"] == approved["hash"] and person["program"] == approved["program"]
+
+    def test_a_shape_never_proposed_still_refuses_a_persons_plan(self, lab, monkeypatch):
+        t = CP.parse({"kind": "command_plan", "key": "unknown-test", "title": "U {device}",
+                      "words": "an unknown line, for the test", "net_zero": True,
+                      "parameters": {"device": {"type": "device"},
+                                     "interface": {"type": "interface"}},
+                      "steps": [{"mode": "config",
+                                 "commands": LAUNCH + [" ip address 192.0.2.9 255.255.255.0"]}],
+                      "verify": [{"name": "connected", "read": "show interfaces status",
+                                  "expect_line": "{interface_short} * connected *",
+                                  "poll": "errdisable-poll", "within": "errdisable-connect"}],
+                      "reason": "an unknown line for the test, never saved"})
+        monkeypatch.setitem(CP._BUILTIN, "unknown-test", t)
+        got = CP.preview(NET, "unknown-test", {"device": "s1", "interface": "Gi1/0"},
+                         sources=Model(), person_plan=True)
+        assert not got["ok"] and "not a shape Mercury has measured" in got["refusals"][0], got
+
+    def test_a_refused_word_is_refused_whoever_approves(self):
+        with pytest.raises(CP.Refused, match="never sends in a command plan"):
+            CP.parse({"kind": "command_plan", "key": "word-test", "title": "W {device}",
+                      "words": "a refused word", "net_zero": True,
+                      "parameters": {"device": {"type": "device"},
+                                     "interface": {"type": "interface"}},
+                      "steps": [{"mode": "config", "commands": LAUNCH + [" do reload"]}],
+                      "verify": [], "reason": "a refused word for the test"})
+
+    def test_a_persons_approved_plan_sends_its_provisional_line(self, lab, provisional):
+        p = CP.preview(NET, PROVISIONAL, provisional, sources=Model(), person_plan=True)
+        rec = go(lab, values=provisional, key=PROVISIONAL, confirmed=p["hash"])
+        approve = next(s for s in rec["steps"] if s["step"] == "approve")
+        assert approve["result"] == "ok", rec["why"]
+        assert lab["sw"].batches and " description x" in lab["sw"].batches[0], rec["why"]
+
+
+# ── Run… on built-in fixes (fc937efe) ───────────────────────────────────────────────────────
+
+def _classified():
+    """s1's incident, classified by the recovery's own step from its evidence (an
+    err-disable by BPDU guard on Gi1/0): ``incident_page.resolve``'s answer for it."""
+    from modules import incident_page
+    iid = T.opened("Critical syslog received")["incident"]
+    T.opened("Interface down", PORT, at=T.AT + 20)
+    T.E.reclassify_step(NET, sources=T.Src(), now=T.AT + 600)
+    return incident_page.resolve(NET, iid)
+
+
+class TestTheBuiltInOffer:
+    """fc937efe (the operator, 2026-11-17: Run… on built-in fixes, "the same as saved fixes"):
+    a built-in plan offered on its incident takes exactly its declared parameters, filled from
+    the incident, previewed as a person's plan, its hash the one the press is held to; a
+    parameter the incident does not say is named, nothing offered to run; on a chosen device
+    only the types Run… can choose from what Mercury holds."""
+
+    def test_its_values_are_the_incidents_own_and_only_its_declared_ones(self, lab):
+        from modules import fix_page
+        t = CP.builtin()[KEY]
+        values, why = fix_page.builtin_values(t, _classified())
+        assert why == "" and set(values) == set(t.parameters), (values, why)
+        assert values["device"] == "s1" and values["cause"] == "bpduguard", values
+        assert values["interface"] == PORT, values
+
+    def test_the_offer_is_a_persons_preview_its_hash_the_press_is_held_to(self, lab):
+        from modules import fix_page
+        found = _classified()
+        offer = fix_page.builtin_offer(NET, found, KEY)
+        assert offer["key"] == KEY and offer["hash"], offer
+        values, _why = fix_page.builtin_values(CP.builtin()[KEY], found)
+        p = CP.preview(NET, KEY, values, person_plan=True)
+        assert offer["hash"] == p["hash"] and offer["values"] == values
+
+    def test_a_parameter_the_incident_does_not_say_is_named(self, lab):
+        from modules import fix_page
+        found = _classified()
+        rec = dict(found["incident"])
+        rec[T.E.FIELD] = dict(T.E.of_record(rec), port="")
+        got, why = fix_page.builtin_values(CP.builtin()[KEY], dict(found, incident=rec))
+        assert got == {} and "does not say which interface" in why, why
+
+    def test_no_plan_or_no_incident_page_is_no_offer(self, lab):
+        from modules import fix_page
+        found = _classified()
+        assert fix_page.builtin_offer(NET, found, "no-such-plan") == {}
+        assert fix_page.builtin_offer(NET, dict(found, found="none"), KEY) == {}
+
+    def test_a_chosen_device_takes_only_what_mercury_can_choose(self):
+        from modules import fix_page
+        got = fix_page.builtin_port(CP.builtin()[KEY])
+        assert got == {"iface": True, "choices": {"cause": ["bpduguard", "psecure-violation"]},
+                       "subs": []}, got
+        free = dataclasses.replace(CP.builtin()[KEY], parameters=dict(
+            CP.builtin()[KEY].parameters, note={"type": "text"}))
+        assert fix_page.builtin_port(free) is None
+
+
+# ── The scoped net-zero and the pooled session (7b300f39, C3847) ───────────────────────────
+
+class SectionSwitch(Switch):
+    """The fake switch answering an interface's own section read
+    (`pipeline.SECTION_READ`) from its running configuration, as IOS frames it (``Building
+    configuration...``, ``Current configuration : N bytes``, the section, ``end``); an
+    interface the configuration does not hold, or one of *absent* (an interface not created
+    yet, as the section read sees it), answers IOS's ``%`` error."""
+
+    def __init__(self, absent=(), **kw):
+        super().__init__(**kw)
+        self.absent = tuple(absent)
+
+    def answer(self, command: str) -> str:
+        from modules.pipeline import SECTION_READ
+        prefix = SECTION_READ.format(name="")
+        if not command.startswith(prefix):
+            return super().answer(command)
+        self.reads.append(command)
+        name = command[len(prefix):]
+        if name in self.absent:
+            return ("                          ^\n"
+                    "% Invalid input detected at '^' marker.\n")
+        lines, keep = [], False
+        for ln in self.running().splitlines():
+            if ln == f"interface {name}":
+                keep = True
+            elif keep and not ln.startswith(" "):
+                break
+            if keep:
+                lines.append(ln)
+        if not lines:
+            return ("                          ^\n"
+                    "% Invalid input detected at '^' marker.\n")
+        body = "\n".join(lines) + "\n"
+        return (f"Building configuration...\n\nCurrent configuration : {len(body)} bytes\n"
+                f"!\n{body}end\n")
+
+
+class TestTheScopedNetZero:
+    """7b300f39 (C3847, the operator, 2026-11-16): a plan whose every line is a
+    section-confined shape on one interface compares that interface's own section before and
+    after, read on the run's session, never the whole configuration; after a rollback, the
+    same scope; a section that cannot be read keeps the whole compare."""
+
+    def test_a_plan_on_one_interface_compares_that_section_alone(self, lab):
+        lab["sw"] = SectionSwitch()
+        rec = go(lab)
+        assert rec["outcome"] == "done", rec["why"]
+        assert rec["net_zero_scope"] == {"scope": "interfaces", "interfaces": [PORT]}
+        assert rec["net_zero"] == {"checked": True, "differs": [], "scope": "interfaces",
+                                   "interfaces": [PORT]}, rec["net_zero"]
+        assert f"show running-config interface {PORT}" in lab["sw"].reads
+
+    def test_a_sticky_line_in_the_section_is_caught_by_the_scoped_compare(self, lab):
+        sticky = " switchport port-security mac-address sticky aabb.cc00.8099"
+        lab["sw"] = SectionSwitch(sticky=sticky)
+        rec = go(lab)
+        assert rec["outcome"] == "failed", rec["why"]
+        nz = rec["net_zero"]
+        assert nz["scope"] == "interfaces" and nz["differs"] == ["+ " + sticky], nz
+        # The compare after the rollback keeps the run's own scope.
+        assert nz["after_rollback_scope"] == "interfaces", nz
+        assert nz["after_rollback"] == ["+ " + sticky], nz
+        assert "NOT RESTORED" in rec["why"]
+
+    def test_a_section_that_cannot_be_read_keeps_the_whole_compare(self, lab):
+        # The section read answers IOS's `%` error (as for an interface the plan would
+        # create): the whole configuration is compared, the reason said, never a pass on a
+        # section never read.
+        lab["sw"] = SectionSwitch(absent=(PORT,))
+        rec = go(lab)
+        assert rec["net_zero_scope"] == {
+            "scope": "full", "why": "an interface's configuration before could not be read"}
+        assert rec["net_zero"]["scope"] == "full", rec["net_zero"]
+
+    @pytest.mark.parametrize("commands, program, scoped", [
+        (["interface {interface}", " shutdown", " no shutdown"],
+         [f"interface {PORT}", " shutdown", " no shutdown"], [PORT]),
+        (["interface {interface}", " no shutdown"], ["interface Vlan99", " no shutdown"],
+         ["Vlan99"]),
+        (["interface {interface}", " description {interface}"],
+         [f"interface {PORT}", f" description {PORT}"], []),
+        (["interface {interface}", " shutdown"], [f"interface {PORT} x", " shutdown"], []),
+        (["interface {interface}", " shutdown"], [f"interface {PORT}"], [])])
+    def test_the_scope_is_the_interfaces_of_section_confined_lines_only(
+            self, commands, program, scoped):
+        t = dataclasses.replace(CP.builtin()[KEY], commands=tuple(commands))
+        assert CR.net_zero_scope(t, program) == scoped
+
+
+class TestTheSnapshotScope:
+    """7b300f39 (the operator's R3 decision, 2026-11-16): the snapshots are scoped by what the
+    plan touches: an access port in committed intent reads its own state and spanning tree
+    (``access``); a trunk or routed port the full snapshots (``routed``); a port-channel
+    member, an interface intent gives no mode, or a line not confined to a section, the full
+    (``full``); and a device whose own configuration before departs from intent's access
+    mode, or makes the port a member, refuses with nothing sent."""
+
+    @staticmethod
+    def scope(interface, intent=None):
+        class Src:
+            def intent(self, host):
+                return (intent if intent is not None else T.s1_intent()), ""
+
+        class Run:
+            device, sources = "s1", Src()
+        t = CP.builtin()[KEY]
+        program = [f"interface {interface}", " shutdown", " no shutdown"]
+        return CR.snapshot_scope(NET, t, {"program": program}, Run())
+
+    def test_an_access_port_in_intent_is_the_access_rule(self):
+        got = self.scope(PORT)
+        assert (got["rule"], got["interfaces"]) == ("access", [PORT]), got
+        assert CR.ACCESS_UNSEEN in got["words"]
+
+    def test_a_trunk_is_the_routed_rule(self):
+        got = self.scope("GigabitEthernet0/3")
+        assert got["rule"] == "routed" and "(trunk)" in got["words"], got
+
+    def test_an_interface_intent_gives_no_mode_is_the_full_rule(self):
+        got = self.scope("GigabitEthernet0/1")
+        assert got["rule"] == "full" and "no switchport mode" in got["words"], got
+
+    def test_a_port_channel_member_is_the_full_rule(self):
+        intent = T.s1_intent()
+        for i in intent["interfaces"]:
+            if i["name"] == PORT:
+                i["channel_group"] = "1"
+        got = self.scope(PORT, intent)
+        assert got["rule"] == "full" and "port-channel member" in got["words"], got
+
+    @pytest.mark.parametrize("section, said", [
+        (" switchport mode trunk", "does not hold `switchport mode access`"),
+        (" switchport mode access\n channel-group 1 mode active", "port-channel member")])
+    def test_the_device_departing_from_the_access_rule_refuses(self, section, said):
+        scope = {"rule": "access", "interfaces": [PORT]}
+        running = f"hostname s1\n!\ninterface {PORT}\n{section}\n!\nend\n"
+        got = CR._live_mode_refusal(scope, running)
+        assert said in got and got.endswith("Nothing was sent"), got
+        held = f"hostname s1\n!\ninterface {PORT}\n switchport mode access\n!\nend\n"
+        assert CR._live_mode_refusal(scope, held) == ""
+
+
+class TestTheSpanningTreeVerdict:
+    """7b300f39: an access port's spanning tree read again after the settle and judged
+    (`pipeline._stp_verdict`), on s1's captured rows with one edit each: broken or a guard's
+    inconsistency, a role only another bridge gives, forwarding lost are issues; a `%` reply
+    or no state neither passes nor fails, or judges nothing."""
+
+    @pytest.mark.parametrize("edit, said", [
+        (("Desg FWD 4         128.4    P2p \nVLAN0020", "Desg BKN*4        128.4    P2p \n"
+                                                       "VLAN0020"), "broken or held"),
+        (("VLAN0020            Desg FWD 4         128.4    P2p ",
+          "VLAN0020            Desg FWD 4         128.4    P2p *ROOT_Inc"), "broken or held"),
+        (("VLAN0030            Desg FWD", "VLAN0030            Altn BLK"), "a switch is behind"),
+        (("VLAN0030            Desg FWD", "VLAN0030            Root FWD"), "a switch is behind"),
+        (("VLAN0030            Desg FWD", "VLAN0030            Back BLK"), "a switch is behind"),
+        (("VLAN0030            Desg FWD", "VLAN0030            Desg LRN"), "forwarded in")])
+    def test_each_issue_is_named(self, edit, said):
+        from modules import pipeline as P
+        after = STP_ROWS.replace(*edit, 1)
+        assert after != STP_ROWS
+        got = P._stp_verdict(STP_ROWS, after)
+        assert len(got["issues"]) == 1 and said in got["issues"][0], got
+
+    def test_the_same_rows_after_are_no_issue(self):
+        from modules import pipeline as P
+        got = P._stp_verdict(STP_ROWS, STP_ROWS)
+        assert got["issues"] == [] and got["unreadable"] == "", got
+
+    @pytest.mark.parametrize("after", ["% Invalid input detected at '^' marker.\n", None])
+    def test_an_unreadable_answer_neither_passes_nor_fails(self, after):
+        from modules import pipeline as P
+        got = P._stp_verdict(STP_ROWS, after)
+        assert got["issues"] == [] and got["unreadable"], got
+
+    def test_no_state_after_judges_nothing(self):
+        from modules import pipeline as P
+        got = P._stp_verdict(STP_ROWS, "no spanning tree info available for GigabitEthernet1/0")
+        assert got == {"before": P._stp_rows(STP_ROWS)["words"],
+                       "after": "no spanning-tree state (the port takes part in no instance)",
+                       "issues": [], "unreadable": ""}
+
+
+class TestThePooledSession:
+    """7b300f39: the read engine's session rides the run's pooled session, and a read of
+    another address or as another account is refused, never sent on it (IPv4 and IPv6, an
+    IPv6 address written two ways being one)."""
+
+    @pytest.fixture
+    def pooled(self, monkeypatch):
+        got = []
+        monkeypatch.setattr("modules.connection.get_persistent_connection",
+                            lambda dev, pool, lock: (got.append(dev["ip"]), "conn")[1])
+
+        class Ctx:
+            connections_pool, pool_lock = {}, None
+        return Ctx(), got
+
+    @pytest.mark.parametrize("ip, signed", [
+        ("192.0.2.11", "192.0.2.11"), ("2001:db8::11", "2001:DB8:0::11")])
+    def test_the_same_address_and_account_reads_on_the_session(self, pooled, ip, signed):
+        ctx, got = pooled
+        session = CR.pool_session(ctx, {"ip": ip, "username": "mercury"})
+        assert session({"ip": signed, "username": "mercury"}, lambda c: c) == "conn"
+        assert got == [ip]
+
+    @pytest.mark.parametrize("ip, signed, user", [
+        ("192.0.2.11", "192.0.2.12", "mercury"), ("192.0.2.11", "192.0.2.11", "other"),
+        ("2001:db8::11", "2001:db8::12", "mercury"), ("2001:db8::11", "2001:db8::11", "other")])
+    def test_another_address_or_account_is_never_read_on_it(self, pooled, ip, signed, user):
+        ctx, got = pooled
+        session = CR.pool_session(ctx, {"ip": ip, "username": "mercury"})
+        with pytest.raises(ValueError, match="it is not read on that session"):
+            session({"ip": signed, "username": user}, lambda c: c)
+        assert got == [], "nothing was asked of the pool"
+
+
+# ── C3847's follow-ups (ec92d62b): the stage callback, verify's own step, stage 7's read ────
+
+def _stub_stages(monkeypatch, order, raise_at=""):
+    """Every pipeline stage replaced by one that records its name in *order* (stage
+    *raise_at* raising `PipelineStageError`), the rollback and the failure capture too."""
+    import modules.pipeline as P
+
+    def stage(ctx, _n):
+        order.append(_n)
+        if _n == raise_at:
+            raise P.PipelineStageError(f"{_n} failed for the test")
+    for name in P.STAGE_NAMES:
+        monkeypatch.setattr(P, f"_stage_{name}", lambda ctx, _n=name: stage(ctx, _n))
+    monkeypatch.setattr(P, "_stage_rollback", lambda ctx: order.append("rollback"))
+    monkeypatch.setattr(P, "_capture_failure_state", lambda ctx: None)
+
+
+class TestTheStageCallback:
+    """ec92d62b: `PipelineContext.on_stage` hears each stage's start and its end, or its
+    failure before any rollback the stage starts; a callback that raises changes nothing the
+    run does; a run with none calls nothing."""
+
+    def test_each_stage_is_told_as_it_starts_and_ends(self, monkeypatch):
+        import modules.pipeline as P
+        from tests.test_held_save import _ctx
+
+        order = []
+        _stub_stages(monkeypatch, order)
+        ctx = _ctx()
+        ctx.on_stage = lambda stage, event: order.append((stage, event))
+        P.PipelineRunner(ctx).run()
+        ran = [n for n in order if isinstance(n, str) and n != "audit_log"]
+        assert ran and ctx.final_status == "success", order
+        told = [e for e in order if isinstance(e, tuple)]
+        assert told == [(n, ev) for n in ran for ev in ("start", "end")], told
+
+    def test_a_callback_that_raises_changes_nothing_the_run_does(self, monkeypatch):
+        import modules.pipeline as P
+        from tests.test_held_save import _ctx
+
+        plain, raising = [], []
+        _stub_stages(monkeypatch, plain)
+        ctx = _ctx()
+        P.PipelineRunner(ctx).run()
+        _stub_stages(monkeypatch, raising)
+        ctx2 = _ctx()
+
+        def boom(stage, event):
+            raise RuntimeError("the callback fails")
+        ctx2.on_stage = boom
+        P.PipelineRunner(ctx2).run()
+        assert raising == plain and ctx2.final_status == ctx.final_status == "success"
+        assert ctx2.stages_failed == [] and ctx2.error == ctx.error
+
+    def test_a_stage_error_is_told_before_its_rollback(self, monkeypatch):
+        import modules.pipeline as P
+        from tests.test_held_save import _ctx
+
+        order = []
+        _stub_stages(monkeypatch, order, raise_at="verify")
+        ctx = _ctx()
+        ctx.push_results = {ctx.device_ips[0]: {"ok": True}}
+        ctx.on_stage = lambda stage, event: order.append((stage, event))
+        P.PipelineRunner(ctx).run()
+        assert ("verify", "failed") in order and "rollback" in order, order
+        assert order.index(("verify", "failed")) < order.index("rollback"), order
+        assert ("verify", "end") not in order
+
+    def test_a_run_with_no_callback_calls_nothing(self, monkeypatch, caplog):
+        import modules.pipeline as P
+        from tests.test_held_save import _ctx
+
+        order = []
+        _stub_stages(monkeypatch, order)
+        ctx = _ctx()
+        assert ctx.on_stage is None
+        with caplog.at_level("ERROR", logger="modules.pipeline"):
+            P.PipelineRunner(ctx).run()
+        assert ctx.final_status == "success"
+        assert "on_stage callback raised" not in caplog.text
+
+
+class TestVerifysOwnStep:
+    """ec92d62b: a command plan run records verify as its own step as stage 8 ends, with when
+    it began and its own seconds, once, after the send's step."""
+
+    def test_verify_is_recorded_with_its_start_and_seconds(self, lab):
+        rec = go(lab)
+        assert rec["outcome"] == "done", rec["why"]
+        steps = [s["step"] for s in rec["steps"]]
+        assert steps.count("verify") == 1 and steps.index("send") < steps.index("verify")
+        v = next(s for s in rec["steps"] if s["step"] == "verify")
+        assert v["began"] and v["started"] == v["began"], v
+        assert isinstance(v["took_s"], float) and v["took_s"] >= 0, v
+
+
+class TestStageSevensRead:
+    """ec92d62b (the operator's R3 answer (a)): a transient run with nothing that reads the
+    configuration after (no removal, no re-created IP SLA, no IP SLA compare) has stage 7 read
+    none, said why; every other run reads it; BGP's hold times are then taken from the
+    configuration before."""
+
+    @staticmethod
+    def ctx(transient=True, **over):
+        from tests.test_held_save import _ctx
+        c = _ctx()
+        c.transient = transient
+        for k, v in over.items():
+            setattr(c, k, v)
+        return c
+
+    def test_a_transient_run_reads_no_configuration_after(self):
+        import modules.pipeline as P
+        c = self.ctx()
+        assert "net-zero check reads the configuration after" in P._post_config_not_read(
+            c, c.device_ips[0])
+
+    def test_an_access_rule_run_says_the_rules_words(self):
+        import modules.pipeline as P
+        c = self.ctx()
+        ip = c.device_ips[0]
+        c.snapshot_scope = {ip: {"rule": "access", "interfaces": [PORT], "words": "the rule"}}
+        assert P._post_config_not_read(c, ip) == "the rule"
+
+    def test_a_deploy_or_restore_still_reads_it(self):
+        import modules.pipeline as P
+        c = self.ctx(transient=False)
+        assert P._post_config_not_read(c, c.device_ips[0]) == ""
+
+    @pytest.mark.parametrize("what", ["units", "recreates", "ip_sla"])
+    def test_a_transient_run_that_reads_it_after_still_reads_it(self, what):
+        import modules.pipeline as P
+        c = self.ctx()
+        ip = c.device_ips[0]
+        if what == "ip_sla":
+            c.expect_ip_sla = {ip: ["1"]}
+        else:
+            c.removals = {ip: {what: ["x"]}}
+        assert P._post_config_not_read(c, ip) == ""
+
+    def test_bgps_hold_is_read_from_before_when_stage_7_read_none(self):
+        import modules.pipeline as P
+        pre = {"running_config": "router bgp 65001\n"}
+        assert P._hold_config(pre, {"running_config": "",
+                                    "running_config_scoped": "a transient run"}) == \
+            pre["running_config"]
+        assert P._hold_config(pre, {"running_config": "after\n"}) == "after\n"
+        assert P._hold_config(pre, {"running_config": "",
+                                    "running_config_sections": [PORT]}) == \
+            pre["running_config"]
+
+    def test_a_plan_run_reads_the_whole_configuration_once_after(self, lab):
+        rec = go(lab)
+        assert rec["outcome"] == "done", rec["why"]
+        # Stage 4's read before and the net-zero check's after: stage 7 adds none.
+        assert lab["sw"].reads.count("show running-config") == 2, lab["sw"].reads
+
+
+class TestTheCosmeticScope:
+    """ec92d62b: a deploy or restore whose every line is cosmetic (`verify_scope.COSMETIC`)
+    reads no routing or interface snapshots; any other line, a transient run, a re-created IP
+    SLA, an IP SLA compare, a paired link or a declared effect keeps the full ones."""
+
+    @staticmethod
+    def scope(program, transient=False, **over):
+        import modules.pipeline as P
+        from tests.test_held_save import _ctx
+        c = _ctx()
+        ip = c.device_ips[0]
+        c.transient = transient
+        c.rendered_commands = {ip: list(program)}
+        for k, v in over.items():
+            setattr(c, k, {ip: v})
+        return P._cosmetic_scope(c, ip)
+
+    @pytest.mark.parametrize("program, what", [
+        (["interface GigabitEthernet0/1", " description uplink"], "descriptions"),
+        (["interface GigabitEthernet0/1", " no description"], "descriptions"),
+        (["banner motd ^Cauthorised use only^C"], "banners"),
+        (["snmp-server location rack 4", "interface GigabitEthernet0/1",
+          " description uplink"], "SNMP location")])
+    def test_every_line_cosmetic_is_the_cosmetic_rule(self, program, what):
+        got = self.scope(program)
+        assert got["rule"] == "cosmetic" and what in got["words"], got
+
+    @pytest.mark.parametrize("program", [
+        ["interface GigabitEthernet0/1", " description uplink", " shutdown"],
+        ["interface Loopback9"],
+        ["default interface GigabitEthernet0/1"],
+        ["ip sla 5", " icmp-echo 192.0.2.1"],
+        []])
+    def test_any_other_line_keeps_the_full_snapshots(self, program):
+        assert self.scope(program) == {}
+
+    @pytest.mark.parametrize("over", [
+        {"transient": True}, {"removals": {"recreates": ["1"]}}, {"expect_ip_sla": ["1"]},
+        {"pair_transient": {"peer": "r2"}}, {"expected_effects": {"declared": ["x"]}}])
+    def test_a_run_with_its_own_verify_keeps_the_full_snapshots(self, over):
+        program = ["interface GigabitEthernet0/1", " description uplink"]
+        transient = over.pop("transient", False)
+        assert self.scope(program, transient=transient, **over) == {}
+
+
+class TestTheRecoveryTable:
+    """ec92d62b: the errdisable-recover plan reads the switch's own recovery table (`show
+    errdisable recovery`, s1's capture): Disabled passes, Enabled fails, anything else is
+    unreadable, said; a script saved before keeps its config-filter read, and the check then
+    reads the table itself on the run's session."""
+
+    def test_s1s_table_reads_bpduguard_disabled(self):
+        got = T.E.recovery_timer(T.text("s1_errdisable_recovery.txt"), "bpduguard")
+        assert got["state"] == "disabled" and got["row"].startswith("bpduguard"), got
+        assert "psecure-violation" in got["reasons"]
+
+    @pytest.mark.parametrize("text, why", [
+        (None, "no answer"),
+        ("% Invalid input detected at '^' marker.\n", "the device answered"),
+        ("", "the answer is empty"),
+        ("errdisable recovery cause bpduguard\n", "holds no `ErrDisable Reason"),
+        ("ErrDisable Reason            Timer Status\n-----------------"
+         "            --------------\nudld                         Disabled\n",
+         "lists no row for bpduguard")])
+    def test_each_unreadable_shape_is_said(self, text, why):
+        got = T.E.recovery_timer(text, "bpduguard")
+        assert got["state"] == "unreadable" and why in got["why"], got
+
+    def test_an_old_scripts_filter_read_reads_the_table_itself(self):
+        asked = []
+
+        class Src:
+            def read(self, device, commands):
+                asked.append((device, tuple(commands)))
+                return {T.E.RECOVERY_READ: T.text("s1_errdisable_recovery.txt")}
+
+        class Run:
+            device, sources = "s1", Src()
+            derived = {"interface": PORT, "cause": "bpduguard", "interface_short": "Gi1/0"}
+        result, words = T.E.check_no_recovery("errdisable recovery interval 300\n", Run())
+        assert asked == [("s1", (T.E.RECOVERY_READ,))]
+        assert result == "pass" and "Disabled" in words, words
+
+    def test_the_tables_own_answer_is_judged_with_no_second_read(self):
+        class Src:
+            def read(self, device, commands):
+                raise AssertionError("the table was already read")
+
+        class Run:
+            device, sources = "s1", Src()
+            derived = {"interface": PORT, "cause": "bpduguard", "interface_short": "Gi1/0"}
+        enabled = T.text("s1_errdisable_recovery.txt").replace(
+            "bpduguard                    Disabled", "bpduguard                    Enabled", 1)
+        result, words = T.E.check_no_recovery(enabled, Run())
+        assert result == "fail" and "does not race it" in words, words
+
+
+# ── Preconditions batching (f86bcf7f) ───────────────────────────────────────────────────────
+
+@pytest.fixture
+def engine_runs(monkeypatch, lab):
+    """Each read-engine run (`reads.run`) a plan run makes, with how many batches the switch
+    had been sent when it was asked (0: before the send)."""
+    from modules.nsot import reads
+
+    real, got = reads.run, []
+
+    def spy(network, hosts, commands, *a, **k):
+        got.append({"commands": list(commands), "sent": len(lab["sw"].batches)})
+        return real(network, hosts, commands, *a, **k)
+    monkeypatch.setattr(reads, "run", spy)
+    return got
+
+
+class TestThePreconditionsBatch:
+    """f86bcf7f (the operator, 2026-11-16): a run's preconditions ask every device read in ONE
+    read-engine run, each check judged from that run's own answers; a refused run leaves every
+    command unanswered and the plan refuses; a read beside the device's (G7's Loki lines) that
+    raises or overruns its bound refuses; the run's sources are restored before verify, which
+    reads live."""
+
+    def test_the_preconditions_are_one_engine_run(self, lab, engine_runs):
+        rec = go(lab)
+        assert rec["outcome"] == "done", rec["why"]
+        before = [r for r in engine_runs if r["sent"] == 0]
+        assert len(before) == 1, before
+        asked = before[0]["commands"]
+        assert T.E.CONFIRM_READ in asked and T.E.RECOVERY_READ in asked, asked
+
+    def test_each_check_is_judged_from_its_own_answer(self, lab):
+        rec = go(lab)
+        got = {p["name"]: p for p in rec["preconditions"]}
+        assert got["The port is err-disabled by the cause now"]["result"] == "pass"
+        assert got["The switch does not recover the cause itself"]["result"] == "pass"
+        assert "Disabled" in got["The switch does not recover the cause itself"]["words"]
+
+    def test_a_refused_engine_run_leaves_every_command_unanswered(self, monkeypatch):
+        """The review's finding (2026-11-16): one refused run leaves EVERY command unanswered,
+        never the rest answered one by one, also when the list is asked in runs of
+        `reads.MAX_COMMANDS`."""
+        from modules.nsot import reads
+
+        monkeypatch.setattr(reads, "MAX_COMMANDS", 1)
+        src = CR.Sources(NET, model=Model())
+        monkeypatch.setattr(src, "_engine_run", lambda host, cmds: (
+            None if "show b" in cmds else {c: "answered" for c in cmds}))
+        assert src.read("s1", ["show a", "show b", "show c"]) == {
+            "show a": None, "show b": None, "show c": None}
+        monkeypatch.setattr(src, "_engine_run", lambda host, cmds: {c: "answered"
+                                                                    for c in cmds})
+        assert src.read("s1", ["show a", "show b"]) == {"show a": "answered",
+                                                        "show b": "answered"}
+
+    def test_a_read_beside_the_devices_that_raises_refuses(self, lab, monkeypatch):
+        lab["sw"] = Switch(state="err-disabled", cause="psecure-violation")
+
+        def raises(self, dev, since, until):
+            raise ConnectionError("Loki answered nothing")
+        monkeypatch.setattr("modules.heal.errdisable.Sources.lines", raises)
+        rec = go(lab, values=dict(VALUES, cause="psecure-violation"))
+        assert rec["outcome"] == "refused" and lab["sw"].batches == [], rec["why"]
+        assert "Loki answered nothing" in rec["why"], rec["why"]
+
+    def test_a_read_beside_the_devices_that_overruns_refuses(self, lab, monkeypatch):
+        import threading
+        lab["sw"] = Switch(state="err-disabled", cause="psecure-violation")
+        release = threading.Event()
+
+        def slow(self, dev, since, until):
+            release.wait(5)
+            return {"error": "", "cut": False, "lines": []}
+        monkeypatch.setattr("modules.heal.errdisable.Sources.lines", slow)
+        monkeypatch.setattr(CR, "AHEAD_JOIN_S", 0.05)
+        try:
+            rec = go(lab, values=dict(VALUES, cause="psecure-violation"))
+        finally:
+            release.set()
+        assert rec["outcome"] == "refused" and lab["sw"].batches == [], rec["why"]
+        assert "did not answer within" in rec["why"], rec["why"]
+
+    def test_verify_reads_live_after_the_preconditions(self, lab, engine_runs):
+        rec = go(lab)
+        assert rec["outcome"] == "done", rec["why"]
+        after = [r for r in engine_runs if r["sent"] > 0]
+        assert after, "verify asked the device through the engine after the send"
+        # The re-trip check reads `show interfaces status err-disabled` again after the send,
+        # live, never the precondition's answer of the same command from before it.
+        assert any(T.E.CONFIRM_READ in r["commands"] for r in after), after
 
 
 # ── The review of Gate 1a ───────────────────────────────────────────────────────────────────

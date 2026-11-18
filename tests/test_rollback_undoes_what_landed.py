@@ -138,6 +138,65 @@ class TestNothingToUndoIsReadBack:
         assert device.sent == [] and ctx.rollback_outcome[IP]["state"] == "nothing_to_undo"
 
 
+#: A net-zero plan that removes a section and re-adds it (17215a95: the lost stream's
+#: `telemetry-subscription-recreate`), and the device holding it before.
+SUB = ["telemetry ietf subscription 101", " encoding encode-kvgpb",
+       " filter xpath /process-cpu-ios-xe-oper:cpu-usage/cpu-utilization",
+       " stream yang-push", " update-policy periodic 1000",
+       " receiver ip address 192.0.2.50 57500 protocol grpc-tcp"]
+SUB_PRE = "hostname tw-a\n" + "\n".join(SUB) + "\n!\ninterface Loopback1\n shutdown\n"
+SUB_GONE = "hostname tw-a\n!\ninterface Loopback1\n shutdown\n"
+RECREATE = ["no " + SUB[0]] + SUB
+
+
+class TestATransientPlansRemovalIsPutBack:
+    """17215a95 (the review of 2026-11-16): a transient plan whose own top-level `no X` line
+    removes a section, and whose re-add did not land (a push stopped part-way), is rolled
+    back by putting the section back from the snapshot (`removal.transient_removal_units`,
+    `restore_program`), never by the line inversion alone, which re-adds nothing."""
+
+    @pytest.fixture
+    def gone(self, monkeypatch, device):
+        import modules.pipeline as P
+
+        device.running = SUB_GONE
+        monkeypatch.setattr(P, "_pre_change", lambda _ctx, ip: SUB_PRE)
+
+        def restore(_conn, cmds):
+            device.sent.extend(cmds)
+            if cmds and SUB[0] in cmds:
+                device.running = SUB_PRE
+        monkeypatch.setattr(P, "_restore_config", restore)
+        return device
+
+    def _rolled_back(self, transient):
+        from modules.pipeline import _capture_failure_state, _stage_rollback
+
+        ctx = _ctx()
+        ctx.transient = transient
+        ctx.rendered_commands = {IP: list(RECREATE)}
+        # The removal landed; the re-add did not (the push stopped after its first line).
+        ctx.push_results = {IP: {"ok": False, "output": "% the session dropped"}}
+        _capture_failure_state(ctx)
+        _stage_rollback(ctx)
+        return ctx
+
+    def test_the_removed_section_is_put_back_from_the_snapshot(self, gone):
+        ctx = self._rolled_back(transient=True)
+        sent = [ln.strip() for ln in gone.sent]
+        for line in SUB:
+            assert line.strip() in sent, (line, gone.sent)
+        assert gone.running == SUB_PRE
+        assert ctx.rollback_outcome[IP]["state"] == "restored", ctx.rollback_outcome[IP]
+
+    def test_only_a_transient_run_reads_its_own_no_lines_as_removals(self):
+        from modules.nsot.removal import transient_removal_units
+        assert transient_removal_units(RECREATE) == [{"chain": [], "line": SUB[0]}]
+        assert transient_removal_units(["interface Loopback1", " no shutdown"]) == []
+        assert transient_removal_units(["no netconf-yang", "netconf-yang"]) == [
+            {"chain": [], "line": "netconf-yang"}]
+
+
 class TestAChangeIsSavedOnlyOnceItPasses:
     def test_the_push_does_not_save(self, monkeypatch):
         import modules.connection as C
