@@ -1309,6 +1309,9 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
         return _finish(network, rec, "refused", why)
     t = CP.template_of(key)
     rec["hash"] = p["hash"]
+    # The template this run runs, by the digest its hash binds: a Save of the run stores this
+    # plan, never a later version (the correctness review's G3-H2, `saved_plans.save_fix`).
+    rec["template_digest"] = t.digest
     _step(rec, "approve", "ok", f"the plan is the one approved ({p['hash']})")
     from modules.pipeline import lap
     lap(rec["laps"], "approve")

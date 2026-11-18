@@ -120,6 +120,31 @@ class TestSavingAScript:
         assert t.commands == CP.template_of("errdisable-recover").commands
         assert S.scripts(NET)[e["key"]]["match"] == MATCH
 
+    @pytest.mark.parametrize("dry_run", [False, True])
+    def test_a_plan_changed_since_its_verified_run_is_not_saved(self, store, monkeypatch,
+                                                                dry_run):
+        """The correctness review's G3-H2 (2026-11-18): Save stored the run's plan as it is NOW
+        (`_template_doc`, the current template for the run's key), so a plan changed between
+        the verified run and the Save (an edited fix's new version, a built-in plan a deploy
+        changed) was stored as the verified fix, Automatic at once: lines no run verified,
+        firing by themselves. The run's record names the template it ran by its digest; a Save
+        whose plan's digest differs is refused naming both, nothing stored."""
+        from modules.nsot import privileged
+
+        ran = CP.template_of("errdisable-recover")
+        run_id = store["run"]()
+        rec = privileged.get(NET, run_id)
+        privileged.record(NET, dict(rec, template_digest=ran.digest))
+        changed = CP.parse(dict(ran.doc, title="Recover an err-disabled port, changed since"))
+        assert changed.digest != ran.digest
+        real = CP.template_of
+        monkeypatch.setattr(CP, "template_of", lambda key: (
+            changed if key == "errdisable-recover" else real(key)))
+        with pytest.raises(S.Refused) as exc:
+            script(store, run_id=run_id, dry_run=dry_run)
+        assert ran.digest in str(exc.value) and changed.digest in str(exc.value), exc.value
+        assert S.scripts(NET) == {}, "nothing is stored"
+
     @pytest.mark.parametrize("state, kind, words", [
         ("failed", "command_plan", "did not send its program and pass its own verify"),
         ("done", "privileged", "is no command plan's run"),
