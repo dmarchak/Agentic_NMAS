@@ -71,6 +71,24 @@ def test_a_self_heal_skips_the_ai_stages():
     assert nodes[-1]["state"] == "done"
 
 
+def test_nothing_is_now_where_nothing_is_happening():
+    """Tonight's shot of a rolled-back heal (2026-11-18): Diagnosing drew "now" though nothing
+    diagnosed it. A failed self-heal with no AI part skips the AI stages, its Applying failed,
+    and no stage is "now" until something runs."""
+    header = HEADER[:2] + [{"name": "Fixed", "state": "failed", "at": ""},
+                           {"name": "Verified", "state": "failed", "at": ""}]
+    nodes = S.lifecycle(_model(resolved=False, header=header, run=[]), [])
+    states = dict(_stages(nodes))
+    assert "now" not in states.values()
+    assert [states[n] for n in ("Diagnosing", "Fix proposed", "Approved")] == ["skip"] * 3
+    assert states["Applying"] == "failed" and states["Healed"] == "failed"
+    running = dict(_model(resolved=False, header=HEADER[:2] + header[2:], run=[]),
+                   done={"running": True})
+    running["header"] = HEADER[:2] + [{"name": "Fixed", "state": "", "at": ""},
+                                      {"name": "Verified", "state": "", "at": ""}]
+    assert dict(_stages(S.lifecycle(running, [])))["Applying"] == "now"
+
+
 def test_a_failed_verify_is_never_healed():
     header = HEADER[:3] + [{"name": "Verified", "state": "failed", "at": "2026-11-17T18:02:13Z"}]
     nodes = S.lifecycle(_model(header=header), LINES)

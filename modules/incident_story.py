@@ -121,17 +121,34 @@ def lifecycle(model: dict, lines: list) -> list:
          "not healed" if failed else (verified.get("words") or "")),
     ]
     resolved = bool(model.get("resolved"))
+    fixit = model.get("fixit") or {}
+    # "now" only where something is happening (tonight's shot of a rolled-back heal drew
+    # Diagnosing "now" with nothing diagnosing it): a run in progress at its first undone
+    # stage, a proposal waiting for its approval, or the AI investigating.
+    running = bool((model.get("done") or {}).get("running")) and not resolved
+    if resolved:
+        now_at = ""
+    elif running:
+        now_at = "first"
+    elif proposal and not approve:
+        now_at = "Approved"
+    elif start and not proposal and fixit.get("state") not in ("cant_fix", "ai_failed"):
+        now_at = "Diagnosing"
+    else:
+        now_at = ""
     out, now_set = [], False
     for name, at, words in nodes:
         if name in ("Diagnosing", "Fix proposed", "Approved") and not ai and (
-                resolved or fixed.get("at")):
+                resolved or fixed.get("at") or failed or running):
             state = "skip"
             words = words or "not needed: self-healing's own fix"
         elif name == "Healed" and failed:
             state = "failed"
+        elif name == "Applying" and fixed.get("state") == "failed":
+            state = "failed"
         elif at:
             state = "done"
-        elif not resolved and not now_set:
+        elif not now_set and (now_at == name or now_at == "first"):
             state, now_set = "now", True
         else:
             state = "todo"
