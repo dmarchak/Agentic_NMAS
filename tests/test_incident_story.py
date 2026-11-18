@@ -82,7 +82,11 @@ def test_nothing_is_now_where_nothing_is_happening():
     assert "now" not in states.values()
     assert [states[n] for n in ("Diagnosing", "Fix proposed", "Approved")] == ["skip"] * 3
     assert states["Applying"] == "failed" and states["Healed"] == "failed"
-    running = dict(_model(resolved=False, header=HEADER[:2] + header[2:], run=[]),
+    # The page's own header for a rolled-back heal: Fixed "none", worded "not fixed".
+    header[2] = {"name": "Fixed", "state": "none", "at": "", "words": "not fixed"}
+    rolled = dict(_stages(S.lifecycle(_model(resolved=False, header=header, run=[]), [])))
+    assert rolled["Applying"] == "failed"
+    running =dict(_model(resolved=False, header=HEADER[:2] + header[2:], run=[]),
                    done={"running": True})
     running["header"] = HEADER[:2] + [{"name": "Fixed", "state": "", "at": ""},
                                       {"name": "Verified", "state": "", "at": ""}]

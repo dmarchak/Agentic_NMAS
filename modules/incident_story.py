@@ -144,7 +144,11 @@ def lifecycle(model: dict, lines: list) -> list:
             words = words or "not needed: self-healing's own fix"
         elif name == "Healed" and failed:
             state = "failed"
-        elif name == "Applying" and fixed.get("state") == "failed":
+        elif name == "Applying" and (fixed.get("state") == "failed" or (
+                failed and fixed.get("state") == "none")):
+            # The header's Fixed cell is "none", worded "not fixed", when a sent fix's verify
+            # failed (incident_page `_cell("none", words="not fixed")`): it was applied and
+            # undone, so Applying reads failed, never still to come.
             state = "failed"
         elif at:
             state = "done"
