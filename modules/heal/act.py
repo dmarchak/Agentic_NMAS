@@ -2281,7 +2281,9 @@ def reap_tails(network: str, *, now: float = None, by: str = "heal to intent") -
     longer runs (`interrupted.mark_state` not ``held``: its job ended, a restart among the
     causes), recorded flagged with `tail_stale`'s words as a closing ``act`` row, so its
     incident's card and Needs attention say it (`run` asks it at every pass, the first after
-    a restart included). Returns the decisions marked. Never raises."""
+    a restart included); a healed act's incident, closed at Fixed, is reopened on it
+    (`reopen_on_tail`, the correctness review's G4-D2). Returns the decisions marked. Never
+    raises."""
     from modules.heal import decisions, interrupted, steplog
 
     now = time.time() if now is None else float(now)
@@ -2310,14 +2312,21 @@ def reap_tails(network: str, *, now: float = None, by: str = "heal to intent") -
         try:
             d = next((x for x in decisions.decisions(network) if x.get("id") == decision_id),
                      {"id": decision_id, "device": device, "incident": e.get("incident")})
+            flagged = dict(tail, state="flagged", flag=words, ended=_iso(now))
             steplog.record_act(network, d, {
                 "outcome": e.get("outcome") or "", "words": e.get("words") or "", "steps": [],
-                "sent": True, "records": dict(e.get("records") or {}, tail=dict(
-                    tail, state="flagged", flag=words, ended=_iso(now)))}, by=by, now=now)
+                "sent": True, "records": dict(e.get("records") or {}, tail=flagged)},
+                by=by, now=now)
             marked.append(decision_id)
         except Exception as exc:                      # noqa: BLE001 (the next pass)
             log.error("heal: %s's unfinished tail on %s was not recorded: %s", network,
                       device, exc)
+            continue
+        if e.get("outcome") == "healed":
+            # The correctness review's G4-D2: closed at Fixed, its tail cut short, so the fix
+            # may not be saved: reopened as a tail failing in the running job is (`finish`),
+            # through the one home (`reopen_on_tail`, which logs a refusal and never raises).
+            reopen_on_tail(network, d, flagged)
     return marked
 
 
