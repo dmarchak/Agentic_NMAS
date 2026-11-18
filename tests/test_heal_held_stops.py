@@ -102,3 +102,61 @@ class TestTheWaitedHold:
         got, src, _d = act(RUNNING, decision=d)
         assert got["outcome"] == "refused" and src.apply_kw is None, got["words"]
         assert said in got["words"] and "judged again once edge-b was held" in got["words"]
+
+
+class TestTheActsOwnHold:
+    """617ff2f0: the 18:42 Denver batch of 2026-11-17, each restore refusing itself ("r2 is
+    held by deploy of ..."): the stops judged once held count no hold, the act's own
+    included; a person's planned window still refuses."""
+
+    def test_the_acts_own_hold_is_not_guard_3(self, lab, real_holder):
+        from modules.heal import guards
+
+        d = decided(RUNNING)
+        src = FakeAct(RUNNING)
+        device_ops.acquire("Default", "edge-b", "heal", "admin@example.com")
+        try:
+            assert guards.g3_planned("Default", "edge-b", T0 + 5), \
+                "the hold guard 3 counts by default: the premise of the test"
+            assert A._stops(src, "Default", DS.find("Default", d["id"]), T0 + 5,
+                            held=True) == ""
+        finally:
+            device_ops.release("Default", "edge-b")
+
+    def test_a_held_act_heals(self, lab, real_holder):
+        got, src, _d = act(RUNNING)
+        assert got["outcome"] == "healed" and src.apply_kw is not None, got["words"]
+        assert "is held by" not in got["words"]
+
+    def test_a_window_declared_during_the_wait_still_refuses(self, lab, busy, monkeypatch):
+        d = decided(RUNNING)
+        declared = []
+        monkeypatch.setattr("modules.restarts.explained_by_person",
+                            lambda dev, n, now, **kw: dict(WINDOW) if declared else None)
+        busy.update(n=1, during=lambda n: declared.append(n))
+        got, src, _d = act(RUNNING, decision=d)
+        assert got["outcome"] == "refused" and src.apply_kw is None, got["words"]
+        assert "guard 3, planned work: edge-b is restarting as planned" in got["words"]
+        assert "judged again once edge-b was held" in got["words"], got["words"]
+
+    def test_a_no_change_window_beginning_during_the_wait_still_refuses(self, lab, busy,
+                                                                         monkeypatch):
+        d = decided(RUNNING)
+        begun = []
+        freeze = {"start": "00:00", "end": "23:59", "reason": "a maintenance freeze"}
+        monkeypatch.setattr("modules.change_windows.holding",
+                            lambda now=None, given=None: dict(freeze) if begun else None)
+        busy.update(n=1, during=lambda n: begun.append(n))
+        got, src, _d = act(RUNNING, decision=d)
+        assert got["outcome"] == "refused" and src.apply_kw is None, got["words"]
+        assert "no-change window" in got["words"] and "a maintenance freeze" in got["words"]
+        assert "judged again once edge-b was held" in got["words"], got["words"]
+
+    def test_a_window_before_the_hold_refuses_before_it(self, lab, busy, monkeypatch):
+        d = decided(RUNNING)
+        monkeypatch.setattr("modules.restarts.explained_by_person",
+                            lambda dev, n, now, **kw: dict(WINDOW))
+        got, src, _d = act(RUNNING, decision=d)
+        assert got["outcome"] == "refused" and src.apply_kw is None
+        assert "guard 3, planned work" in got["words"]
+        assert "judged again" not in got["words"] and busy["tries"] == 0, got["words"]
