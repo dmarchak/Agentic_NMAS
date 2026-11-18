@@ -3467,10 +3467,17 @@ def _read_like_before(ctx, ip: str, dev: dict, timeout) -> str:
         return with_temp_connection(
             dev, lambda c: c.send_command("show running-config", read_timeout=timeout))
 
+    from modules.commands import run_device_command
+
     def read(c):
         got = []
         for name in names:
-            text = c.send_command(SECTION_READ.format(name=name), read_timeout=timeout) or ""
+            # Stage 4's own read (`read_sections`): one home for the section read, its name
+            # held to the same token.
+            if not isinstance(name, str) or not _IFNAME_TOKEN.fullmatch(name):
+                raise ValueError(f"{name!r} is not an interface name a section is read by")
+            text = run_device_command(c, SECTION_READ.format(name=name),
+                                      read_timeout=timeout) or ""
             if not text.strip() or re.search(IOS_ERROR_PATTERN, text):
                 raise ValueError(f"{SECTION_READ.format(name=name)} could not be read")
             got.append(text)
