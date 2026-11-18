@@ -112,16 +112,14 @@ def test_a_batched_request_is_the_press_s_byte_for_byte_and_judged_the_same(worl
     def unmarked(body):
         return dict(body, system=[{k: v for k, v in b.items() if k != "cache_control"}
                                   for b in body["system"]])
-    # Byte for byte but max_tokens (7b0bb884, the operator 2026-11-16): a press asks the
-    # model's maximum, the caps enforced live while it streams; a batched request keeps its
-    # pin's max_tokens, since a batch's answers are read whole, never streamed
-    # (`gateway.ask_batch`).
+    # Byte for byte, max_tokens included (7b0bb884, the operator 2026-11-16: a press asks the
+    # model's maximum; ruling 13, 2026-11-18: "Size batched evaluations to the model's
+    # maximum"), so an evaluation measures the press's own request.
     assert live_body["max_tokens"] == profiles.max_output(profiles.TASKS["assistant"]["model"])
     for r in sent:
         assert r["params"]["messages"] == live_body["messages"]
-        assert r["params"]["max_tokens"] == profiles.TASKS["assistant"]["max_tokens"]
-        assert json.dumps(dict(unmarked(r["params"]), max_tokens=0)) == \
-            json.dumps(dict(unmarked(live_body), max_tokens=0))
+        assert r["params"]["max_tokens"] == live_body["max_tokens"]
+        assert json.dumps(unmarked(r["params"])) == json.dumps(unmarked(live_body))
         assert r["params"]["system"][-1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
     assert "cache_control" not in live_body["system"][-1], "a press is sent unmarked (C2261)"
     for r in got["results"].values():

@@ -108,7 +108,8 @@ time; changing it re-runs that task's recorded cases. **{{product}} sets no AI s
 own** (the operator, 2026-11-16): a prompt is refused only when, with its task's typical answer,
 it would not fit its model's context window, both numbers named; a Haiku prompt over 100,000
 tokens is priced at its long tier, every rate five times; and a call may answer up to its
-model's maximum output. The spending limits are what bound every call ([The day
+model's maximum output. An evaluation's batched request asks the same as a press does (the
+operator, 2026-11-18), so an evaluation measures the press's own call. The spending limits are what bound every call ([The day
 cap](#ai-cap)). Hosted AI is off until a person allows it. Every call goes through one gateway, which masks what leaves the
 host, refuses a call over a cap before sending it, and records it under **History › AI calls**
 (the feature, the model, the verdict, the cost, who asked). Every call also names what

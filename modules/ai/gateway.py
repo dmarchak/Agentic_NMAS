@@ -1039,6 +1039,29 @@ LIVE_EVERY_S = 15.0
 LIVE_SLACK_TOKENS = 200
 
 
+def asked_tokens(model: str, prompt_tokens: int, bound: dict = None, *,
+                 visible: bool = False) -> tuple:
+    """THE max_tokens a request asks before any cap, ``(tokens, kind, by)``: the model's
+    maximum output inside what its context window leaves after *prompt_tokens*, then, for a
+    thinking call, its task's *bound* (`background.output_bound`) where that is smaller. A
+    press's sizing (`_capped_send`, where a thinking call is cut further to what the tightest
+    cap can pay) and a batched request's (`ask_batch`; ruling 13, the operator, 2026-11-18:
+    "Size batched evaluations to the model's maximum"), one code path. *visible*: a
+    visible-output call's words for the window."""
+    window = profiles.context_window(model)
+    most = profiles.max_output(model)
+    top = max(1, min(most, window - int(prompt_tokens)))
+    kind = "model"
+    by = (f"the model's maximum output ({most // 1000}K)" if top == most else
+          f"what {model}'s context window ({window:,}) leaves after the prompt" if visible
+          else f"what {model}'s context window leaves")
+    if bound and int(bound["tokens"]) < top:
+        top = int(bound["tokens"])
+        kind = "fixed_bound" if bound.get("fixed") else "measured_bound"
+        by = f"its {'fixed' if bound.get('fixed') else 'measured'} bound ({bound['basis']})"
+    return top, kind, by
+
+
 def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, send, today,
                  refuse, tokens=None, typical=None, recount=None, spend_cap=None,
                  size_mode: str = "bound", stop_if=None) -> dict:
@@ -1141,8 +1164,6 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
     # tightest remaining cap can pay after other calls' holds; its hold is its counted prompt
     # plus that max_tokens at the output rate. A visible-output call keeps the live abort.
     thinking = row.get("thinking") != "off"
-    window = profiles.context_window(model)
-    most = profiles.max_output(model)
     bound = (background.output_bound(feature) if thinking and size_mode != "remaining"
              else None)
     sized = {}
@@ -1169,14 +1190,8 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
                     + "; nothing was sent")}
         if not thinking:
             return None
-        top = max(1, min(most, window - size["tokens"]))
-        kind, by, tight = "model", (f"the model's maximum output ({most // 1000}K)"
-                                    if top == most else
-                                    f"what {model}'s context window leaves"), None
-        if bound and int(bound["tokens"]) < top:
-            top = int(bound["tokens"])
-            kind = "fixed_bound" if bound.get("fixed") else "measured_bound"
-            by = f"its {'fixed' if bound.get('fixed') else 'measured'} bound ({bound['basis']})"
+        top, kind, by = asked_tokens(model, size["tokens"], bound)
+        tight = None
         cap_words = ""
         if caps_left and kind != "fixed_bound":
             # A fixed bound is never shrunk by a cap: its start rule already holds it.
@@ -1228,10 +1243,7 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
     else:
         # A visible-output call: max_tokens the model's maximum, inside what the context
         # window leaves; the cap is enforced live (`progress`).
-        max_tokens = max(1, min(most, window - size["tokens"]))
-        max_kind = "model"
-        max_by = (f"the model's maximum output ({most // 1000}K)" if max_tokens == most
-                  else f"what {model}'s context window ({window:,}) leaves after the prompt")
+        max_tokens, max_kind, max_by = asked_tokens(model, size["tokens"], visible=True)
         hold_usd = hold_now()
     body["max_tokens"] = max_tokens
     row["sized"] = {"max_tokens": max_tokens, "by": max_by, "kind": max_kind,
@@ -1718,8 +1730,15 @@ def ask_batch(requests: list, *, actor: str, trigger: dict, today: str = None,
             continue
         # No per-call cap (the operator, 2026-11-16: the spending limits are the only
         # governor): the batch's whole worst case is judged against the evaluation's stop and
-        # the day cap below. A batched request keeps its pin's max_tokens (an evaluation's
-        # answers are read whole, never streamed).
+        # the day cap below. A batched request asks what a press asks before any cap (ruling
+        # 13, the operator, 2026-11-18: "Size batched evaluations to the model's maximum"):
+        # the model's maximum output inside what the context window leaves after its prompt,
+        # a thinking call's task bound kept as the press keeps it (`asked_tokens`), so an
+        # evaluation measures the press's own request, max_tokens included.
+        bound = (background.output_bound(r["feature"])
+                 if prep["row"].get("thinking") != "off" else None)
+        prep["body"]["max_tokens"] = prep["max_tokens"] = asked_tokens(
+            prep["model"], prep["est"], bound)[0]
         worst = batch_worst_case_usd(prep["model"], prep["body"], prep["est"])
         ready.append(dict(prep, custom_id=cid, worst=worst, schema_model=r["schema"],
                           feature=r["feature"]))
