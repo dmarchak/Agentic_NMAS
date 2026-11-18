@@ -574,10 +574,12 @@ def key_refusal(name: str) -> str:
     return ""
 
 
-def _template_doc(rec: dict, key: str, name: str, words: str) -> dict:
+def _template_doc(template, key: str, name: str, words: str) -> dict:
+    """The fix's plan from *template*, the one read whose digest Save checked (the independent
+    review of 16dccdf0: a second read could store a later version), as *key* named *name*."""
     from modules.nsot import command_plan as CP
 
-    doc = dict(CP.template_of(rec.get("key")).doc, key=key, title=name)
+    doc = dict(template.doc, key=key, title=name)
     if words:
         doc["words"] = words
     CP.parse(doc)
@@ -685,13 +687,14 @@ def save_fix(network: str, *, run_id: str, name: str, actor: str, actor_verified
     # a plan changed since (an edited fix's new version, a built-in plan a deploy changed) is
     # no verified fix. A record from before runs kept their digest names none, and is saved as
     # before.
-    ran, now = rec.get("template_digest") or "", CP.template_of(rec.get("key")).digest
+    plan = CP.template_of(rec.get("key"))
+    ran, now = rec.get("template_digest") or "", plan.digest
     if ran and ran != now:
         raise Refused(f"{rec.get('key')} has changed since this run verified it (it ran "
                       f"{ran}, the plan is {now} now): its lines are not the ones verified; "
                       "run the plan again and save that run")
     key = _key(FIX, name)
-    doc = _template_doc(rec, key, name, words)
+    doc = _template_doc(plan, key, name, words)
     t = CP.parse(doc)
     if match:
         why = fills_refusal(t, fills)

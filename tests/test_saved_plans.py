@@ -145,6 +145,28 @@ class TestSavingAScript:
         assert ran.digest in str(exc.value) and changed.digest in str(exc.value), exc.value
         assert S.scripts(NET) == {}, "nothing is stored"
 
+    def test_the_plan_checked_is_the_plan_stored(self, store, monkeypatch):
+        """The independent review of 16dccdf0 (2026-11-18): Save checked the run's digest on
+        one read of the plan and built the stored fix from a second, so an edit landing
+        between the two stored a version no run verified, Automatic. One read serves both."""
+        from modules.nsot import privileged
+
+        ran = CP.template_of("errdisable-recover")
+        run_id = store["run"]()
+        privileged.record(NET, dict(privileged.get(NET, run_id), template_digest=ran.digest))
+        changed = CP.parse(dict(ran.doc, reason="an edit landing between the two reads"))
+        reads, real = [], CP.template_of
+
+        def template_of(key):
+            if key != "errdisable-recover":
+                return real(key)
+            reads.append(key)
+            return ran if len(reads) == 1 else changed
+        monkeypatch.setattr(CP, "template_of", template_of)
+        e = script(store, run_id=run_id)
+        stored = S.scripts(NET)[e["key"]]["template"]
+        assert stored.get("reason") == ran.doc["reason"], "the plan the run verified is stored"
+
     @pytest.mark.parametrize("state, kind, words", [
         ("failed", "command_plan", "did not send its program and pass its own verify"),
         ("done", "privileged", "is no command plan's run"),
