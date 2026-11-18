@@ -3845,6 +3845,9 @@ h1.simple-title { font-size: 22px; }
 .inc-kv dt { color: var(--ink-3); }
 .inc-kv dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 700px) {
+  /* The bottom line and its one button lead on a phone (board R2): the story follows the
+     incident's card (`.inc` is a flex column). */
+  .inc-story { order: 1; }
   .inc-life { grid-template-columns: 1fr; padding: 8px 12px; }
   .inc-life-node { display: grid; grid-template-columns: 26px 1fr auto; text-align: left;
     align-items: center; gap: 2px 10px; padding: 4px 0; }
