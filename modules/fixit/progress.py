@@ -21,7 +21,7 @@ AI_NEXT = ("Checking the plan is safe to run", "Plan ready for your approval")
 #: not drawn.
 RUN_WORDS = {"hold": "Holding {device}", "read_before": "Reading before",
              "preconditions": "Checks", "send": "Sending", "verify": "Verifying",
-             "record": "Fixed"}
+             "rollback": "Rolling back", "record": "Fixed"}
 #: A re-subscribe's steps, with the collector step first where its plan has one (the operator,
 #: 2026-11-16: each system's step said with its own result, in order: "1. Close the
 #: collector's session ✓ 2 s", "Waiting for edge1 to reconnect", "2. Re-subscribe 101 and 102",
@@ -120,8 +120,9 @@ def lines(declared, recorded, labels=None, *, device: str = "", subs: str = "",
     "at"}``), *labels* its own short words. Each recorded step done (or failed) with its
     seconds since the step before it; while it runs (*ended* false) the next declared one
     running since the last was recorded and the rest waiting; once it ended, a step never
-    reached says so. The bookkeeping (`HIDDEN`) is not drawn unless it failed; nor, for a run
-    that did not pass, its "Fixed". A line opening a system's step is that plan step's, said
+    reached says so. The bookkeeping (`HIDDEN`) is not drawn unless it failed, but a rollback
+    running after a failed step is; nor, for a run that did not pass or whose step failed, its
+    "Fixed". A line opening a system's step is that plan step's, said
     in words where the plan has *total* of them (`numbered`; `SYSTEM_OF`), counted from *n*.
     *proof* (`fixit.proof.of_record`, a finished run's): Verifying's own checks drawn under it,
     each with its seconds, and Verifying's seconds theirs where the run recorded its steps
@@ -135,10 +136,17 @@ def lines(declared, recorded, labels=None, *, device: str = "", subs: str = "",
             "wait": R.WAIT_S}
     out, prev, running, system = [], float(start or 0), False, ""
     last_at = _epoch(recorded[-1].get("at")) if recorded else float(start or 0)
+    # A step that failed (verify's, most often) means the run did not pass, ended or not: its
+    # "Fixed" is never drawn, and while it runs after a send its rollback is, the step running
+    # as it rolls back (the correctness review's G6 M6, 2026-11-18: "Fixed" with a spinner over
+    # a rollback, then "✓ Fixed" until the job ended).
+    bad = any(s.get("result") in FAILED for s in recorded)
+    undoing = bad and not ended and any(s.get("step") == "send" for s in recorded)
     for key, words, *_ in declared:
         rec = [s for s in recorded if s.get("step") == key]
         failed = bool(rec) and rec[-1].get("result") in FAILED
-        hidden = (key in HIDDEN or (key == "record" and (resub or (ended and not passed))))
+        hidden = ((key in HIDDEN and not (key == "rollback" and undoing))
+                  or (key == "record" and (resub or bad or (ended and not passed))))
         if hidden and not failed:
             prev = _epoch(rec[-1].get("at")) if rec else prev
             continue
