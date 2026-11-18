@@ -21,15 +21,15 @@ compared:
 1. the installation's kill switch (``heal_stopped``) stopped, or unreadable: off;
 2. the policy unreadable: off; the mode set off: off; values that are not the ones a person
    confirmed (a hand edit, or no confirmation at all): off, naming both fingerprints;
-3. AUTO past its expiry: dry run (N8: never off, so the record keeps running), recorded once
-   (`record_expiry`); AUTO on a network not marked lab (C2009's guard, `sdn.modes.stage`, until
-   PHASE8_PLAN 17.7's gate is complete): dry run, suspended, naming the stage and the gate.
+3. AUTO past an expiry it holds: dry run (N8: never off, so the record keeps running), recorded
+   once (`record_expiry`). A network's stage does not suspend AUTO (cd0aa4cc).
 
-**AUTO's limits** (N8, the operator, 2026-11-03): only on a network marked lab, at most 7 days
-per enablement (`MAX_AUTO_SECONDS`), expiring to dry run; it names at least one Tier 1 kind, and
-a change allows at most one more (Tier 1 kinds are enabled one at a time). A kind's tier is a
-ceiling in code (section 5): only `TIER1_KINDS` may be allowed AUTO, only `TIER2_KINDS`
-proposed; Tiers 3 and 4 are not settings.
+**AUTO's limits** (N8 as changed by the operator, 2026-11-16, and round 2, 2026-11-17): on any
+network, whatever its stage (`auto_refusal`), until a person turns it off or until an expiry at
+most 7 days away (`MAX_AUTO_SECONDS`), expiring to dry run; no kind list is needed to turn it
+on, and a change may allow any number of kinds. A kind's tier is a ceiling in code (section 5):
+only `TIER1_KINDS` may be allowed AUTO, only `TIER2_KINDS` proposed; Tiers 3 and 4 are not
+settings.
 
 **Lab defaults** (N1, N3): on a network marked lab, a hard stop the network does not set reads
 its lab default (`LAB_DEFAULTS`: a 120 s grace period and a 60-minute topology hold) in place of
@@ -462,6 +462,18 @@ def actions_not_built(kinds) -> str:
     return ""
 
 
+def auto_refusal(network: str) -> str:
+    """Why AUTO may not be turned on for *network*, or ``""``: the policy's answer, which
+    Settings › Self-healing's Mode dropdown offers Auto by (C4029, the operator, 2026-11-18:
+    "Mode must offer Auto wherever the policy allows it"). `plan` holds no stage gate since N8
+    was changed (the operator, 2026-11-16, cd0aa4cc: "AUTO on any network"), and the control
+    strip's switch turns AUTO on through `plan` too (`apply_planned`), so the answer is ``""``
+    whatever *network*'s stage; a change's own refusals (its expiry, its kinds' tiers) are
+    `plan`'s, said at its preview."""
+    del network
+    return ""
+
+
 def plan(network: str, proposed: dict, now: float = None) -> dict:
     """What changing *network*'s policy to *proposed* would do; writes nothing.
     ``{"network", "before", "after", "changes", "gates", "confirmable", "fingerprint",
@@ -615,8 +627,8 @@ def apply_planned(network: str, proposed: dict, *, actor: str, actor_verified: s
                   person: bool, reason: str, now: float = None, retry_skip=()) -> dict:
     """A change made in one press with no dialog (the control strip's Self-healing toggle and
     G6's Turn on self-healing and fix all, C3748): planned now and applied under that plan's
-    own fingerprint, so every gate `plan` holds is judged (AUTO only on a network marked lab,
-    its expiry within N8, a Tier 1 kind named) and the change is recorded with who and *reason*
+    own fingerprint, so every gate `plan` holds is judged (AUTO's expiry within N8, each kind
+    within its tier, something to confirm) and the change is recorded with who and *reason*
     exactly as a confirmed one is (`apply`). Its preview is the control itself, which names
     what it does. Raises `PolicyRefused` naming the gate that failed."""
     now = _now(now)

@@ -42,7 +42,7 @@ dialog:
 
 1. `auto`: self-healing is turned on in Auto for the network for its default duration (Auto
    lasts, 1 hour unless the network says 8), through the self-healing policy's own write: Auto
-   only on a network marked lab, at most 7 days, a kind it may fix named. The change is
+   on any network, its expiry at most 7 days away. The change is
    recorded in the network's settings record with your name and the reason, and History shows
    it. Already in Auto, nothing is written.
 2. `approve`: the batch is approved by its hash and recorded in the network's self-healing

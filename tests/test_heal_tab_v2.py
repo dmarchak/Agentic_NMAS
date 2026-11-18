@@ -186,10 +186,12 @@ def test_change_mode_previews_in_place_then_confirms_and_records(networks):
     pick = re.search(r'<select id="heal-mode-pick".*?</select>', html, re.S).group(0)
     assert '<option value="off" selected>Off</option>' in pick
     assert '<option value="dry_run" data-modal-choice="heal-mode-dry_run">Dry run</option>' in pick
-    # Default is not lab: Auto is offered disabled, saying why, and has no modal.
-    assert re.search(r'<option value="auto" disabled title="[^"]*marked lab[^"]*">Auto '
-                     r'\(a network marked lab only\)</option>', pick), pick
-    assert modal_of(html, "heal-mode-auto") is None and modal_of(html, "heal-mode-off") is None
+    # Default is not marked lab, and Auto is offered with its modal all the same: the Mode
+    # offers Auto wherever the policy allows it, and `policy.plan` allows it on any network
+    # (C4029, the operator, 2026-11-18; cd0aa4cc).
+    assert '<option value="auto" data-modal-choice="heal-mode-auto">Auto</option>' in pick, pick
+    assert "marked lab" not in pick, pick
+    assert modal_of(html, "heal-mode-auto") is not None and modal_of(html, "heal-mode-off") is None
     dry = modal_of(html, "heal-mode-dry_run")
     assert '<h3 class="modal-h" id="heal-mode-dry_run-h">Set Default to dry run</h3>' in dry
     assert '<input type="hidden" name="heal_mode" value="dry_run">' in dry
