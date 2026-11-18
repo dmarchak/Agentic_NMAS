@@ -134,7 +134,10 @@ class TestTheCommandPlanStep:
         iid = stopped(ai)
         asked = []
 
-        def preflight(network, params, *, reads=False, sources=None):
+        # Premise corrected (5653c025, the operator, 2026-11-16: the plan's preconditions read
+        # with the investigation's own reads reused): the step's preflight is asked with the
+        # incident and the job's reuse too (`fix_proposal._command_plan_reads`).
+        def preflight(network, params, *, reads=False, sources=None, incident="", reuse=None):
             asked.append((network, dict(params), reads))
             return {"ok": False, "refused": "the port is not err-disabled now", "drawn": {},
                     "hash": ""}

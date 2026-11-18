@@ -241,7 +241,10 @@ class TestTheErrDisabledPort:
         assert T.E.reclassify_step(NET, sources=T.Src(), now=T.AT + 600)["classified"] == [iid]
         asked = []
 
-        def preflight(network, params, *, reads=False, sources=None):
+        # Premise corrected (5653c025, the operator, 2026-11-16: the plan's preconditions read
+        # with the investigation's own reads reused): the step's preflight is asked with the
+        # incident and the job's reuse too (`fix_proposal._command_plan_reads`).
+        def preflight(network, params, *, reads=False, sources=None, incident="", reuse=None):
             asked.append(dict(params))
             return {"ok": True, "refused": "", "drawn": {}, "hash": "h-recover"}
         monkeypatch.setitem(catalog.COMMAND_PLANS, RECOVER["operation"], dataclasses.replace(
