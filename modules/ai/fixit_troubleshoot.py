@@ -1695,6 +1695,13 @@ def loop_feature(prep: dict) -> RL.LoopFeature:
         # (the operator, 2026-11-15); the marks are kept beside the answer they belong to.
         marks = unverified(answer, sections, prep["topo"], prep["pack"])
         why = check(answer, prep["pack"], sections, prep["topo"], unverified=_flat(marks))
+        actable = {str(a) for a in prep.get("actable") or ()}
+        if not why and any(str(v) not in actable for v in acts_on(answer)):
+            # A step on a device or subscription the finding does not name is the read loop's
+            # refusal to name (`read_loop._acts_check`, every pass's), never the ladder's: its
+            # "tried" compares a step's class and subscriptions, not its device, so r6's
+            # re-subscribe read as r2's attempt 1 tried again (17215a95).
+            return ""
         if not why:
             why = tried_refusal(answer, prep)
         if not why:
