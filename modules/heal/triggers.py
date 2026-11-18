@@ -527,7 +527,7 @@ def from_alerts(store: str, value: dict, now: float = None) -> dict:
         if not is_again:
             # An alert Mercury's own run caused (a recovery's shutdown fires Interface down):
             # attributed as a change line is (`attribution.attribute`: a run spanning it), so
-            # it opens no incident of its own (the operator's s2 record, 2026-11-16).
+            # it opens no incident of its own (the operator's record of a switch, 2026-11-16).
             from modules.heal import attribution as AT
             fired = (_epoch(inst.get("active_at")) or _epoch(inst.get("starts_at")) or now)
             try:
