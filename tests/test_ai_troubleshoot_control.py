@@ -303,7 +303,14 @@ class TestTheRowsSayIt:
         row = next(r for r in incidents_list.rows(NET)["rows"] if r["id"] == iid)
         assert row["ai"]["state"] == "investigating" and row["ai"]["since"]
         body = unescape(world.client.get(f"/v2/incidents?list={NET}").get_data(as_text=True))
-        assert re.search(r'data-ai="investigating">AI investigating since <time', body), body
+        # Premise corrected (2f368606 and d2093c59, the operator, 2026-11-15 and 2026-11-17:
+        # "Mercury working while a saved script runs or the AI investigates, with a spinner and
+        # the live step"; each incident its own row): the row's status is its working line,
+        # busy, where it was "AI investigating since <time>"; the start is the row's model's
+        # (``since``, above).
+        assert re.search(r'<span class="inc-row-sub simple-status working-now" data-status '
+                         r'data-busy title="The AI is investigating">The AI is investigating',
+                         body), body
         # Ended: its failure kept, the row says the outcome in one line.
         F.claim_start(inc_of(iid), f"decision:{iid}:failed", trigger="auto", state="failed",
                       words="the provider did not answer")
