@@ -257,8 +257,9 @@ line then says who proposed it, and the incident's list can tell later how it wa
 
 **AI spend per incident** (Settings › Installation › AI, the AI troubleshooting card, $1.00 by
 default) holds every call of the incident's investigations. What it has spent is every call of
-its own investigations, one its watchdog stopped or that failed after its calls included, each
-counted once, read again before each call; calls in flight hold their share. A call is sent only
+its own investigations, one its watchdog stopped or that failed after its calls included, and
+every self-healing analysis of it (the operator, 2026-11-18), each counted once, read again
+before each call; calls in flight hold their share. A call is sent only
 when what is left covers its hold (its counted prompt and its task's typical answer), and it is
 stopped mid-answer, "budget ran out mid-answer", before it would pass the cap
 ([The day cap](installation-settings#ai-cap)). A start is refused when what is left cannot pay
