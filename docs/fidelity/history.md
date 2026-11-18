@@ -31,7 +31,7 @@ Kind menu open (`history-kinds-menu`, 1280); Show only these (`history-unverifie
 the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 and 390); the
 real records (`history-real`, 1280).
 Compared 2026-10-16.
-Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
+Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html, templates/v2/_history_ai_call.html
 Hashed again 2026-11-11 for declared fault drills (the operator's decision of that day):
 `_history_timeline.html`'s region also re-reads on `fault_drills` (a declaration made), so a
 new "Fault drill declared" row appears without a reload; the kind filter gains "Fault drills
@@ -67,7 +67,8 @@ person by display name; no element moves. Compared by the template's diff
 (tests/test_actors_drawn_by_name.py); logged once (docs/STANDING_APPROVAL_LOG.md, "Records name
 people by display name on every v2 screen (C3715)"). Templates sha256 before:
 `881ecd57980fe7ee1f37b40821d125baba19e747deb12853f50b5f527d88bcc6`.
-Templates sha256: `c4709279654eca11f8fd74a79b9fa954bb6492780edaf9b398736e58096663bc`
+Compared again 2026-11-18 (the skip-mode debt, docs/FAST_LANE_DEBT.md; 93120b2f, c4948c2c and 74303566): `_timeline.html`'s Open the card opens a run's own home when it has one (an approved plan's step: its incident's card, its hover saying so; 93120b2f), and an AI call's "Show the prompt and the answer" is busy on itself while its view loads ("Loading…", c4948c2c, its busy span corrected in 74303566). `_history_ai_call.html`, the AI call's view that button draws in place (`v2.history_ai_call`), is folded into this record (it was in none): since c4948c2c "Sent to the model" and "Received" each carry a **Copy** (every part as sent, each under its name; the answer's bytes as received). Shot again from this tree (`history-rows`, `-open` at 1440, 1280 and 390, `history-real-rows`, `history-kinds-menu`, `history-baselines-rows`, `history-unverified-rows`, and `history-ai-call-rows`, `-open` at 1280 and 390; tests/test_board_shots.py's `test_history` and `test_history_ai_call`) and read region by region against this record's verdicts: every verdict stands; one row added for the AI call's view. The History boards are the canvas's, not on disk, so they were not re-shot. Logged once (docs/STANDING_APPROVAL_LOG.md, "An AI call's view on History: Copy beside what was sent and received"). Templates sha256 before: `c4709279654eca11f8fd74a79b9fa954bb6492780edaf9b398736e58096663bc` (without `_history_ai_call.html`).
+Templates sha256: `ec848ff3ae52a38760ae1fba66d118f9a4a61316fd5b5569ae5cdae2f3e9a772`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_timeline.html` and `_history_remote.html`, each place
@@ -445,4 +446,5 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The earlier board (History.dc.html) | a Commits tab; a Workflow filter; a Baseline column; Re-apply this baseline… under a Save All | superseded by board D: Commits a kind (Commits only), Workflow folded into Kind, a baseline decision its own row; Re-apply… on the Baselines tab | **same** |
 | Baselines | its own tab (board D: "Baselines and Authorisations keep their tabs") | headed by the count and "How does this work?" (C522); one line per baseline (tag, taken, earned, can be re-applied, Re-apply… with its (i)), why it was denied or withdrawn and what it claims opened under it, "Judged … in the background"; the walk's step 40 re-applied the newest from it | **same** |
 | Query | board A's library (compared in docs/fidelity/history-query.md and its sibling records) | the same records | **same** |
+| An AI call's view (`_history_ai_call.html`, folded in 2026-11-18) | the call's window inside its row (PHASE8_PLAN 15.14's comparison above): the call's facts, what was sent, part by part, folded, and what was received | the same, inside the row at full width; "Sent to the model" and "Received" each with a Copy (since c4948c2c; the shared `copy` component, a copy on the viewer's own machine that sends nothing) | **deviation** (log: An AI call's view on History: Copy beside what was sent and received) |
 | Phone | no phone board | the filters wrap to a second line, the identity chips wrap, each row's cells stack | **same** |
