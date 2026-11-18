@@ -19,7 +19,8 @@ Each test holds one purpose:
 - a saved script's run on the incident (its job's page the incident's) is found with what it
   is doing now, from the run's own steps, only for that incident and network and while it runs,
   and its row and page say "Self-healing: fixing with saved script <name>" with that step;
-- a script's automatic run is Self-healing's, naming who approved it at save.
+- a script's automatic run is Self-healing's, naming who approved it at save, and History names
+  its run so, never as its promoter's own press.
 """
 import threading
 
@@ -160,3 +161,24 @@ class TestASavedScriptsRun:
             f"{display_names.people('op@example.com')} at save)")
         assert SP.actor_words({"name": "BPDU recover"}) == (
             "Self-healing, saved script BPDU recover")
+
+    def test_history_names_a_scripts_run_by_self_healing_never_its_promoters_press(
+            self, world, monkeypatch):  # noqa: F811
+        import types
+
+        from modules import history_sources as HS
+        from modules.nsot import privileged, reads
+        from modules.nsot import saved_plans as SP
+
+        monkeypatch.setattr(SP, "scripts", lambda network: {SCRIPT["key"]: dict(SCRIPT)})
+        mine, persons = reads.new_id(), reads.new_id()
+        for rid, authority in ((mine, {"script": SCRIPT["key"]}), (persons, {})):
+            privileged.record(NET, {"id": rid, "device": "r3", "key": "errdisable-recover",
+                                    "state": "done", "actor": SCRIPT["promoted_by"],
+                                    "started_at": DETECTED, "authority": authority,
+                                    "reason": "the run"})
+        ctx = {"ref": types.SimpleNamespace(name=NET, data_dir=""), "device": "", "limit": 50,
+               "since": None, "until": None, "members": None}
+        who = {e["record"][0][1]: e["who"] for e in HS.privileged(ctx)["events"]}
+        assert who[mine] == SP.actor_words(SCRIPT), who
+        assert who[persons] == SCRIPT["promoted_by"], "a person's own run names them"
