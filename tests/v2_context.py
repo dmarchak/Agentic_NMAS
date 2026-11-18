@@ -4419,13 +4419,17 @@ def _saved_plans(client, _lab, _mp):
         mp.setattr(identity, "_setting", lambda key, default=None: (
             rights if key == "access_rights" else real_setting(key, default)))
         base = f"/v2/saved-plans/{inc}"
+        # Board R5's simple card (approved 2026-11-15): the offer is Save (Automatic: saving a
+        # verified fix is the approval, 6b91dc45) and Not now, Customize… holding the form
+        # with its Dry run choice; saved in Dry run it is one line with Promote… (a fix keyed
+        # ``fix-``, 3a659d6b).
         body = client.get(f"{base}/card?list=Lab", headers=hx).get_data(as_text=True)
-        assert "Save as a self-heal script" in body, body[:400]
+        assert "Save this fix so Mercury handles it automatically?" in body, body[:400]
         r = client.post(f"{base}/save-script?list=Lab", headers=hx,
-                        data={"name": "BPDU guard recovery", "keep_cause": "1"})
-        assert "Saved BPDU guard recovery" in r.get_data(as_text=True), r.status_code
+                        data={"name": "BPDU guard recovery", "keep_cause": "1", "dry_run": "1"})
+        assert "BPDU guard recovery</a>, Dry run." in r.get_data(as_text=True), r.status_code
         r = client.post(f"{base}/promote?list=Lab", headers=hx,
-                        data={"key": "script-bpdu-guard-recovery"})
+                        data={"key": "fix-bpdu-guard-recovery"})
         assert "Promoted BPDU guard recovery" in r.get_data(as_text=True), r.status_code
         assert command_policy.propose("Lab", "cisco_ios",
                                       "interface {interface} > description {description}",
@@ -4450,8 +4454,10 @@ def _saved_plans(client, _lab, _mp):
         from tests.test_saved_plans_v2 import BOUNCE
 
         def add(doc):
+            # An action saved on Lab before C3849, its network its run's (4816fadb).
             doc["plans"][BOUNCE["key"]] = {"key": BOUNCE["key"], "kind": "action",
-                                           "name": "Bounce interface", "template": BOUNCE}
+                                           "name": "Bounce interface", "template": BOUNCE,
+                                           "from_run": {"network": "Lab"}}
         S._update(add)
         mp.setattr("modules.nsot.hostvars.read_committed", lambda repo, host: {
             "interfaces": [{"name": "GigabitEthernet0/2"}]})

@@ -2584,8 +2584,10 @@ class TestSavedPlansCards(_Cards):
     SHAPE = "interface {interface} > description {description}"
 
     CASES = {
-        "script": ("_saved_plans_saves.html", "Save as a self-heal script",
-                   r"Save as a self-heal script", "data: the viewer lacks self-healing rights"),
+        # Board R5's simple card (approved 2026-11-15): the offer's one Save (Automatic:
+        # saving a verified fix is the approval, 6b91dc45).
+        "script": ("_saved_plans_saves.html", "Save", r"Save",
+                   "data: the viewer lacks self-healing rights"),
         "action": ("_saved_plans_saves.html", "Save as a reusable action",
                    r"Save as a reusable action", "data: the viewer is no admin"),
         "promote": ("_saved_plans_saves.html", "Promote {{ s.name }}",
@@ -2644,10 +2646,12 @@ class TestSavedPlansCards(_Cards):
     def drawn_promote(self, request):
         from modules.nsot import saved_plans as S
         c = request.getfixturevalue("card")
+        # Saved with Customize's Dry run (a plain Save is Automatic since 6b91dc45, with no
+        # Promote), keyed fix- (3a659d6b): Promote is drawn in the script's list.
         S.save_script("Lab", run_id=c["run"](), name="BPDU guard recovery",
-                      match=self._sp.MATCH, fills=self._sp.FILLS, **self._sp.WHO)
+                      match=self._sp.MATCH, fills=self._sp.FILLS, dry_run=True, **self._sp.WHO)
         html = self._get(request)[1]
-        assert 'data-script="script-bpdu-guard-recovery"' in html, "floor: the script is drawn"
+        assert 'data-script="fix-bpdu-guard-recovery"' in html, "floor: the script is drawn"
         return html
 
     def blocked_promote(self, request, monkeypatch):
