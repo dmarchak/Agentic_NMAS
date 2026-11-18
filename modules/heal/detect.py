@@ -662,8 +662,9 @@ def _plan_ran_to_its_end(network: str, run_id: str) -> bool:
     """False when *run_id* is a plan engine run (`plan_engine.KEY`) that did not finish ``done``:
     a plan stopped at a later step (its deploy moved at apply, refused, nothing sent) leaves an
     earlier step's pass as its newest attempt, and that pass is no fix of the incident (the
-    correctness review's G7-D1, 2026-11-18). True for any other run, whose own verify is its
-    attempt's. A record that cannot be read is False: an attempt not read never closes."""
+    correctness review's G7-D1, 2026-11-18). Any other run is held to the plan that ran it as a
+    step, if one did (`_its_plan_ran_to_its_end`, ruling 6). A record that cannot be read is
+    False: an attempt not read never closes."""
     from modules import plan_engine as PE
     from modules.config import list_data_path
     from modules.nsot import privileged
@@ -675,7 +676,39 @@ def _plan_ran_to_its_end(network: str, run_id: str) -> bool:
         return False
     if not isinstance(rec, dict):
         return False
-    return rec.get("key") != PE.KEY or rec.get("outcome") == "done"
+    if rec.get("key") == PE.KEY:
+        return rec.get("outcome") == "done"
+    return _its_plan_ran_to_its_end(network, rec)
+
+
+def _its_plan_ran_to_its_end(network: str, rec: dict) -> bool:
+    """Ruling 6 (the operator, 2026-11-18: "'The plan ran to its end' applies to every step
+    kind"): *rec*, a run of a step kind with its own record (a catalogue operation, a command
+    plan), closes its incident only when the plan engine run that ran it as a step (a step
+    whose receipt names *rec*, `plan_engine._run`) finished ``done``; while a plan of its
+    incident is still running a step of its kind, it has not reached its end either (its
+    receipt is kept once the step returns). True for a run no plan ran, whose own verify is its
+    attempt's. The runs read are the attempts' own (`fixit.incident.RUNS_READ`)."""
+    from modules import plan_engine as PE
+    from modules.config import list_data_path
+    from modules.fixit import incident as F
+    from modules.nsot import privileged
+
+    run_id, key = rec.get("id"), rec.get("key")
+    incident_id = str((rec.get(F.RUN_FIELD) or {}).get("incident") or "")
+    got = privileged.runs(network, limit=F.RUNS_READ, data_dir=list_data_path(network))
+    for plan in got["runs"]:
+        if not isinstance(plan, dict) or plan.get("key") != PE.KEY:
+            continue
+        steps = [s for s in plan.get("plan_steps") or [] if isinstance(s, dict)]
+        if any(isinstance(s.get("receipt"), dict) and s["receipt"].get("run") == run_id
+               for s in steps):
+            return plan.get("outcome") == "done"
+        if (incident_id and plan.get("incident") == incident_id
+                and plan.get("state") == "running"
+                and any(s.get("state") == "running" and s.get("kind") == key for s in steps)):
+            return False
+    return True
 
 
 def verified_fix(network: str, inc: dict) -> dict:

@@ -995,7 +995,7 @@ def _one(network: str, item: dict, approval: dict, *, act_start=None, wait=None,
          sources=None) -> dict:
     """One device of the batch: ``{"device", "outcome", "words", "decision", "job"}``, its
     *outcome* the heal act's (`act.OUTCOMES`), else ``refused`` or the decision's outcome."""
-    from modules.heal import act, decide, decisions, incidents, interrupted
+    from modules.heal import act, decide, decisions, incidents, interrupted, steplog
 
     device, by = item["device"], f"{approval.get('named') or BUTTON} ({approval['id']})"
     now = time.time()
@@ -1024,10 +1024,21 @@ def _one(network: str, item: dict, approval: dict, *, act_start=None, wait=None,
         words = (f"its program moved since the batch was previewed (approved "
                  f"{item['program_hash'][:12]}, now {(d.get('program_hash') or 'none')[:12]}). "
                  "Nothing was sent")
-        decisions.take(network, d["id"], by=by, now=now)
+        taken = decisions.take(network, d["id"], by=by, now=now)
         decisions.applied(network, d["id"], "refused", by=by, words=words, now=now)
         # Refused is no fix: its incident stands on it, said (C3870, `act.outcome_on_incident`).
         act.outcome_on_incident(network, d, "refused", words)
+        # Ruling 17 (the operator, 2026-11-18: "A program-moved batch-restore refusal is a
+        # failure R1 may start on"; G4-D8): its step log's act row, as every act's refusal
+        # writes one, so History holds it and `fixit.auto.failures` reads it.
+        try:
+            steplog.record_act(network, taken, {
+                "outcome": "refused", "words": words, "sent": False,
+                "steps": [{"step": "approve", "result": "refused", "words": words}]},
+                by=by, now=now)
+        except Exception as exc:                      # noqa: BLE001 (said; the refusal stands)
+            log.error("heal: %s's refused restore %s is not in the step log: %s", network,
+                      d["id"], exc)
         return {"device": device, "outcome": "refused", "decision": d["id"], "words": words}
     try:
         interrupted.hold(network, d["id"], device, by)

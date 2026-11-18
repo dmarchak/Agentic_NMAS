@@ -45,14 +45,16 @@ Two tabs, each with its count:
   - **Fixed by Mercury** (no person took part: the network's policy, in Auto, applied it),
     **Fixed by a person** (a person approved the fix) and **Fixed, who is not recorded**;
   - **Cleared** (it closed with no repair recorded) and **Declined** (a person declined the fix
-    that was proposed);
-  - **Closed, not confirmed**: it was closed, before only a healed heal closed an incident, on
-    a heal that did not heal, and nothing has confirmed the fix since. It is never drawn as
-    Fixed nor as Open; Mercury confirms it once by reading the device, and never reopens it
-    ([Confirm first](heal#confirm)).
+    that was proposed, and what it would have fixed has since gone: until then it is on Open,
+    needing a person).
 
-The tabs follow the incidents' own record: an incident it holds open is on Open, one it holds
-closed is on Closed. Its state is the one the incident's own page says, worked out by the same
+The tabs follow the incident's own page: an incident it says is resolved (Fixed, Cleared,
+Declined) is on Closed, every other one on Open. An incident closes only on a healed outcome,
+so one its record closed on a heal that did not heal, before only a healed heal closed an
+incident, with nothing confirming the fix since, is on Open under **Needs a person**, with its
+row on Needs attention; Mercury confirms it once by reading the device, and with its proof it
+moves to Closed as Fixed ([Confirm first](heal#confirm)). Its state is the one the incident's
+own page says, worked out by the same
 code, so the list and the page never disagree. The time beside the tabs says when the list was
 read; the list redraws itself whenever self-healing records a step.
 
@@ -75,7 +77,7 @@ table; and its status:
   reasonless line. A held incident says what holds it and when the next automatic heal is
   allowed. Otherwise what it waits for, and when it began;
 - on **Closed**, who fixed it, its time to repair, and when it ended (a fixed incident when its
-  fix was verified, a declined one when the fix was declined, a cleared one when it closed). A
+  fix was verified, a declined or cleared one when it closed). A
   close on a verified run says who fixed it as its group does, and how long the problem lasted
   and how long the fix took ("lasted 6 min; the fix took 41 s");
 - where the AI investigated it, **AI investigating since** its start while it runs, and its

@@ -62,3 +62,43 @@ def test_reaped_tail_reopens_incident(lab):  # noqa: F811
     assert "did not finish" in inc["standing"]["words"], inc["standing"]["words"]
     keys = [f["key"] for f in R1.failures(NET, open_ids={inc_id})["failures"]]
     assert any(k.startswith("tail:") for k in keys), keys
+
+
+def test_a_tail_failure_on_a_device_in_another_open_incident_attaches_to_it(  # noqa: F811
+        lab, monkeypatch):
+    """Ruling 17 (the operator, 2026-11-18: "A tail failure on a device already in an open
+    incident attaches to that incident"; the correctness review's G4-D7): `incidents.reopen`
+    refused when the device was in another open incident (one open incident per device), and
+    `reopen_on_tail` logged the refusal and returned, so the failure was only a flag: the
+    closed incident stayed Fixed and R1 never saw the tail, its incident not open. It is kept
+    on the open incident now, once, and R1's one reader lists it there as the tail failure it
+    is."""
+    from modules.fixit import auto as R1
+    from modules.heal import act
+    from tests.test_incident_page import CFG
+
+    inc_id, d = _healed_at_fixed()
+    other = I.sight(NET, "edge-b", dict(CFG, key="cfg:2", epoch=T0 + 30), now=T0 + 30)
+    other_id = other["incident"]
+    assert other_id != inc_id and _of(other_id)["state"] in R1.OPEN, _of(other_id)
+    assert act.reap_tails(NET) == [d["id"]]
+    assert act.reopen_on_tail(NET, d, {"state": "flagged", "flag": "again"}) == \
+        f"attached to {other_id}"
+    assert _of(inc_id)["state"] == "closed", "one open incident per device"
+    tails = _of(other_id)["tails"]
+    assert [(t["incident"], t["decision"]) for t in tails] == [(inc_id, d["id"])], tails
+    assert "did not finish" in tails[0]["words"], tails
+    got = R1.attached_tail_failures(_of(other_id))
+    assert [(f["key"], f["kind"], f["incident"], f["outcome"]) for f in got] == [
+        (R1.key_of("tail", d["id"]), "tail", other_id, act.TAIL_FAILED)], got
+    # R1's one reader (`pending`), its page and troubleshooting reads stood in (this lab's
+    # sighted incident has no device identity, so no troubleshooting record).
+    from modules.fixit import incident as F
+    monkeypatch.setattr("modules.incident_page.resolve", lambda network, iid: {
+        "found": "page", "id": iid, "incident": _of(iid)})
+    monkeypatch.setattr("modules.fixit.section.incident_of", lambda network, found: {
+        "incident": F.Incident(NET, found["id"], "uid:edge-b", "edge-b", T0), "why": ""})
+    monkeypatch.setattr(R1, "plan_failures", lambda network, inc: [])
+    monkeypatch.setattr(R1, "capability_failures", lambda network, inc: [])
+    pend = {i["id"]: i for i in R1.pending(NET)["incidents"]}
+    assert [f["key"] for f in pend[other_id]["failures"]] == [R1.key_of("tail", d["id"])], pend

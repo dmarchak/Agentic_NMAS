@@ -86,6 +86,31 @@ class TestEveryIncidentThatNeedsAPersonIsOnNeedsAttention:
         assert missing(ids) == [], ("an incident that needs a person is only on Incidents, "
                                     "not on Needs attention")
 
+    def test_a_store_closed_incident_its_fix_never_confirmed(self, client):  # noqa: F811
+        """C4084 (the operator, 2026-11-18: "an incident closes only on a healed outcome.
+        'Closed but not confirmed' stays open and needs a person. Fix whichever page says
+        otherwise, with a test"): the rolled-back heal its store closed before C3870
+        (closed_unconfirmed.json, a real capture) read Needs a person by its page's rule, yet
+        the Incidents list put it on Closed, "Closed, not confirmed", its page's header said so
+        and Needs attention held no row for it. Now all three show it open and needing a
+        person: on Open under Needs a person, its header Needs a person, and a row here."""
+        from modules import incidents_list as L
+        doc = LV._load("closed_unconfirmed")
+        LV.plant([doc])
+        iid = doc["page"]
+        assert doc["incidents"][0]["state"] == "closed", "the store holds it closed"
+        assert needing([iid]) == [iid]
+        found = IP.resolve(NET, iid)
+        st = IP.status(found["incident"], found["entry"], found["decisions"])
+        assert (st["state"], st["words"], st["needs"]) == ("needs_person", "Needs a person",
+                                                           True), st
+        open_rows = {r["id"]: (g["key"], r) for g in L.page(NET, "open")["groups"]
+                     for r in g["rows"]}
+        assert open_rows.get(iid, ("",))[0] == "needs_person", sorted(open_rows)
+        assert iid not in {r["id"] for g in L.page(NET, "closed")["groups"] for r in g["rows"]}
+        assert missing([iid]) == [], ("an incident that needs a person is only on Incidents, "
+                                      "not on Needs attention")
+
     @pytest.mark.parametrize("name", sorted(S.PLANTS))
     def test_the_incident_state_tests_planted_incidents(self, client, measured, name):  # noqa: F811
         plant, state = S.PLANTS[name]

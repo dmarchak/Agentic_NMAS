@@ -20,7 +20,15 @@ Compared again 2026-11-15 (C3715): the change's person drawn by display name; no
 moves. Compared by the template's diff (tests/test_actors_drawn_by_name.py); logged once
 (docs/STANDING_APPROVAL_LOG.md, "Records name people by display name on every v2 screen
 (C3715)"). Templates sha256 before: `10cec229b75fe4112b58389adfb7822c1e6ee8e5275a2ddb0ae720eb3214c103`.
-Templates sha256: `e69542e5d251967380be0929d0b9b04eee93ca8c3fe9fd8dd415e367086e9061`
+Compared again 2026-11-18 (ruling 18, the operator: "Decline does not close an incident whose
+cause still stands"): in `_heal_proposal.html`, the declined result's sentence ends "its
+incident stays open, needing a person, until what it would have fixed is gone" (was "its
+incident is closed and a later check may propose again"), and Decline's hover says it "keeps the
+incident open while its cause stands" (was "closes the incident"). Words only, in the same
+elements; no element moves and no region's verdict moved; compared by the template's diff
+(tests/test_heal_proposal_v2.py's `test_decline_says_its_incident_stays_open_while_its_cause_stands`),
+not by new shots. Templates sha256 before: `e69542e5d251967380be0929d0b9b04eee93ca8c3fe9fd8dd415e367086e9061`.
+Templates sha256: `aefbb6b253321af4d6c63f8a278545922e4e353a9ff40760746aa4d5adcbdf13`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_heal_proposal.html`, each place that draws a person

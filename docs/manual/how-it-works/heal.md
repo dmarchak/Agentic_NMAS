@@ -48,7 +48,8 @@ incident every 30 seconds, and at once when a trigger arrives. One pass, per net
      check, not on its alerts clearing". An approved plan's run ends it at once when the run
      ends, and this pass ends any it missed. Only a run this incident's own troubleshooting
      started counts (a run on the same device that names no incident may have fixed another
-     port), only a plan that ran to its end (one stopped at a later step fixed nothing), and
+     port), only a plan that ran to its end, whatever kind of step passed (one stopped at a
+     later step fixed nothing, even when an earlier re-subscribe or saved action verified), and
      only a run that sent and verified (one whose precondition found nothing to do sent
      nothing). A trigger after that check (the err-disable again, the alert fired again) is the
      problem back: the incident stands on it. Its alert still firing 5 minutes after the check
@@ -308,8 +309,11 @@ daily retry decided.
 golden commit or its read against the new golden fails (a restart that cut the tail short
 included), the incident it closed is reopened, standing on that failed step: "fixed, and a step
 after it failed: <why>". Only a heal's own tail reopens its own incident, and only one closed by
-that heal; a past incident is never reopened. The heal's card still says Fixed, the failed step
-flagged under it, and Needs attention keeps its own item about the step.
+that heal; a past incident is never reopened. When its device is already in another open
+incident (a device is in one open incident at a time), the failure attaches to that incident
+instead: the closed one stays closed, and the AI may start troubleshooting on the open one with
+the failed step as its failure. The heal's card still says Fixed, the failed step flagged under
+it, and Needs attention keeps its own item about the step.
 
 ### Confirm first {#confirm}
 
@@ -325,9 +329,10 @@ heal's `confirm` step, and the AI starts with it in its evidence beside the fail
 Every other close that would end an incident standing on such a heal (a drift run reading the
 device at its golden, its symptom read gone, a decision of nothing to heal) asks for the same
 confirmation read instead, at most once an hour for the same heal, and the incident closes only
-on its proof. An incident closed on such an outcome before this was built (no proof kept) reads
-**Closed, not confirmed** on [Incidents](incidents) and on its page, never Fixed nor Open; it is
-confirmed by the same read once, and never reopened.
+on its proof. An incident closed on such an outcome before this was built (no proof kept) is not
+read as closed: an incident closes only on a healed outcome, so it is on [Incidents](incidents)'
+Open tab under **Needs a person**, its page says Needs a person, and it has its row on Needs
+attention, never Fixed; the same read confirms it once, and with its proof it reads Fixed.
 
 ### A problem that keeps coming back {#findings}
 

@@ -1545,15 +1545,22 @@ def reopen_on_tail(network: str, decision: dict, tail: dict, steps=None) -> str:
     """A heal closed at Fixed whose tail then failed (the operator, 2026-11-16: "A failed
     save/golden tail step reopens the incident"): `incidents.reopen`, the flag its words.
     Only from a tail running in this code (past incidents are never reopened). The flag stays
-    Needs attention's own row (`attention._heal_tail_rows`)."""
+    Needs attention's own row (`attention._heal_tail_rows`). Its device in another open
+    incident, the failure attaches to that one instead (ruling 17, `incidents.reopen`):
+    ``"attached to <id>"``."""
     from modules.heal import incidents
 
     del steps
     try:
-        incidents.reopen(network, decision["incident"], decision["id"],
-                         f"{STANDING_WORDS[TAIL_FAILED]}: {tail.get('flag') or ''}".rstrip(": "),
-                         time.time(), step=tail_failed_step(tail),
-                         departure=decision.get("departure") or "", on=ON_TAIL)
+        got = incidents.reopen(
+            network, decision["incident"], decision["id"],
+            f"{STANDING_WORDS[TAIL_FAILED]}: {tail.get('flag') or ''}".rstrip(": "),
+            time.time(), step=tail_failed_step(tail),
+            departure=decision.get("departure") or "", on=ON_TAIL)
+        if (got or {}).get("id") not in (None, decision["incident"]):
+            log.info("heal: %s's tail failure on %s attached to open incident %s", network,
+                     decision.get("incident"), got["id"])
+            return f"attached to {got['id']}"
         return "reopened"
     except Exception as exc:                          # noqa: BLE001 (said: logged)
         log.error("heal: %s's incident %s was not reopened on its tail: %s", network,
