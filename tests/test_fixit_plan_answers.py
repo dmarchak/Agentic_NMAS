@@ -28,6 +28,7 @@ from modules.fixit import incident as F
 from tests.test_fixit_section_v2 import incident, page  # noqa: F401
 from tests.test_fixit_section_v2 import web  # noqa: F401 (the fixture)
 from tests.test_fixit_troubleshoot import ai, answer, fix, press, sec_of, stopped  # noqa: F401
+from tests.test_fixit_troubleshoot import CLOSE
 from tests.test_heal_resubscribe import lab  # noqa: F401
 from tests.test_sdn_connections import networks  # noqa: F401
 
@@ -53,14 +54,17 @@ def lines(iid) -> list:
 class TestThePlan:
     def test_a_plan_is_proposed_and_kept_with_its_steps(self, ai):
         iid = stopped(ai)
-        ai.answer = planned([step(subscriptions=["101"])])
+        # Premise corrected (17215a95's ladder: a re-subscribe of 101 repeats attempt 1 and is
+        # refused as tried): the plan is the collector's close, which no attempt makes tried.
+        ai.answer = planned([step(CLOSE, subscriptions=["101", "102"])])
         r, html = press(ai, iid)
         assert r.status_code == 200, html
         sec = sec_of(html)
         assert "The AI proposes a plan of 1 step" in sec, sec
         (line,) = lines(iid)
-        assert line["source"] == "ai" and line["prompt"] == "fixit_troubleshoot.v13"  # the investigation's last pass (C3797)
-        assert [s["operation"] for s in line["steps"]] == ["telemetry-resubscribe"]
+        # Every pass is v18's prompt since v17's one shape (231da1d6; C3918).
+        assert line["source"] == "ai" and line["prompt"] == "fixit_troubleshoot.v18"
+        assert [s["operation"] for s in line["steps"]] == [CLOSE]
 
     @pytest.mark.parametrize("ans,why", [
         (lambda: planned([step()], fix=fix()), "a plan and also a fix"),
@@ -97,10 +101,13 @@ class TestTheImprovement:
         from modules.nsot import command_policy
         iid = stopped(ai)
         shape = "interface {interface} > description x"
-        ai.answer = planned([step(subscriptions=["101"]), step(subscriptions=["102"])],
-                            improvement={"what": "one re-subscribe of both", "saves":
+        # Premise corrected (17215a95's ladder: a re-subscribe repeats attempt 1 and is refused
+        # as tried): the steps are the collector's close, which no attempt makes tried.
+        ai.answer = planned([step(CLOSE, subscriptions=["101"]),
+                             step(CLOSE, subscriptions=["102"])],
+                            improvement={"what": "one close of both", "saves":
                                          "one step and about 2 minutes (attempt 1's run)",
-                                         "steps": [step(subscriptions=["101", "102"])],
+                                         "steps": [step(CLOSE, subscriptions=["101", "102"])],
                                          "shapes": [{"dialect": "cisco_iosxe", "shape": shape,
                                                      "why": "a test"}]})
         _r, html = press(ai, iid)
