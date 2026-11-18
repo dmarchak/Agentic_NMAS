@@ -92,8 +92,10 @@ attention card had); only ``hi-`` ids have a page; an incident past the newest
 """
 
 import calendar
+import copy
 import logging
 import re
+import threading
 import time
 
 log = logging.getLogger(__name__)
@@ -1323,7 +1325,61 @@ def _held_attention(network: str) -> dict:
     return display_names.people_payload(attention_store.read_masked(network))
 
 
+#: How long a built page is drawn again while nothing has been announced (the incidents list's
+#: own rule, `incidents_list.HOLD_S`, C3788): the page's own states move with time too (a wait's
+#: age, an investigation past its bound), so a held page never outlives this.
+HOLD_S = 30.0
+#: The pages held, at most this many (the least recently built go first).
+HELD_MAX = 64
+#: The built pages, by ``(network, incident id)``: ``(generation, monotonic, value)``.
+_held = {}
+_held_lock = threading.Lock()
+#: One build at a time per page: a request arriving while its page is being built waits for
+#: that build and takes its value, never builds it again beside it.
+_flights = {}
+
+
+def _clock() -> float:
+    return time.monotonic()
+
+
 def page(network: str, incident_id: str, attention: dict = None) -> dict:
+    """What the incident's page draws (`_page`), built once per change (the redesign brief §6
+    step 3, 2026-11-18: "store each incident's summary, lifecycle state and counts when they
+    change; don't rebuild them on every load"). Measured on the host, 2026-11-17: the page's
+    build 0.24 s warm in a process of its own, a 4.17 s median in the live one, where every
+    announcement made every open page fetch it again at once, each build sharing the process
+    with the heals that announced.
+
+    The built value is held while `invalidation.generation` is unchanged (every announcement and
+    every mutating route's declared change moves it) and for at most `HOLD_S`; a request for a
+    page being built waits for that build (one per page at a time). Each caller gets its own
+    copy (the route adds the heal analysis to it). Display only: no decision reads it. A test
+    session builds on every read (`attention_store.COMPUTE_ON_READ`), as the stores do."""
+    from modules import attention_store, invalidation, server_timing
+
+    if attention_store.COMPUTE_ON_READ:
+        return _timed(network, incident_id, attention)
+    key = (network, incident_id)
+    with _held_lock:
+        flight = _flights.setdefault(key, threading.Lock())
+    with flight:
+        gen = invalidation.generation()
+        with _held_lock:
+            h = _held.get(key)
+        if h is not None and h[0] == gen and _clock() - h[1] < HOLD_S:
+            server_timing.add("held page", 0.0)
+            return copy.deepcopy(h[2])
+        built_at = _clock()
+        value = _timed(network, incident_id, attention)
+        with _held_lock:
+            _held[key] = (gen, built_at, value)
+            while len(_held) > HELD_MAX:
+                _held.pop(min(_held, key=lambda k: _held[k][1]))
+        return copy.deepcopy(value)
+
+
+def _timed(network: str, incident_id: str, attention: dict = None) -> dict:
     """`_page`, timed: one log line per request with each stage's seconds and any lock wait
     it met (`filestore.PathLock.watch_waits`; the speed pass, 2026-11-16, C3914). Timing only:
     nothing reads it to decide."""
