@@ -285,18 +285,20 @@ def test_auto_is_suspended_to_dry_run_once_the_stage_moves_off_lab(networks):
 
 
 def test_auto_names_a_tier_1_kind_and_allows_one_more_at_a_time(networks):
-    """Round 2 (70e89a47, the operator, 2026-11-17): AUTO heals every Tier 1 and Tier 2 kind,
-    so no kind list is needed to turn it on and no one-kind-per-confirm refusal stands; the
-    gates say so, and a kind outside Tier 1 is still refused by name (a tier is a ceiling)."""
+    """Round 2 (70e89a47, the operator, 2026-11-17): no kind list is needed to turn AUTO on
+    and no one-kind-per-confirm refusal stands, and a kind outside Tier 1 is still refused by
+    name (a tier is a ceiling). Premise corrected (226477ad put the kind lists back into
+    `decide._outcome`, measured by the correctness review's G2 M1): the gates name the kinds
+    allowed Auto as the ones that heal by themselves."""
     mark()
     none = H.plan("Default", {"heal_mode": "auto", "heal_mode_until": iso(T0 + 3600),
                               "heal_kinds_auto": []}, T0)
     assert none["confirmable"]
-    assert "AUTO heals every Tier 1 and Tier 2 kind" in [g["name"] for g in none["gates"]]
+    assert "AUTO heals the kinds allowed Auto" in [g["name"] for g in none["gates"]]
     two = H.plan("Default", {"heal_mode": "auto", "heal_mode_until": iso(T0 + 3600),
                              "heal_kinds_auto": ["added_line", "missing_line"]}, T0)
     assert two["confirmable"] and not [g for g in two["gates"] if g["state"] == "fail"]
-    (kinds,) = [g for g in two["gates"] if g["name"] == "kinds allowed AUTO (read no more)"]
+    (kinds,) = [g for g in two["gates"] if g["name"] == "kinds allowed AUTO"]
     assert kinds["why"] == "this change allows 2 more (added_line, missing_line)"
     auto(kinds=("added_line",))
     more = H.plan("Default", {"heal_kinds_auto": ["added_line", "missing_line"]}, T0)
@@ -304,6 +306,38 @@ def test_auto_names_a_tier_1_kind_and_allows_one_more_at_a_time(networks):
     with pytest.raises(H.PolicyRefused) as exc:
         H.plan("Default", {"heal_kinds_auto": ["process_reset"]}, T0)
     assert "a kind's tier is a ceiling in code" in str(exc.value)
+
+
+def test_the_auto_confirm_says_the_kind_lists_decide(networks):
+    """The Auto confirm's words are what the decision does (the correctness review's G2 M1;
+    226477ad put the kind lists back into `decide._outcome`): no gate says every Tier 1 and
+    Tier 2 kind heals or that no kind list is read; with no kind allowed Auto it says nothing
+    heals by itself, and still refuses nothing (no gate is added); and a Tier 2 fix in Auto is
+    proposed, an unlisted Tier 1 kind a dry run, as the words say."""
+    from modules.heal import decide
+    mark()
+    for kinds in ([], ["added_line"]):
+        got = H.plan("Default", {"heal_mode": "auto", "heal_mode_until": iso(T0 + 3600),
+                                 "heal_kinds_auto": kinds}, T0)
+        said = " ".join(f"{g['name']}: {g['why']}" for g in got["gates"])
+        assert "every Tier 1 and Tier 2" not in said and "no kind list is read" not in said
+        assert "read no more" not in said, said
+        assert got["confirmable"], "no gate refuses an Auto naming no kind"
+        (heals,) = [g for g in got["gates"] if g["name"] == "AUTO heals the kinds allowed Auto"]
+        if kinds:
+            assert heals["why"].startswith("1 kind heals by itself (added_line)"), heals
+        else:
+            assert heals["why"].startswith("no kind is allowed Auto, so nothing heals by "
+                                           "itself"), heals
+        assert "a Tier 2 fix is proposed for a person" in heals["why"]
+    auto = {"mode": "auto"}
+    tier2 = {"tier": 2, "kind": "process_reset",
+             "units": [{"kind": "process_reset", "section": "interface Gi0/1"}]}
+    assert decide._outcome(auto, tier2, [], ["process_reset"])[0] == "propose"
+    tier1 = {"tier": 1, "kind": "added_line",
+             "units": [{"kind": "added_line", "section": "interface Gi0/1"}]}
+    assert decide._outcome(auto, tier1, [], [])[0] == "would_heal"
+    assert decide._outcome(auto, tier1, ["added_line"], [])[0] == "heal"
 
 
 # ── Fails closed ──────────────────────────────────────────────────────────────────────────────

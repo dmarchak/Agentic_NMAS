@@ -280,3 +280,20 @@ def test_on_is_auto_until_someone_turns_it_off(world, open_problem):
     assert (cur["mode"], cur["until"]) == ("auto", "")
     assert "until turned off" in cur["words"]
     assert "On until" not in body and "until someone turns it off" in body
+
+
+def test_the_switch_line_promises_a_fix_only_for_what_it_fixes():
+    """The line beside the switch (`batch.switch_words`) counts as fixed only what the
+    switch-on fixes, its restores and saved scripts; the open incidents it decides again in
+    Auto are said apart, each fixed only if Auto allows its kind (the correctness review's G2
+    M2: after 226477ad a Tier 2 kind is proposed and an unlisted Tier 1 kind stays a dry run,
+    so "read and fixed now" promised fixes that do not happen)."""
+    both = B.switch_words(5, 2, decided=3)
+    assert both.startswith("Also fixes the 7 open problems (5 restores, 2 saved scripts)"), both
+    assert "fixed now" not in both
+    assert "3 more decided again in Auto, each fixed by itself only if its kind is allowed " \
+           "Auto" in both, both
+    alone = B.switch_words(0, 0, decided=1)
+    assert "fixes" not in alone.lower() and "fixed now" not in alone, alone
+    assert alone.startswith("Decides 1 open problem again in Auto"), alone
+    assert B.switch_words(2, 0) == "Also fixes the 2 open problems (2 restores)"

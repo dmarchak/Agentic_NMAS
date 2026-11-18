@@ -7708,9 +7708,9 @@ def _heal_finding_rows(lst: str, rows: list, now: float, said: list, mode=None) 
             what=findings.headline(f),
             cause=(f"{f['operation']} fixed it and verified, and it came back within "
                    f"{s['heal_fight_minutes']} minutes, {f['times']} times; "
-                   + ("this network stops fixing it while it lasts" if s["heal_fight_stop"]
-                      else "Mercury keeps fixing it (this network's self-healing settings can "
-                           "stop it while a fight lasts)")
+                   # The fight's stop holds nothing since round 2 (`guards.g11_fight`; the
+                   # correctness review's G2-L5): what happens is said, whatever the setting.
+                   + "Mercury keeps fixing it"
                    + (since_ack(a, f["times"]) if again else "")),
             action={"label": f"Find what keeps changing {f['what']} on {f['device']}",
                     "href": INC.incident_href(lst, newest.get("id") or "",

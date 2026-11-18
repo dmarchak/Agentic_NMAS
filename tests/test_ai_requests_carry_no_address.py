@@ -193,6 +193,59 @@ def test_mercury_and_nobody_are_never_labelled(monkeypatch, tmp_path):
         "pieces"][0]["who"] == display_names.label("alex")
 
 
+def test_the_held_history_read_carries_no_name(monkeypatch, tmp_path):
+    """The model's own History read answered from the pack's held section (231da1d6,
+    `fixit_reads._own_read`) leaves labelled for people as the pack does (the correctness
+    review's G5 MEDIUM-3): a host login recorded as a commit's ``who`` (``Actor-Verified:
+    host-shell``) and a display name in its words leave as labels, never as recorded."""
+    from modules.ai import fixit_reads as FR
+
+    monkeypatch.setattr(display_names, "_path", lambda: str(tmp_path / "display_names.json"))
+    display_names.set_name(ALICE, ALICE_NAME, by=ALICE, actor_verified="access")
+    history = {"ref": "history", "name": "history", "state": "ok", "pieces": [
+        {"ref": "history:1", "kind": "intent", "who": "alex", "verified": "host-shell",
+         "what": f"intent committed from the host; {ALICE_NAME} on call"}]}
+    scope = {"network": "Lab", "devices": {"r2": {}}, "held": {"r2": {"history": history}}}
+    got = json.dumps(FR.run("history", {"device": "r2"}, ["local history r2"], scope),
+                     ensure_ascii=False)
+    assert '"alex"' not in got and display_names.label("alex") in got, got
+    assert ALICE_NAME not in got and display_names.label(ALICE) in got, got
+
+
+def test_a_person_the_pack_names_is_their_label_in_the_parts_beside_it(monkeypatch,
+                                                                        tmp_path):
+    """The parts sent beside the pack (an investigation's own, `people_labelled`'s *among*)
+    label the people the pack names, one the display-name store does not hold included: a
+    run's step words naming BOB by his default name (his address's local part), whom only the
+    pack's History records, leave as his label (the correctness review's G5 MEDIUM-3)."""
+    monkeypatch.setattr(display_names, "_path", lambda: str(tmp_path / "display_names.json"))
+    pack = [{"ref": "history", "name": "history", "pieces": [
+        {"ref": "history:1", "who": BOB, "verified": "access"}]}]
+    own = [{"ref": "run_steps", "name": "run_steps", "pieces": [
+        {"ref": "run_steps:1", "steps": [{"step": "send", "result": "fail",
+                                          "words": "the session was cleared by Bob.Lab"}]}]}]
+    got = json.dumps(EP.people_labelled(own, among=pack))
+    assert "Bob.Lab" not in got and display_names.label(BOB) in got, got
+    assert "Bob.Lab" in json.dumps(EP.people_labelled(own)), "only the pack names him"
+
+
+def test_the_golden_read_is_the_configuration_as_committed(monkeypatch, tmp_path):
+    """Mercury's own golden read is the device's configuration as committed, never rewritten
+    by the people labelling the other own reads get (a line naming a local account stays the
+    line): it is the configuration class's, masked for secrets as it leaves."""
+    from modules.ai import fixit_reads as FR
+    from modules.nsot import listref
+
+    monkeypatch.setattr(display_names, "_path", lambda: str(tmp_path / "display_names.json"))
+    display_names.set_name(ALICE, ALICE_NAME, by=ALICE, actor_verified="access")
+    golden = f"hostname r2\nusername alice.ops privilege 1\nbanner motd ^{ALICE_NAME}^\n"
+    monkeypatch.setattr(listref, "resolve", lambda network: None)
+    monkeypatch.setattr(FR.RR, "_committed", lambda network, hosts: ({}, {"r2": golden}))
+    scope = {"network": "Lab", "devices": {"r2": {}}}
+    got = FR.run("golden", {"device": "r2"}, ["local golden r2"], scope)
+    assert got == {"device": "r2", "golden": golden, "why": ""}
+
+
 # ── the bytes sent ───────────────────────────────────────────────────────────────────────────
 
 def test_the_press_sends_no_planted_value(planted):

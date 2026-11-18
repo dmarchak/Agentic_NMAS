@@ -301,7 +301,11 @@ def test_an_unrecorded_call_still_counts_against_the_day_cap_after_its_reservati
     assert second["error"] == "over_cap" and world.sent == []
     assert (f"the installation's day cap ${cost + worst * 0.99:.4f}: spent $0.0000 plus "
             f"${cost:.4f} held by 1 call(s) in flight") in second["detail"], second["detail"]
-    assert second["detail"].endswith(f", ${worst:.4f}; nothing was sent"), second["detail"]
+    # How the cap clears, then nothing was sent (the correctness review's test audit, half 1
+    # row 11: the words e4e09698 dropped, restored).
+    assert second["detail"].endswith(
+        f", ${worst:.4f}; it stops until the day ends or an admin raises the cap in "
+        "Settings › AI; nothing was sent"), second["detail"]
     # The control: the cap with room for both, the second is sent (it, too, unrecorded).
     world.settings["ai_cap_usd_per_day"] = cost + worst * 1.01
     monkeypatch.setattr(calls, "record", real)

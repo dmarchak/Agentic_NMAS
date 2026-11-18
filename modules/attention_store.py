@@ -231,6 +231,10 @@ def _kept_path(network: str) -> str:
 #: network's was last written (monotonic, `_clock`).
 KEEP_S = 30.0
 _kept_at: dict = {}
+#: The networks whose newest held page was not written because it came inside KEEP_S of the
+#: last write: the worker's next pass past KEEP_S writes it (`_keep_late`), so the kept page
+#: is at most KEEP_S behind what was held (the correctness review's G6 M4).
+_unkept: set = set()
 
 
 def _keep(network: str, page: dict) -> None:
@@ -248,9 +252,29 @@ def _keep(network: str, page: dict) -> None:
         log.warning("attention: %s's page was not kept for the next start: %s", network, exc)
 
 
+def _keep_late(now: float) -> None:
+    """Each network's newest held page that `refresh` left unwritten inside KEEP_S, written
+    once KEEP_S has passed since the last write; nothing computed for it."""
+    with _lock:
+        due = [(name, _nets[name].value) for name in sorted(_unkept)
+               if name in _nets and _nets[name].value is not None
+               and now - _kept_at.get(name, float("-inf")) >= KEEP_S]
+        for name, _page in due:
+            _kept_at[name] = now
+            _unkept.discard(name)
+        _unkept.intersection_update(_nets)
+    if not COMPUTE_ON_READ:
+        for name, page in due:
+            _keep(name, page)
+
+
 def kept(network: str):
     """The page this network last held before a restart (read once), its store marked
-    ``restored`` and its ``checked_at`` its own; None when none was kept."""
+    ``restored`` and its ``checked_at`` its own; None when none was kept, and None once this
+    start's first value of the network has landed (`refresh`), so a network forgotten later
+    draws "Reading", never the start's page (the correctness review's G6 M3). A consumer
+    reading the held list as a current read treats ``restored`` as not known yet
+    (`incident_page.item_of`, `recheck.checked_answer`)."""
     import json
 
     if network not in _kept:
@@ -496,14 +520,20 @@ def refresh(network: str, names=None, *, publish: bool = True, compute: bool = T
             n.value, n.value_at = page, now
             n.timed = {k: t for k, t in timed.items() if t}
             n.assemble_at = _ack_ends(page)
+            # This start's own value: the page kept before it is never drawn again (G6 M3).
+            _kept[network] = None
         # Kept for the next start at most every KEEP_S (the overnight speed pass, 2026-11-17:
         # the masked write was 0.17 s of a 0.85 s heal-only recompute, measured on the host,
         # paid every DEBOUNCE_S while a heal runs); a start restores a page that old at most,
-        # drawn "restored" with its own age.
+        # drawn "restored" with its own age: one skipped here is written by the worker's next
+        # pass past KEEP_S (`_keep_late`, the correctness review's G6 M4).
         with _lock:
             due = now - _kept_at.get(network, float("-inf")) >= KEEP_S
             if due:
                 _kept_at[network] = now
+                _unkept.discard(network)
+            else:
+                _unkept.add(network)
         if not COMPUTE_ON_READ and due:
             _keep(network, page)
     if publish:
@@ -681,14 +711,16 @@ def step(now: float = None) -> int:
             except Exception as exc:                  # noqa: BLE001 (kept; its age says so)
                 log.error("attention store: %s could not be computed (its last value is kept "
                           "and its age shows it): %s", name, exc)
+    _keep_late(now)
     return done
 
 
 def _seconds_to_next(now: float) -> float:
     """How long the worker may sleep: until the soonest debounce, cadence, timed row,
-    acknowledgement end or head check of any held network."""
+    acknowledgement end or head check of any held network, or a held page's late keep."""
     soon = [SLOW_S]
     with _lock:
+        soon += [_kept_at.get(name, now) + KEEP_S - now for name in _unkept if name in _nets]
         for name, n in _nets.items():
             if n.value is None:
                 soon.append(0.0 if n.tried_at is None else n.tried_at + FAST_S - now)
@@ -743,6 +775,7 @@ def clear() -> None:
         _runs.clear()
         _kept.clear()
         _kept_at.clear()
+        _unkept.clear()
 
 
 # ── pushing ────────────────────────────────────────────────────────────────────────────────

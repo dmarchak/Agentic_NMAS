@@ -692,3 +692,38 @@ class TestOneWayIn:
         # plans, the recovery among them, and no other send path for it.
         assert json.dumps(sorted(CP.builtin())) == json.dumps(sorted([
             KEY, "telemetry-stack-restart", "telemetry-subscription-recreate"]))
+
+
+#: What the lost stream's rungs 2 and 3 once promised, and 32ad9360 made untrue: a person's
+#: Approve of a shown plan covers its provisional shapes (the operator, 2026-11-17).
+NO_LONGER_TRUE = ("admin's approval before it can run", "nothing runs before")
+
+
+@pytest.mark.parametrize("key", ["telemetry-stack-restart", "telemetry-subscription-recreate"])
+def test_a_rung_says_a_person_s_approve_sends_its_provisional_lines(key):
+    """The plan card's words and the ladder's (sent to the AI) say what a person's Approve
+    does (the correctness review's G1 MEDIUM-2): the rung's lines are shapes no probe has
+    measured, and once they are held provisional, Approve of the plan that shows them sends
+    them; never that they wait on an admin's approval, or that nothing runs before. The
+    policy agrees: with each shape held provisional, the check's every refusal is a
+    provisional one, the refusals a person's plan drops (`command_plan.preview`)."""
+    from modules.fixit import ladder
+
+    t = CP.builtin()[key]
+    for gone in NO_LONGER_TRUE:
+        assert gone not in t.words, t.words
+    assert "Approve" in t.words and "sends them" in t.words, t.words
+    (rung,) = [r for r in ladder.STREAM_LOST if any(
+        s.get("operation") == key for s in r["steps"])]
+    for gone in NO_LONGER_TRUE:
+        assert gone not in rung["why"], rung["why"]
+    shapes = [s for _raw, s in POL.shapes(t.commands)
+              if s not in POL.MEASURED["cisco_iosxe"]]
+    assert shapes, "the rung holds shapes no probe has measured"
+    store = {"shapes": {POL.key_of("cisco_iosxe", s): {"dialect": "cisco_iosxe", "shape": s,
+                                                       "state": "provisional"}
+                        for s in shapes}}
+    got = POL.check("cisco_iosxe", t.commands, tuple(CP.command_names(t.parameters)),
+                    network=NET, store=store)
+    assert got["refusals"] and sorted(got["provisional"]) == sorted(shapes), got
+    assert len(got["refusals"]) == len(shapes), "every refusal is a provisional shape's"

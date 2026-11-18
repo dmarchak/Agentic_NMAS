@@ -27,10 +27,12 @@ new session carrying data, `modules/heal/stream_checks.py`):
 3. restart the device's telemetry stack: the collector step alone, then the built-in plan
    `telemetry-stack-restart` (``no netconf-yang`` then ``netconf-yang``, net zero); all of the
    device's NETCONF and telemetry pause.
-The lines of rungs 2 and 3 are PROVISIONAL shapes until an admin approves them, once
-scripts/nmas-telemetry-reset-probe has measured each on a test router (the operator: "measure both on [a test router]
-first as Mercury probes ... I approve the shapes as admin when measured"): their plans preview
-refused, naming each shape, and nothing runs before.
+The lines of rungs 2 and 3 are shapes not yet measured (scripts/nmas-telemetry-reset-probe
+measures each on a test router; the operator: "measure both on [a test router] first as Mercury
+probes ... I approve the shapes as admin when measured"): a plan holding one is refused, naming
+it, until it is proposed (held PROVISIONAL); then a person's Approve of the plan, its lines
+shown, is their approval and sends them (32ad9360; the operator, 2026-11-17: "A person's Approve
+on a shown plan is the only approval. It covers any provisional shapes in that plan").
 
 Reads only: the incident's attempts (`incident.attempts`), never a device or a store's write.
 """
@@ -81,9 +83,9 @@ STREAM_LOST = (
                "two reads; sharing it: its own series is back and a new session receives)",
      "impact": "only the recreated subscriptions' streams pause (for a time not yet "
                "measured); routing, forwarding and other subscriptions untouched",
-     "why": "its lines are provisional shapes until an admin approves them, once the probe "
-            "has measured them on a test router: the plan's preview names them, and nothing "
-            "runs before"},
+     "why": "its lines are shapes no probe has measured yet: the plan's card names them, and "
+            "once they are proposed, a person's Approve of the plan, its lines shown, sends "
+            "them"},
     {"rung": 3, "what": "Restart the device's telemetry stack (its NETCONF-YANG processes, "
                         "never the device), the collector's stale half closed first",
      "tried_as": "telemetry_stack_restarted",
@@ -92,9 +94,9 @@ STREAM_LOST = (
      "impact": "the device's NETCONF, RESTCONF and every telemetry subscription pause while "
                "its NETCONF-YANG processes restart (for a time not yet measured); routing and "
                "forwarding are unaffected; never a reload",
-     "why": "its two lines are provisional shapes until an admin approves them, once the "
-            "probe has measured them on a test router: the plan's preview names them, and "
-            "nothing runs before"},
+     "why": "its two lines are shapes no probe has measured yet: the plan's card names them, "
+            "and once they are proposed, a person's Approve of the plan, its lines shown, "
+            "sends them"},
 )
 
 
