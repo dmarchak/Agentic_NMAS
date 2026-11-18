@@ -142,6 +142,26 @@ def test_revert_puts_back_the_previous_deployed_commit_with_no_verdict(world, ca
     assert row["gate"] == "revert" and row["from"] == target and row["to"] == world.base
 
 
+def test_a_second_revert_goes_further_back_never_to_the_release_it_reverted_from(world,
+                                                                                  capsys):
+    """The correctness review's G7-D5 (2026-11-18): `previous_deployed` took the newest row
+    that moved the checkout to HEAD, and after a revert C -> B that row is the revert itself,
+    so a second `--revert` deployed C again: the release just reverted away from, with no
+    verdict and no smoke. A revert goes back, to the release deployed before HEAD's, an
+    ancestor of HEAD."""
+    b = world.advance({"app.py": "v = 2\n"})
+    assert _run(world, {}, extra=("--fast-lane", TESTS), smoke=_green)[0] == 0
+    c = world.advance({"app.py": "v = 3\n"})
+    assert _run(world, {}, extra=("--fast-lane", TESTS), smoke=_green)[0] == 0
+    assert _git(world.host, "rev-parse", "HEAD") == c
+    assert _run(world, {}, extra=("--revert",))[0] == 0
+    assert _git(world.host, "rev-parse", "HEAD") == b
+    code, _restarted, _calls = _run(world, {}, extra=("--revert",))
+    assert _git(world.host, "rev-parse", "HEAD") != c, "never the release reverted from"
+    assert code == 0 and _git(world.host, "rev-parse", "HEAD") == world.base, \
+        capsys.readouterr()
+
+
 def test_revert_with_no_deploy_recorded_is_refused(world, capsys):
     code, restarted, _calls = _run(world, {}, extra=("--revert",))
     assert code == 4 and not restarted

@@ -1397,8 +1397,10 @@ def backup_window_words(now: float) -> str:
 
 def previous_deployed(repo, head):
     """The commit this checkout was deployed from to reach *head*: the deploy record's newest
-    row whose deploy ended well (exit 0) and moved it to *head* from another commit; "" when
-    the record names none."""
+    row whose deploy ended well (exit 0) and moved it to *head* from another commit, never a
+    revert's own row (the correctness review's G7-D5, 2026-11-18: after a revert C -> B the
+    revert's row names C, the release just reverted away from, so a second revert deployed it
+    again); "" when the record names none."""
     path = os.path.join(repo, "data", "deploy_audit.jsonl")
     try:
         with open(path, encoding="utf-8") as fh:
@@ -1407,7 +1409,7 @@ def previous_deployed(repo, head):
         return ""
     for r in reversed(rows):
         if r.get("exit") == OK and r.get("to") == head and r.get("from") \
-                and r.get("from") != head:
+                and r.get("from") != head and r.get("gate") != "revert":
             return r["from"]
     return ""
 
@@ -1838,6 +1840,13 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
             return finish(LOCAL_REFUSED, f"--revert: the deploy record names no deploy that "
                                          f"moved this checkout to {head[:10]} from another "
                                          "commit, so there is nothing to put it back to. Refused.")
+        # A revert goes back: its target is an ancestor of HEAD, never a release after it.
+        if subprocess.run(["git", "-C", repo, "merge-base", "--is-ancestor", target,
+                           head]).returncode != 0:
+            return finish(LOCAL_REFUSED, f"--revert: the release the deploy record names "
+                                         f"before {head[:10]}, {target[:10]}, is not an "
+                                         f"ancestor of {head[:10]}, so putting it back would "
+                                         "deploy forward with no verdict. Refused.")
     row.update({"from": head, "to": target})
     if not back and subprocess.run(["git", "-C", repo, "merge-base", "--is-ancestor", head,
                                     target]).returncode != 0:
