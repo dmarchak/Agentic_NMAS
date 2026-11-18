@@ -262,7 +262,9 @@ class TestModifyAndDeny:
         line = proposed(iid, ONE)
         before = FP.preflight(incident(iid), line)
         assert before["approvable"], before["why_refused"]
-        ai.answer = answer(fix())
+        # Premise corrected (17215a95's ladder: a re-subscribe of 101, which attempt 1 tried, is
+        # refused as tried): the revised plan re-subscribes 102 alone, which no attempt tried.
+        ai.answer = answer(fix(subscriptions=("102",)))
         ai.client.started.update(dict.fromkeys(ai.client.started, 0))
         r = post(ai.client, iid, "modify", proposal=line["proposal"],
                  text="re-subscribe both streams, 101 and 102")
