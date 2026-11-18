@@ -95,7 +95,7 @@ def ai(web, monkeypatch, tmp_path):  # noqa: F811
     w = types.SimpleNamespace(sent=[], answer=answer(), client=web)
     from modules.ai import anthropic_adapter as AD
 
-    def send(body, key):
+    def send(body, key, **_kw):
         w.sent.append(body)
         return AD.Reply(status=200, body={
             "content": [{"type": "text", "text": json.dumps(w.answer)}],

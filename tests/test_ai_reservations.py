@@ -198,7 +198,7 @@ def test_a_call_is_reserved_at_its_worst_case_and_settled_to_its_actual_cost(wor
     worst = _worst(world)
     during = {}
 
-    def send(body, key):
+    def send(body, key, **_kw):
         during.update(reservations.open_reservations()["held"])
         return A.Reply(status=200, body=PING, attempts=1, latency_s=0.01)
     got = _ask(world, send=send)
@@ -215,7 +215,7 @@ def test_a_call_is_reserved_at_its_worst_case_and_settled_to_its_actual_cost(wor
 
 @pytest.mark.parametrize("outcome", ["provider_failure", "not_the_schema"])
 def test_every_outcome_settles_its_reservation(world, outcome):
-    def send(body, key):
+    def send(body, key, **_kw):
         if outcome == "provider_failure":
             raise A.Overloaded("HTTP 529 after 3 attempts: busy", status=529, attempts=3)
         return A.Reply(status=200, body=dict(PING, content=[{"type": "text",
@@ -231,7 +231,7 @@ def test_an_exception_counts_its_worst_case_and_settles(world):
     settled and the exception raised."""
     worst = _worst(world)
 
-    def send(body, key):
+    def send(body, key, **_kw):
         raise RuntimeError("a bug after the request left")
     with pytest.raises(RuntimeError):
         _ask(world, send=send)
@@ -323,7 +323,7 @@ def test_an_exception_whose_row_is_refused_holds_its_worst_case(world, monkeypat
     worst = _worst(world)
     monkeypatch.setattr(calls, "record", lambda row: dict(row, recorded=False))
 
-    def send(body, key):
+    def send(body, key, **_kw):
         raise RuntimeError("a bug after the request left")
     with pytest.raises(RuntimeError):
         _ask(world, send=send)
@@ -336,7 +336,7 @@ def test_a_refusal_whose_row_is_refused_holds_what_its_row_counts(world, monkeyp
     the same, never more and never a guess."""
     monkeypatch.setattr(calls, "record", lambda row: dict(row, recorded=False))
 
-    def send(body, key):
+    def send(body, key, **_kw):
         raise A.Overloaded("HTTP 529 after 3 attempts: busy", status=529, attempts=3)
     got = _ask(world, send=send)
     assert got["error"] == "overloaded"
@@ -552,7 +552,7 @@ def test_an_unreadable_store_older_than_a_reservation_lives_is_kept_aside_and_re
 def test_the_store_is_owner_only(world):
     seen = {}
 
-    def send(body, key):
+    def send(body, key, **_kw):
         seen["mode"] = stat.S_IMODE(os.stat(_store()).st_mode)
         return A.Reply(status=200, body=PING)
     assert _ask(world, send=send)["ok"] is True
@@ -577,7 +577,7 @@ def test_a_reservation_that_cannot_be_settled_is_logged_and_the_answer_returned(
     import logging
     caplog.set_level(logging.ERROR, logger=reservations.__name__)
 
-    def send(body, key):
+    def send(body, key, **_kw):
         with open(_store(), "w") as fh:
             fh.write("torn")
         return A.Reply(status=200, body=PING)

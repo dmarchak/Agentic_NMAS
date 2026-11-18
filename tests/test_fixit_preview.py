@@ -387,7 +387,7 @@ def test_pass_2_given_the_press_s_reads_is_byte_for_byte_the_press_s(ai, reads, 
     first["reads"] = asked
     script = iter([first, answer(fix(), cites=("attempt:1", "read:1"))])
 
-    def send(body, key):
+    def send(body, key, **_kw):
         ai.sent.append(body)
         return AD.Reply(status=200, body={
             "content": [{"type": "text", "text": json.dumps(next(script))}],

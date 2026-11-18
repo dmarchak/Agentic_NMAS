@@ -59,7 +59,7 @@ def bg(tmp_path, monkeypatch):
         "frequency": lambda network: {"per_day": 4.0, "basis": "4 detections a day, planted"}})
     sent = []
 
-    def send(body, key):
+    def send(body, key, **_kw):
         sent.append(body)
         return A.Reply(status=200, body=OK_BODY, attempts=1, latency_s=0.1)
     w = types.SimpleNamespace(sent=sent, send=send, dir=tmp_path)

@@ -31,28 +31,26 @@ from modules.sdn import closed_loop  # noqa: F401,E402 (it registers sdn_classif
 from modules.sdn import analyst  # noqa: F401,E402 (it registers sdn_analyse's schema)
 from modules.ai import sdn_analyst_tools  # noqa: F401,E402 (it registers sdn_analyse_tools's)
 from modules.ai import change_record  # noqa: F401,E402 (it registers the change record's schema)
+from tests.sse_fake import StreamingResponse
 
 KEY = "sk-planted-test-key-0123456789"
 
 
 # ── The adapter ─────────────────────────────────────────────────────────────────────────────
 
-class _Resp:
-    def __init__(self, status, body=None, headers=None, text=""):
-        self.status_code, self._body, self.headers, self.text = status, body, headers or {}, text
-
-    def json(self):
-        if self._body is None:
-            raise ValueError("no json")
-        return self._body
+class _Resp(StreamingResponse):
+    """Every send is streamed (7b0bb884, the operator's 2026-11-16 decision): a 200's body
+    arrives as the server-sent events of the whole answer it stands for (tests/sse_fake.py);
+    another status answers its JSON error as before."""
 
 
 class _Session:
     def __init__(self, *responses):
         self.responses, self.sent = list(responses), []
 
-    def post(self, url, json=None, headers=None, timeout=None):
-        self.sent.append({"url": url, "json": json, "headers": headers, "timeout": timeout})
+    def post(self, url, json=None, headers=None, timeout=None, stream=None):
+        self.sent.append({"url": url, "json": json, "headers": headers, "timeout": timeout,
+                          "stream": stream})
         item = self.responses.pop(0)
         if isinstance(item, Exception):
             raise item

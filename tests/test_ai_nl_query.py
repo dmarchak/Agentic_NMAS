@@ -76,7 +76,7 @@ def world(tmp_path, monkeypatch):
     w = W()
     w.prom, w.sent, w.answer = prom, [], None
 
-    def send(body, key):
+    def send(body, key, **_kw):
         w.sent.append({"bytes": json.dumps(body), "body": body})
         return A.Reply(status=200, body={"content": [{"type": "text", "text": json.dumps(
             w.answer)}], "stop_reason": "end_turn",
@@ -951,7 +951,7 @@ def test_v8_s_needs_round_looks_up_once_and_asks_once_more(world, monkeypatch):
                _v8_choices()]
     plain = world.send
 
-    def send(body, key):
+    def send(body, key, **_kw):
         world.answer = answers.pop(0)
         return plain(body, key)
     with pressed_by("operator@example.com"):

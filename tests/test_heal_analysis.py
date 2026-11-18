@@ -84,7 +84,7 @@ def ai(lab, monkeypatch):
         "network": pack.get("network") or "", "observed": "", "names": {}, "as_now": ""})
     w = types.SimpleNamespace(sent=[], answer=None, fail=None, dir=tmp)
 
-    def send(body, key):
+    def send(body, key, **_kw):
         w.sent.append(body)
         if w.fail is not None:
             raise w.fail

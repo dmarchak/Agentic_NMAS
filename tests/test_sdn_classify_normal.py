@@ -60,7 +60,7 @@ def citing(world, make):
     """A fake provider answering ``make(data)``, *data* the request's parsed blocks."""
     base = world.send
 
-    def send(body, key):
+    def send(body, key, **_kw):
         world.answer = make(data_of(body))
         return base(body, key)
     return send

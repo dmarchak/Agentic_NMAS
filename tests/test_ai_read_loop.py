@@ -644,7 +644,7 @@ def _real(world, family, *answers):
     from modules.ai import gateway
     queue = list(answers)
 
-    def send(body, key):
+    def send(body, key, **_kw):
         world.sent.append({"bytes": json.dumps(body), "key": key, "body": body})
         world.answer = queue.pop(0)
         from modules.ai import anthropic_adapter as A

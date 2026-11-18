@@ -384,7 +384,7 @@ def test_each_read_is_in_the_send_log_and_on_history(ai, monkeypatch, tmp_path):
     from modules.ai import anthropic_adapter as AD
     from modules.ai import gateway
 
-    def send(body, key):
+    def send(body, key, **_kw):
         ai.sent.append(body)
         return AD.Reply(status=200, body={
             "content": [{"type": "text", "text": json.dumps(next(sent_answers))}],

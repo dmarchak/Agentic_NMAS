@@ -446,7 +446,7 @@ class TestExplainReadsIt:
                                   "confirm_with": "show interfaces"}],
                   "checked": [], "needs_human": False, "why_not": ""}
 
-        def send(body, key):
+        def send(body, key, **_kw):
             sent.append(body)
             asked = body["output_config"]["format"]["schema"].get("properties") or {}
             return A.Reply(status=200, body={"content": [{"type": "text", "text": json.dumps(

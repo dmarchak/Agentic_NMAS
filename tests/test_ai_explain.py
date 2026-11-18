@@ -55,7 +55,7 @@ def world(pack_lab, monkeypatch, tmp_path):
     w = W()
     w.lab, w.pack, w.sent, w.answer, w.settings = pack_lab, pack, [], None, settings
 
-    def send(body, key):
+    def send(body, key, **_kw):
         w.sent.append({"bytes": json.dumps(body), "body": body})
         # As a model answers: in the shape the request's schema asks for, so one planted
         # answer serves a v1 call (no `checked`) and a v4 call alike (C1742).
@@ -619,7 +619,7 @@ def test_v6_sends_nothing_looked_up_first_and_a_need_is_looked_up_once(world, mo
                dict(_answer(world.pack), needs=[])]
     plain = world.send
 
-    def send(body, key):
+    def send(body, key, **_kw):
         world.answer = answers.pop(0)
         return plain(body, key)
     with pressed_by("operator@example.com"):

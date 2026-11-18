@@ -59,7 +59,7 @@ def citing(world, pick):
     """A fake provider answering a passing scan answer that cites ``pick(data)``."""
     base = world.send
 
-    def send(body, key):
+    def send(body, key, **_kw):
         world.answer = dict(world.answer, evidence_refs=pick(data_of(body)))
         return base(body, key)
     return send

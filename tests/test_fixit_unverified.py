@@ -60,7 +60,7 @@ def answers(ai, monkeypatch, *seq):  # noqa: F811
     from modules.ai import gateway
     left = list(seq)
 
-    def send(body, key):
+    def send(body, key, **_kw):
         ai.sent.append(body)
         got = left.pop(0) if len(left) > 1 else left[0]
         return AD.Reply(status=200, body={

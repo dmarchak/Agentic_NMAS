@@ -64,7 +64,7 @@ def gw(tmp_path, monkeypatch):
     monkeypatch.setitem(gateway.TYPED_PARTS, "connection_check", ("word",))
     sent = []
 
-    def send(body, key):
+    def send(body, key, **_kw):
         sent.append({"bytes": json.dumps(body), "body": body})
         return A.Reply(status=200, body=PING_OK, attempts=1, latency_s=0.2)
 

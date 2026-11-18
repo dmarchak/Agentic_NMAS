@@ -178,7 +178,7 @@ def lab(networks, monkeypatch, tmp_path):  # noqa: F811 - the fixture
     w = W()
     w.fake, w.driver, w.doc, w.sent, w.answer, w.topo = fake, driver, doc, [], None, topo
 
-    def send(body, key):
+    def send(body, key, **_kw):
         w.sent.append(body)
         text = w.answer if isinstance(w.answer, str) else json.dumps(w.answer)
         return A.Reply(status=200, body={"content": [{"type": "text", "text": text}],

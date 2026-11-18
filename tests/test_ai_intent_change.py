@@ -47,7 +47,7 @@ def world(host, monkeypatch, tmp_path):  # noqa: F811
     w = W()
     w.sent, w.answer = [], None
 
-    def send(body, key):
+    def send(body, key, **_kw):
         w.sent.append({"bytes": json.dumps(body), "body": body})
         return A.Reply(status=200, body={"content": [{"type": "text", "text": json.dumps(
             w.answer)}], "stop_reason": "end_turn",

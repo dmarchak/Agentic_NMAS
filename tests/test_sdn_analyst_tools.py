@@ -97,7 +97,7 @@ def tw(world):  # noqa: F811 - the fixture, used
     """B1's world, its provider answering each call in turn from `tw.script`."""
     tw = types.SimpleNamespace(sent=world.sent, script=[], dir=world.dir)
 
-    def send(body, key):
+    def send(body, key, **_kw):
         tw.sent.append(body)
         if not tw.script:
             pytest.fail("the provider was asked more times than the script answers")

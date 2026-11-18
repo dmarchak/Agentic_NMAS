@@ -60,7 +60,7 @@ def provider(ai, monkeypatch, make=own_answer):  # noqa: F811
     from modules.ai import anthropic_adapter as AD
     from modules.ai import gateway
 
-    def send(body, key):
+    def send(body, key, **_kw):
         ai.sent.append(body)
         return AD.Reply(status=200, body={
             "content": [{"type": "text", "text": json.dumps(make(body))}],

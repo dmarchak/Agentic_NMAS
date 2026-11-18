@@ -94,7 +94,7 @@ def _answers(ai, *answers):
     queue = list(answers)
     real = ai.send
 
-    def send(body, key):
+    def send(body, key, **_kw):
         ai.answer = queue.pop(0)
         return real(body, key)
     return send

@@ -38,7 +38,7 @@ def blocked(ai, monkeypatch):
     release, entered = threading.Event(), threading.Event()
     inner = gateway.anthropic_adapter.send
 
-    def send(body, key):
+    def send(body, key, **_kw):
         entered.set()
         assert release.wait(30), "the test never released the provider"
         return inner(body, key)

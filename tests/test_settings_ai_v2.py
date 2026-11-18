@@ -64,7 +64,7 @@ def ai(networks, tmp_path, monkeypatch):  # noqa: F811 (the fixture above)
                                       "basis": f"{freq['per_day']} detections a day, planted"}})
     sent = []
 
-    def send(body, key):
+    def send(body, key, **_kw):
         sent.append(body)
         return A.Reply(status=200, body=OK_BODY, attempts=1, latency_s=0.1)
     return types.SimpleNamespace(client=networks["client"], dir=networks["dir"], sent=sent,

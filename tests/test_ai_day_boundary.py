@@ -118,7 +118,7 @@ def test_the_gateway_refuses_by_the_stated_day(record, monkeypatch, zone, refuse
     monkeypatch.setattr(gateway, "_api_key", lambda: "sk-planted-test-key-0123456789")
     sent = []
 
-    def send(body, key):
+    def send(body, key, **_kw):
         sent.append(body)
         return A.Reply(status=200, body={"content": [{"type": "text", "text": json.dumps(
             {"word": "w"})}], "stop_reason": "end_turn",

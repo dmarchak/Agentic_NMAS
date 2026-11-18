@@ -52,7 +52,7 @@ def world(monkeypatch, tmp_path):
     monkeypatch.setattr(assistant, "_gaps_path", lambda: str(tmp_path / "manual_gaps.jsonl"))
     sent, state = [], {"answer": None}
 
-    def send(body, key):
+    def send(body, key, **_kw):
         sent.append({"bytes": json.dumps(body), "body": body})
         return A.Reply(status=200, body={"content": [{"type": "text", "text": json.dumps(
             state["answer"])}], "stop_reason": "end_turn",

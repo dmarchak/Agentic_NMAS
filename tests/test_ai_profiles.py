@@ -189,7 +189,7 @@ def _word(world):
 
 def _answering(world, echo=None):
     """A send that answers with the word it was sent (or *echo*)."""
-    def send(body, key):
+    def send(body, key, **_kw):
         world.sent.append({"body": body})
         word = WORD.fullmatch(body["messages"][0]["content"]).group(1)
         world.answer = {"content": [{"type": "text", "text": json.dumps(

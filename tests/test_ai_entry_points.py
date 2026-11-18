@@ -247,7 +247,7 @@ def _count_ai(monkeypatch) -> dict:
         return real(*a, **k)
     monkeypatch.setattr(gateway, "ask", counted)
 
-    def send(body, key):
+    def send(body, key, **_kw):
         seen["sends"].append(body)
         pytest.fail("a page load reached the provider")
     monkeypatch.setattr(A, "send", send)

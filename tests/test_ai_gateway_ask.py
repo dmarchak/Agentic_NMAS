@@ -371,7 +371,7 @@ def test_a_provider_failure_is_refused_with_its_attempts_and_headers(world):
 def _sending(reply_body, latency=0.1234567, attempts=2, headers=None):
     sent = []
 
-    def send(body, key):
+    def send(body, key, **_kw):
         sent.append((body, key))
         return A.Reply(status=200, body=reply_body, attempts=attempts, latency_s=latency,
                        headers=headers if headers is not None else {"x-ratelimit-limit": "50"})

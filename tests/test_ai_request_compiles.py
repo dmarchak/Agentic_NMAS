@@ -165,7 +165,7 @@ def test_an_answer_recorded_in_v7_s_shape_reads_back_unchanged():
 # ── B: a refused request is said as one ─────────────────────────────────────────────────────
 
 def _refuse_every_request(ai, monkeypatch):  # noqa: F811
-    def send(body, key):
+    def send(body, key, **_kw):
         ai.sent.append(body)
         raise AD.BadRequest(REFUSED, status=400)
     monkeypatch.setattr(gateway, "anthropic_adapter", type(gateway.anthropic_adapter)(

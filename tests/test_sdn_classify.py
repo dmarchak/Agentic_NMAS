@@ -101,7 +101,7 @@ def world(networks, monkeypatch):  # noqa: F811 - the fixture, used
     monkeypatch.setattr(calls, "_path", lambda: str(networks / "ai_calls.jsonl"))
     w = types.SimpleNamespace(sent=[], answer=answer(), dir=networks)
 
-    def send(body, key):
+    def send(body, key, **_kw):
         w.sent.append(body)
         return A.Reply(status=200, body={
             "content": [{"type": "text", "text": json.dumps(w.answer)}],

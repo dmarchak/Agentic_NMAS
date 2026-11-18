@@ -238,7 +238,7 @@ def held(world, monkeypatch):
     started, release = threading.Event(), threading.Event()
     real = world.send
 
-    def send(body, key):
+    def send(body, key, **_kw):
         started.set()
         assert release.wait(30), "the test never released the send"
         return real(body, key)

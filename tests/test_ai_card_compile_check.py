@@ -37,7 +37,7 @@ def _press_test(n, monkeypatch, reply):
     _post(n, "/v2/settings/installation/ai/allow", {"reason": "the compile check, capped"})
     sent = []
 
-    def send(body, key):
+    def send(body, key, **_kw):
         sent.append(body)
         status, text = reply(body)
         if status == 400:

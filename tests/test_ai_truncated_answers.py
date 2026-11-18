@@ -21,7 +21,7 @@ BOUND = profiles.TASKS["nl_query"]["max_tokens"]
 
 def _cut(w, text):
     """*w*'s send, answering *text* whole but stopped at max_tokens."""
-    def send(body, key):
+    def send(body, key, **_kw):
         w.sent.append({"bytes": json.dumps(body), "body": body})
         return A.Reply(status=200, body={"content": [{"type": "text", "text": text}],
                                          "stop_reason": "max_tokens",

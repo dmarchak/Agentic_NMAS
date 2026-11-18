@@ -49,7 +49,7 @@ def world(web, monkeypatch, tmp_path):
     w = W()
     w.web, w.loki, w.sent, w.answer = web, web.loki, [], None
 
-    def send(body, key):
+    def send(body, key, **_kw):
         w.sent.append({"bytes": json.dumps(body), "body": body})
         return A.Reply(status=200, body={"content": [{"type": "text", "text": json.dumps(
             w.answer)}], "stop_reason": "end_turn",
