@@ -50,7 +50,7 @@
   {%- if p.record.rows %}
     <ol class="fixit-attempts">
     {%- for r in p.record.rows %}
-      <li class="fixit-a {{ 'fixit-a-passed' if r.ok else ('' if r.dry else 'fixit-a-failed') }}">{{ clock(r.at, 'date') }}{% if r.where %} · {{ r.where }}{% endif %}{% if r.version %} · version {{ r.version }}{% endif %} · {{ r.who }} ·{% if r.ok and not r.dry %}<strong>verified:</strong> {% endif %}{{ r.words }}{% if r.run and r.device %} · <a href="{{ url_for('device_v2.device', name=r.device, list=p.network, result=r.run) }}">Open the run</a>{% endif %}</li>
+      <li class="fixit-a {{ 'fixit-a-passed' if r.ok else ('' if r.dry else 'fixit-a-failed') }}">{{ clock(r.at, 'date') }}{% if r.where %} · {{ r.where }}{% endif %}{% if r.version %} · version {{ r.version }}{% endif %} · {{ r.who | people }} ·{% if r.ok and not r.dry %}<strong>verified:</strong> {% endif %}{{ r.words }}{% if r.run and r.device %} · <a href="{{ url_for('device_v2.device', name=r.device, list=p.network, result=r.run) }}">Open the run</a>{% endif %}</li>
     {%- endfor %}
     </ol>
     <p class="small muted">{% if p.record.more %}{{ p.record.more }} more, older. {% endif %}Every run is on <a href="{{ url_for('v2.history_page', list=p.network) }}">History</a>.</p>
