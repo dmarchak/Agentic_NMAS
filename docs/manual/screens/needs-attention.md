@@ -2,15 +2,15 @@
 
 The landing page answers one question: does anything need you?
 
-## Turn on self-healing and fix all {#control-strip}
+## Self-healing's switches {#control-strip}
 
-The **Self-healing** and **AI troubleshooting: Automatic** switches are on
-[Troubleshooting › Incidents](incidents), at the top of that page, not here. When several
-devices departed at once and self-healing holds them (guard 6), one card above the list here
-says how many devices have faults and how many Mercury can fix, with each fix, and offers
-**Turn on self-healing and fix all**. The card is drawn only while such a batch is held: with
-no batch, there is no card and no button. Once you press it, the press's answer and its run,
-step by step, are drawn above the list ([Turn on self-healing and fix all](heal-batch)).
+The **Self-healing** and **Automatic AI troubleshooting** switches are on
+[Troubleshooting › Incidents](incidents), at the top of that page, not here. Nothing holds
+several devices at once any more (the operator, 2026-11-17), so this page draws no batch card
+and no "fix all" button: switching self-healing on, on Incidents, is the approval for the open
+problems Mercury can fix, and runs them all at once, each on its own
+([The Self-healing toggle](heal-batch#self-healing-toggle)). While that run is going, and for a
+while after it ends, its answer and its steps are drawn above the list here too.
 
 ## Each row's line {#the-line}
 
@@ -77,8 +77,9 @@ failed on the incident is not offered again: the row names the incident's next a
   open it: for an item a Grafana alert raised, **Explain**, the same answer Monitoring ›
   Alerts keeps for that alert's evidence (opening the item asks the model nothing; with no
   answer kept, Explain is offered behind its cost), and the alerts themselves; for a
-  self-healing can't-fix, **Mercury's diagnosis** and the **AI analysis**; and last **Details
-  for the record**: the record's ids, hashes and steps. An item Mercury found itself that has
+  self-healing can't-fix, **Mercury's diagnosis** and the **AI analysis**; and last, under the
+  heading **For the record** inside the same Details (one Details per row, never a second
+  disclosure beside it), the record's ids, hashes and steps. An item Mercury found itself that has
   no incident page keeps **Why this happened** there, with **The steps Mercury took: stopped
   at <step> · N steps · Show** where it holds steps. A lost telemetry stream's card carries
   its last run as one closed line, **The last run, <how long ago>: <how it ended> · N steps ·
@@ -101,6 +102,12 @@ failed on the incident is not offered again: the row names the incident's next a
   yet", never another network's run.
 - **One cause is one row.** A device whose configuration has no heartbeat is its one "not
   monitored" row; Grafana's "no heartbeat rule" row leaves it out, and says so.
+- **Mercury itself is apart.** A row about Mercury itself, not your network (its CI and the
+  verdicts on its commits, a CI failure on the newest commit, and its scheduled developer jobs
+  such as the weekly mutation run), is not in the list, its counts or the sidebar's count: it is
+  under **Mercury itself · N**, closed, after the list, each with its action and
+  **Acknowledge…** where it has one. A CI run still going raises no row at all. A release
+  behind its newest one and a failed update stay rows of your own.
 - **Never a fact with nothing to do.** Every row names something wrong and an action you can
   take. Something true that needs nothing, such as a new release being available, or a
   check that missed a booting device once, is
@@ -167,8 +174,16 @@ schedule, and the page draws what was last read, at once. So every value says ho
   operation's first announcement, however many it makes, and the row clears, or stays with
   its new reading's age, on what that fresh run finds. An acknowledgement you record takes
   its row off the list at once, on your page and on every other open page.
-- **"Reading Needs attention …"** is drawn when {{product}} has just started and has not read
-  the sources yet. The page fills itself when the first read lands; there is nothing to press.
+- **After {{product}} restarts** (a deploy, say), the page it last put together for the network
+  is drawn at once, with the sidebar's count, beside its own age: "as last checked before
+  Mercury restarted; refreshing now". It is kept on the host masked, as every drawing of it is,
+  and written at most every 30 seconds, so it is at most that much behind the list before the
+  restart. While it is drawn it is not a current read: an incident's page does not say its item
+  cleared here, and **Run the check again** waits for this start's own read rather than answer
+  from it. The first read of this start replaces it.
+- **"Reading Needs attention …"** is drawn when {{product}} has just started, has not read the
+  sources yet, and kept no page for the network. The page fills itself when the first read
+  lands; there is nothing to press.
 - **"Its refresh … failed"** on a source's line, and "N refreshes failed, the last value kept"
   above the list, mean its last read raised an error: the value shown is its last good one,
   and its Checked time says how old it is. A source whose value is older than it promised is a
@@ -261,8 +276,8 @@ it again); operations interrupted while they held a device (the process ended
 mid-run); a device's SSH host key that changed (**Re-key…** on its page), and the new keys a
 planned window kept; the records database's stores that do not match or do not answer; the
 scheduled rotation's timer, stopped on a failure; templates behind the shipped version in a
-way that drops lines; the log redaction found unhealthy; the CI verdict on the running commit
-(a warning, since the release keeps running: when its runs disagree, such as one run that
+way that drops lines; the log redaction found unhealthy; and, under **Mercury itself**
+(above), never in the list or its counts: the CI verdict on the running commit (a warning, since the release keeps running: when its runs disagree, such as one run that
 passed and a later one that failed, it lists each run with its attempt, names the failed job
 and test, and says whether a re-run is running; its action is to re-run the failed job, or
 nothing while a re-run runs, and an update only when a newer release CI passed exists; it
@@ -277,7 +292,7 @@ or the local runner's green (a warning, since the release keeps running, naming 
 failed: stop new work, rerun GitHub's run once, and if it stays red fix forward or roll back
 with the `scripts/nmas-rollback` command it names; one notice of the kind "CI disagrees with
 the deployed release" goes to the teams your networks tell), a commit they disagree on, or a gate note or local record that cannot be
-trusted or read; host steps owed; a NetBox-sourced network's unreadable
+trusted or read. Back in the list: host steps owed; a NetBox-sourced network's unreadable
 inventory; a rollback's record; pending onboardings (overdue, or still holding a staged
 credential); Grafana's rule groups that stopped evaluating, and rules that read no data; the
 fleet's heartbeat stopping at once (one row, not one per device); the routing adjacencies
@@ -544,7 +559,12 @@ Every row says, under its cause, how it leaves the page: "Clears when …". Ther
   unless a line needs one) and **Decline** (with a reason; nothing is sent)
   ([Approve or decline a self-healing proposal](heal-proposal)). A dry-run record leaves once
   you mark it on its row: **Was that right?** opens it to **Right** and **Wrong…**
-  ([Dry run: Right or Wrong](heal#mark)). One change is one row: where self-healing holds a
+  ([Dry run: Right or Wrong](heal#mark)), or once a later fix of its problem lands and is
+  verified (a later heal of its own incident, or a fix of a later incident of the same
+  problem): then it is not asked "Was that right?" any more, and *What was checked* says how
+  many dry-run records a later verified fix closed. A can't-fix row stays, linked to its
+  incident, while a fix of it runs or has passed (Mercury working), until the incident
+  closes. One change is one row: where self-healing holds a
   device's change as a proposal, a can't-fix or a hold, that device's drift ("<device> has
   drifted from its golden") is drawn inside that row as "Also: …", never as a Critical row of
   its own; a dry-run record goes the other way, inside the drift row, which is then the row
@@ -554,13 +574,15 @@ Every row says, under its cause, how it leaves the page: "Clears when …". Ther
   new host keys a planned window kept, a deploy whose verify could not read back lines the
   device prints in another form; within a measured band, a chronic alert and an adjacency a
   device keeps logging down; and, until the workflow's next scheduled run, a scheduled
-  quality job's failed run. See below. A host step a release owes is closed on the Update
+  quality job's failed run; and a self-healing recurrence or fight, until its count since
+  reaches the setting again. See below. A host step a release owes is closed on the Update
   page instead: its row's one action, **Open the Update page**, is where you say it is done
   or decline it with a reason ([Declining a host step](update#declining-a-host-step)).
 - **Time.** An unplanned restart stays for 7 days if nobody acknowledges it; a pending
   approval expires after 48 hours (expiring executes nothing); an adjacency logged down
   clears a day after its last unexplained drop; an AI spend row about a day's or a month's
-  spend clears when that day or month ends.
+  spend clears when that day or month ends; a recurrence or a fight clears once the oldest
+  incident it counts leaves its window, unless another comes first.
 
 The acknowledgements in force are listed beside the table ("Acknowledged, so not listed"),
 each with who, when and why, and those hiding no row now apart ("Acknowledgements in force,
@@ -573,6 +595,13 @@ nothing will make it resolve. When you have looked into it, press **Acknowledge�
 say in a few words why it needs nothing more (what you found, or why it was expected), and
 press **Acknowledge**. The reason is required (at least three words); it is recorded with your
 name, how your identity was established and the time, and the row leaves the page.
+
+**What counts as authorised again.** The row counts, from the receipts, each change that sent
+the line to the device. A command plan's run (a saved fix, a built-in recovery such as the
+err-disable recovery's `shutdown`) counts only when it may have left its line in the
+configuration: one that ran and verified with the configuration as before, found nothing to
+do, or was rolled back with nothing still differing is a transient run and counts nothing; one
+that failed, was not verified, tripped again or was rolled back and not restored counts.
 
 - **The answer is drawn on the row at once.** Once it is recorded, the form closes and says
   "Acknowledged.", and the row leaves as the list next redraws. A refusal keeps the form open
@@ -598,6 +627,25 @@ name, how your identity was established and the time, and the row leaves the pag
   recorded after the tool saw the restart it covers is refused, unless it is marked as a
   correction with its own reason: a restart that really was planned and only recorded late.
   History then says the window was a correction, and why.
+
+### A problem that keeps coming back, or a fight {#acknowledging-a-finding}
+
+Self-healing's two findings ([A problem that keeps coming back](heal#findings)) are rows of
+their own, each a warning with its incidents linked, and neither stops a fix:
+
+- **A recurrence**: "<device>: <what> <condition> by <cause> happened N times since HH:MM UTC",
+  the same problem opened at least the network's count of times within its hours; its action
+  opens its newest incident, to find what keeps causing it.
+- **A fight**: "Mercury keeps fixing <what> on <device> and something keeps undoing it", the
+  same fix verified and the problem back within the network's minutes, its count of times; its
+  cause ends "Mercury keeps fixing it", and its action is to find what keeps changing it.
+
+Each offers **Acknowledge…**, whose note is optional ("A note, if you want one (your name and
+the time are recorded)"): who, when and the note are recorded. Acknowledged, the row moves to
+the acknowledged list, and it is counted again from that moment: it returns only when the
+occurrences since your acknowledgement reach the setting again, a new event, its cause then
+naming who acknowledged it, when, and how many times it has happened since. A declared fault
+drill's incidents never count.
 
 ### A scheduled job's failed run, until its next scheduled run {#acknowledging-a-scheduled-job}
 
