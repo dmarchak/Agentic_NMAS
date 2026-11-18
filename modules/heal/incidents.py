@@ -1063,10 +1063,10 @@ def want_confirm(network: str, incident_id: str, why: str, now: float = None, *,
 
 
 def close_watching(network: str, why: str, now: float = None) -> list:
-    """Close every incident still watching, and every one standing on its decision (C2813),
-    when self-healing is turned off for the network or stopped everywhere: nothing new starts,
-    and nothing later folds into an incident decided before. Returns their ids. Ready and
-    claimed incidents are left to the decision, which checks the mode first (guard 2)."""
+    """Close every incident still watching, and every one standing on its decision (C2813).
+    Returns their ids. No pass calls it since the correctness review's G4-D1 (C3880): Off
+    closes nothing (`detect.run`), because a mode switch is no fix; the tests that build a
+    closed incident still use it."""
     now = time.time() if now is None else float(now)
     shut = ("watching", "standing")
     got = read(network)

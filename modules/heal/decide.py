@@ -581,18 +581,23 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
         # timer"), and no can't-fix row.
         now_state = (src.symptom_now(device, judged)
                      if symptom and hasattr(src, "symptom_now") else "")
+        # The correctness review's G4-D3 and D6: the golden's state as `_g4` read it, never
+        # assumed at intent (C3909: a golden departing from intent holds nothing).
+        intent_words = ("which matches its intent" if golden.get("state") == "at_intent" else
+                        "which departs from its intent "
+                        f"({golden.get('words') or golden.get('state')})")
         if symptom and now_state == "gone":
             return dict(base, outcome="nothing",
                         words=(f"nothing to heal: every symptom the incident named has cleared "
                                f"by itself at {_hhmm(now)} UTC, nothing to do: {device} is at "
-                               "its golden, which matches its intent (each symptom read again "
-                               "after it)"))
+                               f"its golden, {intent_words} (each symptom read again after "
+                               "it)"))
         if symptom:
             out = {"kind": symptom, "tier": 3, "units": [], "blocked": None}
             return dict(base, kind=symptom, tier=3, outcome="cant_fix",
                         words=_outcome(mode, out, [], [], device)[1])
         return dict(base, outcome="nothing",
-                    words=f"nothing to heal: {device} is at its golden, which matches its intent")
+                    words=f"nothing to heal: {device} is at its golden, {intent_words}")
     text, error = src.read(dev)
     if not text:
         return dict(base, outcome="deferred", until=now + 60,
@@ -732,6 +737,18 @@ def _act(network: str, incident: dict, d: dict, now: float) -> None:
         # C2813: its cause still stands, so the incident stays open on this decision: a later
         # symptom folds into it, a later trigger of the same departure joins it.
         incidents.stand(network, incident["id"], d, settled=incident.get("settled"), now=now)
+        return
+    if d["outcome"] == "off":
+        # The correctness review's G4-D1 (C3880): Off or Stop everywhere (guards 1 and 2,
+        # which an unreadable or unconfirmed policy reads as too) is no fix, so it closes
+        # nothing. One taken from its standing (the switch-on batch's restore, an act's
+        # standing sent back by the retry) goes back on it; a ready one goes back to watching,
+        # saying it waits for self-healing, and is read again once self-healing is on.
+        if incident.get("standing") or (incident.get("stood") or {}).get("act"):
+            incidents.stand(network, incident["id"], None, now=now)
+        else:
+            incidents.defer(network, incident["id"], now,
+                            f"waits for self-healing: {d['words']}"[:300], now)
         return
     if (incident.get("stood") or {}).get("act"):
         # The review's findings 2 and 5: an incident a heal could not confirm ends only with
