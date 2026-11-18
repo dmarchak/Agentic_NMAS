@@ -94,6 +94,10 @@ def _fixes(incidents: list, decisions: list) -> list:
     for d in decisions or []:
         a = d.get("applied") or {}
         inc = by_id.get(d.get("incident"))
+        # A heal whose tail then failed reopened its incident (`incidents.reopen`, the close it
+        # undid kept as ``reopened``): no verified fix (the correctness review's G4-D9).
+        if inc and (inc.get("reopened") or {}).get("decision") == d.get("id"):
+            continue
         if a.get("outcome") == "healed" and inc:
             out.append((_epoch(a.get("at")), d.get("device") or "", d.get("kind") or "heal",
                         inc))

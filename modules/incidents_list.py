@@ -591,7 +591,9 @@ def heal_auto(now: float = None) -> dict:
     guard), never from the stored setting; *network* and *until* are the Auto whose expiry
     comes first, *n* how many networks are in Auto, *networks* their names in expiry order, and
     *reread_s* the seconds until that first expiry (the chip reads itself again then, once).
-    A policy that cannot be read is not Auto (`current` reads it as off, and Needs attention
+    An Auto "until turned off" (no expiry held, ``until`` empty) comes after every Auto with
+    one, and when it is the first its *reread_s* is 0: nothing to read again at, so the chip
+    does not (the correctness review's G4-D4). A policy that cannot be read is not Auto (`current` reads it as off, and Needs attention
     says it cannot be read). One read of the stop switch for every network."""
     from modules import integration_groups
     from modules.heal import policy
@@ -604,7 +606,9 @@ def heal_auto(now: float = None) -> dict:
         if cur["mode"] != "auto":
             continue
         try:
-            ends = policy.parse_until(cur["until"])
+            # No expiry held is "until turned off" (`policy.current`, N8 as changed by the
+            # operator, 2026-11-16): it ends at no time, so it sorts last.
+            ends = policy.parse_until(cur["until"]) if cur["until"] else float("inf")
         except policy.PolicyRefused:
             # `current` read it as Auto in force only before a parseable expiry; kept safe.
             ends = now
@@ -629,4 +633,5 @@ def heal_auto(now: float = None) -> dict:
     ends, net, until = auto[0]
     return {"on": True, "auto": True, "network": net, "until": until, "n": len(auto),
             "networks": [a[1] for a in auto], "ai": ai,
-            "reread_s": int(min(max(ends - now, 0), REREAD_MAX_S)) + 1}
+            "reread_s": (0 if ends == float("inf")
+                         else int(min(max(ends - now, 0), REREAD_MAX_S)) + 1)}

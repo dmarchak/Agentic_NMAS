@@ -574,10 +574,12 @@ def key_refusal(name: str) -> str:
     return ""
 
 
-def _template_doc(rec: dict, key: str, name: str, words: str) -> dict:
+def _template_doc(template, key: str, name: str, words: str) -> dict:
+    """The fix's plan from *template*, the one read whose digest Save checked (the independent
+    review of 16dccdf0: a second read could store a later version), as *key* named *name*."""
     from modules.nsot import command_plan as CP
 
-    doc = dict(CP.template_of(rec.get("key")).doc, key=key, title=name)
+    doc = dict(template.doc, key=key, title=name)
     if words:
         doc["words"] = words
     CP.parse(doc)
@@ -685,13 +687,14 @@ def save_fix(network: str, *, run_id: str, name: str, actor: str, actor_verified
     # a plan changed since (an edited fix's new version, a built-in plan a deploy changed) is
     # no verified fix. A record from before runs kept their digest names none, and is saved as
     # before.
-    ran, now = rec.get("template_digest") or "", CP.template_of(rec.get("key")).digest
+    plan = CP.template_of(rec.get("key"))
+    ran, now = rec.get("template_digest") or "", plan.digest
     if ran and ran != now:
         raise Refused(f"{rec.get('key')} has changed since this run verified it (it ran "
                       f"{ran}, the plan is {now} now): its lines are not the ones verified; "
                       "run the plan again and save that run")
     key = _key(FIX, name)
-    doc = _template_doc(rec, key, name, words)
+    doc = _template_doc(plan, key, name, words)
     t = CP.parse(doc)
     if match:
         why = fills_refusal(t, fills)
@@ -1206,7 +1209,8 @@ def fire(network: str, key: str, problem, incident: str, *, sources=None,
                 # Every verified script run closes its incident Fixed, whichever path fired it
                 # (the heal decision, a re-decide): one close (the operator, 2026-11-16).
                 close_fixed(network, incident, {"id": out["run"],
-                                                "device": values.get("device")},
+                                                "device": values.get("device"),
+                                                "interface": values.get("interface")},
                             e, e.get("promoted_by") or "")
     _settle(key, row["id"], ok=out["ok"], sent=out["sent"], hash=out["hash"],
             run=out["run"], words=out["words"][:300])
@@ -1344,18 +1348,32 @@ def release(key: str, row_id: str, words: str) -> dict:
 
 
 def close_fixed(network: str, incident_id: str, run: dict, e: dict, by: str) -> dict:
-    """Close *incident_id* as Fixed by the script *e*'s verified *run* (``{"id", "device"}``)
-    through the one close path (`decide.end_standing`, the close keeping ``fixed``); ``{}``
-    when it is not standing (the detect pass ends it then)."""
-    from modules.heal import decide
+    """Close *incident_id* as Fixed by the script *e*'s verified *run* (``{"id", "device",
+    "interface"?}``) through the one close path (`decide.end_standing`, the close keeping
+    ``fixed``); a watching incident too (self-healing Off leaves one watching, 1e49b3a9), as a
+    plan's verified run closes one (`detect.close_verified`); ``{}`` when it is neither
+    standing nor watching (the detect pass ends it then), or when the run
+    fixed one port and the incident holds more than that port's events
+    (`errdisable.beyond_port`): it stands on them, and the detect pass ends it once they are
+    gone (the correctness review's G3 M3, 2026-11-18)."""
+    from modules.heal import decide, errdisable, incidents
 
+    port = str(run.get("interface") or "")
+    if port:
+        inc = next((i for i in incidents.read(network).get("incidents") or []
+                    if i.get("id") == incident_id), None)
+        left = errdisable.beyond_port(inc, port) if inc else []
+        if left:
+            log.info("saved plans: %s's %s is not closed on %s's verified run on %s: it "
+                     "holds %s", network, incident_id, run.get("id"), port, "; ".join(left))
+            return {}
     now = time.time()
     hhmm = time.strftime("%H:%M", time.gmtime(now))
     rid = str(run.get("id") or "")
     return decide.end_standing(
         network, incident_id,
         (f"fixed: saved script {e.get('name')}'s run {rid[-8:]} verified on "
-         f"{run.get('device') or '?'} at {hhmm} UTC"), now=now, by=by,
+         f"{run.get('device') or '?'} at {hhmm} UTC"), now=now, by=by, also_watching=True,
         read_words=f"the script's run {rid} read the device back and verified",
         # The correctness review's G4-D5: the moment its verify passed (``epoch``) and the fix
         # that made it (``operation``), as every verified fix's proof carries them, so the

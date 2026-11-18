@@ -10,16 +10,17 @@
     starts by itself; the AI alone: "AI troubleshooting: on". It opens Troubleshoot › Incidents'
     control strip for that network (C3789). Up to 1366 px "Auto" (or "AI on") alone, the whole on its hover and
     to a reader (nmas-v2.css). It reads itself again once at Auto's expiry (`load delay`), so an
-    Auto that has ended is not drawn as in force. Neither on: nothing at all. Not readable:
-    said, muted. -#}
+    Auto that has ended is not drawn as in force; an Auto "until turned off" (no expiry,
+    ``a.until`` empty) says so and reads itself again at no time (the correctness review's
+    G4-D4). Neither on: nothing at all. Not readable: said, muted. -#}
 {%- if a.on -%}
-{%- set ends = a.until | clock_words('date') if a.auto else none -%}
+{%- set ends = a.until | clock_words('date') if a.auto and a.until else none -%}
 {%- set ai_n = (a.ai or []) | length -%}
-<a class="heal-auto-chip" href="{{ url_for('incidents_v2.page', list=a.network) }}#control-strip" title="{% if a.auto %}Self-healing: Auto until {{ ends.words if ends else a.until }}{{ ' (' ~ ends.utc ~ ')' if ends }}, on {{ a.networks | join(', ') }}: Mercury applies the fixes its policy allows without a person.{% endif %}{% if ai_n %} AI troubleshooting starts by itself on {{ a.ai | join(', ') }}.{% endif %} Open the controls on Troubleshoot › Incidents." data-networks="{{ a.n }}" data-until="{{ a.until }}" data-ai="{{ ai_n }}">
-  {%- if a.auto %}<span class="heal-auto-words">Self-healing: Auto{% if a.n > 1 %} on {{ a.n }} networks{% endif %} until {{ clock(a.until, 'date') }}{% if ai_n %} · AI on{% endif %}</span><span class="heal-auto-short" aria-hidden="true">Auto{% if ai_n %} · AI{% endif %}</span>
+<a class="heal-auto-chip" href="{{ url_for('incidents_v2.page', list=a.network) }}#control-strip" title="{% if a.auto %}Self-healing: Auto until {{ ends.words if ends else (a.until or 'turned off') }}{{ ' (' ~ ends.utc ~ ')' if ends }}, on {{ a.networks | join(', ') }}: Mercury applies the fixes its policy allows without a person.{% endif %}{% if ai_n %} AI troubleshooting starts by itself on {{ a.ai | join(', ') }}.{% endif %} Open the controls on Troubleshoot › Incidents." data-networks="{{ a.n }}" data-until="{{ a.until }}" data-ai="{{ ai_n }}">
+  {%- if a.auto %}<span class="heal-auto-words">Self-healing: Auto{% if a.n > 1 %} on {{ a.n }} networks{% endif %} until {% if a.until %}{{ clock(a.until, 'date') }}{% else %}turned off{% endif %}{% if ai_n %} · AI on{% endif %}</span><span class="heal-auto-short" aria-hidden="true">Auto{% if ai_n %} · AI{% endif %}</span>
   {%- else %}<span class="heal-auto-words">AI troubleshooting: on{% if ai_n > 1 %} on {{ ai_n }} networks{% endif %}</span><span class="heal-auto-short" aria-hidden="true">AI on</span>{% endif -%}
 </a>
-{%- if a.auto %}<span hidden hx-get="{{ url_for('incidents_v2.heal_auto') }}" hx-trigger="load delay:{{ a.reread_s }}s" hx-target="#nmas-heal-auto" hx-swap="innerHTML"></span>{% endif %}
+{%- if a.auto and a.reread_s %}<span hidden hx-get="{{ url_for('incidents_v2.heal_auto') }}" hx-trigger="load delay:{{ a.reread_s }}s" hx-target="#nmas-heal-auto" hx-swap="innerHTML"></span>{% endif %}
 {%- elif a.error -%}
 <span class="heal-auto-chip heal-auto-unknown" title="{{ a.error }}">Self-healing: mode not known</span>
 {%- endif -%}

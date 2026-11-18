@@ -145,6 +145,28 @@ class TestSavingAScript:
         assert ran.digest in str(exc.value) and changed.digest in str(exc.value), exc.value
         assert S.scripts(NET) == {}, "nothing is stored"
 
+    def test_the_plan_checked_is_the_plan_stored(self, store, monkeypatch):
+        """The independent review of 16dccdf0 (2026-11-18): Save checked the run's digest on
+        one read of the plan and built the stored fix from a second, so an edit landing
+        between the two stored a version no run verified, Automatic. One read serves both."""
+        from modules.nsot import privileged
+
+        ran = CP.template_of("errdisable-recover")
+        run_id = store["run"]()
+        privileged.record(NET, dict(privileged.get(NET, run_id), template_digest=ran.digest))
+        changed = CP.parse(dict(ran.doc, reason="an edit landing between the two reads"))
+        reads, real = [], CP.template_of
+
+        def template_of(key):
+            if key != "errdisable-recover":
+                return real(key)
+            reads.append(key)
+            return ran if len(reads) == 1 else changed
+        monkeypatch.setattr(CP, "template_of", template_of)
+        e = script(store, run_id=run_id)
+        stored = S.scripts(NET)[e["key"]]["template"]
+        assert stored.get("reason") == ran.doc["reason"], "the plan the run verified is stored"
+
     @pytest.mark.parametrize("state, kind, words", [
         ("failed", "command_plan", "did not send its program and pass its own verify"),
         ("done", "privileged", "is no command plan's run"),
@@ -235,6 +257,48 @@ class TestFiring:
         with identity.as_ai("fixit-troubleshoot"):
             assert "may not run a saved script" in S.authority_refusal(
                 e["key"], {"script": e["key"]}, NET)
+
+    def test_a_judgement_again_that_cannot_be_made_refuses_and_is_recorded(self, store,
+                                                                            monkeypatch):
+        """The independent review of d22e4ef9 (2026-11-18): the judgement made again once the
+        device is free ran outside the run's try, so a read that raised there (the heal's
+        guards, the policy) left no run record, and the fire reads a run with no record as
+        sent. A judgement that cannot be made refuses, said, and the run is recorded."""
+        import contextlib
+
+        from modules.nsot import command_plan_run as CR
+        from modules.nsot import privileged
+
+        e = script(store, dry_run=True)
+        S.promote(e["key"], **WHO)
+        monkeypatch.setattr("modules.heal.policy.current", lambda network, now=None: {
+            "mode": "auto", "set": "auto", "words": "Auto"})
+        monkeypatch.setattr(CP, "preview", lambda network, key, values, **kw: {
+            "ok": True, "hash": "h", "values": dict(values), "refusals": [],
+            "program": ["interface GigabitEthernet0/2"], "title": "Recover s1 Gi0/2",
+            "device_row": {"hostname": "s1", "ip": "192.0.2.21"}, "derived": {}})
+        busy = [{"operation": "reload", "actor": PERSON}]
+        monkeypatch.setattr("modules.nsot.device_ops.holder",
+                            lambda network, device: busy.pop() if busy else None)
+        monkeypatch.setattr(CR.time, "sleep", lambda _s: None)
+
+        def unreadable(*a, **kw):
+            raise RuntimeError("the incidents store is torn (a test's own)")
+        monkeypatch.setattr("modules.heal.decide.script_hold", unreadable)
+        held = []
+
+        @contextlib.contextmanager
+        def hold(network, device, *a, **kw):
+            held.append(device)
+            yield
+        monkeypatch.setattr("modules.nsot.device_ops.hold", hold)
+        rec = CR.run(NET, e["key"], {"device": "s1", "interface": "Gi0/2",
+                                     "cause": "bpduguard"}, actor=PERSON, actor_verified="",
+                     person=False, confirmed="h", authority={"script": e["key"]},
+                     incident="hi-aaaaaa")
+        assert held == [] and rec["outcome"] == "refused", rec
+        assert "could not be judged again" in rec["why"] and "Nothing was sent" in rec["why"]
+        assert privileged.get(NET, rec["id"])["outcome"] == "refused", "the run is recorded"
 
     @pytest.mark.parametrize("meanwhile", ["nothing", "a person's planned window",
                                            "the fix deleted", "self-healing turned off"])

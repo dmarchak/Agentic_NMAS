@@ -323,6 +323,41 @@ class TestTheAutoChip:
         # (premise corrected: on Needs attention before).
         assert 'href="/v2/incidents?list=C#control-strip"' in body and "on C, A:" in body
 
+    @staticmethod
+    def _chip(monkeypatch, held, now):
+        from modules import integration_groups
+        from modules.heal import policy
+
+        monkeypatch.setattr(integration_groups, "network_names", lambda: list(held))
+        monkeypatch.setattr(policy, "current", lambda net, now=None, kill=None: held[net])
+        got = L.heal_auto(now)
+        import app as APP
+        from flask import render_template
+        with APP.app.test_request_context(f"{CHIP}?list={NET}"):
+            return got, render_template("v2/_heal_auto_chip.html", a=dict(got, error=""))
+
+    def test_until_off_chip_does_not_poll(self, monkeypatch):
+        """The correctness review's G4-D4: an Auto with no expiry ("until turned off",
+        cd0aa4cc) stores ``until`` empty; the chip read it as ending now, re-read itself every
+        second in every open tab, and said "until at an unrecorded time"."""
+        now = time.time()
+        got, body = self._chip(monkeypatch, {"A": {"mode": "auto", "until": ""}}, now)
+        assert (got["auto"], got["network"], got["reread_s"]) == (True, "A", 0), got
+        assert "load delay" not in body and "hx-get" not in body, body
+        words = re.sub(r"<[^>]+>", "", body)
+        assert "unrecorded time" not in words and "Self-healing: Auto until turned off" in \
+            words, words
+
+    def test_an_auto_with_an_expiry_comes_before_one_until_turned_off(self, monkeypatch):
+        from tests.test_heal_policy import iso
+
+        now = time.time()
+        held = {"A": {"mode": "auto", "until": ""}, "C": {"mode": "auto", "until": iso(now + 600)}}
+        got, body = self._chip(monkeypatch, held, now)
+        assert (got["network"], got["networks"]) == ("C", ["C", "A"]), got
+        assert got["reread_s"] in (600, 601), got
+        assert 'hx-trigger="load delay:60' in body, body
+
     def test_a_mode_that_cannot_be_read_is_said(self, client, monkeypatch):  # noqa: F811
         """The route's own answer when the read raises (called in a request, its template
         drawn): said, never drawn as nothing."""

@@ -72,11 +72,14 @@ def test_each_refusal_is_its_kind_with_its_words_status_attempts_and_headers(sta
 def test_a_200_that_is_not_json_is_the_provider_down_with_its_fields():
     """A 200 whose body is no event stream (an HTML page from a proxy) is a broken stream
     (7b0bb884: every send streamed): `StreamFailed`, never parsed, with nothing billed said
-    (no message_start, no output, no usage), its attempts and headers kept."""
+    (no message_start, no output, no usage), its attempts and headers kept. Said as what it
+    was, a 200 that is no event stream, with its status (the correctness review's audit, half
+    1 row 4, 2026-11-18: eefb5f42 dropped both with no decision, copying the product's "the
+    stream ended" words)."""
     got = _raised(_Resp(200, None, dict(KEPT), text="<html>"))
     assert type(got) is A.StreamFailed
-    assert str(got) == "the stream ended without message_stop after 0 event(s)"
-    assert (got.attempts, got.headers) == (1, KEPT)
+    assert str(got) == "HTTP 200 with a body that is not an event stream: no event in it"
+    assert (got.status, got.attempts, got.headers) == (200, 1, KEPT)
     assert (got.partial, got.output_began, got.usage) == (False, False, {})
 
 
