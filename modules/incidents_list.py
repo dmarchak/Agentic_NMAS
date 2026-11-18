@@ -387,6 +387,10 @@ HOLD_S = 30.0
 #: The list as last computed, by network: ``(generation, monotonic, epoch, value)``.
 _held = {}
 _held_lock = threading.Lock()
+#: One computation at a time per network (the redesign brief §6, 2026-11-18): a request that
+#: finds the list stale while it is being computed waits for that computation and takes it,
+#: never computes it again beside it (an announcement makes every open Incidents page ask at once).
+_flights = {}
 
 
 def held(network: str) -> dict:
@@ -399,19 +403,24 @@ def held(network: str) -> dict:
     with ``held_at`` (epoch seconds) when it was computed."""
     from modules import attention_store, invalidation
 
-    now = time.monotonic()
-    gen = invalidation.generation()
-    with _held_lock:
-        h = _held.get(network)
     # A test session computes on every read, as Needs attention's store does
     # (`attention_store.COMPUTE_ON_READ`: a test writes a store and reads the page again).
-    if h is not None and h[0] == gen and now - h[1] < HOLD_S \
-            and not attention_store.COMPUTE_ON_READ:
-        return dict(copy.deepcopy(h[3]), held_at=h[2])
-    got = rows(network)
+    if attention_store.COMPUTE_ON_READ:
+        got = rows(network)
+        return dict(copy.deepcopy(got), held_at=time.time())
     with _held_lock:
-        _held[network] = (gen, now, time.time(), got)
-    return dict(copy.deepcopy(got), held_at=time.time())
+        flight = _flights.setdefault(network, threading.Lock())
+    with flight:
+        now = time.monotonic()
+        gen = invalidation.generation()
+        with _held_lock:
+            h = _held.get(network)
+        if h is not None and h[0] == gen and now - h[1] < HOLD_S:
+            return dict(copy.deepcopy(h[3]), held_at=h[2])
+        got = rows(network)
+        with _held_lock:
+            _held[network] = (gen, now, time.time(), got)
+        return dict(copy.deepcopy(got), held_at=time.time())
 
 
 def hold(network: str, value: dict, generation: int) -> None:
