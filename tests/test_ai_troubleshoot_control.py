@@ -131,15 +131,21 @@ class TestWhatTheAcknowledgementBinds:
     option (a))."""
 
     def test_a_new_failure_moves_the_frequency_and_leaves_it_standing(self, world, counted):
+        import time
+
         from modules.heal import steplog
-        from tests.test_fixit_catch_up import DETECTED
         got = planted()
         acknowledge(world)
         before = B.estimate(B._network(NET), A.FEATURE)
         # One failure more: an act of its own decision that rolled back (the step log's writer).
+        # Premise corrected (a calendar's, not a decision's): the frequency counts the failures
+        # of the last 7 days by the clock (`fixit.auto.failure_frequency`), and the planted
+        # world's DETECTED (2026-11-09 17:46 UTC) left that window on 2026-11-16, so a failure
+        # at DETECTED + 41 moved nothing ("0 failure(s)" before and after, measured
+        # 2026-11-18). The new failure is now's, inside the window whatever the date.
         steplog.append(NET, {"row": "act", "decision": "hd-00000000ac7e", "incident": got["dry"],
                              "device": "r6", "outcome": "rolled_back", "kind": "missing_line"},
-                       DETECTED + 41)
+                       time.time() - 60)
         after = B.estimate(B._network(NET), A.FEATURE)
         assert after["frequency"] != before["frequency"] and after["digest"] != before["digest"]
         assert T.readiness(NET) == ""
@@ -222,7 +228,10 @@ class TestOnePress:
         assert r.status_code == 200 and "Automatic may be turned on" in out, out
         each = AIT.estimate()["usd"]
         html = strip(world)
-        assert f"Also starts on 4 open incidents, about {usd(each * 4)}" in html
+        # Premise corrected (C3872, 7d54cf24, the operator, 2026-11-16: "a refused start spends
+        # no key"): five are listed, the incident whose automatic start a cap refused among them
+        # (tests/test_fixit_catch_up.py's LISTED).
+        assert f"Also starts on 5 open incidents, about {usd(each * 5)}" in html
         assert 'name="start"' not in html and 'type="checkbox"' not in html, "no ticks, no form"
         r, html = press(world)
         assert r.status_code == 200, html
@@ -231,7 +240,10 @@ class TestOnePress:
         (rec,) = [x for x in I.changes()["rows"] if x.get("kind") == "ai_background_on"]
         assert sorted(rec["catch_up"]["ticked"]) == sorted(got[k] for k in LISTED)
         assert rec["catch_up"]["unticked"] == []
-        assert "started on 4 open incidents now" in html
+        # Premise corrected (8f1d8006, the operator, 2026-11-16: "Every switch flips
+        # instantly; the work it starts happens after, in the background", C3866): the press
+        # answers at once, its catch-up a job after it (run in the request here).
+        assert "Starting the AI on 5 incidents…" in html, html[-1500:]
 
     def test_a_line_that_moved_since_it_was_drawn_is_refused_naming_both(self, world, counted):
         planted()
@@ -291,7 +303,14 @@ class TestTheRowsSayIt:
         row = next(r for r in incidents_list.rows(NET)["rows"] if r["id"] == iid)
         assert row["ai"]["state"] == "investigating" and row["ai"]["since"]
         body = unescape(world.client.get(f"/v2/incidents?list={NET}").get_data(as_text=True))
-        assert re.search(r'data-ai="investigating">AI investigating since <time', body), body
+        # Premise corrected (2f368606 and d2093c59, the operator, 2026-11-15 and 2026-11-17:
+        # "Mercury working while a saved script runs or the AI investigates, with a spinner and
+        # the live step"; each incident its own row): the row's status is its working line,
+        # busy, where it was "AI investigating since <time>"; the start is the row's model's
+        # (``since``, above).
+        assert re.search(r'<span class="inc-row-sub simple-status working-now" data-status '
+                         r'data-busy title="The AI is investigating">The AI is investigating',
+                         body), body
         # Ended: its failure kept, the row says the outcome in one line.
         F.claim_start(inc_of(iid), f"decision:{iid}:failed", trigger="auto", state="failed",
                       words="the provider did not answer")

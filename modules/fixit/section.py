@@ -864,12 +864,20 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
                                         and ln.get("operation") for ln in rec["lines"]))
     out["status"] = _best_status(out["status"], offer, done, found, starts, newest_ai,
                                  proposed and plan.get("approvable"))
+    # A troubleshoot that failed (its job's error, a bound passed, a request the provider
+    # refused) is the incident's best current knowledge, said with its action: never replaced
+    # by why a person is needed, which would say the AI can investigate, or found no safe plan,
+    # of an AI that was asked and failed (the operator, 2026-11-15: "a call that was sent and
+    # got no answer is a failure, never an answer that named no fix").
+    failed_now = "Couldn't troubleshoot:" in out["status"]
     if not done and _held_of(found):
         # A guard holds it: said, with when the next automatic heal is allowed (the operator,
         # 2026-11-16), never "reading it, before it decides".
         out["status"] = _held_of(found)
-    elif not done and out["why_person"] and state not in ("investigating", "running"):
+    elif not done and out["why_person"] and state not in KEEPS_STATUS and not failed_now:
         # Why a person is needed, at a glance, beside its one action (the operator, 2026-11-16).
+        # A start a cap refused keeps its own line ("The AI did not start: this incident's AI
+        # cap would be passed"): why a person is needed would say the AI found no safe plan.
         out["status"] = out["why_person"]
     # Who said the status line, drawn once as a small label beside it (the operator's wording
     # rule, 2026-11-16): ``AI`` when it is the AI's finding, else none.
@@ -922,6 +930,9 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
 #: The most characters of the AI's finding the status line says, cut at a word (the operator,
 #: 2026-11-16: "shortened, not cut mid-word").
 FINDING_CHARS = 140
+#: The states whose own status line why a person is needed never replaces: the AI or a plan
+#: at work (its live step), and a start a cap refused (its cap named).
+KEEPS_STATUS = ("investigating", "running", "capped")
 
 
 def _first_sentence(text, most: int = 0) -> str:

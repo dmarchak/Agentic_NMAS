@@ -88,10 +88,12 @@ class TestTheStartsAreReserved:
         r, out = post(world, shown, each)
         assert r.status_code == 200, out
         planned = [h for h in held if h[0].startswith("fixit-start-")]
-        assert [(f, c) for _i, f, c in planned] == [("fixit_auto", True)] * 4, held
+        # Premise corrected (C3872, 7d54cf24: "a refused start spends no key"): five are listed,
+        # the incident whose automatic start a cap refused among them (LISTED).
+        assert [(f, c) for _i, f, c in planned] == [("fixit_auto", True)] * 5, held
         assert any(p.endswith("fixit_starts.lock") for p in locked), locked
         # Each investigation ran while its own planned start was still held...
-        assert [s[0] for s in seen] == order and len(order) == 4
+        assert [s[0] for s in seen] == order and len(order) == 5
         assert all(s[1] in s[2] for s in seen), seen
         # ...and none is left once it ended.
         left = reservations.open_reservations()["held"]
@@ -127,11 +129,19 @@ class TestTheSwitchIsLinkedWhereItIsNamed:
         # from Needs attention; keep it only on Incidents"): the switch is on Troubleshoot ›
         # Incidents' strip, where Needs attention's was before.
         want = f"/v2/incidents?list={NET}#ctl-ai"
-        status = re.search(r'<p class="fixit-status"[^>]*>(.*?)</p>', html, re.S).group(1)
-        assert "automatic troubleshooting is off for this network" in re.sub(
-            r"<[^>]+>", "", status), status
-        assert f'<a href="{want}" data-switch="fixit_auto">automatic troubleshooting</a>' \
-            in status, status
+        # Premise corrected (board R5's status line, becced07; 9f62b2c7 and 106c117d, the
+        # operator, 2026-11-16: the status says why a person is needed, from the incident's
+        # record): this incident's status says Mercury has no fix it runs by itself and the AI
+        # can investigate, naming no switch, where it said "automatic troubleshooting is off for
+        # this network". A status that names the switch links it (`switch_linked`); the costs
+        # line names it here, linked (below).
+        status = re.search(r'data-bluf="status" data-status[^>]*>(.*?)</div>', html,
+                           re.S).group(1)
+        plain = re.sub(r"<[^>]+>", "", status)
+        assert plain.endswith("The AI can investigate"), status
+        assert "automatic troubleshooting" not in plain or (
+            f'<a href="{want}" data-switch="fixit_auto">automatic troubleshooting</a>'
+            in status), status
         costs = re.search(r'<p class="small fixit-auto"[^>]*>(.*?)</p>', html, re.S).group(1)
         assert f'<a href="{want}" data-switch="fixit_auto">off for {NET}</a>' in costs, costs
         # Followed, the link opens the switch it names, which works: pressed before the

@@ -28,6 +28,7 @@ from modules.fixit import incident as F
 from tests.test_fixit_section_v2 import incident, page  # noqa: F401
 from tests.test_fixit_section_v2 import web  # noqa: F401 (the fixture)
 from tests.test_fixit_troubleshoot import ai, answer, fix, press, sec_of, stopped  # noqa: F401
+from tests.test_fixit_troubleshoot import CLOSE
 from tests.test_heal_resubscribe import lab  # noqa: F401
 from tests.test_sdn_connections import networks  # noqa: F401
 
@@ -53,14 +54,17 @@ def lines(iid) -> list:
 class TestThePlan:
     def test_a_plan_is_proposed_and_kept_with_its_steps(self, ai):
         iid = stopped(ai)
-        ai.answer = planned([step(subscriptions=["101"])])
+        # Premise corrected (17215a95's ladder: a re-subscribe of 101 repeats attempt 1 and is
+        # refused as tried): the plan is the collector's close, which no attempt makes tried.
+        ai.answer = planned([step(CLOSE, subscriptions=["101", "102"])])
         r, html = press(ai, iid)
         assert r.status_code == 200, html
         sec = sec_of(html)
         assert "The AI proposes a plan of 1 step" in sec, sec
         (line,) = lines(iid)
-        assert line["source"] == "ai" and line["prompt"] == "fixit_troubleshoot.v13"  # the investigation's last pass (C3797)
-        assert [s["operation"] for s in line["steps"]] == ["telemetry-resubscribe"]
+        # Every pass is v18's prompt since v17's one shape (231da1d6; C3918).
+        assert line["source"] == "ai" and line["prompt"] == "fixit_troubleshoot.v18"
+        assert [s["operation"] for s in line["steps"]] == [CLOSE]
 
     @pytest.mark.parametrize("ans,why", [
         (lambda: planned([step()], fix=fix()), "a plan and also a fix"),
@@ -97,10 +101,13 @@ class TestTheImprovement:
         from modules.nsot import command_policy
         iid = stopped(ai)
         shape = "interface {interface} > description x"
-        ai.answer = planned([step(subscriptions=["101"]), step(subscriptions=["102"])],
-                            improvement={"what": "one re-subscribe of both", "saves":
+        # Premise corrected (17215a95's ladder: a re-subscribe repeats attempt 1 and is refused
+        # as tried): the steps are the collector's close, which no attempt makes tried.
+        ai.answer = planned([step(CLOSE, subscriptions=["101"]),
+                             step(CLOSE, subscriptions=["102"])],
+                            improvement={"what": "one close of both", "saves":
                                          "one step and about 2 minutes (attempt 1's run)",
-                                         "steps": [step(subscriptions=["101", "102"])],
+                                         "steps": [step(CLOSE, subscriptions=["101", "102"])],
                                          "shapes": [{"dialect": "cisco_iosxe", "shape": shape,
                                                      "why": "a test"}]})
         _r, html = press(ai, iid)
@@ -127,7 +134,10 @@ class TestTheCommandPlanStep:
         iid = stopped(ai)
         asked = []
 
-        def preflight(network, params, *, reads=False, sources=None):
+        # Premise corrected (5653c025, the operator, 2026-11-16: the plan's preconditions read
+        # with the investigation's own reads reused): the step's preflight is asked with the
+        # incident and the job's reuse too (`fix_proposal._command_plan_reads`).
+        def preflight(network, params, *, reads=False, sources=None, incident="", reuse=None):
             asked.append((network, dict(params), reads))
             return {"ok": False, "refused": "the port is not err-disabled now", "drawn": {},
                     "hash": ""}
@@ -173,7 +183,11 @@ class TestWhatIsSent:
     @pytest.mark.parametrize("reads_on", [False, True], ids=["plain pass v7", "reads pass v8"])
     def test_each_prompt_fits_its_pins_bound(self, ai, monkeypatch, reads_on):
         """The body each pass sends, by the gateway's fallback over-estimate, within the pin's
-        bound (the recorded cases hold no pack yet, so the press's own request is measured)."""
+        bound (the recorded cases hold no pack yet, so the press's own request is measured).
+        Premise corrected (7b0bb884, the operator, 2026-11-16: "remove every AI token/size
+        limit Mercury sets itself"): a pin's ``max_prompt_tokens`` (27,000) is kept in its file
+        and enforced by nothing; the one bound a prompt is held to is its model's context
+        window less the model's most output (`profiles.prompt_room`, the gateway's check)."""
         from modules.ai import gateway, profiles
         from modules.ai import read_loop as RL
         if reads_on:
@@ -183,7 +197,7 @@ class TestWhatIsSent:
             {"reads": []} if reads_on else {}))
         press(ai, iid)
         (body,) = ai.sent
-        bound = profiles.TASKS[FT.FEATURE]["max_prompt_tokens"]
+        bound = profiles.prompt_room(FT.FEATURE)
         want = FT.PROMPT_PLAN_READS if reads_on else FT.PROMPT_PLAN
         assert prompts_text(want) in json.dumps(body["system"]), "the pass's own prompt"
         assert gateway.prompt_tokens(body) <= bound, (gateway.prompt_tokens(body), bound)

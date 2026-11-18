@@ -120,7 +120,10 @@ class TestApprove:
         plan = FP.preflight(incident(iid), line)
         r = post(web, iid, "approve", proposal=line["proposal"], hash=plan["hash"])
         assert r.status_code == 200, r.get_data(as_text=True)
-        assert web.started["job"] == 1
+        # Premise corrected (C3867, 8f1d8006, the operator, 2026-11-16: Approve "starts the
+        # plan engine's job at once and answers 'Starting…' in place"): two jobs, Approve's
+        # start (its session read again, the engine's start) and the engine's run.
+        assert web.started["job"] == 2
         (ap,) = [ln for ln in F.read(incident(iid))["lines"] if ln.get("choice") == "approve"]
         assert ap["plan_hash"] == plan["hash"] and ap["run"]
         rec = PE.record_of(NET, ap["run"])
@@ -190,7 +193,10 @@ class TestTheCollectorStepsSession:
         from modules.heal import resubscribe as R
         real = R.plan
 
-        def plan(network, device, subs, *, readd=False, collector=False, sources=None):
+        # Premise corrected (17215a95: the collector close alone is a plan's step, asked of
+        # `resubscribe.plan` with ``close_only``): the stand-in takes its whole signature.
+        def plan(network, device, subs, *, readd=False, collector=False, sources=None,
+                 close_only=False):
             got = real(network, device, subs, readd=readd, sources=sources)
             if collector:
                 got = dict(got, close={"remote": "192.0.2.6:57002", "local": "192.0.2.10:57000"})
@@ -256,7 +262,9 @@ class TestModifyAndDeny:
         line = proposed(iid, ONE)
         before = FP.preflight(incident(iid), line)
         assert before["approvable"], before["why_refused"]
-        ai.answer = answer(fix())
+        # Premise corrected (17215a95's ladder: a re-subscribe of 101, which attempt 1 tried, is
+        # refused as tried): the revised plan re-subscribes 102 alone, which no attempt tried.
+        ai.answer = answer(fix(subscriptions=("102",)))
         ai.client.started.update(dict.fromkeys(ai.client.started, 0))
         r = post(ai.client, iid, "modify", proposal=line["proposal"],
                  text="re-subscribe both streams, 101 and 102")
