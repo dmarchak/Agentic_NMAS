@@ -55,7 +55,9 @@ class TestTheAIsStatus:
         from modules.fixit import incident as F
         from modules.fixit import section
 
-        monkeypatch.setattr(section, "view", lambda network, found: dict(view))
+        # The row reads the section as its page draws it (`section.drawn`, C4086), which asks
+        # `view` with the page's resolved, ended and now.
+        monkeypatch.setattr(section, "view", lambda network, found, **kw: dict(view))
         monkeypatch.setattr(section, "incident_of", lambda network, found: {
             "incident": object()})
         monkeypatch.setattr(F, "starts", lambda inc: {"starts": [
