@@ -64,6 +64,18 @@ HOMES = {
     # declaration, `catalog.PlanStep.apply`).
     ("step", "errdisable-recover"): {"endpoint": "fixit_v2.approve",
                                      "via": "modules.plan_engine"},
+    # The lost stream's ladder (17215a95, the operator 2026-11-16): its two later rungs are
+    # built-in command plans, and the collector close alone a catalog operation approved only
+    # as a step of its incident's plan ("a plan step with the same guards"), so each one's home
+    # is that card, as the recovery's is.
+    ("step", "telemetry-subscription-recreate"): {"endpoint": "fixit_v2.approve",
+                                                  "via": "modules.plan_engine"},
+    ("step", "telemetry-stack-restart"): {"endpoint": "fixit_v2.approve",
+                                          "via": "modules.plan_engine"},
+    ("step", "telemetry-collector-close"): {"endpoint": "fixit_v2.approve",
+                                            "via": "modules.plan_engine"},
+    ("catalog", "telemetry-collector-close"): {"endpoint": "fixit_v2.approve",
+                                               "via": "modules.plan_engine"},
     # The catalog's operations: Re-subscribe's card, the one a person confirms.
     ("catalog", "telemetry-resubscribe"): {"endpoint": "resubscribe_v2.confirm",
                                            "via": "modules.heal.resubscribe"},
