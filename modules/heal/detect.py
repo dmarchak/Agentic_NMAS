@@ -657,6 +657,26 @@ def close_verified(network: str, incident_id: str, *, by: str, now: float = None
         return {}
 
 
+def _plan_ran_to_its_end(network: str, run_id: str) -> bool:
+    """False when *run_id* is a plan engine run (`plan_engine.KEY`) that did not finish ``done``:
+    a plan stopped at a later step (its deploy moved at apply, refused, nothing sent) leaves an
+    earlier step's pass as its newest attempt, and that pass is no fix of the incident (the
+    correctness review's G7-D1, 2026-11-18). True for any other run, whose own verify is its
+    attempt's. A record that cannot be read is False: an attempt not read never closes."""
+    from modules import plan_engine as PE
+    from modules.config import list_data_path
+    from modules.nsot import privileged
+
+    try:
+        rec = privileged.get(network, run_id, data_dir=list_data_path(network))
+    except (ValueError, OSError) as exc:
+        log.info("heal: %s's run %s could not be read: %s", network, run_id, exc)
+        return False
+    if not isinstance(rec, dict):
+        return False
+    return rec.get("key") != PE.KEY or rec.get("outcome") == "done"
+
+
 def verified_fix(network: str, inc: dict) -> dict:
     """The fix a person approved and ran in incident *inc* that passed its own device check:
     ``{"run", "attempt", "operation", "device", "epoch", "at"}`` (*epoch* and *at* when its run
@@ -689,6 +709,8 @@ def verified_fix(network: str, inc: dict) -> dict:
         # an attempt, but it is no fix a person approved in this incident: it may have fixed
         # another port (the correctness review's G7-D2, 2026-11-18). The incident stands; its
         # own symptom read closes it.
+        return {}
+    if not _plan_ran_to_its_end(network, last["run"]):
         return {}
     if section.view(network, found).get("state") != "passed":
         return {}
