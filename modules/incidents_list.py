@@ -5,9 +5,10 @@ incident's own home). Provisional, operator review pending (the operator, 2026-1
 boards: approved provisionally for initial implementation and testing").
 
 **What it draws, for one network:** every incident its self-healing holds, in two tabs:
-- **Open:** each incident the incidents store holds open (C3876: the tabs follow the store's
-  state; a store-closed incident whose fix nothing confirmed is on Closed, "Closed, not
-  confirmed"), grouped by what it waits for: **Needs a person**, **Mercury working**
+- **Open:** each incident its page does not read resolved (C4084, the operator, 2026-11-18:
+  "an incident closes only on a healed outcome. 'Closed but not confirmed' stays open and
+  needs a person": a store-closed incident whose fix nothing confirmed is here, under Needs a
+  person), grouped by what it waits for: **Needs a person**, **Mercury working**
   (a heal applying, or a fix a person approved running or passed), **Watching** (Mercury
   reading it, before its decision). A summary line first, counts by group.
 - **Closed:** how each one ended: **Fixed by Mercury** (no person took part), **Fixed by a
