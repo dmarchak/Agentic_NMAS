@@ -200,9 +200,11 @@ class TestTheAggregate:
     def test_a_command_plan_run_counts_unless_it_ended_net_zero_and_verified(self, store):
         """A command plan's receipt is left out of the count only when its run ended with the
         configuration as before, verified (``done``), or rolled back with nothing still
-        differing; one that failed, was not verified, re-tripped or was rolled back NOT
-        RESTORED may have left its authorised line in the configuration, and counts (the
-        correctness review's G6 M1; 7968c7d4's own premise: "net zero, verified")."""
+        differing; one that failed, was not verified or was rolled back NOT RESTORED may have
+        left its authorised line in the configuration, and counts (the correctness review's G6
+        M1; 7968c7d4's own premise: "net zero, verified"). A re-tripped run is left out too
+        (ruling 16, the operator, 2026-11-18: "A re-tripped run does NOT authorise its
+        line")."""
         from modules.nsot import receipts
 
         def plan(at, outcome, after_rollback=None):
@@ -218,13 +220,14 @@ class TestTheAggregate:
                 plan("2026-11-16T03", "not_net_zero", after_rollback=[]),  # restored
                 plan("2026-11-16T04", "failed"),                         # counts
                 plan("2026-11-16T05", "unverified"),                     # counts
-                plan("2026-11-16T06", "retripped"),                      # counts
-                plan("2026-11-16T07", "failed", after_rollback=["shutdown"])]  # counts
+                plan("2026-11-16T06", "retripped"),                      # authorises nothing
+                plan("2026-11-16T07", "failed", after_rollback=["shutdown"]),  # counts
+                plan("2026-11-16T08", "retripped")]                      # authorises nothing
         store.write_text("".join(json.dumps(r) + "\n" for r in rows))
         got = receipts.prior_authorisations("Lab", "s1", ["shutdown"])
         assert got["state"] == "ok"
-        assert (got["lines"].get("shutdown") or {}).get("count") == 4, got
-        assert got["lines"]["shutdown"]["last_at"] == "2026-11-16T07"
+        assert (got["lines"].get("shutdown") or {}).get("count") == 3, got
+        assert got["lines"]["shutdown"]["last_at"] == "2026-11-16T07", got
 
     def test_the_plan_carries_it(self, store, monkeypatch):
         """THE plan carries each line's prior authorisations. Today's renderer drew them on
