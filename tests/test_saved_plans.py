@@ -74,6 +74,10 @@ def store(tmp_path, monkeypatch):
 
 
 def script(store, **over):
+    """The card's Save of a verified run with its match. Saving a verified fix is the approval
+    (6b91dc45, the operator, 2026-11-15): saved in Auto, promoted by the person saving it;
+    ``dry_run=True`` is Customize's Dry run, kept until promoted (what a test that promotes
+    saves first)."""
     kw = dict(run_id=store["run"](), name="BPDU guard recovery", match=MATCH, fills=FILLS,
               **WHO)
     kw.update(over)
@@ -102,15 +106,22 @@ class TestTheMatch:
 
 class TestSavingAScript:
     def test_a_verified_run_is_saved_with_its_parameters_open_in_dry_run(self, store):
-        e = script(store)
-        assert e["key"] == "script-bpdu-guard-recovery" and e["mode"] == "dry_run"
+        """Saved with Customize's Dry run it stays in Dry run (a saved fix is one object keyed
+        ``fix-``, 3a659d6b); a plain Save is the approval, Auto promoted by its saver
+        (6b91dc45)."""
+        e = script(store, dry_run=True)
+        assert e["key"] == "fix-bpdu-guard-recovery" and e["mode"] == "dry_run"
+        assert "promoted_by" not in S.scripts(NET)[e["key"]]
+        saved = script(store, name="BPDU guard recovery saved")
+        assert saved["mode"] == "auto"
+        assert S.scripts(NET)[saved["key"]]["promoted_by"] == PERSON
         t = CP.template_of(e["key"])
         assert t.title == "BPDU guard recovery" and set(t.parameters) == set(FILLS)
         assert t.commands == CP.template_of("errdisable-recover").commands
         assert S.scripts(NET)[e["key"]]["match"] == MATCH
 
     @pytest.mark.parametrize("state, kind, words", [
-        ("failed", "command_plan", "did not pass its own verify"),
+        ("failed", "command_plan", "did not send its program and pass its own verify"),
         ("done", "privileged", "is no command plan's run"),
     ])
     def test_only_a_verified_fix_is_saved(self, store, state, kind, words):
@@ -149,8 +160,11 @@ class TestFiring:
             if seen["during"]:
                 seen["during"]()
             o = seen["outcome"]
-            return {"id": f"r{len(seen['run'])}", "state": "done" if o == "done" else o,
-                    "outcome": o, "why": f"the run {o}"}
+            # The runner's record shape: a command plan's (`saved_plans.run_verified` reads
+            # its kind, state and outcome since 49e955d5's verified close).
+            return {"id": f"r{len(seen['run'])}", "kind": "command_plan",
+                    "state": "done" if o == "done" else o, "outcome": o,
+                    "why": f"the run {o}"}
 
         def hold(network, record, **kw):
             seen["held"].append(dict(record))
@@ -165,7 +179,7 @@ class TestFiring:
 
     def test_in_dry_run_it_records_what_it_would_run_and_sends_nothing(self, store,
                                                                          monkeypatch):
-        e = script(store)
+        e = script(store, dry_run=True)
         seen = self._seams(monkeypatch)
         got = S.fire(NET, e["key"], BPDU, "hi-aaaaaa")
         assert got["mode"] == "dry_run" and got["words"] == "would run" and not seen["run"]
@@ -175,7 +189,7 @@ class TestFiring:
         assert len(track) == 1 and track[0]["incident"] == "hi-aaaaaa"
 
     def test_promoted_it_runs_through_the_runner_on_its_authority(self, store, monkeypatch):
-        e = script(store)
+        e = script(store, dry_run=True)
         S.promote(e["key"], **WHO)
         seen = self._seams(monkeypatch)
         got = S.fire(NET, e["key"], BPDU, "hi-aaaaaa")
@@ -186,7 +200,7 @@ class TestFiring:
 
     def test_the_runner_refuses_an_authority_that_does_not_stand(self, store):
         from modules.nsot import command_plan_run as CR
-        e = script(store)
+        e = script(store, dry_run=True)
         rec = CR.run(NET, e["key"], {"device": "s1"}, actor=PERSON, actor_verified="",
                      person=False, confirmed="h", authority={"script": e["key"]})
         assert rec["outcome"] == "refused" and "is not a saved script in Auto" in rec["why"]
@@ -199,17 +213,27 @@ class TestFiring:
 
     def test_a_scripts_authority_does_not_stand_on_another_network(self, store):
         """Review 4: the run's network is checked against the script's."""
-        e = script(store)
+        e = script(store, dry_run=True)
         S.promote(e["key"], **WHO)
         why = S.authority_refusal(e["key"], {"script": e["key"]}, "Other")
         assert why == f"{e['key']} is a self-heal script of {NET}, and this run is on Other"
 
     def test_a_promoter_who_no_longer_holds_the_right_stands_for_nothing(self, store):
-        e = script(store)
+        """The check this test was named for is gone (70e89a47, the operator, 2026-11-17,
+        round 2: "the promoter-still-holds-the-right check" removed, so an approved fix runs
+        the moment self-healing is On): a promotion stands once made, whoever holds the right
+        later; promoting again still asks the right, and the AI still stands for nothing."""
+        e = script(store, dry_run=True)
         S.promote(e["key"], **WHO)
         store["rights"]["self_healing"] = [OTHER]
-        assert "no longer holds self-healing rights" in S.authority_refusal(
-            e["key"], {"script": e["key"]}, NET)
+        assert S.authority_refusal(e["key"], {"script": e["key"]}, NET) == ""
+        assert S.scripts(NET)[e["key"]]["promoted_by"] == PERSON
+        with pytest.raises(S.Refused) as exc:
+            script(store, name="BPDU guard recovery again")
+        assert "does not hold the self-healing right" in str(exc.value)
+        with identity.as_ai("fixit-troubleshoot"):
+            assert "may not run a saved script" in S.authority_refusal(
+                e["key"], {"script": e["key"]}, NET)
 
     def test_a_matching_incident_fires_it_with_no_ai_call(self, store, monkeypatch):
         e = script(store)
@@ -227,7 +251,7 @@ class TestFiring:
         and the catch-up's): a promoted script whose match holds runs first, and healed so,
         the AI is not asked; in Dry run it records what it would run and the AI is asked."""
         from modules import heal_notice
-        e = script(store)
+        e = script(store, dry_run=True)
         self._seams(monkeypatch)
         monkeypatch.setattr(P, "classify", lambda found: BPDU)
         monkeypatch.setattr("modules.incident_page.resolve", lambda network, iid: {
@@ -254,7 +278,7 @@ class TestFiring:
         """Review 1: the heal guards for the script's device asked before an Auto send, on
         the incident's own record; held, nothing is sent and the row names the guard."""
         from modules.heal import guards
-        e = script(store)
+        e = script(store, dry_run=True)
         S.promote(e["key"], **WHO)
         seen = self._seams(monkeypatch)
         seen["hold"] = guards.hit(7, "held", "a person changed s1 3 times in 10 minutes", {})
@@ -270,7 +294,7 @@ class TestFiring:
             "a held fire sent nothing, so it stands for nothing: the next pass runs it")
 
     def test_in_dry_run_no_guard_is_asked_and_nothing_is_sent(self, store, monkeypatch):
-        e = script(store)
+        e = script(store, dry_run=True)
         seen = self._seams(monkeypatch)
         S.fire(NET, e["key"], BPDU, "hi-aaaaaa", record={"id": "hi-aaaaaa", "device": "s1"})
         assert not seen["held"] and not seen["run"]
@@ -279,8 +303,8 @@ class TestFiring:
                                                                    monkeypatch):
         """Review 2: once one Auto script has sent anything, the others only record a Dry
         run: one incident, one change."""
-        first = script(store)
-        second = script(store, name="BPDU guard recovery again")
+        first = script(store, dry_run=True)
+        second = script(store, name="BPDU guard recovery again", dry_run=True)
         for e in (first, second):
             S.promote(e["key"], **WHO)
         seen = self._seams(monkeypatch)
@@ -296,7 +320,7 @@ class TestFiring:
                                                                      monkeypatch, outcome):
         """Review 3: any Auto attempt that sent something counts as fired, so a rolled-back
         run is not tried again on every pass; a refusal at the runner sent nothing."""
-        e = script(store)
+        e = script(store, dry_run=True)
         S.promote(e["key"], **WHO)
         seen = self._seams(monkeypatch)
         seen["outcome"] = outcome
@@ -307,7 +331,7 @@ class TestFiring:
 
     def test_a_run_the_runner_refused_sent_nothing_and_is_tried_again(self, store,
                                                                      monkeypatch):
-        e = script(store)
+        e = script(store, dry_run=True)
         S.promote(e["key"], **WHO)
         seen = self._seams(monkeypatch)
         seen["outcome"] = "refused"
@@ -321,7 +345,7 @@ class TestFiring:
         path asking while the first runs finds it firing and sends nothing; the investigation
         does not ask the AI then."""
         from modules import heal_notice
-        e = script(store)
+        e = script(store, dry_run=True)
         S.promote(e["key"], **WHO)
         seen = self._seams(monkeypatch)
         monkeypatch.setattr(P, "classify", lambda found: BPDU)
@@ -347,7 +371,7 @@ class TestFiring:
         """Review 8: a run under a script's authority is Mercury's, by the script, promoted
         by its promoter, never recorded as the person."""
         from modules.nsot import command_plan_run as CR
-        e = script(store)
+        e = script(store, dry_run=True)
         S.promote(e["key"], **WHO)
         monkeypatch.setattr(S, "authority_refusal", lambda *a, **kw: "stop here")
         rec = CR.run(NET, e["key"], {"device": "s1"}, actor=PERSON, actor_verified="",
@@ -378,7 +402,7 @@ class TestTheFills:
             script(store, fills=dict(FILLS, cause={"BPDU guard": "not-a-choice"}))
 
     def test_an_unmapped_cause_fires_as_refused_and_runs_nothing(self, store, monkeypatch):
-        e = script(store)
+        e = script(store, dry_run=True)
         S.promote(e["key"], **WHO)
         seen = TestFiring()._seams(monkeypatch)
         got = S.fire(NET, e["key"], P.Problem(**dict(BPDU.as_dict(), cause="a loop")),
@@ -397,7 +421,7 @@ class TestUnderSelfHealingsMode:
 
     def _decided(self, store, monkeypatch, outcome):
         from modules.heal import decide, decisions, incidents
-        e = script(store)
+        e = script(store, dry_run=True)
         S.promote(e["key"], **WHO)
         seen = TestFiring()._seams(monkeypatch)
         rec = {"id": "hi-aaaaaa", "device": "s1"}
@@ -445,7 +469,7 @@ class TestUnderSelfHealingsMode:
         """`decide.run`: each decided incident's problem asked of the network's scripts, after
         the heal lock, under self-healing's mode; the AI's switch is never read."""
         from modules.heal import decide, decisions, incidents
-        e = script(store)
+        e = script(store, dry_run=True)
         S.promote(e["key"], **WHO)
         seen = TestFiring()._seams(monkeypatch)
         rec = {"id": "hi-aaaaaa", "device": "s1"}
@@ -530,7 +554,7 @@ class TestAReusableAction:
         from modules.heal import catalog
         e = S.save_action(NET, run_id=store["run"](), name="Bounce interface",
                           words="Shut and no shut one access port, net zero", **WHO)
-        assert e["key"] == "action-bounce-interface"
+        assert e["key"] == "fix-bounce-interface"
         op = catalog.entries()[e["key"]]
         assert isinstance(op, catalog.PlanStep) and [p.name for p in op.params] == [
             "device", "interface", "cause"]
@@ -577,7 +601,7 @@ class TestTheRights:
         with pytest.raises(S.Refused) as exc:
             script(store)
         assert "does not hold the self-healing right" in str(exc.value)
-        e = script(store, actor=OTHER)
+        e = script(store, actor=OTHER, dry_run=True)
         with pytest.raises(S.Refused):
             S.promote(e["key"], **WHO)
         with pytest.raises(S.Refused) as exc:
@@ -588,7 +612,7 @@ class TestTheRights:
 
     def test_promote_refuses_another_networks_script_and_keeps_its_promoter(self, store):
         """Review 10: a key of another network is refused; one in Auto keeps who promoted it."""
-        e = script(store)
+        e = script(store, dry_run=True)
         with pytest.raises(S.Refused) as exc:
             S.promote(e["key"], network="Other", **WHO)
         assert str(exc.value) == f"{e['key']} is a self-heal script of {NET}, not of Other"

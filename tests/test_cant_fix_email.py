@@ -117,28 +117,40 @@ def told(ai, env, zone, monkeypatch):  # noqa: F811
     return run
 
 
-def _decided_heal(running):
-    """A heal decided by the real decision in AUTO (`decide.run`), in the step log: its id."""
+def _decided_heal(running, src=None):
+    """A heal decided by the real decision in AUTO (`decide.run`), in the step log:
+    ``(decision, the act's answer)``. The pass starts the heal it decides at once (C3865):
+    with *src* its job is the real act over those fakes (`acts_with`); without, its start is
+    refused, so the decision stays untaken for a record written by hand."""
+    import pytest
+
+    from tests.test_heal_act import acted, acts_with
     from tests.test_heal_decide import Fake, settle
     from tests.test_heal_policy import auto
     from modules.heal import decide
 
     auto(NET, now=T0 - 60, kinds=("added_line",))
     settle(running, claim=False)
-    (d,) = decide.run(NET, now=T0, sources=Fake(running))["decided"]
+    if src is None:
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("modules.heal.act.start_decided", lambda *a, **kw: {
+                "refused": "the test writes this heal's act record itself"})
+            (d,) = decide.run(NET, now=T0, sources=Fake(running))["decided"]
+        assert d["outcome"] == "heal", d
+        return d, None
+    with acts_with(src) as jobs:
+        (d,) = decide.run(NET, now=T0, sources=Fake(running))["decided"]
     assert d["outcome"] == "heal", d
-    return d
+    return d, acted(jobs[0])
 
 
 def rolled_back_by_the_act():
     """A heal the real act rolled back: the read after the change still holds the route."""
-    from modules.heal import act
     from tests.test_heal_act import FakeAct, K
     from tests.test_heal_decide import GOLDEN, ROUTE4
 
-    d = _decided_heal(GOLDEN + ROUTE4)
-    got = act.act_one(NET, d["decision"], now=T0 + 5,
-                      sources=FakeAct(GOLDEN + ROUTE4, post=K._stored(GOLDEN + ROUTE4)))
+    d, got = _decided_heal(GOLDEN + ROUTE4, FakeAct(GOLDEN + ROUTE4,
+                                                    post=K._stored(GOLDEN + ROUTE4)))
     assert got["outcome"] == "rolled_back", got["words"]
     return d["incident"]
 
@@ -149,7 +161,7 @@ def rolled_back_as_captured():
     from modules.heal import decisions, steplog
     from tests.test_heal_decide import GOLDEN, ROUTE4
 
-    d = _decided_heal(GOLDEN + ROUTE4)
+    d, _none = _decided_heal(GOLDEN + ROUTE4)
     with open(FIXTURE, encoding="utf-8") as fh:
         result = json.load(fh)
     assert any(SETTER in s.get("words", "") for s in result["steps"]), "the fixture's premise"

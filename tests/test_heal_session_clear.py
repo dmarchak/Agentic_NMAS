@@ -779,13 +779,17 @@ class TestTheAct:
         assert not decisions.halted(NET).get("id"), "a session that was down had nothing to lose"
 
     def test_a_soft_clear_that_reset_its_session_halts(self, stores, measured):
+        """A soft clear that reset its session is recorded reset; since 70e89a47 (the operator,
+        2026-11-17, round 2: "guard 14 and every halt write (..., session_clear, ...)"
+        removed) it is a failure R1 sees, and halts nothing."""
         from modules.heal import decisions
         conn = Conn([ESTABLISHED, back(REFRESHED)])
         src = auto(conn, answers={f"show ip bgp neighbors {PEER}": ESTABLISHED})
         d = taken(src, diagnosis(rule="bgp_fewer_routes"))
         out = S().apply(NET, d, sources=src)
         assert out["outcome"] == "reset" and conn.sent == [f"clear ip bgp {PEER} soft"], out
-        assert decisions.halted(NET)["guard"] == 14
+        assert decisions.halted(NET) == {}, "a reset halts nothing (70e89a47)"
+        assert decisions.find(NET, d["id"])["applied"]["outcome"] == "reset"
 
     def test_a_soft_clear_resets_nothing(self, stores, measured):
         conn = Conn([ESTABLISHED, REFRESHED])

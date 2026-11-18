@@ -194,36 +194,37 @@ class TestDetect:
         assert got["mode"] == "off" and dev.calls == [] and len(got["closed"]) == 1
         assert "nothing new starts" in I.read("Default")["incidents"][0]["closed_why"]
 
+    # No grace (70e89a47, the operator, 2026-11-17, round 2: "a drifted read settles the
+    # incident at once, on its first read; no second read, no person's grace"): the waits these
+    # three tests were named for are gone; each holds its case's behaviour now.
+
     def test_production_waits_900_s_and_the_person_is_named(self, world):
         change()
         dev = Device("drifted", "drifted")
         first = D.run("Default", now=T0 + 5, check=dev, clock=lambda: T0 + 5)
-        assert first["reads"] == 1 and first["waiting"][0]["due_at"] == T0 + 905
-        early = D.run("Default", now=T0 + 600, check=dev, clock=lambda: T0 + 600)
-        assert early["reads"] == 0, "no read before it is due"
-        due = D.run("Default", now=T0 + 905, check=dev, clock=lambda: T0 + 905)
-        assert due["ready"] and due["ready"][0]["how"] == "persisted"
+        assert first["reads"] == 1 and first["waiting"] == [], first
+        assert first["ready"] and first["ready"][0]["how"] == "persisted", first
+        assert "no grace" in first["ready"][0]["words"], first["ready"][0]
         (inc,) = I.ready("Default")
-        assert inc["settled"]["operands"]["grace_seconds"] == 900
         assert inc["triggers"][0]["person"].get("user") == "alice", "N12: the person named"
 
     def test_a_lab_network_waits_120_s(self, world):
         mark("Default")
         change()
         dev = Device("drifted", "drifted")
-        D.run("Default", now=T0 + 5, check=dev, clock=lambda: T0 + 5)
-        got = D.run("Default", now=T0 + 125, check=dev, clock=lambda: T0 + 125)
+        got = D.run("Default", now=T0 + 5, check=dev, clock=lambda: T0 + 5)
         assert got["ready"][0]["how"] == "persisted", got
-        assert I.ready("Default")[0]["settled"]["operands"]["grace_seconds"] == 120
+        assert dev.calls == ["core-b"], "one read settles it, on a lab network as on any"
 
     def test_an_outside_change_between_the_reads_restarts_the_grace(self, world):
         mark("Default")
         change()
         dev = Device("drifted", "drifted", "drifted")
-        D.run("Default", now=T0 + 5, check=dev, clock=lambda: T0 + 5)
+        first = D.run("Default", now=T0 + 5, check=dev, clock=lambda: T0 + 5)
+        assert first["ready"] and first["ready"][0]["how"] == "persisted", first
         change(ts=T0 + 60)
         got = D.run("Default", now=T0 + 125, check=dev, clock=lambda: T0 + 125)
-        assert got["ready"] == [] and got["waiting"][0]["due_at"] == T0 + 245, got
+        assert got["waiting"] == [], "no grace restarts: there is none"
 
     def test_a_clean_read_is_ready_at_once_for_the_decision(self, world):
         change()
@@ -246,7 +247,8 @@ class TestDetect:
         D.run("Default", now=T0 + 5, check=dev)
         D.run("Default", now=T0 + 30, check=dev)
         assert dev.calls == ["core-b", "leaf-c"]
-        (inc,) = [i for i in I.read("Default")["incidents"] if i["state"] == "watching"]
+        # Settled on its first read (no grace, 70e89a47), so it is ready, no longer watching.
+        (inc,) = [i for i in I.read("Default")["incidents"] if i["device"] == "core-b"]
         assert [r["state"] for r in inc["attached"][0]["reads"]] == ["clean"]
 
     def test_a_pass_reads_at_most_its_bound_and_names_the_rest(self, world, monkeypatch):

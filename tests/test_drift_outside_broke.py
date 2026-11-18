@@ -83,8 +83,11 @@ def _broke_w2():
 
 
 def _broke_w7():
+    # W7's can't-fix was guard 12's (two removal units); guard 12 refuses nothing since
+    # 70e89a47, so the standing can't-fix is planted by one that stands (C3909: its golden
+    # departs from intent, Tier 3).
     change("core-b", T0)
-    assert decide("core-b", TWO, T0 + 150)["outcome"] == "cant_fix"
+    assert decide("core-b", TWO, T0 + 150, state="departs")["outcome"] == "cant_fix"
     alerted("leaf-c", T0 + 249, rule="Telemetry stream lost")
 
 

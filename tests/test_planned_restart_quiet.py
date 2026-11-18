@@ -253,7 +253,7 @@ class TestNeedsAttention:
     def test_the_control_with_no_window_it_is_the_critical_row(self, grafana):
         from modules import attention as A
         (row,) = A.reachability_source(cached=_reach(_down()))["rows"]
-        assert row["level"] == "danger" and row["what"] == "r6 is not answering"
+        assert row["level"] == "danger" and row["what"] == "r6 is not reachable"
 
     def test_still_down_when_its_window_ends_it_is_critical_naming_the_window(self, grafana):
         from modules import attention as A
@@ -262,7 +262,7 @@ class TestNeedsAttention:
         (row,) = A.reachability_source(cached=_reach(_down(since=now - 25 * 60)))["rows"]
         assert row["level"] == "danger"
         assert (f"its planned-restart window (by {OPERATOR}) ended at "
-                f"{R._iso(now - 30 * 60 + 20 * 60)} and it is still not answering") \
+                f"{R._iso(now - 30 * 60 + 20 * 60)} and it is still not reachable") \
             in row["cause"]
 
     def test_the_header_says_restarting_as_planned(self, grafana, monkeypatch):
@@ -274,9 +274,12 @@ class TestNeedsAttention:
             stored["value"], stored["value_at"], ""))
         got = device_page.answering({"hostname": "r6", "ip": "192.0.2.32"})
         assert got["state"] == "planned", got
-        # Board PS's words (C2274, 2026-11-01): the state, who, and when it is back.
+        # Board PS's words (C2274, 2026-11-01): the state, who (by display name, C3715; the
+        # planned state's words through `display_names.people` since 93120b2f), and when it is
+        # back.
         until = time.strftime("%H:%M UTC", time.gmtime(now - 120 + 21 * 60))
-        assert got["text"] == f"Restarting as planned · by {OPERATOR} · back by ~{until}"
+        shown = OPERATOR.split("@", 1)[0]
+        assert got["text"] == f"Restarting as planned · by {shown} · back by ~{until}"
         assert got["link"] == "r6", "it opens r6's page, where its operation's card is"
 
     @pytest.fixture

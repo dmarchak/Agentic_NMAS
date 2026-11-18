@@ -224,13 +224,17 @@ def test_the_preview_has_its_six_parts_and_binds_its_fingerprint(networks):
     ("", "Default is not marked"), ("pilot", "Default is marked pilot"),
     ("production", "Default is marked production")], ids=["not-marked", "pilot", "production"])
 def test_auto_is_refused_on_a_network_not_marked_lab(networks, stage, words):
+    """C2009's lab gate is gone (cd0aa4cc, the operator's change to N8, 2026-11-16: "Auto ...
+    on any network"): AUTO is saved and in force on a network not marked lab, pilot or
+    production alike; the stage is still read and kept in the plan's operands."""
     if stage:
         mark("Default", stage)
-    with pytest.raises(H.PolicyRefused) as exc:
-        auto("Default")
-    assert str(exc.value) == (f"not saved: AUTO only on a network marked lab (C2009): "
-                              f"{MD.GATE_WORDS}; {words}")
-    assert H.current("Default", T0)["set"] == "off"
+    p = H.plan("Default", {"heal_mode": "auto", "heal_mode_until": iso(T0 + 3600),
+                           "heal_kinds_auto": ["added_line"]}, T0)
+    assert p["confirmable"] and p["stage"]["words"] == words
+    auto("Default")
+    got = H.current("Default", T0)
+    assert (got["set"], got["mode"]) == ("auto", "auto"), got["words"]
 
 
 def test_auto_on_a_lab_network_runs_until_its_expiry_then_dry_run_once(networks):
@@ -246,44 +250,60 @@ def test_auto_on_a_lab_network_runs_until_its_expiry_then_dry_run_once(networks)
 
 
 @pytest.mark.parametrize("until,words", [
-    ("", "AUTO is set with an expiry (at most 7 days; it then returns to dry run), and none "
-         "was given"),
+    # C3750 (cd0aa4cc, the operator's change to N8, 2026-11-16): none given is "until turned
+    # off", saved; an expiry given is still in the future and at most 7 days.
+    ("", None),
     (iso(T0 - 1), "AUTO's expiry is in the future"),
     (iso(T0 + 7 * 86400 + 60), "AUTO may be on for at most 7 days (N8)"),
     ("tomorrow", "AUTO's expiry is a UTC time, YYYY-MM-DDTHH:MM:SSZ, not 'tomorrow'"),
 ], ids=["none", "past", "past-7-days", "not-a-time"])
 def test_autos_expiry_is_required_and_at_most_7_days(networks, until, words):
     mark()
+    proposed = {"heal_mode": "auto", "heal_mode_until": until, "heal_kinds_auto": ["added_line"]}
+    if words is None:
+        p = H.plan("Default", proposed, T0)
+        (gate,) = [g for g in p["gates"] if g["name"].startswith("AUTO's expiry")]
+        assert p["confirmable"] and gate["why"] == "until a person turns it off"
+        return
     with pytest.raises(H.PolicyRefused) as exc:
-        H.plan("Default", {"heal_mode": "auto", "heal_mode_until": until,
-                           "heal_kinds_auto": ["added_line"]}, T0)
+        H.plan("Default", proposed, T0)
     assert str(exc.value).startswith(words)
 
 
 def test_auto_is_suspended_to_dry_run_once_the_stage_moves_off_lab(networks):
+    """No suspension now (cd0aa4cc, AUTO on any network, the operator, 2026-11-16; 70e89a47
+    removed the lab-stage gate at apply): a stage moved off lab leaves AUTO in force, and
+    back on lab it is AUTO still."""
     mark()
     auto()
     mark("Default", "production")
     got = H.current("Default", T0 + 60)
-    assert got["mode"] == "dry_run"
-    assert got["words"] == (f"dry run: AUTO is set and suspended, since {MD.GATE_WORDS}; "
-                            "Default is marked production")
+    assert got["mode"] == "auto", got["words"]
+    assert "suspended" not in got["words"]
     mark()
     assert H.current("Default", T0 + 60)["mode"] == "auto"
 
 
 def test_auto_names_a_tier_1_kind_and_allows_one_more_at_a_time(networks):
+    """Round 2 (70e89a47, the operator, 2026-11-17): AUTO heals every Tier 1 and Tier 2 kind,
+    so no kind list is needed to turn it on and no one-kind-per-confirm refusal stands; the
+    gates say so, and a kind outside Tier 1 is still refused by name (a tier is a ceiling)."""
     mark()
     none = H.plan("Default", {"heal_mode": "auto", "heal_mode_until": iso(T0 + 3600),
                               "heal_kinds_auto": []}, T0)
-    assert not none["confirmable"]
+    assert none["confirmable"]
+    assert "AUTO heals every Tier 1 and Tier 2 kind" in [g["name"] for g in none["gates"]]
     two = H.plan("Default", {"heal_mode": "auto", "heal_mode_until": iso(T0 + 3600),
                              "heal_kinds_auto": ["added_line", "missing_line"]}, T0)
-    [gate] = [g for g in two["gates"] if g["state"] == "fail"]
-    assert gate["name"] == "Tier 1 kinds allowed AUTO one at a time (N8)"
+    assert two["confirmable"] and not [g for g in two["gates"] if g["state"] == "fail"]
+    (kinds,) = [g for g in two["gates"] if g["name"] == "kinds allowed AUTO (read no more)"]
+    assert kinds["why"] == "this change allows 2 more (added_line, missing_line)"
     auto(kinds=("added_line",))
     more = H.plan("Default", {"heal_kinds_auto": ["added_line", "missing_line"]}, T0)
     assert more["confirmable"]
+    with pytest.raises(H.PolicyRefused) as exc:
+        H.plan("Default", {"heal_kinds_auto": ["process_reset"]}, T0)
+    assert "a kind's tier is a ceiling in code" in str(exc.value)
 
 
 # ── Fails closed ──────────────────────────────────────────────────────────────────────────────

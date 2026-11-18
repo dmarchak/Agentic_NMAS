@@ -580,6 +580,9 @@ class TestTheAct:
         assert dev.batches == []
 
     def test_mercury_not_back_in_the_timer_reverts_it_and_the_network_halts(self, act_world):
+        """Reverted when Mercury is not back within the timer, never confirmed; since 70e89a47
+        (the operator, 2026-11-17, round 2: "guard 14 and every halt write (act, bounce, ...)"
+        removed) the revert is a failure R1 sees, and halts nothing."""
         from modules.heal import decisions
         clock = Clock()
         dev = FakeRouter(clock, unreachable=((1, 125),))
@@ -589,7 +592,8 @@ class TestTheAct:
         assert out["outcome"] == "reverted", out["steps"]
         assert not [b for b in dev.batches if b == ["configure confirm"]], "never confirmed"
         assert clock.now >= T0 + 2 * 60 + B().WATCH_PAST_S, "watched past the timer"
-        assert decisions.halted(NET)["guard"] == 14
+        assert decisions.halted(NET) == {}, "a revert halts nothing (70e89a47)"
+        assert decisions.find(NET, d["id"])["applied"]["outcome"] == "reverted"
 
     def test_a_configuration_that_moved_is_never_confirmed(self, act_world):
         """The post-check compares the running configuration with BEFORE, line for line: the

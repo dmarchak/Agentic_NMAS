@@ -46,7 +46,7 @@ from tests import people_drawn
 from tests.conftest import TEST_PERSON
 from tests.test_bgp_hold_watch import _summary
 from tests.test_bgp_hold_watch import world  # noqa: F401  (the fixture `bgp_watch` builds on)
-from tests.test_heal_act import ADJ, SETTER, FakeAct
+from tests.test_heal_act import ADJ, SETTER, FakeAct, acted, acts_with
 from tests.test_heal_analysis import ACL_RUNNING
 from tests.test_heal_decide import GOLDEN, ROUTE4, Fake, settle
 from tests.test_heal_decide import lab  # noqa: F401  (the fixture, named by each test below)
@@ -111,11 +111,11 @@ def heal(running=GOLDEN + ROUTE4, *, triggers=None, **kw):
     answer)``. *kw* is the act's fake (``post``, ``recheck``, ``symptom``, ``result``)."""
     auto(NET, now=T0 - 60, kinds=("added_line",))
     settle(running, triggers=triggers or [CFG], claim=False)
-    (d,) = DC.run(NET, now=T0, sources=Fake(running))["decided"]
+    # The pass starts the heal it decides at once (C3865): its job acts over the fakes.
+    with acts_with(FakeAct(running, **kw), clock=Ticking()) as jobs:
+        (d,) = DC.run(NET, now=T0, sources=Fake(running))["decided"]
     assert d["outcome"] == "heal", d
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr("modules.heal.act.time", Ticking())
-        got = A.act_one(NET, d["decision"], now=T0 + 5, sources=FakeAct(running, **kw))
+    got = acted(jobs[0])
     return d["incident"], got
 
 
@@ -415,14 +415,17 @@ class TestAFailedVerifyNeverReadsFixed:
 
     @pytest.mark.parametrize("fake, outcome", [
         ({"post": GOLDEN + ROUTE4}, "rolled_back"),
-        ({"recheck": "drifted"}, "partial"),
+        # Partial: a symptom unreadable after the change (e400a31f: the read again off its
+        # golden is a tail flag under Fixed now, never partial).
+        ({"symptom": {"state": "unreadable", "words": "the symptom could not be read again"}},
+         "partial"),
         ({"symptom": {"state": "present", "words": "the OSPF adjacency edge-b – core-a is "
                                                    "still down"}}, "symptom_remains"),
         ({"result": {"outcome": "failed", "stage": "verify", "commands": ["x"],
                      "reason": "verify did not pass"}}, "failed")])
     def test_no_page_of_a_failed_verify_claims_it_fixed(self, client, fake, outcome):
         """The scan, over real records: each way a heal sends and does not pass its verify."""
-        triggers = [CFG, ADJ] if outcome == "symptom_remains" else None
+        triggers = [CFG, ADJ] if outcome in ("symptom_remains", "partial") else None
         iid, got = heal(triggers=triggers, **fake)
         assert got["outcome"] == outcome and got["sent"], got["words"]
         body = page(client, iid)
@@ -1066,11 +1069,10 @@ def heal_with(src, running, kinds=("added_line",)):
     sources), its steps 7 s apart (`Ticking`): its id, healed."""
     auto(NET, now=T0 - 60, kinds=kinds)
     settle(running, triggers=[CFG], claim=False)
-    (d,) = DC.run(NET, now=T0, sources=Fake(running))["decided"]
+    with acts_with(src, clock=Ticking()) as jobs:
+        (d,) = DC.run(NET, now=T0, sources=Fake(running))["decided"]
     assert d["outcome"] == "heal", d
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr("modules.heal.act.time", Ticking())
-        got = A.act_one(NET, d["decision"], now=T0 + 5, sources=src)
+    got = acted(jobs[0])
     assert got["outcome"] == "healed", got["words"]
     return d["incident"]
 
