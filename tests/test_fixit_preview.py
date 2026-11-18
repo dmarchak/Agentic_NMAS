@@ -86,7 +86,9 @@ def reads(ai, monkeypatch):  # noqa: F811
         return RL.Answered("Subscription ID: 101\nState: Connected\n"
                            f"username ro secret 9 {HASH}\nAddress: 192.0.2.10", run="run-1")
 
-    def collector(address, port, sources):
+    def collector(address, port, sources, proc="/proc", ss=None):
+        # `read_collector`'s whole signature: `collector_of` hands it the shared `ss` answer
+        # (C3720, the stalled-session reads of r7's channel, 17215a95).
         ran.append(("collector", address, port))
         return {"state": "read", "address": address, "port": port, "listening": ["0.0.0.0"],
                 "sessions": [{"remote": "192.0.2.6", "rport": 40000, "state": "ESTAB",
