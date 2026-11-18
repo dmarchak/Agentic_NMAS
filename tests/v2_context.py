@@ -5528,9 +5528,11 @@ def _incidents_list(client, _lab, _mp):
         for key in ("decisions", "steps"):
             with open(paths[key], "w", encoding="utf-8") as fh:
                 fh.writelines(_json.dumps(row) + "\n" for d in docs for row in d[key])
-        for url, words in (("/v2/incidents?list=Lab", "3 open</strong>"),
-                           ("/v2/incidents?tab=closed&list=Lab", "1 closed</strong>"),
-                           ("/v2/incidents?list=Lab&q=r3&device=r3", "2 of 3 match"),
+        # C3876 (the operator, 2026-11-16): the tabs follow the store, so the rolled-back heal
+        # its capture holds closed is on Closed, "Closed, not confirmed".
+        for url, words in (("/v2/incidents?list=Lab", "2 open</strong>"),
+                           ("/v2/incidents?tab=closed&list=Lab", "2 closed</strong>"),
+                           ("/v2/incidents?list=Lab&q=r3&device=r3", "1 of 2 match"),
                            # The top bar's Self-healing chip: nothing while no network is in
                            # Auto (the operator, 2026-11-14).
                            ("/v2/incidents/heal-auto?list=Lab", "")):
