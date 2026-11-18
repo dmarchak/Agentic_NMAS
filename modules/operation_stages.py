@@ -139,8 +139,10 @@ STAGES = {
     "fixit_v2.fix_with_script": Stages(
         "incident_v2.incident", "hash", "modules.nsot.command_plan_run.plan_verify",
         "modules.nsot.command_plan_run.net_zero", "modules.nsot.command_plan_run.run"),
+    # The view times `_approve`, which reads the hash (5a808325).
     "fixit_v2.approve": Stages(
-        "incident_v2.incident", "hash", "modules.heal.resubscribe.verify",
+        "incident_v2.incident", "hash in routes.fixit_v2._approve",
+        "modules.heal.resubscribe.verify",
         "modules.heal.resubscribe.put_back", "modules.plan_engine._record"),
     "plans_v2.approve": Stages(
         "plans_v2.preview", "hash", "modules.plan_engine.run",
@@ -556,7 +558,9 @@ JOBS = {
     # outcome, the incident closed and the step log's act row (H6: its steps, the change record
     # and the NetBox journal entry).
     "heal_to_intent": Stages(
-        "modules.heal.decide.program", "program_hash in modules.heal.act.apply_decision",
+        # `apply_decision` releases its holds around `_apply_decision`, which recomputes and
+        # compares the program's hash.
+        "modules.heal.decide.program", "program_hash in modules.heal.act._apply_decision",
         "modules.pipeline._stage_verify", "modules.pipeline.roll_back_after",
         "modules.heal.steplog.record_act"),
 }

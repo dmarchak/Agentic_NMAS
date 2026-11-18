@@ -37,6 +37,11 @@ KEY = "errdisable-recover"
 PORT = "GigabitEthernet1/0"
 VALUES = {"device": "s1", "interface": "Gi1/0", "cause": "bpduguard"}
 INTERFACES_READ = "show interfaces | include (line protocol|Internet address)"
+#: s1's captured `show spanning-tree interface` rows (tests/fixtures/diagnose, its Gi0/3).
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "diagnose",
+                       "s1__show_spanning_tree_interface_GigabitEthernet0_3.txt"),
+          encoding="utf-8") as _fh:
+    STP_ROWS = _fh.read()
 
 
 # ── A fake switch for the whole pipeline: s1's captures and its committed golden ────────────
@@ -45,10 +50,16 @@ class Switch:
     """s1 with Gi1/0 err-disabled by BPDU guard (*state*), its running configuration its
     committed golden (*running*). ``shutdown`` shuts the port; ``no shutdown`` brings it up,
     or err-disables it again when its cause is still there (*again*). *admin_down*: the port
-    is shut in its running configuration before the plan."""
+    is shut in its running configuration before the plan. *recovery*: its answer to `show
+    errdisable recovery`. Premise corrected (ec92d62b, the operator, 2026-11-16: errdisable-recover
+    reads the switch's own recovery table): s1's captured table by default (bpduguard
+    Disabled: the switch does not recover it itself), where an empty answer stood for "no
+    recovery"; an empty table refuses now, naming it."""
 
-    def __init__(self, state="err-disabled", again=False, cause="bpduguard", recovery="",
+    def __init__(self, state="err-disabled", again=False, cause="bpduguard", recovery=None,
                  running=None, admin_down=False, macs=None, sticky=""):
+        if recovery is None:
+            recovery = T.text("s1_errdisable_recovery.txt")
         self.state, self.again, self.cause, self.recovery = state, again, cause, recovery
         self.base = T.s1_golden() if running is None else running
         self.admin_down, self.macs = admin_down, macs
@@ -89,6 +100,11 @@ class Switch:
             return self.interfaces()
         if command.startswith("show mac address-table") or command == T.E.PSEC_READ:
             return self.macs if self.macs is not None else T.text("s5_mac_table_gi03.txt")
+        if command == f"show spanning-tree interface {PORT}":
+            # Premise corrected (ec92d62b: the recovery's verify reads the port's spanning tree):
+            # a port up forwards in its VLANs, s1's captured rows (Gi0/3's, the same table on
+            # vIOS-L2 for any port); a port down holds none.
+            return STP_ROWS if self.state == "connected" else ""
         return ""
 
     def apply(self, lines):
@@ -399,7 +415,7 @@ class TestTheRun:
         assert sw.state == "connected" and lab["saved"] == []
         assert [s["step"] for s in rec["steps"]] == [
             "approve", "hold", "read_before", "preconditions", "send", "verify", "record"]
-        assert rec["net_zero"] == {"checked": True, "differs": []}
+        assert rec["net_zero"] == {"checked": True, "differs": [], "scope": "full"}
         assert rec["key"] == KEY and rec["kind"] == "command_plan"
         assert rec["params"] == {"device": "s1", "interface": PORT, "cause": "bpduguard"}
         (row,) = receipts_of()
@@ -414,11 +430,19 @@ class TestTheRun:
         assert ev["event"] == "action" and "Gi1/0" in ev["happened"]
 
     def test_err_disabled_again_is_rolled_back_saying_what_it_achieved(self, lab):
+        """Premise corrected (4a8bb0df, the operator, 2026-11-16: "a re-trip is its own outcome
+        with no rollback"): the port err-disabled again by its own cause is the run's outcome,
+        ``retripped``, said with what it achieved ("Port left err-disabled; nothing more
+        sent."), recorded as a recurrence and notified as a can't-fix; nothing more is sent and
+        nothing rolled back, where the bounce was rolled back with ``no shutdown``."""
         lab["sw"] = Switch(again=True)
         rec = go(lab)
-        assert rec["outcome"] == "rolled_back", rec["why"]
-        rb = next(s for s in rec["steps"] if s["step"] == "rollback")
-        assert " no shutdown" in rb["commands"]
+        assert rec["outcome"] == "retripped", rec["why"]
+        assert "Port left err-disabled; nothing more sent." in rec["why"]
+        assert "rollback" not in [s["step"] for s in rec["steps"]]
+        assert lab["sw"].batches == [[f"interface {PORT}", " shutdown", " no shutdown"]], \
+            "the bounce alone was sent"
+        assert rec["recurrence"]["port"] == "Gi1/0" and rec["recurrence"]["cause"] == "bpduguard"
         assert lab["events"][0]["event"] == "cant_fix"
 
     def test_a_bpdu_since_the_err_disable_refuses_with_nothing_sent(self, lab):
@@ -434,7 +458,12 @@ class TestTheRun:
         assert lab["events"][0]["event"] == "held"
 
     def test_the_switchs_running_recovery_is_never_raced(self, lab):
-        lab["sw"] = Switch(recovery="errdisable recovery cause bpduguard\n")
+        # Premise corrected (ec92d62b: the switch's own recovery table is read, never its
+        # configuration's line): s1's captured table with bpduguard's timer Enabled (one edit).
+        enabled = T.text("s1_errdisable_recovery.txt").replace(
+            "bpduguard                    Disabled", "bpduguard                    Enabled", 1)
+        assert "bpduguard                    Enabled" in enabled
+        lab["sw"] = Switch(recovery=enabled)
         rec = go(lab)
         assert rec["outcome"] == "refused" and lab["sw"].batches == []
         assert "does not race it" in rec["why"]
@@ -500,7 +529,7 @@ class TestNetZero:
         src = sources(lab, name="edge-a", mgmt="192.0.2.12")
         rec = go(lab, values=dict(bounce, device="edge-a"), key=BOUNCE, sources=src)
         assert rec["outcome"] == "done", rec["why"]
-        assert rec["net_zero"] == {"checked": True, "differs": []}
+        assert rec["net_zero"] == {"checked": True, "differs": [], "scope": "full"}
 
     def test_net_zero_compares_line_for_line_without_the_volatile_lines(self):
         before = "! Last configuration change at 1\nhostname a\nntp clock-period 1\n"
@@ -640,10 +669,16 @@ class TestOneWayIn:
         for name in ("actor", "reason"):
             assert params[name].kind is inspect.Parameter.KEYWORD_ONLY
         got = d.preflight(NET, VALUES, sources=Model())
-        assert set(got) == {"ok", "refused", "drawn", "hash"} and got["ok"], got
+        # Premise corrected (55c8a8eb, the operator, 2026-11-16: a step's preconditions read
+        # are kept with the proposal, each said): the preflight answers what it checked too.
+        assert set(got) == {"ok", "refused", "drawn", "hash", "checked"} and got["ok"], got
 
     def test_no_separate_send_path_remains_for_the_recovery(self):
         from modules.heal import errdisable
         for gone in ("apply", "start", "program", "_send", "_held", "_rollback", "_verify"):
             assert not hasattr(errdisable, gone), gone
-        assert json.dumps(sorted(CP.builtin())) == json.dumps([KEY])
+        # Premise corrected (17215a95, the operator, 2026-11-16: the lost stream's rungs 2 and
+        # 3 are built-in command plans beside the recovery, on the same runner): three built-in
+        # plans, the recovery among them, and no other send path for it.
+        assert json.dumps(sorted(CP.builtin())) == json.dumps(sorted([
+            KEY, "telemetry-stack-restart", "telemetry-subscription-recreate"]))

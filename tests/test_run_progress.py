@@ -168,7 +168,9 @@ class TestAHealLive:
             html = bar(heal)
             assert "Running now · 1" in html and html.count('class="ip-row"') == 1
             assert "<strong>edge-b</strong> · Self-healing" in html
-            assert "<small>Apply · step 6 of 11 · " in html, \
+            # Premise corrected (e400a31f: the tail's commit of the golden is its own step,
+            # twelve in all).
+            assert "<small>Apply · step 6 of 12 · " in html, \
                 "the row's words are the run's current step, by its short label"
             assert "started" not in html.split("ip-row")[1].split("</small>")[0]
             body = page(heal, "edge-b", "Default")
@@ -185,7 +187,8 @@ class TestAHealLive:
                     'deploy&#39;s nine stages"><strong>Apply</strong>') in body, \
                 "short label, long on hover"
             assert {got[k] for k in ("take", "stops", "read", "plan", "authorise")} == {"done"}
-            assert {got[k] for k in ("intent", "symptom", "saved", "golden", "record")} == {
+            assert {got[k] for k in ("intent", "symptom", "saved", "commit", "golden",
+                                     "record")} == {
                 "waiting"}, "a step the run has not reached is pending, never done"
             # Premise corrected (C3159, the operator, 2026-11-12: "The decision's steps ...
             # were done by the detection job: draw them done, with their times, as one
@@ -226,7 +229,9 @@ class TestAHealLive:
             got = step_states(body)
             assert got["symptom"] == "running" and got["golden"] == "done" \
                 and got["record"] == "waiting"
-            assert "<small>Read symptom · step 8 of 11 · " in bar(heal)
+            # Premise corrected (e400a31f: the tail's commit of the golden is its own step,
+            # twelve in all).
+            assert "<small>Read symptom · step 8 of 12 · " in bar(heal)
         finally:
             src.let_go()
         assert capture_job.wait(job, 30) and recorded(d) == "healed"
@@ -241,10 +246,14 @@ class TestAHealLive:
         src.let_go()
         assert capture_job.wait(job, 30)
         steps = capture_job.get(job)["payload"]["result"]["steps"]
+        # Premise corrected (e400a31f, the operator, 2026-11-16: "a heal is Fixed on its
+        # verify, with the save, the full read, the golden and the read again as a tail"): the
+        # tail commits the golden from a full read as its own step, between the save and the
+        # golden's check.
         assert [(s["step"], s["result"]) for s in steps] == [
             ("take", "ok"), ("stops", "ok"), ("read", "ok"), ("plan", "ok"),
             ("authorise", "ok"), ("apply", "running"), ("intent", "ok"), ("saved", "ok"),
-            ("golden", "ok"), ("symptom", "none"), ("record", "healed")]
+            ("commit", "ok"), ("golden", "ok"), ("symptom", "none"), ("record", "healed")]
         assert "ip-chip" in bar(heal), "and its outcome is listed"
 
 

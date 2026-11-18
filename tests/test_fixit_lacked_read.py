@@ -26,6 +26,9 @@ from tests.test_fixit_section_v2 import (DEV, bluf_of, outside_modals, primaries
                                          section_of, setting)
 from tests.test_fixit_section_v2 import NET, web  # noqa: F401 (the fixture `ai` builds on)
 from tests.test_fixit_troubleshoot import ai, incident, page, stopped  # noqa: F401
+# Past the cap: a cap under the least one AI call costs (7b0bb884: the cap compares the least
+# call, $0.0576, so the old $0.10 no longer refuses the AI).
+from tests.test_fixit_troubleshoot import UNDER_THE_LEAST
 from tests.test_heal_resubscribe import lab  # noqa: F401 (the fixture `web` builds on)
 from tests.test_sdn_connections import networks  # noqa: F401 (the fixture `lab` builds on)
 
@@ -52,9 +55,12 @@ def _fix(iid: str) -> dict:
 
 
 def _fix_line(html: str) -> str:
-    """The BLUF's How to fix it line, outside its modals."""
+    """The BLUF's How to fix it line, outside its modals. Premise corrected (board R5,
+    becced07: the card's next action is its `<div data-bluf="fix">`, the press's answer under
+    it and the card's Details after, where it was a `<dd>`): the line ends where the answer's
+    space begins, so Details (its feedback form among it) is not read as the line."""
     line = bluf_of(section_of(html)).split('data-bluf="fix"', 1)[1]
-    return outside_modals(line.split("</dd>", 1)[0])
+    return outside_modals(line.split('<div class="bluf-answer"', 1)[0])
 
 
 def _controls(line: str) -> list:
@@ -90,7 +96,7 @@ def test_a_lacked_read_is_the_fix_a_show_commands_button_with_its_command(ai):  
 def test_past_the_cap_a_lacked_read_is_still_offered_and_ask_again_is_not(ai):  # noqa: F811
     iid = stopped(ai)
     _answered(iid, lacked_read=LACKED)
-    setting(ai_cap_usd_per_incident=0.10)
+    setting(ai_cap_usd_per_incident=UNDER_THE_LEAST)
     assert _fix(iid)["read"] == LACKED
     _r, html = page(ai.client, iid)
     controls = _controls(_fix_line(html))
@@ -117,7 +123,7 @@ def test_a_read_show_commands_would_refuse_is_no_button(ai):  # noqa: F811
 def test_with_neither_a_plan_nor_ask_again_the_fix_is_hand_over_never_blank(ai):  # noqa: F811
     iid = stopped(ai)
     _answered(iid, lacked_read="")
-    setting(ai_cap_usd_per_incident=0.10)
+    setting(ai_cap_usd_per_incident=UNDER_THE_LEAST)
     fix = _fix(iid)
     assert fix["kind"] == "hand_over" and fix["label"] == "Hand over", fix
     _r, html = page(ai.client, iid)

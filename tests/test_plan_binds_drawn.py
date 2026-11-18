@@ -214,8 +214,11 @@ def proposed(iid):
 
 
 def drawn_approve(html):
-    """The proposal and the hash Approve carries, as the page drew them."""
-    bluf = FX.bluf_of(html)
+    """The proposal and the hash Approve carries, as the page drew them. Premise corrected
+    (board R5, becced07, approved 2026-11-15: a plan waiting on Approve is its own card under
+    the incident, `#inc-plan`, Approve and the session it binds on it): read from the plan's
+    card, where it was the BLUF."""
+    bluf = FX.plan_of(html)
     m = re.search(r'<span class="bluf-form"><input type="hidden" name="proposal" '
                   r'value="([^"]+)"><input type="hidden" name="hash" value="([0-9a-f]{16})">',
                   bluf)
@@ -241,8 +244,10 @@ class TestTheIncidentsPlan:
         seam.forbidden = ""
         assert len(seam.calls) == 1
         fields, bluf = drawn_approve(html)
-        beside = re.search(r'<span class="bluf-session small" data-session-step="1"[^>]*>(.*?)'
-                           r'</span>\.?</span>', bluf, re.S)
+        # Premise corrected (board R5, becced07): the session is a line of the plan's card,
+        # `<p class="bluf-session">`, where it was a span beside the BLUF's Approve.
+        beside = re.search(r'<p class="bluf-session small" data-session-step="1"[^>]*>(.*?)'
+                           r'</p>', bluf, re.S)
         assert beside, "the session is drawn beside Approve"
         said = " ".join(unescape(re.sub(r"<[^>]+>", " ", beside.group(1))).split())
         assert remote in said and local in said and "quiet for 2130 s" in said, said

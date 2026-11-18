@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, how, clock -%}
+{%- from "v2/_macros.html" import icon, how, clock, run_href -%}
 {#- Run… on a fix's own page (C3849 piece 4; board fix-bpdu-guard, artboard 2, and board
     fix-manual-controls screen 1, approved by the operator 2026-11-16 with changes): "Run on
     an open incident" (the open incidents this fix matches, `modules/fix_page.run_card`) or
@@ -82,7 +82,7 @@
   <div class="simple-acts">{{ cancel('Close') }}</div>
   {%- elif c.state == 'run' %}
     {%- set r = c.run %}
-  <p class="small" data-run="{{ r.state }}" role="status">{% if r.state == 'running' %}<strong>{{ r.title or c.name }}:</strong> running, {{ r.device or c.device }} held; this updates as the run records each step.{% elif r.ok %}<strong>Verified:</strong> {{ r.title }}: {{ r.words }}.{% else %}<strong>{{ r.title or 'The run' }}:</strong> {{ r.words or r.outcome }}.{% endif %} <a href="{{ url_for('device_v2.device', name=r.device or c.device, list=c.network, result=r.id) }}">Open the run</a></p>
+  <p class="small" data-run="{{ r.state }}" role="status">{% if r.state == 'running' %}<strong>{{ r.title or c.name }}:</strong> running, {{ r.device or c.device }} held; this updates as the run records each step.{% elif r.ok %}<strong>Verified:</strong> {{ r.title }}: {{ r.words }}.{% else %}<strong>{{ r.title or 'The run' }}:</strong> {{ r.words or r.outcome }}.{% endif %} <a href="{{ run_href(r.device or c.device, c.network, r.id) }}">Open the run</a></p>
   <div class="simple-acts">{{ cancel('Close') }}</div>
   {%- else %}
   <p>{{ c.why }}.</p>

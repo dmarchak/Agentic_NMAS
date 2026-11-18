@@ -35,6 +35,7 @@ import pytest
 
 from modules.ai import gateway
 from tests.test_fixit_troubleshoot import ai, answer, fix, press, stopped  # noqa: F401
+from tests.test_fixit_troubleshoot import CLOSE
 from tests.test_fixit_section_v2 import NET, web  # noqa: F401 (the fixture `ai` builds on)
 from tests.test_heal_resubscribe import lab  # noqa: F401 (the fixture `web` builds on)
 from tests.test_sdn_connections import networks  # noqa: F401 (the fixture `lab` builds on)
@@ -217,7 +218,15 @@ def test_a_pass_1_the_gateway_refuses_prints_no_body_and_runs_no_read(ai, reads,
     got = _preview(iid)
     first = got["first"]
     assert first["body"] is None and first["refused"]["kind"] == "prompt", first
-    assert reads.ran == [], f"a read ran for a pass 1 that is never sent: {reads.ran}"
+    # Premise corrected (93120b2f, the operator, 2026-11-16: "a failed run's steps and the state
+    # after it are evidence"): building the request reads the state after attempt 1's failed
+    # run from Mercury's own sources, each subscription's collector sessions and series
+    # (`after_run_section`), before any gateway verdict. Those are the pack's, read on
+    # Mercury's host; no read of the loop runs, and nothing of the device is read.
+    assert [(r[0], r[-1]) if r[0] == "series" else (r[0],) for r in reads.ran] == [
+        ("collector",), ("series", "101"), ("collector",), ("series", "102")], \
+        f"a read ran for a pass 1 that is never sent: {reads.ran}"
+    assert not [r for r in reads.ran if r[0] == "device"], reads.ran
     assert got["second"] is None
     assert not [r for r in got["reads"] if r.get("verdict") == "run"], got["reads"]
 
@@ -300,7 +309,8 @@ def test_with_the_class_off_it_builds_the_reads_pass_and_says_so(ai, reads,  # n
     got = _preview(iid)
     assert got["class"]["now"] == "off" and "an admin turns it on" in got["class"]["why_off"]
     # Pass 1 is the investigation's first pass: v11 (C3797; v10, v8 flattened, before).
-    assert got["first"]["prompt"] == "fixit_troubleshoot.v11"
+    # Premise corrected (231da1d6, v17's one shape: every pass one prompt; C3918's v18).
+    assert got["first"]["prompt"] == "fixit_troubleshoot.v18"
     assert "collector_sessions" in json.dumps(got["first"]["body"]["system"]), "the read set"
     said = " ".join(got["said"])
     assert "is off for" in said and "did not change it" in said and "at most 3" in said
@@ -385,9 +395,11 @@ def test_pass_2_given_the_press_s_reads_is_byte_for_byte_the_press_s(ai, reads, 
               "why": "the series", "hypothesis": "a dead session"}]
     monkeypatch.setattr(T, "preview_requests", lambda incident, device_reads=True: asked)
     got = _preview(iid)
-    first = answer(fix())
+    # Premise corrected (17215a95's ladder: `fix()`'s re-subscribe repeats attempt 1 and is
+    # refused as tried, ending the press at pass 1): the answers' fix is the collector's close.
+    first = answer(fix(operation=CLOSE))
     first["reads"] = asked
-    script = iter([first, answer(fix(), cites=("attempt:1", "read:1"))])
+    script = iter([first, answer(fix(operation=CLOSE), cites=("attempt:1", "read:1"))])
 
     def send(body, key, **_kw):
         ai.sent.append(body)
@@ -401,7 +413,17 @@ def test_pass_2_given_the_press_s_reads_is_byte_for_byte_the_press_s(ai, reads, 
     assert r.status_code == 200, html
     assert len(ai.sent) == 2
     assert got["first"]["body"] == ai.sent[0]
-    assert got["second"]["body"] == ai.sent[1]
+    # Premise corrected (7b0bb884, the operator, 2026-11-16: a thinking call's max_tokens is
+    # "Measured bound, plus ... retry once": `background.output_bound`, 2.5x the largest
+    # complete output measured): the gateway sizes each call's max_tokens when it sends it. The
+    # preview, which sends nothing, builds pass 2 under the pin's stand-in (none measured); the
+    # press's pass 2 goes after its pass 1 was recorded (600 output tokens), so the gateway sized
+    # it 1,500. Every other byte is the press's.
+    from modules.ai import background
+    assert got["second"]["body"]["max_tokens"] == ai.sent[0]["max_tokens"]
+    assert ai.sent[1]["max_tokens"] == background.output_bound(T.FEATURE)["tokens"] == 1500
+    assert got["second"]["body"] == dict(ai.sent[1], max_tokens=got["second"]["body"][
+        "max_tokens"])
 
 
 def test_the_incident_s_pack_sends_no_person_but_by_their_label(ai, reads,  # noqa: F811
@@ -597,22 +619,51 @@ def _r4_sized(monkeypatch):
     monkeypatch.setattr(explain, "topology", topology)
 
 
+#: A room planted for the fit's own tests (7b0bb884: the real one, `profiles.prompt_room`, is
+#: 872,000 tokens, which r4's pack is far inside): between r4's pass 1 whole (48,441 tokens by
+#: the fallback estimate, measured) and fitted at the most halvings (29,761, measured; v17's one
+#: shape carries the read set and the reads' format in every pass, so the old 27,000 is out of
+#: the fit's reach), so the fit leaves the topology out and cuts, and gets inside it.
+ROOM_PLANTED = 35000
+
+
 def test_a_pack_the_size_of_r4s_still_fits_both_passes(ai, reads, monkeypatch):  # noqa: F811
     """The host's preview of r4's incident (2026-11-14) built pass 1 at 36,051 tokens and pass 2
     at 35,688 by the fallback estimate, over the task's bound of 27,000: a press would be
     refused (`prompt_too_long`) whenever the provider's count is not had. With a pack and a
     topology of those sizes, both passes now fit by the fallback estimate itself, the topology
-    left out and the largest sections cut, each said; pass 2 carries no read set."""
+    left out and the largest sections cut, each said; pass 2 carries no read set.
+
+    Premise corrected (7b0bb884, the operator, 2026-11-16: "remove every AI token/size limit
+    Mercury sets itself"; evidence by relevance and whole): the task's 27,000 is kept in its
+    pin and enforced by nothing; the one bound is the room the model's context window leaves
+    for a prompt (`profiles.prompt_room`). At it r4's pack is sent whole, nothing left out and
+    nothing said. Where a pack is over the room the fit still cuts, as before: held here with
+    the room planted (`ROOM_PLANTED`); the reserve for pass 2's reads is gone with the bound
+    (a later pass's reads share the room pass 1 leaves, `read_room`)."""
     from modules.ai import fixit_troubleshoot as T
     from modules.ai import profiles
     _class(monkeypatch, True)
     _r4_sized(monkeypatch)
     iid = stopped(ai)
+    whole = _preview(iid)
+    room = profiles.prompt_room(T.FEATURE)
+    assert whole["first"]["prompt_tokens_estimated"] <= room, whole["first"]
+    assert whole["second"] is not None
+    assert whole["second"]["prompt_tokens_estimated"] <= room, whole["second"]
+    assert T.TOPOLOGY_LEFT_OUT not in whole["first"]["body"]["messages"][0]["content"]
+    assert ("The request fits the prompt's bound whole: nothing was left out or cut."
+            in whole["said"]), whole["said"]
+    # Under the planted room the request is fitted as before, by the fit's own measure (the
+    # request as built, `request_chars`, below). The preview's estimate of a whole pass is no
+    # longer held to it: since 5653c025 a pass carries the standard reads read beside it, which
+    # the fit does not count (a press refused over the window is fitted again, `refit_first`),
+    # and with no reserve kept (7b0bb884) the preview's pass 2 holds every read the scope
+    # allows.
+    bound = ROOM_PLANTED
+    monkeypatch.setattr(profiles, "prompt_room", lambda name: bound)
     got = _preview(iid)
-    bound = profiles.TASKS[T.FEATURE]["max_prompt_tokens"]
-    assert got["first"]["prompt_tokens_estimated"] <= bound, got["first"]
     assert got["second"] is not None
-    assert got["second"]["prompt_tokens_estimated"] <= bound, got["second"]
     # Premise corrected (C3797): the pass after the reads may ask again, so it keeps the read
     # set (the investigation's last pass is the one that drops it), and still fits the bound.
     assert "read_set" in json.dumps(got["second"]["body"]["system"])
@@ -623,13 +674,11 @@ def test_a_pack_the_size_of_r4s_still_fits_both_passes(ai, reads, monkeypatch): 
     said = " ".join(got["said"])
     assert "the topology left out to fit the prompt's bound" in said
     assert "The request was fitted to fit the prompt's bound: the topology left out" in said
-    # The worst pass 2 (three reads at the cap) fits too: pass 1 with the reserve is in bound.
     # A later pass that keeps its read set (C3797) holds its reads to the room pass 1 leaves.
     prep = T.request(NET, *_found(ai, iid))
     chars = T.request_chars(prep)
-    worst = chars + max(0, T.READS_RESERVE_CHARS - len(T.read_set()))
+    assert gateway.tokens_of_chars(chars) <= bound, "the fitted request is inside the room"
     assert gateway.tokens_of_chars(chars + T.READS_OVERHEAD_CHARS + T.read_room(prep)) <= bound
-    assert gateway.tokens_of_chars(max(chars, worst)) <= bound
     assert prep["said"]["fit"][0] == "the topology left out", prep["said"]["fit"]
     assert any("cut to" in step for step in prep["said"]["fit"])
 
@@ -687,14 +736,24 @@ def test_the_reserve_holds_three_reads_at_their_largest(ai, reads, monkeypatch):
 
 def test_a_press_says_what_was_cut_on_its_line(ai, reads, monkeypatch):  # noqa: F811
     """The review of the fit (2026-11-14): a press whose request was fitted says so where the
-    section draws its call's line, and keeps it with the proposal line (`shown`)."""
+    section draws its call's line, and keeps it with the proposal line (`shown`).
+
+    Premise corrected (7b0bb884: the one bound is the room the model's context window leaves,
+    `profiles.prompt_room`, which r4's pack is well inside): the room is planted
+    (`ROOM_PLANTED`), so the press is fitted as before; and (17215a95's ladder: `fix()`'s
+    re-subscribe repeats attempt 1 and is refused as tried) the answer's fix is the
+    collector's close."""
+    from modules.ai import fixit_troubleshoot as T
+    from modules.ai import profiles
     from modules.fixit import incident as F
     from tests.test_fixit_section_v2 import incident
     from tests.test_fixit_troubleshoot import sec_of
     _class(monkeypatch, True)
     _r4_sized(monkeypatch)
+    monkeypatch.setattr(profiles, "prompt_room", lambda name: ROOM_PLANTED)
+    assert profiles.prompt_room(T.FEATURE) == ROOM_PLANTED
     iid = stopped(ai)
-    ai.answer = answer(fix())
+    ai.answer = answer(fix(operation=CLOSE))
     r, html = press(ai, iid)
     assert r.status_code == 200, html
     assert "to fit the prompt's bound: the topology left out" in sec_of(html)

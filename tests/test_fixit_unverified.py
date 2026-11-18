@@ -34,6 +34,10 @@ from modules.fixit import incident as F
 from tests.test_fixit_section_v2 import NET, incident, page  # noqa: F401
 from tests.test_fixit_section_v2 import web  # noqa: F401 (the fixture)
 from tests.test_fixit_troubleshoot import ai, answer, fix, press, sec_of, stopped  # noqa: F401
+# Premise corrected (17215a95's ladder: a re-subscribe of 101 after attempt 1's failed
+# re-subscribe is refused as tried, so the answer is "couldn't be checked" and keeps nothing):
+# each answer's fix and plan step is the collector's close, which no attempt makes tried.
+from tests.test_fixit_troubleshoot import CLOSE
 from tests.test_heal_resubscribe import lab  # noqa: F401
 from tests.test_sdn_connections import networks  # noqa: F401
 
@@ -85,7 +89,7 @@ def why_block(sec: str) -> str:
 class TestMarked:
     def test_a_claim_citing_what_was_not_sent_is_marked_and_the_rest_shown(self, ai):
         iid = stopped(ai)
-        ai.answer = partial(fix())
+        ai.answer = partial(fix(operation=CLOSE))
         r, html = press(ai, iid)
         assert r.status_code == 200, html
         sec = sec_of(html)
@@ -100,20 +104,24 @@ class TestMarked:
         assert f"hypothesis 2 cites {BAD}" in json.dumps(ai.sent[1])
         assert FT.RETRY_PART not in json.dumps(ai.sent[0]["messages"])
         assert line["shown"]["retry"]["asked"] is True
-        assert "still cites what was not sent" in line["shown"]["retry"]["words"]
+        # Premise corrected (93120b2f, the operator, 2026-11-16: an uncited claim is marked too,
+        # so the words name a citation "bad or missing").
+        assert "still has a citation that is bad or missing, and is shown marked" in \
+            line["shown"]["retry"]["words"]
         assert len(line["calls"]) == 2, "both calls are the incident's spend"
 
     def test_a_retry_citing_only_what_was_sent_replaces_the_first_answer(self, ai, monkeypatch):
         iid = stopped(ai)
-        good = answer(fix(), rationale="Corrected: r2's old session is still held.")
-        answers(ai, monkeypatch, partial(fix()), good)
+        good = answer(fix(operation=CLOSE),
+                      rationale="Corrected: r2's old session is still held.")
+        answers(ai, monkeypatch, partial(fix(operation=CLOSE)), good)
         press(ai, iid)
         line = ai_line(iid)
         assert line["shown"]["rationale"] == "Corrected: r2's old session is still held."
         assert all(not h["unverified_words"] for h in line["shown"]["hypotheses"])
         assert "every citation of the second answer is in what was sent" in \
             line["shown"]["retry"]["words"]
-        assert line["prompt"] == "fixit_troubleshoot.v13"  # the investigation's last pass (C3797)
+        assert line["prompt"] == "fixit_troubleshoot.v18"  # one shape every pass (231da1d6)
 
 
 class TestApprovable:
@@ -121,7 +129,7 @@ class TestApprovable:
         from modules.fixit import plan as FP
         iid = stopped(ai)
         ai.answer = dict(partial(), plan=[{
-            "operation": "telemetry-resubscribe",
+            "operation": CLOSE,
             "params": {"device": "r2", "subscriptions": ["101"], "subscription": None,
                        "interface": None, "cause": None, "changes": None, "remove": None},
             "why": "it rests on a history line not sent.", "evidence_refs": [BAD]}],
@@ -141,7 +149,7 @@ class TestApprovable:
         from modules.fixit import plan as FP
         iid = stopped(ai)
         ai.answer = dict(partial(), plan=[{
-            "operation": "telemetry-resubscribe",
+            "operation": CLOSE,
             "params": {"device": "r2", "subscriptions": ["101"], "subscription": None,
                        "interface": None, "cause": None, "changes": None, "remove": None},
             "why": "attempt 1 and a line not sent.", "evidence_refs": ["attempt:1", BAD]}],
@@ -182,14 +190,27 @@ class TestTheRetry:
                             network="n", actor="a", trigger={})
         return a, got, out, asked
 
+    # Premise corrected (7b0bb884, the operator, 2026-11-16: no worst case drawn before the
+    # press; the spending limits govern every call): `retry_once` no longer compares a worst
+    # case or the incident's cap itself; it asks through the gateway, which judges the retry as
+    # every call (the incident's cap its spend cap) and refuses it before any provider request
+    # when a limit cannot pay it (`read_loop.CAP_KINDS`). Such a retry is not asked again,
+    # nothing leaves the host, and the first answer stands, marked.
+
     def test_past_the_investigations_worst_case_it_is_not_asked(self, monkeypatch):
-        a, got, out, asked = self.run(monkeypatch, spent=FT.worst_usd())
-        assert asked == [] and out["asked"] is False and got["answer"] is a
-        assert "would pass the" in out["words"] and "drawn for it before the press" in out["words"]
+        a, got, out, asked = self.run(monkeypatch, reply={
+            "ok": False, "error": "feature_cap",
+            "detail": "fixit_troubleshoot's day cap cannot pay the call's hold"})
+        assert len(asked) == 1, "the retry is asked of the gateway, which judges its spend"
+        assert out["asked"] is False and got["answer"] is a, "nothing left the host"
+        assert out["words"].startswith("not asked again: feature_cap: "), out["words"]
 
     def test_past_the_incidents_cap_it_is_not_asked(self, monkeypatch):
-        a, got, out, asked = self.run(monkeypatch, cap="refused")
-        assert asked == [] and out["words"].startswith("not asked again: this incident's AI")
+        a, got, out, asked = self.run(monkeypatch, reply={
+            "ok": False, "error": "over_cap",
+            "detail": "this incident's AI cap cannot pay the call's hold"})
+        assert out["asked"] is False
+        assert out["words"].startswith("not asked again: over_cap: this incident's AI")
         assert got["answer"] is a
 
     def test_a_retry_not_answered_leaves_the_first_answer_marked(self, monkeypatch):
@@ -223,7 +244,7 @@ class TestTheCard:
                               "evidence_refs": ["attempt:1"]}),
          "What the fix needs, which no Mercury operation does yet"),
         (lambda: partial(), "The collector still holds r2's old session."),
-        (lambda: partial(fix()), "The step it proposes"),
+        (lambda: partial(fix(operation=CLOSE)), "The step it proposes"),
     ], ids=["a gap", "no fix", "a partial answer with a fix"])
     def test_the_findings_hypotheses_and_next_steps_are_drawn_with_the_rating(self, ai, ans,
                                                                             said):
@@ -267,6 +288,11 @@ class TestTheCard:
                 b.go(srv.url(f"/v2/incident/{iid}?list={NET}"))
                 card = "document.querySelector('details[data-more=why]')"
                 b.wait_for(f"return !!{card}", 20)
+                # Premise corrected (board R5, becced07, approved 2026-11-15: everything but the
+                # title, impact, status and one action is under the card's one Details, closed
+                # by default): Details is opened first, as a person opens it.
+                b.click("#inc-details > summary")
+                b.wait_for("return document.getElementById('inc-details').open")
                 assert b.js(f"return {card}.open") is True, "open: no plan to read first"
                 text = b.js(f"return {card}.innerText")
                 assert "r2's streams stayed down after attempt 1" in text
