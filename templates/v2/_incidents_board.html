@@ -1,0 +1,32 @@
+{#- The fleet view above the Incidents list (the GUI redesign brief §4.2, 2026-11-18; the mockup
+    design/incidents-board.html): the period's outcome strip, and a tile per category with its
+    open count and its detections per day. `modules/incidents_board.py` builds it from the rows
+    the list already holds; a category the incident store holds none of says what it needs.
+    Display only. -#}
+{%- set b = p.board %}
+<section class="inc-board" aria-label="Every incident of {{ p.network }}, the last {{ b.days }} days" data-board>
+  <p class="inc-outcomes" data-outcomes>
+    <span class="muted">Last {{ b.days }} days:</span>
+    {%- for o in b.outcomes %}
+    <span class="inc-outcome inc-outcome-{{ o.key }}" data-outcome="{{ o.key }}"><strong>{{ o.n }}</strong> {{ o.words }}</span>{% if not loop.last %} <span class="muted" aria-hidden="true">·</span>{% endif %}
+    {%- endfor %}
+  </p>
+  <ul class="inc-tiles">
+    {%- for t in b.tiles %}
+    <li class="inc-tile card" data-category="{{ t.key }}">
+      <span class="inc-tile-name">{{ t.words }}</span>
+      <span class="inc-tile-open"><strong>{{ t.open }}</strong> open</span>
+      <svg class="inc-spark" viewBox="0 0 {{ b.days * 4 }} 20" preserveAspectRatio="none" role="img" aria-label="{{ t.total }} detected in {{ b.days }} days, at most {{ t.peak }} a day">
+        {%- for n in t.trend %}{% if n %}<rect x="{{ loop.index0 * 4 }}" y="{{ 20 - (n * 20 / t.peak) | round(1) }}" width="3" height="{{ (n * 20 / t.peak) | round(1) }}"><title>{{ n }}</title></rect>{% endif %}{% endfor %}
+      </svg>
+      <span class="inc-tile-total muted small">{{ t.total }} in {{ b.days }} days</span>
+    </li>
+    {%- endfor %}
+    {%- for name, need in b.needs.items() %}
+    <li class="inc-tile inc-tile-needs card" data-category="{{ name }}">
+      <span class="inc-tile-name">{{ name }}</span>
+      <span class="inc-needs">needs: {{ need }}</span>
+    </li>
+    {%- endfor %}
+  </ul>
+</section>

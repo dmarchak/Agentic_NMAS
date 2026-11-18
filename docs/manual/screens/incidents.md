@@ -21,6 +21,25 @@ is refused until the network's spending limits are acknowledged in Settings, and
 links there ([the control strip](heal-batch#self-healing-toggle)). The top bar's status chip
 opens it here.
 
+## The last 30 days {#fleet-view}
+
+Above the tabs, on both of them, the network's incidents at a glance:
+
+- **The outcome line:** of the incidents detected in the last 30 days, how many were
+  self-healed (Mercury fixed them, by its own fix or a saved script), AI-fixed (a person
+  approved the AI's plan), person-fixed, and how many are still open; beside them, how many
+  closed without a fix (cleared, declined, or closed with no proof of a fix) and how many were
+  fixed with nobody recorded, when there are any.
+- **A tile per category** (Interfaces, Routing, Config drift, Alerts, Other), each with its open
+  incidents and a bar per day of its detections over the 30 days. A category is the kind of
+  the incident's first symptom (an err-disabled port is Interfaces, an adjacency down is
+  Routing), else of the change that opened it. SDN and Telemetry say what they need: their
+  incidents are Needs attention's rows today, not this list's.
+
+Each row also carries its **autonomy**: **Self-heal** (Mercury fixes it, or fixed it, with no
+person), **AI + approval** (the AI has a part in it and a person approves its plan) or
+**Manual** (a person fixes it).
+
 ## Open and Closed {#tabs}
 
 Two tabs, each with its count:

@@ -84,7 +84,7 @@ CLOSED_GROUPS = (("fixed_ai", "Fixed by AI", "ok"),
 #: What a row hands the template, each drawn (the grouping keys stay in Python).
 DRAWN = ("id", "device", "href", "title", "state", "state_words", "kind", "waits", "since",
          "ended", "ttr", "by", "drill", "acknowledged", "ai", "impact", "status", "busy",
-         "fixed_words")
+         "fixed_words", "autonomy")
 #: A state's badge kind, as the incident's own page colours its state.
 STATE_KINDS = {"needs_person": "danger", "open": "info", "fixed": "ok", "cleared": "muted",
                "cancelled": "muted"}
@@ -292,6 +292,10 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
             "ai": fx["ai"]}
     # R5: the row's impact line, its BLUF's (Mercury's own table).
     out["impact"] = out["bluf"].get("impact") or ""
+    # The redesign brief §4.2 (2026-11-18): its category and autonomy badge.
+    from modules import incidents_board
+    out["category"] = incidents_board.category(inc)
+    out["autonomy"] = incidents_board.autonomy(out)
     return out
 
 
@@ -532,7 +536,7 @@ def _page(network: str, tab: str, q: str, device: str, batched, laps: list) -> d
     *batched* are the incidents a batch card above the list holds (board R5, the operator's
     change 1, 2026-11-15: its problems inside it, "not as rows below"): counted in the tab and
     its summary, drawn in no group while no search or filter is applied."""
-    from modules import display_names
+    from modules import display_names, incidents_board
     from modules.heal import incidents, steplog
 
     tab = tab if tab in TABS else "open"
@@ -568,6 +572,8 @@ def _page(network: str, tab: str, q: str, device: str, batched, laps: list) -> d
              "matched": len(matched), "folded": got["folded"],
              "in_card": sum(1 for r in matched if r["id"] in held_in_card),
              "unreadable": got["unreadable"], "kept": incidents.CLOSED_KEPT,
+             # The redesign brief §4.2: the fleet view over both tabs' rows.
+             "board": incidents_board.board(got["rows"], time.time()),
              # When the list drawn was computed (it is held, C3788), not when it was drawn.
              "read_at": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                       time.gmtime(got.get("held_at") or time.time()))}

@@ -34,6 +34,7 @@
 {%- if p.unreadable %}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>Part of {{ p.network }}'s self-healing record couldn't be read:</strong> {{ p.unreadable | join('; ') }}. What could be read is listed below, so this list may be short: an incident it does not show is not known to be absent.</div></div>
 {%- endif %}
+{%- if p.board is defined %}{% include "v2/_incidents_board.html" %}{% endif %}
 <p class="inc-list-sum" data-total="{{ p.total }}">
   {%- if not p.total %}{{ 'No incident is open on ' ~ p.network ~ '.' if p.tab == 'open' else 'No closed incident is kept for ' ~ p.network ~ '.' }}
   {%- else %}<strong>{{ p.total }} {{ 'open' if p.tab == 'open' else 'closed' }}</strong>{% for s in p.summary %} · {{ s }}{% endfor %}{% endif -%}
@@ -71,7 +72,7 @@
         link to the incident), its impact and its status; its device is on the title's hover
         (the title names it), and what an open row waits for is its status. -#}
     <li class="inc-row" data-state="{{ r.state }}" data-incident="{{ r.id }}" data-card="{{ r.id }}"{% if r.drill %} data-drill="{{ r.drill.id }}"{% endif %}>
-      <span class="inc-row-state">{{ badge(r.state_words, r.kind) }}{% if r.drill %} {{ badge('Drill', 'warn', title=r.drill.hover) }}{% endif %}{% if r.acknowledged %} {{ badge('Acknowledged', 'muted', title=r.acknowledged) }}{% endif %}</span>
+      <span class="inc-row-state">{{ badge(r.state_words, r.kind) }}{% if r.drill %} {{ badge('Drill', 'warn', title=r.drill.hover) }}{% endif %}{% if r.acknowledged %} {{ badge('Acknowledged', 'muted', title=r.acknowledged) }}{% endif %}{% if r.autonomy %} <span class="inc-autonomy" data-autonomy="{{ r.autonomy }}">{{ r.autonomy }}</span>{% endif %}</span>
       <span class="inc-row-what">
         {%- if r.href %}<a class="inc-row-title" href="{{ r.href }}" title="{{ r.title }} ({{ r.device or 'no device recorded' }}, {{ r.id }})">{{ r.title }}</a>{% else %}<span class="inc-row-title" title="{{ r.id }}: it names no device, so it has no page">{{ r.title }}</span>{% endif %}
         {%- if r.impact %}<span class="simple-impact" data-impact title="{{ r.impact }}">{{ r.impact }}</span>{% endif %}
