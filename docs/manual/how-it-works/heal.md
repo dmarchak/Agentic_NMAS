@@ -190,7 +190,9 @@ A heal runs as its own job, as the policy, on behalf of the person who confirmed
 step is the deploy pipeline's ([Deploy](deploy)):
 
 1. `take`: it takes the decision, once.
-2. `stops`: the kill switch, the mode, the network's stage, the policy and planned work, again.
+2. `stops`: the kill switch, the mode, the kinds allowed Auto and planned work a person
+   declared, again; and a policy no person is recorded as confirming sends nothing (nobody
+   would be accountable).
 3. `read`: it reads the device again.
 4. `plan`: it recomputes the program from that read and refuses unless its hash is the
    decision's. Nothing is sent when the device moved.

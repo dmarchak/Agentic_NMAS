@@ -834,8 +834,9 @@ def _stops(src, network: str, decision: dict, now: float, held: bool = False) ->
 
     Round 2 of the speed pass (the operator, 2026-11-17): only Stop everywhere, Off (the mode
     not Auto) and a planned window a person set stop it here; the lab-stage gate, the policy
-    moved since the decision, the kinds allowed Auto, a halt and "no person confirmed the
-    policy" stop nothing; *network* is read by guard 3 below."""
+    moved since the decision, the kinds allowed Auto and a halt stop nothing; *network* is
+    read by guard 3 below. The operator's ruling 4 (2026-11-18, C4043) brings back "no person
+    confirmed the policy": a policy with no accountable person sends nothing."""
     from modules.heal import policy
 
     mode = src.mode(now)
@@ -859,6 +860,12 @@ def _stops(src, network: str, decision: dict, now: float, held: bool = False) ->
     g = guards.g3_planned(network, decision["device"], now, holder=lambda _n, _d: None)
     if g:
         return f"guard 3, planned work: {g['words']}"
+    # An accountable person on the policy (the operator's ruling 4, 2026-11-18, C4043).
+    pol = decision.get("policy") or {}
+    if not pol.get("by"):
+        return (f"no person is recorded as having confirmed the policy the heal was decided "
+                f"under ({pol.get('fingerprint') or 'no fingerprint'}, confirmed by: nobody "
+                "recorded), so nobody is accountable")
     return ""
 
 
