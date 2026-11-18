@@ -109,17 +109,17 @@ def test_the_tab_draws_every_control_the_board_draws(networks):
     for words in ("Self-healing on Default", "History of this policy",
                   "Fix kinds", "Change fix kinds…", "Hard stops and guards", "Who is told",
                   "Stop self-healing everywhere…", "Production's bar", "Policy fingerprint",
-                  "Network stage", "A rolled-back heal", "4 never"):
+                  "Network stage", "Planned work a person declared", "4 never"):
         assert words in tab, words
     # Premise corrected (C3158, the operator's rule of 2026-11-12: "The mode is a dropdown
     # (Off / Dry run / Auto) opening the same modal"): Change mode… is the mode's dropdown.
     assert '<select id="heal-mode-pick" data-modal-select' in tab
-    # Eight since 106c117d (the operator, 2026-11-16: the rates, the topology hold and a person
-    # working hold nothing; the recurrence and fight findings in their place, `GUARD_ROWS`):
-    # the grace, the two findings, the repeat window, devices at once, the largest heal, and
-    # the amendment's flap and bounce rows (19.4, H19); each a button opening its modal
-    # (C3158: never a card in the right column).
-    assert outside_modals(tab).count(">Edit…</button>") == 8
+    # Five since round 2 (premise corrected, the correctness review's G2-H2, 2026-11-18: the
+    # grace, devices at once and the largest heal hold nothing since 70e89a47 and 9ffa279d,
+    # measured by `test_no_hard_stop_row_claims_a_guard_that_holds_nothing`): the two findings
+    # (106c117d), the repeat window, and the amendment's flap and bounce rows (19.4, H19); each
+    # a button opening its modal (C3158: never a card in the right column).
+    assert outside_modals(tab).count(">Edit…</button>") == 5
     assert "A problem back this often is a finding" in tab
     assert "A fix undone this often is a fight" in tab
     assert "A flap: transitions of one interface within" in tab and "3 in 10 min" in tab
@@ -139,6 +139,27 @@ def test_the_tab_draws_every_control_the_board_draws(networks):
     assert ">Turn off<" in again
     r, _off = _post(networks, BASE.format(n="Default") + "/off")
     assert r.status_code == 200 and H.current("Default")["set"] == "off"
+
+
+def test_no_hard_stop_row_claims_a_guard_that_holds_nothing(networks):
+    """The correctness review's G2-H2 (2026-11-18; 70e89a47, 9ffa279d): round 2 retired the
+    grace (a drifted read settles on its first read, `detect._one`), guard 6 (`decide._g6` is
+    None), the program's size (`guards.g12_size` holds nothing) and the rolled-back halt
+    (`guards.g14_rolled_back` halts nothing; no `decisions.halt` is written), and a held device
+    is a wait; the card still drew each as a stop in force, with an Edit… for it. An operator
+    confirming Auto on those words was shown a safety the code no longer has."""
+    from modules.heal import decide, guards
+
+    assert decide._g6({}, [], 0, 0, 0) is None and guards.g12_size([1, 2], 0, 0) is None
+    assert guards.g14_rolled_back([{"outcome": "rolled_back"}], "s1", 0) is None
+    r = networks["client"].get("/v2/settings/network/Default?tab=heal")
+    tab = r.get_data(as_text=True).split('id="heal-tab"', 1)[1]
+    for retired in ("Grace: a change must persist", "Devices departing at once",
+                    "Largest heal", "always halts the policy"):
+        assert retired not in tab, retired
+    # What still holds is still drawn: a person's planned window and a no-change window
+    # (`guards.g3_planned`).
+    assert "Planned work a person declared, and no-change windows" in tab
 
 
 def test_another_networks_tab_is_its_own(networks):
@@ -311,15 +332,16 @@ def test_the_fix_kinds_and_a_hard_stop_are_changed_the_same_way(networks):
         "heal_kinds_propose": ["", "process_reset", "secret_added_back"]})
     assert r.status_code == 200, tab
     assert H.current("Default")["kinds_propose"] == ["process_reset", "secret_added_back"]
-    # A hard stop the tab still draws (the per-network rate's row is gone since 106c117d):
-    # devices departing at once, changed the same way.
-    card = modal_of(tab, "heal-guard-heal_max_devices_drifting")
-    assert "Change “Devices departing at once: stop above” on Default" in card
-    assert 'name="heal_max_devices_drifting"' in card
-    r, tab = _preview_and_confirm(networks, "Default", {"part": "heal_max_devices_drifting",
-                                                        "heal_max_devices_drifting": "4"})
+    # A hard stop the tab still draws (premise corrected, the correctness review's G2-H2,
+    # 2026-11-18: devices at once holds nothing since 9ffa279d and its row is gone): a port's
+    # bounces an hour, changed the same way.
+    card = modal_of(tab, "heal-guard-heal_bounce_per_port_hour")
+    assert "Change “A port is bounced at most” on Default" in card
+    assert 'name="heal_bounce_per_port_hour"' in card
+    r, tab = _preview_and_confirm(networks, "Default", {"part": "heal_bounce_per_port_hour",
+                                                        "heal_bounce_per_port_hour": "0"})
     assert r.status_code == 200, tab
-    assert H.current("Default")["guards"]["heal_max_devices_drifting"]["value"] == 4
+    assert H.current("Default")["guards"]["heal_bounce_per_port_hour"]["value"] == 0
     # A part that is not one is refused naming the parts there are.
     from modules import heal_page
     with pytest.raises(H.PolicyRefused, match="'nonsense' is not a part of the heal policy"):

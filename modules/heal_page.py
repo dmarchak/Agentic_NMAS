@@ -56,7 +56,11 @@ FIXED_KINDS = (
 )
 #: The hard stops in the board's order: (label, keys, how a value is said, the unit's words).
 GUARD_ROWS = (
-    ("Grace: a change must persist", ("heal_grace_seconds",), "{0} s"),
+    # The correctness review's G2-H2 (2026-11-18): round 2 (the operator, 2026-11-17) retired
+    # the grace (a drifted read settles on its first read), devices at once (guard 6) and the
+    # program's size (guard 12); their rows are gone, so no row claims a stop the code no
+    # longer has and no Edit… tightens one. Their settings stay in the schema (expand, then
+    # contract).
     # The operator, 2026-11-16: the rates, the topology hold and a person working no longer
     # hold a fix; the findings replace them (`heal.findings`). The fight's stop
     # (heal_fight_stop, a yes or no) has no row here: this table's editor takes numbers.
@@ -66,10 +70,6 @@ GUARD_ROWS = (
      ("heal_fight_count", "heal_fight_minutes"), "{0} times, back within {1} min"),
     ("The repeat window: a second bounce need becomes a dampening proposal",
      ("heal_repeat_halts_hours",), "{0} h"),
-    ("Devices departing at once: stop above", ("heal_max_devices_drifting",), "{0}"),
-    ("Largest heal", ("heal_max_removed_units", "heal_max_units"),
-     "{0} removal unit (an added line; one feature on one interface, N13), or {1} section "
-     "re-applied"),
     # The action guards (19.4, H19): 13e's flap, measured from the logs; 13d's once. The port
     # bounce is built (H20; modules/heal/bounce.py, `actions.NOT_BUILT` empty), so the row
     # states the limit and what a second need becomes, never that it is unbuilt.
@@ -79,9 +79,14 @@ GUARD_ROWS = (
      "{0} an hour; a second need within the repeat window is a dampening proposal for a "
      "person"),
 )
-#: The guards that are always on, never settings (section 6).
-ALWAYS = (("Planned work, held devices, no-change windows", "always: never during them"),
-          ("A rolled-back heal", "always halts the policy until a person lifts it"))
+#: The guards that are always on, never settings (section 6), as they hold since round 2 (the
+#: correctness review's G2-H2): a person's planned window and a no-change window hold a heal
+#: (`guards.g3_planned`; never a deploy's or a heal's own window), and a device another
+#: operation holds is waited for (one operation per device). A rolled-back heal halts nothing
+#: now (`guards.g14_rolled_back`): it is a failure the incident stands on, so it has no row.
+ALWAYS = (("Planned work a person declared, and no-change windows",
+           "always: never during them"),
+          ("A device another operation holds", "always: waited for, never sent to while held"))
 #: What each mode means, the tab's Mode row.
 MODE_MEANS = {
     "off": "Off: nothing heals and nothing is recorded",

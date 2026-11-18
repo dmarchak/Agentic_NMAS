@@ -239,10 +239,11 @@ a device to its committed intent; nothing on this tab contacts a device.
   ([Approve or decline a self-healing proposal](heal-proposal)).
 - **Hard stops and guards**: each value, where it comes from (set, lab default or default) and
   its default, with **Edit…**, which opens its change beside it, previewed and confirmed as a
-  mode change is. On a network marked
-  lab the grace period and the hold after a nearby change read 120 s and 60 minutes unless set.
-  Planned work, held devices and no-change windows always stop a heal; a rolled-back heal always
-  halts the policy until a person lifts it. **A flap: transitions of one interface within** (3 in
+  mode change is. A drifted read is fixed on its first read (there is no grace period), and
+  neither the number of devices departing at once nor a heal's size stops a heal. Planned work
+  a person declared and no-change windows always stop a heal; a device another operation holds
+  is waited for. A rolled-back heal halts nothing: its incident stands on the failure for a
+  person. **A flap: transitions of one interface within** (3 in
   10 minutes by default) is how Mercury measures a flapping port from the syslog it receives, and
   **A port is bounced at most** (once an hour) is the limit on a port bounce; a second need
   within the repeat window is a dampening proposal for a person ([The port
