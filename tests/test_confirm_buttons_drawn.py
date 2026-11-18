@@ -2546,6 +2546,11 @@ class TestSavedPlansCards(_Cards):
                    r"Save as a reusable action", "data: the viewer is no admin"),
         "promote": ("_saved_plans_saves.html", "Promote {{ s.name }}",
                     r"Promote BPDU guard recovery", "data: no saved script matches"),
+        # Board R5's screen 5b: once this incident's fix is saved in Dry run (Customize's
+        # choice), the card's one line opens Promote in place.
+        "promote_saved": ("_saved_plans_saves.html", "Promote {{ SV.script.name }}",
+                          r"Promote BPDU guard recovery",
+                          "data: the viewer lacks self-healing rights"),
         "shape": ("_saved_plans_saves.html", "Approve the shape", r"Approve the shape",
                   "data: no shape waits on an admin"),
         "run": ("_saved_actions_device.html", "Run {{ p.title }}",
@@ -2624,6 +2629,34 @@ class TestSavedPlansCards(_Cards):
 
     def blocked_shape(self, request, monkeypatch):
         return self.blocked_promote(request, monkeypatch)
+
+    def _saved_dry_run(self, request):
+        """The card after its own Save, in Dry run (Customize's choice: a plain Save is
+        Automatic, with no Promote, 6b91dc45), pressed as the card's form sends it."""
+        c = request.getfixturevalue("card")
+        r = c["client"].post(f"/v2/saved-plans/{self._spv.INC}/save-script?list=Lab",
+                             data={"name": "BPDU guard recovery", "keep_cause": "1",
+                                   "dry_run": "1"}, headers={"HX-Request": "true"})
+        assert r.status_code == 200, "floor: the save in Dry run is kept"
+        return c
+
+    def drawn_promote_saved(self, request):
+        self._saved_dry_run(request)
+        html = self._get(request)[1]
+        assert 'data-saved="script"' in html, "floor: the saved line is drawn"
+        # The saved line's own Promote, not the scripts list's (`promote`'s case), whose button
+        # draws the same words on the same card.
+        line = re.search(r'<div class="menu simple-promote".*?</div>', html, re.S)
+        assert line, "floor: the saved line's Promote… is drawn"
+        return line.group(0)
+
+    def blocked_promote_saved(self, request, monkeypatch):
+        c = self._saved_dry_run(request)
+        c["rights"]["self_healing"] = ["other@example.invalid"]
+        html = self._get(request)[1]
+        assert 'data-saved="script"' in html and 'data-refused="script"' in html, \
+            "floor: the saved line is drawn, the refusal beside Promote"
+        return html
 
 
 class TestFixPageCards(_Cards):
@@ -2860,9 +2893,10 @@ class TestThePopulation:
         fix all on guard 6's batch card, 2026-11-15; 101 until that control's route was removed,
         the operator's decision 9, 2026-11-18, C3959; 100 until a fix's page's four, Set
         Automatic, Delete this fix, Run on <port> and Edit's Save, drawn from their previews by
-        the fast-lane catch-up, 2026-11-18)."""
+        the fast-lane catch-up, 2026-11-18; 104 until R5's saved line's Promote <script>, the
+        same day)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 104, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 105, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """
