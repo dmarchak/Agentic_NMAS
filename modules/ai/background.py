@@ -413,7 +413,9 @@ def measured_cost(task: str, now=None) -> dict:
 
 def _held_measure(key: tuple, ver, compute) -> dict:
     """*compute*'s answer held under *key* until the record changes (*ver*, `calls.version`)
-    or the day turns (C3788); read every time for a record with no version."""
+    or the day turns (C3788); read every time for a record with no version. The version is
+    part of the key: a row appended is a new key, computed again."""
+    key = (*key, ver)
     if ver is not None:
         with _measured_lock:
             held = _measured.get(key)
