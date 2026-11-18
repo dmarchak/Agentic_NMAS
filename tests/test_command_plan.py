@@ -612,6 +612,84 @@ class TestTheCompareAfterEveryRollback:
         assert "NOT RESTORED" in rec["why"] and left.strip() in rec["why"]
 
 
+# ── A person's Approve covers a plan's provisional shapes (32ad9360) ───────────────────────
+
+PROVISIONAL = "provisional-test"
+#: A shape no probe has measured, held provisional by the AI's proposal in each test.
+SHAPE = "interface {interface} > description x"
+
+
+@pytest.fixture
+def provisional(monkeypatch, lab):
+    """A planted plan holding one provisional shape (`SHAPE`) beside the bounce's measured
+    lines, its shape proposed by the AI (held PROVISIONAL)."""
+    t = CP.parse({"kind": "command_plan", "key": PROVISIONAL, "title": "Mark {device}",
+                  "words": "a bounce with a provisional line, for the test", "net_zero": True,
+                  "parameters": {"device": {"type": "device"},
+                                 "interface": {"type": "interface"}},
+                  "steps": [{"mode": "config", "commands": LAUNCH + [" description x"]}],
+                  "verify": [{"name": "connected", "read": "show interfaces status",
+                              "expect_line": "{interface_short} * connected *",
+                              "poll": "errdisable-poll", "within": "errdisable-connect"}],
+                  "reason": "a provisional line for the test, never saved"})
+    monkeypatch.setitem(CP._BUILTIN, PROVISIONAL, t)
+    assert POL.propose(NET, "cisco_ios", SHAPE, by="the AI (call c-1)",
+                       why="a test")["state"] == "provisional"
+    return {"device": "s1", "interface": "Gi1/0"}
+
+
+class TestAPersonsPlan:
+    """32ad9360 (the operator, 2026-11-17: "A person's Approve on a shown plan is the only
+    approval. It covers any provisional shapes in that plan"): a person's plan previews and
+    runs its provisional shapes; refused words, literal objects and unknown shapes still
+    refuse; the hash and the program are the same either way."""
+
+    def test_a_provisional_shape_refuses_only_outside_a_persons_plan(self, provisional):
+        strict = CP.preview(NET, PROVISIONAL, provisional, sources=Model())
+        person = CP.preview(NET, PROVISIONAL, provisional, sources=Model(), person_plan=True)
+        assert not strict["ok"] and any("PROVISIONAL" in r for r in strict["refusals"]), \
+            strict["refusals"]
+        assert person["ok"], person["refusals"]
+        # The flag changes no hash: the same plan once an admin approves the shape.
+        assert POL.approve(NET, "cisco_ios", SHAPE, actor=ACTOR, actor_verified="access",
+                           person=True, admin=True)["ok"]
+        approved = CP.preview(NET, PROVISIONAL, provisional, sources=Model())
+        assert approved["ok"], approved["refusals"]
+        assert person["hash"] == approved["hash"] and person["program"] == approved["program"]
+
+    def test_a_shape_never_proposed_still_refuses_a_persons_plan(self, lab, monkeypatch):
+        t = CP.parse({"kind": "command_plan", "key": "unknown-test", "title": "U {device}",
+                      "words": "an unknown line, for the test", "net_zero": True,
+                      "parameters": {"device": {"type": "device"},
+                                     "interface": {"type": "interface"}},
+                      "steps": [{"mode": "config",
+                                 "commands": LAUNCH + [" ip address 192.0.2.9 255.255.255.0"]}],
+                      "verify": [{"name": "connected", "read": "show interfaces status",
+                                  "expect_line": "{interface_short} * connected *",
+                                  "poll": "errdisable-poll", "within": "errdisable-connect"}],
+                      "reason": "an unknown line for the test, never saved"})
+        monkeypatch.setitem(CP._BUILTIN, "unknown-test", t)
+        got = CP.preview(NET, "unknown-test", {"device": "s1", "interface": "Gi1/0"},
+                         sources=Model(), person_plan=True)
+        assert not got["ok"] and "not a shape Mercury has measured" in got["refusals"][0], got
+
+    def test_a_refused_word_is_refused_whoever_approves(self):
+        with pytest.raises(CP.Refused, match="never sends in a command plan"):
+            CP.parse({"kind": "command_plan", "key": "word-test", "title": "W {device}",
+                      "words": "a refused word", "net_zero": True,
+                      "parameters": {"device": {"type": "device"},
+                                     "interface": {"type": "interface"}},
+                      "steps": [{"mode": "config", "commands": LAUNCH + [" do reload"]}],
+                      "verify": [], "reason": "a refused word for the test"})
+
+    def test_a_persons_approved_plan_sends_its_provisional_line(self, lab, provisional):
+        p = CP.preview(NET, PROVISIONAL, provisional, sources=Model(), person_plan=True)
+        rec = go(lab, values=provisional, key=PROVISIONAL, confirmed=p["hash"])
+        approve = next(s for s in rec["steps"] if s["step"] == "approve")
+        assert approve["result"] == "ok", rec["why"]
+        assert lab["sw"].batches and " description x" in lab["sw"].batches[0], rec["why"]
+
+
 # ── The scoped net-zero and the pooled session (7b300f39, C3847) ───────────────────────────
 
 class SectionSwitch(Switch):
