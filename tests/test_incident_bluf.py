@@ -117,7 +117,8 @@ def press_of(html, words):
     """The press whose idle words are *words* in *html*: ``{"post", "target", "include",
     "busy", "fields"}``, the hidden fields its `.bluf-form` carries by name, or the test fails."""
     for m in re.finditer(r'<span class="bluf-form">(.*?)</span>\s*(?=<span class="bluf-form">|'
-                         r'<span class="op-act"><button type="button" class="bluf-link|</div>)',
+                         r'<span class="op-act"><button type="button" class="bluf-link|</div>|'
+                         r'<details class="simple-menu)',
                          html, re.S):
         part = m.group(1)
         b = re.search(r'<button\b([^>]*)><span class="op-idle">([^<]*)</span>'
@@ -132,18 +133,34 @@ def press_of(html, words):
 
 
 def bluf(html):
-    return html.split('id="inc-bluf"', 1)[1].split("</section>", 1)[0]
+    """The incident card's default view (premise corrected, MERCURY_CHARTER R5 and board R5,
+    approved 2026-11-15: the BLUF is the incident card's title, impact and status, its action
+    row and a press's answer; everything else is under its Details, which this leaves out)."""
+    return html.split('id="inc-bluf"', 1)[1].split('<details class="simple-details" id="inc-details"',
+                                                    1)[0]
+
+
+def plan_card(html):
+    """The plan's own card (`#inc-plan`, board R5's screen 4): its lines, Approve, Modify or
+    deny…, and its Details (each step's preflight, the hash, the AI's reasoning)."""
+    return html.split('id="inc-plan"', 1)[1].split(">", 1)[1].split("</section>", 1)[0]
 
 
 def card(html):
-    return html.split('id="inc-ai"', 1)[1].split("</section>", 1)[0]
+    """What Fixing it holds (R5: now under the incident card's Details), up to the page's own
+    parts (Timings and the rest) or the cards after the incident's."""
+    rest = html.split('id="inc-ai"', 1)[1]
+    return re.split(r'id="inc-timings"|<section class="card fixit simple inc-plan"|'
+                    r'<div id="saved-plans-', rest, maxsplit=1)[0]
 
 
 def lines_of(html):
-    """The BLUF's lines: ``[(its name, its words)]``, in order."""
-    return [(n, text_of(w)) for n, w in re.findall(
-        r'<div class="bluf-line" data-bluf="(\w+)"><dt>[^<]*</dt><dd>(.*?)</dd></div>',
-        bluf(html), re.S)]
+    """The incident card's lines: ``[(its name, its words)]``, in order: its title (``what``),
+    its impact and its status (R5: the fix is the card's action row, `bluf`). The status is a
+    `<div>` but on a fixed card (bad52d54's live stepper; templates/v2/_fixit_section.html)."""
+    return [(n, text_of(w)) for _t, n, w in re.findall(
+        r'<(h1|p|div) class="simple-[^"]*"[^>]*data-bluf="(\w+)"[^>]*>(.*?)</\1>', bluf(html),
+        re.S)]
 
 
 def legacy(web):  # noqa: F811
@@ -185,23 +202,32 @@ class TestTheThreeLines:
         planted(monkeypatch, iid)
         html = body_of(web, iid)
         live = html.split('id="incident-live"', 1)[1]
-        assert [n for n, _w in lines_of(html)] == ["what", "impact", "fix"]
+        # Premise corrected (MERCURY_CHARTER R5, board R5, approved 2026-11-15): the page is one
+        # card, its title (the page's title), impact and status lines, then its action row;
+        # the header's facts, Fixing it and the page's parts are under its ONE Details, closed.
+        assert [n for n, _w in lines_of(html)] == ["what", "impact", "status"]
         said = dict(lines_of(html))
-        assert said["what"] == WHAT and said["impact"] == IMPACT
-        # The order: the header (title and state), the BLUF, the one card, then the rest.
-        order = [live.index(m) for m in ('class="card inc-head', 'id="inc-bluf"', 'id="inc-ai"',
-                                         'id="inc-timings"', 'id="inc-wrong"', 'id="inc-done"',
-                                         'class="card tl-record-d')]
+        # The severity is a label at the impact line's start (board R5). The card's title is
+        # the page's title (R5; measured 2026-11-18: "r2: telemetry streams 101 and 102 lost",
+        # `incident_page.page`'s, where the BLUF's lead WHAT was the first line before R5).
+        from modules import incident_page as IP
+        assert said["what"] == IP.page(NET, iid, attention={})["title"], said
+        assert said["impact"] == f"Warning {IMPACT}", said
+        assert 'data-bluf="fix"' in bluf(html), "the action row follows the three lines"
+        order = [live.index(m) for m in ('id="inc-bluf"', 'id="inc-details"', 'class="inc-head',
+                                         'id="inc-ai"', 'id="inc-timings"', 'id="inc-wrong"',
+                                         'id="inc-done"', 'class="card tl-record-d')]
         assert order == sorted(order), order
+        details = re.search(r'<details class="simple-details" id="inc-details"[^>]*>', live).group(0)
+        assert " open" not in details and "data-card-details" in details, details
         rest = live.split('id="inc-timings"', 1)[0].rsplit("<details", 1)[1]
         assert " open" not in rest.split(">", 1)[0], "Timings is collapsed"
         for sid in ("inc-wrong", "inc-done"):
             sec = live.split(f'id="{sid}"', 1)[1].split("</section>", 1)[0]
             tag = re.search(r"<details\b[^>]*>", sec).group(0)
             assert " open" not in tag, f"{sid} is collapsed"
-        # The header's times are no longer above the BLUF.
-        head = live.split('class="card inc-head', 1)[1].split("</section>", 1)[0]
-        assert 'data-cell="ttr"' not in head and "inc-times" not in head
+        # The header's times are not in the card's default view.
+        assert 'data-cell="ttr"' not in bluf(html) and "inc-times" not in bluf(html)
         # Inside the card, everything past the status line is collapsed.
         c = card(html)
         for more in ("attempts", "other", "holds", "costs"):
@@ -217,7 +243,9 @@ class TestTheThreeLines:
         assert only[2] == "Start AI troubleshooting", only
         form = press_of(bluf(html), "Start AI troubleshooting")
         assert form["post"] == href(iid, "start") and form["target"] == "#inc-fixit"
-        assert form["include"] == "closest .bluf-form" and form["busy"]
+        # Premise corrected (R5: no form field in the default view): what a person knows is
+        # typed under Details, and Start includes that box by its id.
+        assert form["include"] == f"closest .bluf-form, #fixit-know-{iid}" and form["busy"]
         assert 'data-fix="start"' in bluf(html)
 
     def test_a_section_with_no_bluf_of_its_own_is_composed_by_the_page(self, web,  # noqa: F811
@@ -235,7 +263,7 @@ class TestTheThreeLines:
         said = dict(lines_of(html))
         title = text_of(html.split("<h1", 1)[1].split(">", 1)[1].split("</h1>", 1)[0])
         assert said["what"] and said["what"] in title, (said, title)
-        assert said["impact"].startswith("Not known"), said
+        assert "Not known" in said["impact"], said
         (only,) = primaries(html.split('id="incident-live"', 1)[1])
         assert only[2] == "Open r2" and 'data-fix="item"' in bluf(html), only
 
@@ -317,7 +345,8 @@ class TestTheProposal:
         planted(monkeypatch, iid, fix="approve", proposal=plan(iid),
                 offered=("approve", "modify", "deny"))
         html = body_of(web, iid)
-        b = bluf(html)
+        # Premise corrected (R5, board R5's screen 4): the plan is its own card, Approve on it.
+        b = plan_card(html)
         (only,) = primaries(html.split('id="incident-live"', 1)[1])
         assert only[2] == "Approve", only
         approve = press_of(b, "Approve")
@@ -341,7 +370,7 @@ class TestTheProposal:
         for section in ("approve", "modify", "deny", "hand-over"):
             assert f'data-manual="fixit-troubleshoot#{section}"' in html, section
         # The plan's steps, each with its preflight; its hash is the record's, not the card's.
-        c = card(html)
+        c = plan_card(html)
         steps = re.findall(r'<li class="fixit-plan-item fixit-plan-item-(\w+)" data-step="(\d)"', c)
         assert steps == [("ok", "1"), ("ok", "2")]
         assert text_of(c).count("preflight passed") == 2
@@ -367,13 +396,14 @@ class TestTheProposal:
         planted(monkeypatch, iid, fix="approve", proposal=plan(iid, refused=why),
                 offered=("modify", "deny"))
         html = body_of(web, iid)
-        c = card(html)
+        c = plan_card(html)
         (step,) = re.findall(r'<li class="fixit-plan-item fixit-plan-item-refused" data-step="2".*?</li>',
                              c, re.S)
         assert f"refused at its preflight: {why}" in text_of(step).replace("&#39;", "'")
         assert "/fixit/approve" not in html and ">Approve<" not in html
-        assert "Approve isn't offered" in text_of(bluf(html))
-        assert f"fixit-modify-{iid}" in bluf(html) and f"fixit-deny-{iid}" in bluf(html)
+        # Premise corrected (R5, board R5's screen 4): said on the plan's own card.
+        assert "Approve isn't offered" in text_of(c)
+        assert f"fixit-modify-{iid}" in c and f"fixit-deny-{iid}" in c
         assert primaries(html.split('id="incident-live"', 1)[1]) == [], \
             "no primary while nothing can be approved"
 
