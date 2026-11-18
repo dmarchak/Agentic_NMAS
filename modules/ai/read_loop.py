@@ -1579,7 +1579,7 @@ def _within_room(records: list, room: int, newest: list) -> bool:
 
 
 #: The margin a later pass keeps under the most its prompt may be (C3890), in tokens. Measured:
-#: r7's later passes (2026-11-16 22:31 and 22:32 UTC) were refused 216 and 182 tokens over a
+#: a router's later passes (2026-11-16 22:31 and 22:32 UTC) were refused 216 and 182 tokens over a
 #: room computed at the bound itself; 540 is 2.5 times the larger. It holds what a later pass
 #: adds beside its reads (its pass words' slack and the reads' wrapper, 120 characters) and the
 #: reads' escaped text counting denser than the pass's average. A count of tokens, not a share

@@ -136,7 +136,7 @@ PROMPT_SECOND_V6 = (FEATURE, 6)
 #: v11, v12 and v13 (C3797, the same day): the investigation, iterative: v11 its first pass,
 #: v12 a later pass with the reads so far (it may ask again), v13 its last pass (and the plain
 #: one); each answer names the read it lacked. v9 and v10 stay readable, never asked.
-#: v14, v15 and v16 (the operator, 2026-11-16, r7's wedged session): v11, v12 and v13 with a
+#: v14, v15 and v16 (the operator, 2026-11-16, a router's wedged session): v11, v12 and v13 with a
 #: lost stream's stalled session said: test the path first (DF pings at full size and a
 #: traceroute), and, when it is clean, reset one end, least disruptive first, by the ladder
 #: section's first untried rung (`modules/fixit/ladder.py`). v11 to v13 stay readable, never
@@ -1407,7 +1407,7 @@ def unverified(answer, sections: list, topo: dict, pack: dict = None) -> dict:
     ``improvement's step <n>``); ``{}`` when every one resolves. A hypothesis's citations are
     read as Explain's check reads them (`explain.normalised`).
 
-    A MISSING citation is marked too (the operator, 2026-11-16: r7's pass 2 was discarded
+    A MISSING citation is marked too (the operator, 2026-11-16: a router's pass 2 was discarded
     whole for "hypothesis 2 cites nothing in the pack"): a part citing nothing is marked
     `explain.UNCITED`, and, with *pack*, each device the answer names and cites nowhere (as
     Explain's check finds them, Mercury's own citations of it added first, `mercury_cites`)
@@ -1699,8 +1699,8 @@ def loop_feature(prep: dict) -> RL.LoopFeature:
         if not why and any(str(v) not in actable for v in acts_on(answer)):
             # A step on a device or subscription the finding does not name is the read loop's
             # refusal to name (`read_loop._acts_check`, every pass's), never the ladder's: its
-            # "tried" compares a step's class and subscriptions, not its device, so r6's
-            # re-subscribe read as r2's attempt 1 tried again (17215a95).
+            # "tried" compares a step's class and subscriptions, not its device, so edge3's
+            # re-subscribe read as edge2's attempt 1 tried again (17215a95).
             return ""
         if not why:
             why = tried_refusal(answer, prep)
