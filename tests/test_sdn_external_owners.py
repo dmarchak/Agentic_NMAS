@@ -77,7 +77,7 @@ def devices(entries):
     """Three devices rendering the one context, as NetBox renders a context on each."""
     return [device("switch2", "0000000000000003", entries),
             device("switch3", "0000000000000004", entries),
-            device("SDNGroup1Router", None, entries)]
+            device("router", None, entries)]
 
 
 TEAM_FLOW = {"table_id": 0, "priority": 1000, "cookie": 0x9A01000000000005,
@@ -362,6 +362,12 @@ class TestSdnFlows:
         rogue = _row(html, "0x1234000000000001")
         assert "unauthorised" in rogue and "Remove…" in rogue
         assert re.search(r"· 1 external ·", html)
+        # Pressed anyway (a hand-made request): refused, and the switch is sent nothing.
+        r = declared["lab"]["client"].post("/v2/sdn/flow/preview", data={
+            "list": "Default", "do": "remove", "connection": "lab-controller", "dpid": SW1,
+            "target": json.dumps(_target(), sort_keys=True)})
+        assert r.status_code == 409 and declared["lab"]["fake"].writes == []
+        assert any(f["cookie"] == TEAM_FLOW["cookie"] for f in declared["lab"]["fake"].table[1])
 
     def test_a_refused_declaration_is_said_with_why(self, declared):
         declared["declare"]([dict(seed()[1], mask="0x0")])
@@ -369,6 +375,19 @@ class TestSdnFlows:
         assert "1 declared external flow owner refused" in html
         assert "a mask of 0 would claim every flow" in html
         assert "unauthorised" in _row(html, "0x9a01000000000005")
+        # Add flow… pressed beside it, previewed and confirmed: the malformed entry blocks no
+        # Mercury write, and the switch takes the flow.
+        from tests.test_sdn_ops_v2 import form_fields
+        c = declared["lab"]["client"]
+        r = c.post("/v2/sdn/flow/preview", data={
+            "list": "Default", "do": "add", "connection": "lab-controller", "dpid": SW1,
+            "priority": "250", "match": "in_port=1, eth_type=0x0800, ip_proto=17, udp_src=68, "
+                                        "udp_dst=67, ipv4_dst=255.255.255.255",
+            "actions": "drop"})
+        assert r.status_code == 200, unescape(r.get_data(as_text=True))[:300]
+        done = c.post("/v2/sdn/flow/confirm", data=form_fields(r.get_data(as_text=True)))
+        assert done.status_code == 200
+        assert [p for p, _b in declared["lab"]["fake"].writes] == ["/stats/flowentry/add"]
 
 
 # --------------------------------------------------------------------------- where it is read
