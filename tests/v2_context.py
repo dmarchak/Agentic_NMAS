@@ -3728,7 +3728,9 @@ def _sdn_switches(client, _lab, _mp):
         # History's row for the verified configuration: its source and its changes drawn. Two
         # kinds chosen, so the rows are these alone and the page's states are otherwise the
         # walk's (it filters by no single kind, and no row of its store carries a mark).
-        history = client.get("/v2/history?list=Lab&kind=sdn&kind=controller_deploy")\
+        # All time (since=): the rows are dated 2026-11-10, and History's default window is
+        # the last 7 days, so from 2026-11-17 a dated read drew none of them.
+        history = client.get("/v2/history?list=Lab&kind=sdn&kind=controller_deploy&since=")\
             .get_data(as_text=True)
         assert "OpenFlow configuration on arista-sw1" in history and "Built from" in history
         assert client.get(f"{base}/slot?card=template").status_code == 200
