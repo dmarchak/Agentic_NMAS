@@ -984,12 +984,15 @@ def _sources_of(d: dict) -> list:
 
 # ───────────────────────────────────────────────────────────────────────────── unauthorised
 
-def unauthorised(collected: dict, intent: dict, now: float = None, topo: dict = None) -> dict:
+def unauthorised(collected: dict, intent: dict, now: float = None, topo: dict = None,
+                 external=None) -> dict:
     """The unauthorised-flow rule: ``{"detections", "judged", "error"}``, each flow
     `flow_intent.classify` calls unauthorised on a switch whose table was read; *intent*
     `flow_intent.intent`'s answer. An unreadable intent judges nothing, and says so. *topo* the
     controllers' stored topology, whose hosts bind an IP-only destination to its MAC in the
-    flow's effect (`flow_intent.bindings_of`); None binds nothing."""
+    flow's effect (`flow_intent.bindings_of`); None binds nothing. *external*: the declared
+    external flow owners (`protected.external_for_network`'s ``owners``, C3930), whose flows
+    are theirs and never detected."""
     from modules.sdn import flow_intent
 
     if (intent or {}).get("state") != "ok":
@@ -1005,7 +1008,7 @@ def unauthorised(collected: dict, intent: dict, now: float = None, topo: dict = 
         judged.add(flows_scope(conn, dh))
         connection = {"name": conn, "own_cookies": ctl.get("own_cookies") or []}
         got = flow_intent.classify(sw.get("flows") or [], connection, intent,
-                                   read_switches=[sw["dpid"]], now=now)
+                                   read_switches=[sw["dpid"]], now=now, external=external)
         records = len([r for r in intent.get("flows") or [] if r.get("connection") == conn])
         for f in got["flows"]:
             if f["owner"] != "unauthorised":
@@ -1295,6 +1298,14 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
     out["thresholds"] = dict(values)
     if intent is None:
         intent = flow_intent.intent(network)
+    # The declared external flow owners (C3930): their flows are theirs, never detected; an
+    # entry refused is noted, and the flows it would have covered are judged as before.
+    from modules import protected
+    external = protected.external_for_network(network)
+    if external["refused"]:
+        out["notes"].append(
+            f"{len(external['refused'])} declared external flow owner(s) refused, so the flows "
+            "they would cover are judged as any other (SDN › Flows names each and why)")
     if topo is None:
         topo = _stored_topology(network)
     try:
@@ -1310,7 +1321,8 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
                               f"one last judged ({net['collected_at']}): nothing was judged")
             scanned = scan(collected, values, net.get("seen"), topo=topo)
             flooded = flood(collected, net.get("baseline"), values, net.get("over"), topo=topo)
-            unauth = unauthorised(collected, intent, now=at, topo=topo)
+            unauth = unauthorised(collected, intent, now=at, topo=topo,
+                                  external=external["owners"])
             # The link-down rule (Lab 9 B3): the links the topology held, judged on the
             # collection's link status (`link_failure.rule`).
             linked = link_failure.rule(collected, net.get("links"), topo=topo)

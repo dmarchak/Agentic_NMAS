@@ -104,8 +104,12 @@ nothing listens on.
 Each switch's flow table, Mercury's expected flows beside what is installed.
 
 - **The summary**, for every switch whatever you filter: how many switches and flows, how many
-  are Mercury's, how many the controller's own, how many unauthorised, how many of Mercury's
-  are missing, and how many meters, with the controllers read and the read's age.
+  are Mercury's, how many the controller's own, how many external (a declared external flow
+  owner's, drawn **external: <owner>** with no **Remove…**:
+  [Declared external flow owners](sdn-flows#external)), how many unauthorised,
+  how many of Mercury's are missing, and how many meters, with the controllers read and the
+  read's age. A declared owner NetBox holds that was refused is said above the switches, with
+  why.
 - **The granularity note**, once per switch where it limits what can be seen: a switch whose
   flows match only Ethernet fields and the switch port (L2), or IP addresses and no transport
   port (L3), cannot show a port scan as distinct destination ports; a port's high packet rate

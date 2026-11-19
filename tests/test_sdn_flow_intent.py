@@ -174,7 +174,7 @@ class TestClassify:
         (v6,) = got["records"]
         assert v6["cookie"] == MERCURY_3 and v6["state"] == "missing"
         assert got["counts"] == {"mercury": 2, "mercury_differs": 0, "controller_own": 7,
-                                 "unauthorised": 0, "missing": 1, "expired": 0,
+                                 "external": 0, "unauthorised": 0, "missing": 1, "expired": 0,
                                  "not_judged": 0}
 
     def test_with_no_own_cookie_declared_the_application_s_flows_are_unauthorised(self):

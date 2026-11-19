@@ -348,6 +348,39 @@ These are the one kind of row Mercury closes by itself, and the row says so. Unt
 this rate was the scan rule's fallback and was called a scan; on the Lab 8 walk it fired on a
 flood's first seconds and on ordinary transfers alike.
 
+## Declared external flow owners {#external}
+
+Another program on the controller may install and keep its own flows: a team's own Ryu
+applications that Mercury does not deploy or manage, for example. Declare each such owner in
+NetBox, and Mercury treats its flows as that owner's:
+
+- **Where:** a config context (named, for example, "Mercury external flow owners") whose data
+  is `{"mercury": {"external_flow_owners": [ ... ]}}`, assigned to the network's devices as the
+  protected flows' context is. NetBox merges it with the other `mercury` keys.
+- **Each entry:** `name` (a slug), `owner` (who runs it, in words), `cookie` and `mask` (the
+  cookies the owner's flows carry, written as hexadecimal: `"0x9a01000000000000"` under
+  `"0xffff000000000000"` claims every cookie whose high 16 bits are 9a01), `reason` (what the
+  flows do), and optionally `switches` (NetBox device names or 16-hex datapath ids; leave it out
+  for every switch).
+- **Then:** **Export from NetBox** on SDN › Apps and commit it. SDN › Flows and the closed loop
+  read the committed export; a change made through the switch's own preview reads NetBox now
+  when nothing is committed.
+
+**What it changes:** such a flow is drawn **external: <owner>** on SDN › Flows, with its
+declaration under it and no **Remove…**. The unauthorised-flow rule does not report it. No
+Mercury writer removes, changes or replaces it: a person's change, a response (proposed,
+confirmed or automatic), a re-apply and a policy are each refused at the preview, naming the
+flow, the owner and where it is declared. To override one of its flows, Mercury adds its own
+flow at a higher priority, which is what a response does (it takes a priority above the highest
+flow, not Mercury's, that could match the same packets).
+
+**An entry that is not of its shape refuses only itself.** SDN › Flows names it and why, and its
+flows are drawn as unauthorised until it is corrected and exported again; every other entry, and
+every Mercury write, works as before. Refused besides a malformed entry: a mask of 0 (it would
+claim every flow), a cookie with bits outside its mask, a range claiming cookie 0 (the
+controller's own flows), a range meeting Mercury's own (its cookies' high 16 bits are 4d45), two
+entries of one name that differ, and two entries whose ranges meet on a switch (each refused).
+
 ## Re-apply a lost response {#reapply}
 
 A switch that restarts or reboots drops its flows and meters before their hard timeout, so a

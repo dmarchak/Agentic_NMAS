@@ -93,12 +93,17 @@
 {%- else %}
 {#- Flows (board SdnFlows) -#}
 {%- set n = g.counts %}
-<p class="sdn-sum"><strong>{{ n.switches }} switch{{ 'es' if n.switches != 1 }} · {{ n.flows }} flow{{ 's' if n.flows != 1 }}</strong>: {{ n.mercury + n.mercury_differs }} Mercury's · {{ n.controller_own }} the controller's own{% if n.unauthorised %} · {{ badge(n.unauthorised ~ ' unauthorised', 'danger') }}{% endif %}{% if n.mercury_differs %} · {{ badge(n.mercury_differs ~ " of Mercury's not as recorded", 'warn') }}{% endif %}{% if n.missing %} · {{ badge(n.missing ~ " of Mercury's missing", 'warn') }}{% endif %}{% if n.unclassified %} · {{ n.unclassified }} not classified{% endif %} · {{ n.meters }} meter{{ 's' if n.meters != 1 }} <span class="faint small">· {{ g.controllers | join(', ') }}{% if rd.value_at %}, read {{ stamp(rd.value_at) }}{% endif %}</span></p>
+<p class="sdn-sum"><strong>{{ n.switches }} switch{{ 'es' if n.switches != 1 }} · {{ n.flows }} flow{{ 's' if n.flows != 1 }}</strong>: {{ n.mercury + n.mercury_differs }} Mercury's · {{ n.controller_own }} the controller's own{% if n.external %} · {{ n.external }} external{% endif %}{% if n.unauthorised %} · {{ badge(n.unauthorised ~ ' unauthorised', 'danger') }}{% endif %}{% if n.mercury_differs %} · {{ badge(n.mercury_differs ~ " of Mercury's not as recorded", 'warn') }}{% endif %}{% if n.missing %} · {{ badge(n.missing ~ " of Mercury's missing", 'warn') }}{% endif %}{% if n.unclassified %} · {{ n.unclassified }} not classified{% endif %} · {{ n.meters }} meter{{ 's' if n.meters != 1 }} <span class="faint small">· {{ g.controllers | join(', ') }}{% if rd.value_at %}, read {{ stamp(rd.value_at) }}{% endif %}</span></p>
 {%- for x in g.granularity %}
 <p class="note sdn-note-g">Flows on <span class="mono">{{ x.dpid_hex }}</span> match {{ x.granularity }} only{% if x.fields %} ({{ x.fields | join(', ') }}){% endif %}: {{ x.words }}.</p>
 {%- endfor %}
 {%- if g.intent_error %}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The network's flow intent could not be read ({{ g.intent_error }}), so no flow is called Mercury's or unauthorised: each is drawn as not classified.</p></div>
+{%- endif %}
+{#- C3930: a declared external flow owner NetBox holds that was refused, each with why; its
+    flows are drawn as unauthorised until the declaration is corrected and exported. -#}
+{%- if g.external and (g.external.refused or g.external.error) %}
+<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>{% if g.external.error %}The declared external flow owners could not be read ({{ g.external.error }}).{% else %}{{ g.external.refused | length }} declared external flow owner{{ 's' if g.external.refused | length != 1 }} refused, so the flows {{ 'they' if g.external.refused | length != 1 else 'it' }} would cover are drawn as unauthorised: {% for r in g.external.refused %}{{ r.error }}{% if not loop.last %}; {% endif %}{% endfor %}.{% endif %} Correct the config context in NetBox, then Export from NetBox on SDN › Apps and commit it. {{ info('sdn-flows', 'external', label='Declared external flow owners') }}</p></div>
 {%- endif %}
 {#- Board I of docs/boards/lab9-sdn.html (Lab 9 B1): Analyse this network. #}
 {%- with an = g.analyse, said = {} %}{% include "v2/_sdn_analyse.html" %}{% endwith %}
@@ -123,7 +128,7 @@
     {%- if sw.n.missing %} {{ badge(sw.n.missing ~ " of Mercury's missing", 'warn') }}{% endif %}
     {%- if sw.controller_state == 'not_answering' %} {{ badge('as last read', 'warn') }}{% elif sw.state != 'ok' %} {{ badge('partly read', 'warn') }}{% endif %}
     {%- if not sw.wrong %} {{ badge('as expected', 'ok') }}{% endif %}
-    <span class="faint">{{ sw.total }} flow{{ 's' if sw.total != 1 }}{% if sw.n.mercury + sw.n.mercury_differs %}, {{ sw.n.mercury + sw.n.mercury_differs }} Mercury's{% endif %}{% if sw.n.controller_own %}, {{ sw.n.controller_own }} the controller's own{% if sw.hidden_own %} (hidden){% endif %}{% endif %}</span></summary>
+    <span class="faint">{{ sw.total }} flow{{ 's' if sw.total != 1 }}{% if sw.n.mercury + sw.n.mercury_differs %}, {{ sw.n.mercury + sw.n.mercury_differs }} Mercury's{% endif %}{% if sw.n.controller_own %}, {{ sw.n.controller_own }} the controller's own{% if sw.hidden_own %} (hidden){% endif %}{% endif %}{% if sw.n.external %}, {{ sw.n.external }} external{% endif %}</span></summary>
   <p class="sdn-sw-acts"><button class="btn btn-small" type="button" data-op="sdn-flows" hx-get="{{ url_for('sdn_v2.flow_form', do='add', connection=sw.controller, dpid=sw.dpid_hex) }}" hx-target="#sdn-add-{{ sw.dpid_hex }}" hx-swap="innerHTML" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Add flow…</span><span class="op-busy">Opening…</span></button>{{ how('sdn-flows', compact=True, op='Add flow') }}</p>
   <div class="sdn-op-slot" id="sdn-add-{{ sw.dpid_hex }}" role="region" aria-live="polite"></div>
   {%- for x in sw.lost %}
@@ -148,14 +153,14 @@
     <tbody>
     {%- for f in sw.flows | sort(attribute='owner', reverse=True) %}
     <tr class="sdn-f-{{ f.owner or 'none' }}">
-      <td data-l="Owner">{{ badge(f.owner_words, f.owner_kind) }}{% if f.owner == 'mercury' %} <span class="faint">installed as expected</span>{% elif f.owner in ('unauthorised', 'mercury_differs') %}<br><span class="faint small">{{ f.words }}</span>{% endif %}</td>
+      <td data-l="Owner">{{ badge(f.owner_words, f.owner_kind) }}{% if f.owner == 'mercury' %} <span class="faint">installed as expected</span>{% elif f.owner in ('unauthorised', 'mercury_differs', 'external') %}<br><span class="faint small">{{ f.words }}</span>{% endif %}</td>
       <td data-l="Priority">{{ f.priority }}</td>
       <td data-l="Match" class="mono">{{ f.match }}</td>
       <td data-l="Actions" class="mono">{{ f.actions }}</td>
       <td data-l="Packets">{{ '{:,}'.format(f.packets) if f.packets is not none else '–' }}</td>
       <td data-l="Timeouts">{{ f.timeouts }}</td>
       <td data-l="Cookie" class="mono">{{ f.cookie }}</td>
-      <td class="sdn-acts">{%- if f.owner in ('mercury', 'mercury_differs') %}<button class="btn btn-small" type="button" data-op="sdn-flows" hx-get="{{ url_for('sdn_v2.flow_form', do='edit', connection=sw.controller, dpid=sw.dpid_hex, target=f.target) }}" hx-target="#{{ f.slot }}" hx-swap="innerHTML" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Edit…</span><span class="op-busy">Opening…</span></button>{{ how('sdn-flows', compact=True, op='Edit a flow') }} {% endif %}<button class="btn btn-small" type="button" data-op="sdn-flows" hx-get="{{ url_for('sdn_v2.flow_form', do='remove', connection=sw.controller, dpid=sw.dpid_hex, target=f.target) }}" hx-target="#{{ f.slot }}" hx-swap="innerHTML" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Remove…</span><span class="op-busy">Opening…</span></button>{{ how('sdn-flows', compact=True, op='Remove a flow') }}</td>
+      <td class="sdn-acts">{%- if f.owner in ('mercury', 'mercury_differs') %}<button class="btn btn-small" type="button" data-op="sdn-flows" hx-get="{{ url_for('sdn_v2.flow_form', do='edit', connection=sw.controller, dpid=sw.dpid_hex, target=f.target) }}" hx-target="#{{ f.slot }}" hx-swap="innerHTML" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Edit…</span><span class="op-busy">Opening…</span></button>{{ how('sdn-flows', compact=True, op='Edit a flow') }} {% endif %}{% if f.owner != 'external' %}<button class="btn btn-small" type="button" data-op="sdn-flows" hx-get="{{ url_for('sdn_v2.flow_form', do='remove', connection=sw.controller, dpid=sw.dpid_hex, target=f.target) }}" hx-target="#{{ f.slot }}" hx-swap="innerHTML" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Remove…</span><span class="op-busy">Opening…</span></button>{{ how('sdn-flows', compact=True, op='Remove a flow') }}{% endif %}</td>
     </tr>
     <tr class="sdn-op-row"><td colspan="8"><div class="sdn-op-slot" id="{{ f.slot }}" role="region" aria-live="polite"></div></td></tr>
     {%- endfor %}

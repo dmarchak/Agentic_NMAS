@@ -399,6 +399,12 @@ def plan(network: str, ask: dict, *, driver=None, writer: str = None) -> dict:
                               "no meter can be told Mercury's")
             recorded_meters = {m.get("meter_id"): m for m in got["meters"]
                                if m.get("connection") == conn_name and m.get("dpid") == dpid}
+        # B, the protected set (C2379), read once before the changes are planned: its declared
+        # external flow owners (C3930) are refused in each change's own plan below (no Mercury
+        # writer removes, changes or replaces another owner's flow), its classes after.
+        from modules import protected
+        pset = protected.for_network(network)
+        external = (pset.get("external") or {}).get("owners") or []
         for change in changes:
             do = change["do"]
             if do == "add_meter":
@@ -409,19 +415,17 @@ def plan(network: str, ask: dict, *, driver=None, writer: str = None) -> dict:
                                                 out))
             elif do == "add_flow":
                 steps.append(_plan_add_flow(drv, dpid, change, table, recorded, meter_ids,
-                                            response, limits["values"], out))
+                                            response, limits["values"], out, external))
             elif do == "remove_flow":
                 steps.append(_plan_remove_flow(drv, dpid, change, table, recorded, own, ask,
-                                               before, out))
+                                               before, out, external))
             elif do == "edit_flow":
                 steps += _plan_edit_flow(drv, dpid, change, table, recorded, meter_ids,
-                                         before, out)
+                                         before, out, external)
         # B, the protected set (C2379): the one guard every flow writer reaches, here in the
         # write path they share; the controller connection's control channel first (C2022),
         # then NetBox's protected classes and objects. The set's hash is bound with the plan.
-        from modules import protected
         who = writer or ("response" if ask.get("response") or ask.get("action") else "person")
-        pset = protected.for_network(network)
         refused = protected.flow_refusal_detail(pset, changes, dpid, conn, writer=who)
         if refused["words"]:
             # What of the protected set refused it, for the record a refused press keeps
@@ -455,7 +459,25 @@ def plan(network: str, ask: dict, *, driver=None, writer: str = None) -> dict:
     return out
 
 
-def _plan_add_flow(drv, dpid, change, table, recorded, meter_ids, response, limits, out):
+def _external_refusal(external, flow: dict, dpid, verb: str):
+    """Refuse a change that would *verb* (remove, change or replace) a flow a declared external
+    owner holds (C3930), naming the flow, the owner and where it is declared; else nothing."""
+    from modules import protected
+    from modules.sdn import flow_intent
+
+    owner = None if flow_intent.is_mercury(flow.get("cookie")) else \
+        protected.external_owner_of(external, flow.get("cookie"), dpid)
+    if owner is not None:
+        raise Refused(f"the flow at table {flow.get('table_id', 0)}, priority "
+                      f"{flow.get('priority', 0)}, match {match_words(flow.get('match'))} "
+                      f"(cookie {flow_intent.cookie_hex(flow.get('cookie'))}) is declared "
+                      f"{protected.external_words(owner)}. No Mercury writer may {verb} a flow "
+                      "another owner declared: to override it, Mercury adds its own flow at a "
+                      "higher priority (as a response does). Nothing is sent (C3930)")
+
+
+def _plan_add_flow(drv, dpid, change, table, recorded, meter_ids, response, limits, out,
+                   external=()):
     from modules.sdn import flow_intent
 
     flow = _spec(dpid, change.get("flow"))
@@ -478,6 +500,8 @@ def _plan_add_flow(drv, dpid, change, table, recorded, meter_ids, response, limi
     held = _find(table, {"table_id": flow.table_id, "priority": flow.priority,
                          "match": flow.match})
     if held is not None:
+        # An add at a held place replaces what is there: never another owner's (C3930).
+        _external_refusal(external, held, dpid, "replace")
         raise Refused(f"the switch already holds a flow at table {flow.table_id}, priority "
                       f"{flow.priority} with this match (cookie "
                       f"{flow_intent.cookie_hex(held.get('cookie'))}); an add would replace it "
@@ -504,7 +528,8 @@ def _plan_add_flow(drv, dpid, change, table, recorded, meter_ids, response, limi
             "expect": {"present": spec}, "reinstall": reinstall}
 
 
-def _plan_remove_flow(drv, dpid, change, table, recorded, own, ask, before, out):
+def _plan_remove_flow(drv, dpid, change, table, recorded, own, ask, before, out,
+                      external=()):
     from modules.sdn import flow_intent
     from modules.sdn.match_rules import is_table_miss, normalise
 
@@ -515,6 +540,8 @@ def _plan_remove_flow(drv, dpid, change, table, recorded, own, ask, before, out)
         raise Refused(f"no flow at {_target_said(target)} is in switch {dpid}'s table "
                       f"({len(table)} flows read): nothing to remove")
     cookie = found.get("cookie", 0)
+    if cookie not in recorded and cookie not in own:
+        _external_refusal(external, found, dpid, "remove")
     if is_table_miss(found):
         out["needs_typed"] = TABLE_MISS_WORDS
         out["warnings"].append(
@@ -549,7 +576,7 @@ def _plan_remove_flow(drv, dpid, change, table, recorded, own, ask, before, out)
             "expect": {"absent": spec}, "owner": owner}
 
 
-def _plan_edit_flow(drv, dpid, change, table, recorded, meter_ids, before, out):
+def _plan_edit_flow(drv, dpid, change, table, recorded, meter_ids, before, out, external=()):
     from modules.sdn import flow_intent
     from modules.sdn.match_rules import normalise
 
@@ -560,6 +587,7 @@ def _plan_edit_flow(drv, dpid, change, table, recorded, meter_ids, before, out):
         raise Refused(f"no flow at {_target_said(target)} is in switch {dpid}'s table "
                       f"({len(table)} flows read): nothing to edit")
     if found.get("cookie") not in recorded:
+        _external_refusal(external, found, dpid, "change")
         raise Refused(f"edit is for Mercury's own recorded flows, and cookie "
                       f"{flow_intent.cookie_hex(found.get('cookie'))} is not one: remove it "
                       "instead")

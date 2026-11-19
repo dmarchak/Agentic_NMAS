@@ -2783,6 +2783,20 @@ def _sdn(client, _lab, _mp):
                     "/v2/sdn/flows?list=Lab&own=show", "/v2/sdn/flows?list=Lab&q=METER",
                     "/v2/sdn/view?list=Lab&tab=flows&q=no-such-flow"):
             assert client.get(url).status_code == 200, url
+        # C3930: a declared external flow owner NetBox holds that is refused (a mask of 0) is
+        # said above the switches, with why.
+        from modules import protected as P
+        real_external = P.external_for_network
+        refused = P.external_owners([{"name": "s1", "config_context": {"mercury": {
+            "external_flow_owners": [{"name": "lab9-broken", "owner": "a team's app",
+                                      "cookie": "0x9a01000000000000", "mask": "0x0",
+                                      "reason": "forwarding"}]}}}])
+        mp.setattr(P, "external_for_network", lambda network: dict(
+            refused, state="ok", source="planted", error=""))
+        store_read("Lab", clock=lambda: T0 + 20)
+        page = client.get("/v2/sdn/flows?list=Lab").get_data(as_text=True)
+        assert "1 declared external flow owner refused" in page and "a mask of 0" in page
+        mp.setattr(P, "external_for_network", real_external)
         flows = json.loads(next(e for e in WITH_PEER if e["path"] == "/stats/flow/1")["body"])
         session["now"] = Captured(flows=[f for f in flows["1"]
                                          if not set(f["match"]) - {"in_port", "dl_dst",

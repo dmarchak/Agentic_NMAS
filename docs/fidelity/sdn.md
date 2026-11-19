@@ -135,7 +135,15 @@ before: `bc6d23f0a8f1a92c62843ec4a978f71a42b797f6080a1c74e758aa9754ffe2c2`.
 | I (C2913): states the board does not draw | not drawn | Couldn't save or Couldn't remove with the reason in place, an all-removed sheet, the corrected-by hover | **deviation** (log: Board lab9-sdn I built for C2913 and C2956, 3) |
 
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html, templates/v2/_sdn_analyse_tools.html, templates/v2/_sdn_snapshots.html
-Templates sha256: `ac1bc68272fc8b90983b1762324f388faff233e7debe4fa581251c078cffe60e`
+Templates sha256: `58c57f09341bff2f12975d1bdc0ae3436c202080810a6cf8a2f6d984e42211c2`
+Hashed again 2026-11-19 for C3930 (declared external flow owners): `_sdn_view.html`'s Flows
+table gains a fourth owner, "external: <owner>", drawn as the others (a badge, its declaration
+in the row's small line) with no Remove… in its row; the summary and each switch's counts add
+"· N external" after the controller's own; one warning notice above the switches, only while a
+declared owner is refused, names each with why. A deviation from board SdnFlows, which draws
+three owners (log: "Board SdnFlows built for C3930"); compared by reading the template, no new
+shot; the states are drawn by tests/test_sdn_external_owners.py through the real route (the
+templates before it hashed `ac1bc68272fc8b90983b1762324f388faff233e7debe4fa581251c078cffe60e`).
 Hashed again 2026-11-19 on the Lab 9 kit's hotfix branch (from 54cc732e), for 2ed6bd5b cherry-picked
 there: every template above is byte for byte 2ed6bd5b's on main but `_sdn_app_deploy.html`,
 which lacks 6a7d61f1's change (a controller taken as it is; not on this branch), so the
