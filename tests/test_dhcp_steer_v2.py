@@ -168,3 +168,83 @@ def test_a_refusal_is_drawn_in_the_card_s_place_and_sends_nothing(ui, monkeypatc
     assert r.status_code == 409 and 'id="dhcp-steering"' in html and "Refused" in html
     assert "holds no NetBox Service named &#39;dhcp&#39;" in html
     assert ui.writes == [] and X.read(NET)["ok"]
+
+
+def test_history_names_each_steered_switch_and_what_was_sent(ui, monkeypatch):
+    """The operator, 2026-11-10: History's Device column said "fleet" and its What a datapath
+    id for every switch steering touched. Each row names its switch (from the committed
+    export's openflow_datapath_id) and says what was sent in words."""
+    # History reads the export as it is COMMITTED in the network's repository.
+    from tests.test_openflow_golden import fake_netbox
+    monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
+    records = lab9_dhcp_records()
+    get, _calls = fake_netbox(records)
+    built = X.build(NET, get=get, version=lambda: records["netbox_version"])
+    assert X.write(NET, "op@example.invalid", "access-assertion", data=built["bytes"])["ok"]
+    html = _text(ui.client.post("/v2/sdn/dhcp/preview", data={"list": NET, "scope": "all"}))
+    assert ui.client.post("/v2/sdn/dhcp/confirm", data=confirm_form(html)).status_code == 200
+    page = unescape(_text(ui.client.get(f"/v2/history?kind=sdn&list={NET}")))
+    summaries = re.findall(r'data-kind="sdn"[^>]*>\s*(<summary.*?</summary>)', page, re.S)
+    assert len(summaries) == 5
+    devices = [re.search(r'<span class="hist-dev[^"]*">\s*(.*?)\s*</span>', s).group(1)
+               for s in summaries]
+    assert sorted(devices) == sorted(DPIDS), devices
+    assert any("DHCP steering on ovs2: 1 flow added, verified" in s for s in summaries)
+    for s in summaries:
+        assert "DHCP steering on " in s and "fleet" not in s
+        assert not re.search(r"[0-9a-f]{12,}", re.sub(r"<[^>]+>", " ", s)), s
+
+
+def test_held_cards_on_apps_draw_every_row_and_the_note_as_one_thin_bar(ui, monkeypatch):
+    """In a real browser, at 1280 (the operator, 2026-11-10): with a live redraw held, the NSOT
+    export's preview, the steering plan and its result each draw the paused note as one thin
+    bar and every row of their tables at full height. Measured before the fix: the note 272 px
+    over the export's preview, whose table showed 166 px of 408 (cut at VLANs); 475 px over
+    the plan, 331 px of 824 shown."""
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why}); the route tests above still run")
+    import app as A
+    from tests.test_openflow_golden import fake_netbox
+    from tests.test_sdn_switches_v2 import SETTLED, assert_drawn_whole, held_card
+
+    records = lab9_dhcp_records()
+    real = X.build
+
+    def build(network, **kw):
+        get, _calls = fake_netbox(records)
+        return real(network, get=get, version=lambda: records["netbox_version"])
+
+    monkeypatch.setattr(X, "build", build)
+    got = {}
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1280, "height": 900})
+            b.go(srv.url(f"/v2/sdn/apps?list={NET}"))
+            b.wait_for(SETTLED, 20)
+            b.click("#nsot-export form.export-act button")
+            b.wait_for("return !!document.querySelector('#nsot-export table.export-changes')",
+                       60)
+            got["the export's preview"] = held_card(b, "#nsot-export")
+            kinds = b.js("var t = document.querySelector('#nsot-export .table-wrap');"
+                         "var w = t.getBoundingClientRect(), r = t.querySelectorAll('tbody tr');"
+                         "var last = r[r.length - 1].getBoundingClientRect();"
+                         "return {rows: r.length, last: last.bottom <= w.bottom + 1}")
+            b.go(srv.url(f"/v2/sdn/apps?list={NET}"))
+            b.wait_for(SETTLED, 20)
+            b.click("#dhcp-steering form.dhcp-act button")
+            b.wait_for("return !!document.querySelector('#dhcp-steering table.dhcp-flows')", 60)
+            got["the steering plan"] = held_card(b, "#dhcp-steering")
+            b.click("#dhcp-steering .dhcp-confirm button[type=submit]")
+            b.wait_for("return !!document.querySelector('#dhcp-steering table.dhcp-result')", 60)
+            got["the steering result"] = held_card(b, "#dhcp-steering")
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+    for where, measured in got.items():
+        assert_drawn_whole(measured, where)
+    # Every kind's row is inside the table's box: Devices to End hosts, seven of them.
+    assert kinds == {"rows": 7, "last": True}, kinds
+    # The confirm pressed in the browser steered: nine flows recorded.
+    assert len(F.intent(NET, CONN)["flows"]) == 9

@@ -476,8 +476,16 @@ def read(network: str, rev: str = "HEAD") -> dict:
     """*network*'s committed export at *rev*: ``{"ok", "export", "sha256", "error"}``. Read from
     the repository's history (`repo.git_raw`), never the working tree; a missing export, or one
     whose hash is not its own, is refused in words."""
+    return read_in(_repo(network), rev, network)
+
+
+def read_in(repo_dir: str, rev: str = "HEAD", network: str = "") -> dict:
+    """`read`'s answer for the repository at *repo_dir*, for a reader that already holds the
+    network's resolved reference (History's sources): resolving a network's name again may
+    create its folder, and a read creates nothing. *network* is said in a refusal."""
     from modules.nsot.repo import git_raw
-    rc, text, err = git_raw(_repo(network), "show", f"{rev}:{PATH}")
+    network = network or "this network"
+    rc, text, err = git_raw(repo_dir, "show", f"{rev}:{PATH}")
     if rc != 0:
         # ``absent``: nothing committed, apart from one committed that does not verify.
         return {"ok": False, "export": None, "sha256": "", "absent": True,

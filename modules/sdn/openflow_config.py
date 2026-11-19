@@ -43,6 +43,14 @@ in order (`CLI_STEPS`):
    vSwitch's; ``response.kind`` ``openflow_config``), which History reads.
 
 A switch already as intended plans as unchanged: its apply sends nothing and verifies.
+
+**What a plan says of itself, kept in its record** (the operator, 2026-11-10: a result and its
+History record name their source and give before and after for each changed value):
+``source`` (`source_of`: the export's SHA-256 and the commit that wrote it, and each value's
+origin as `openflow_values` resolved it) and ``changes`` (``[{"value", "before", "after"}]``:
+for a CLI switch `openflow_state.changes`, the comparison the plan already made; for Open
+vSwitch the bridge's checks, `ovs_config.bridge_checks`). Verify is timed (``verify.seconds``,
+``verify.at``).
 """
 
 import hashlib
@@ -73,8 +81,9 @@ class Refused(ValueError):
 
 def values_from_export(network: str, device: str) -> dict:
     """*device*'s OpenFlow values from *network*'s committed NSOT export: `from_export`'s
-    answer (``{"ok", "values", "defaults", "error"}``, the values carrying
-    ``nsot.export_sha256``), or a refusal naming the export card when none is committed."""
+    answer (``{"ok", "values", "defaults", "origins", "error"}``, the values carrying
+    ``nsot.export_sha256``) with ``export_commit``, the commit that wrote that export
+    (`export.last_commit`), or a refusal naming the export card when none is committed."""
     from modules.nsot import export as X
     from modules.sdn import openflow_values as V
 
@@ -84,7 +93,44 @@ def values_from_export(network: str, device: str) -> dict:
                f"from it: commit one with {EXPORT_CARD} first" if got.get("absent") else
                f"{network}'s committed NSOT export cannot be used: {got['error']}")
         return {"ok": False, "values": {}, "defaults": [], "error": why}
-    return V.from_export(got["export"], device)
+    return dict(V.from_export(got["export"], device),
+                export_commit=str((X.last_commit(network) or {}).get("commit") or ""))
+
+
+def source_of(got: dict) -> dict:
+    """What a plan was built from, for its result and its record: ``{"export_sha256",
+    "export_commit", "origins"}`` out of the values' answer *got* (`values_from_export`): the
+    committed export's hash and the commit that wrote it, and where each value came from, as
+    `openflow_values` resolved it. Carried, never derived again by a reader."""
+    values = got.get("values") or {}
+    return {"export_sha256": str(values.get("nsot.export_sha256") or ""),
+            "export_commit": str(got.get("export_commit") or ""),
+            "origins": [dict(o) for o in got.get("origins") or []]}
+
+
+def built_from(network: str, source: dict) -> dict:
+    """A plan's or a record's *source* (`source_of`) as a screen says it, one way on the result
+    card and on History (templates/v2/_sdn_built_from.html): ``{"network", "export_sha256",
+    "export_commit", "clauses"}``, the clauses `openflow_values.origin_words`' of the origins
+    it kept; ``{}`` for a source naming no export (a record from before sources were kept)."""
+    from modules.sdn import openflow_values as V
+
+    source = source or {}
+    if not source.get("export_sha256"):
+        return {}
+    return {"network": network, "export_sha256": str(source["export_sha256"]),
+            "export_commit": str(source.get("export_commit") or ""),
+            "clauses": V.origin_words(source.get("origins") or [])}
+
+
+def sent_words(sent: list) -> str:
+    """What a run sent, in words: ``"12 lines"``, ``"1 transaction"``, or ``""`` for nothing
+    (a vendor switch's record keeps its line count, Open vSwitch's its one command)."""
+    said = []
+    for s in sent or []:
+        n = s.get("lines")
+        said.append(f"{n} line{'s' if n != 1 else ''}" if n else "1 transaction")
+    return ", ".join(said)
 
 
 def _inventory(network: str, device: str):
@@ -155,11 +201,13 @@ def _cli_plan(network, device, dev, name, *, values=None, session=None) -> dict:
            "where": V.WHERE, "status": T.status(network, name), "lines": [], "program": [],
            "undo": [], "before": None, "hash": "", "citations": T.load(name)["citations"],
            "excluded": [], "takes": [], "different": [], "unchanged": False, "version": "",
-           "profile": "", "export_sha256": "", "steps": CLI_STEPS}
+           "profile": "", "export_sha256": "", "steps": CLI_STEPS, "source": source_of({}),
+           "changes": []}
     got = values if values is not None else values_from_export(network, device)
     out["values"], out["defaults"] = dict(got.get("values") or {}), list(got.get("defaults") or [])
     out["excluded"] = list(out["values"].get("excluded") or [])
     out["export_sha256"] = str(out["values"].get("nsot.export_sha256") or "")
+    out["source"] = source_of(got)
     if not got.get("ok"):
         out["error"] = got.get("error") or "the NSOT export's values could not be read"
         return out
@@ -202,6 +250,8 @@ def _cli_plan(network, device, dev, name, *, values=None, session=None) -> dict:
     # A running configuration is the whole text: a controller, instance or VLAN the program
     # makes and the text does not hold is absent from the switch, never unread.
     out["different"] = r["different"] + [f"{u}: wanted, the switch has none" for u in r["unread"]]
+    # The same comparison, value by value, for the result and the record.
+    out["changes"] = S.changes(r["want"], before)
     out["before"] = before
     program = list(rendered["program"])
     after = S.parse(name, read["running"] + "\n" + "\n".join(program))
@@ -392,8 +442,9 @@ def _cli_apply(network, device, dev, name, confirmed_hash, *, actor, actor_verif
                         out["error"] = f"{device} refused a line: {refused}"
                 if not out["error"]:
                     out["at"] = "verify"
-                    out["verify"] = _verify(conn, name, drv, want, values_, instance, ctl,
-                                            sleep=sleep)
+                    began = now()
+                    out["verify"] = timed(_verify(conn, name, drv, want, values_, instance, ctl,
+                                                  sleep=sleep), began, now())
                     if out["verify"]["ok"]:
                         out["outcome"], out["ok"] = "verified", True
                         return
@@ -428,6 +479,7 @@ def _cli_apply(network, device, dev, name, confirmed_hash, *, actor, actor_verif
            "outcome": out["outcome"], "error": out["error"], "mode": "hitl",
            "saved": False, "save_words": NOT_SAVED,
            "export_sha256": p.get("export_sha256", ""),
+           "source": p.get("source") or source_of({}), "changes": p.get("changes") or [],
            "response": {"kind": "openflow_config", "device": device, "template": name,
                         "template_capture": status.get("capture", "")},
            "actor": actor, "actor_verified": actor_verified}
@@ -436,6 +488,12 @@ def _cli_apply(network, device, dev, name, confirmed_hash, *, actor, actor_verif
         out["error"] = ((out["error"] + "; ") if out["error"] else "") + \
             f"the record could not be kept: {out['record']['error']}"
     return out
+
+
+def timed(verify: dict, began: float, ended: float) -> dict:
+    """*verify* (a Verify's answer) with how long it took and when it ended: ``seconds`` (to a
+    tenth) and ``at`` (UTC). Shared with Open vSwitch's."""
+    return dict(verify, seconds=round(max(0.0, ended - began), 1), at=_iso(ended))
 
 
 def roll_back_read(conn, name: str, p: dict, undone: str) -> dict:

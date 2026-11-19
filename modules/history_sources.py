@@ -57,13 +57,18 @@ def epoch(value) -> float:
 
 
 def _event(at, kind, what, devices, *, who="", detail="", sha="", outcome="", marks=None,
-           record=None, call=""):
-    """One row. *call*: an AI call's id, whose prompt and answer the opened row fetches."""
-    return {"at": iso(at), "kind": kind, "what": what,
-            "devices": sorted({d for d in devices if d}), "who": who or "", "detail": detail,
-            "sha": sha or "", "outcome": outcome, "marks": list(marks or []),
-            "record": [(k, v) for k, v in (record or []) if v not in (None, "", [], {})],
-            "call": call or ""}
+           record=None, call="", subject=""):
+    """One row. *call*: an AI call's id, whose prompt and answer the opened row fetches.
+    *subject*: what the row is about when that is no device of the inventory (an OpenFlow
+    switch NetBox names), said in the Device column in place of "fleet" (`devices_words`)."""
+    row = {"at": iso(at), "kind": kind, "what": what,
+           "devices": sorted({d for d in devices if d}), "who": who or "", "detail": detail,
+           "sha": sha or "", "outcome": outcome, "marks": list(marks or []),
+           "record": [(k, v) for k, v in (record or []) if v not in (None, "", [], {})],
+           "call": call or ""}
+    if subject:
+        row["subject"] = subject
+    return row
 
 
 def _out(events=None, errors=None, cut=None, unborn=None):
@@ -1940,48 +1945,165 @@ def privileged(ctx):
     return _out(events, errors)
 
 
+#: What an SDN operation's record is called, by its ``response.kind`` (a person's own flow
+#: change carries none).
+SDN_KINDS = {"response": "Response", "expiry": "Meter expiry",
+             # A lost response put back (C2018); its record names the operation it re-applies.
+             "reapply": "Re-apply", "policy": "Policy", "dhcp-steering": "DHCP steering",
+             # A switch's OpenFlow configuration (modules/sdn/openflow_config.py).
+             "openflow_config": "OpenFlow configuration"}
+#: What each request a flow operation sent did (`flow_ops`' roles), singular and plural.
+SDN_SENT = (("add_flow", "flow added", "flows added"),
+            ("remove_flow", "flow removed", "flows removed"),
+            ("edit_flow", "flow changed", "flows changed"),
+            ("add_meter", "meter added", "meters added"),
+            ("remove_meter", "meter removed", "meters removed"))
+
+
+def _sdn_switch_names(ref, rows: list) -> dict:
+    """``{datapath id (16 hex): the switch's name}`` for the network *ref*, from stored state
+    only and one read for the whole page: the committed NSOT export's devices
+    (`openflow_values.datapath_names`, read in the reference's own repository, so nothing is
+    resolved or created by name), then each datapath a recorded OpenFlow configuration
+    read from its own switch (a switch NetBox gives no datapath id for). A datapath in neither
+    has no name here, and its row says so rather than naming a guess."""
+    from modules.nsot import export as X
+    from modules.sdn import openflow_values
+
+    names = {}
+    for r in rows:
+        response = r.get("response") or {}
+        if response.get("kind") == "openflow_config" and response.get("device") \
+                and r.get("dpid_hex"):
+            names[str(r["dpid_hex"]).lower()] = response["device"]
+    try:
+        from modules.nsot.repo import has_repository
+        # A network with no repository yet has no export, and nothing is made to find out.
+        got = (X.read_in(ref.repo_dir, network=ref.name) if has_repository(ref.repo_dir)
+               else {"ok": False})
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        log.warning("history: %s's NSOT export could not be read for its switches' names: %s",
+                    ref.name, type(exc).__name__)
+        return names
+    if got.get("ok"):
+        names.update(openflow_values.datapath_names(got["export"]))
+    return names
+
+
+def _sdn_sent(r: dict, configured: bool) -> str:
+    """What the run sent, in words: an OpenFlow configuration's lines or transaction
+    (`openflow_config.sent_words`), a flow operation's requests counted by what each did."""
+    sent = r.get("sent") or []
+    if configured:
+        from modules.sdn import openflow_config
+        return openflow_config.sent_words(sent) and f"{openflow_config.sent_words(sent)} sent"
+    said = []
+    for role, one, many in SDN_SENT:
+        n = sum(1 for s in sent if s.get("role") == role)
+        if n:
+            said.append(f"{n} {one if n == 1 else many}")
+    return ", ".join(said)
+
+
 def sdn_operations(ctx):
-    """Each SDN flow operation (PHASE8_PLAN 17.1 S8 and S16, modules/sdn/flow_ops.py): a
-    person's flow change or a response, who confirmed it (or AUTO, with its reason), the
-    requests' hash, Verify's checks and the outcome. A switch is not an inventory device, so
-    these are the network's own rows, drawn on History, never on a device's tab."""
-    from modules.sdn import flow_intent
-    if ctx["device"]:
-        return _out()
+    """Each SDN operation (PHASE8_PLAN 17.1 S8 and S16, modules/sdn/flow_ops.py; a switch's
+    OpenFlow configuration, modules/sdn/openflow_config.py): a person's flow change, a response
+    or a configuration, who confirmed it (or AUTO, with its reason), what it sent, Verify's
+    checks and the outcome.
+
+    **The row names its switch** (the operator, 2026-11-10: "The History record's Device column
+    says 'fleet' instead of the switch"): a configuration's is the device it was sent to; a flow
+    operation's is the one the network's stored state gives its datapath
+    (`_sdn_switch_names`). A switch of the inventory is the
+    row's device, so its own History tab draws it; one NetBox names that is not in the
+    inventory is the row's subject (drawn in the Device column, no device page to open); a
+    datapath no stored state names stays the network's own row. **What is one readable line**:
+    the kind, the switch, what was sent and the outcome; the datapath id, the operation's id
+    and the hashes sit under "Details for the record". An OpenFlow configuration says what it
+    was built from (`openflow_config.built_from`) and each value before and after, as its
+    record kept them."""
+    from modules.sdn import flow_intent, openflow_config
     got = flow_intent.operations(ctx["ref"].name)
     if got["state"] == "unreadable":
         return _out(errors=[f"the SDN operations could not be read: {got['error']}"])
+    names = _sdn_switch_names(ctx["ref"], got["rows"])
+    members = ctx.get("members")
     events = []
     for r in got["rows"]:
         if not _recent(ctx, r.get("at")):
             continue
         response = r.get("response") or {}
-        what = ("Response" if response.get("kind") == "response" else
-                "Meter expiry" if response.get("kind") == "expiry" else
-                # A lost response put back (C2018); its record names the operation it re-applies.
-                "Re-apply" if response.get("kind") == "reapply" else
-                # An Open vSwitch server's OpenFlow configuration (modules/sdn/ovs_config.py).
-                "OpenFlow configuration" if response.get("kind") == "openflow_config" else
-                "Flow change")
-        if response.get("kind") == "openflow_config":
-            r = dict(r, dpid_hex=f"{response.get('device')} "
-                                 f"(datapath {r.get('dpid_hex') or 'not read'})")
+        kind = response.get("kind") or ""
+        configured = kind == "openflow_config"
+        dpid = str(r.get("dpid_hex") or "").lower()
+        switch = str((response.get("device") if configured else "") or names.get(dpid) or "")
+        if ctx["device"] and switch != ctx["device"]:
+            continue
+        what = SDN_KINDS.get(kind, "Flow change")
+        if kind == "response" and response.get("action"):
+            what = f"Response ({str(response['action']).replace('_', ' ')})"
+        elif kind == "dhcp-steering" and response.get("rollback_of"):
+            what = "DHCP steering put back"
+        elif kind == "dhcp-steering" and response.get("operation_kind") == "remove":
+            what = "DHCP steering removed"
+        sent = _sdn_sent(r, configured)
+        if configured and not sent and r.get("outcome") in ("verified", "unverified"):
+            sent = "already as intended, nothing sent"
+        outcome = str(r.get("outcome") or "").replace("_", " ")
         checks = "; ".join(f"{c.get('state')}: {c.get('words')}"
                            for c in (r.get("verify") or {}).get("checks") or [])
+        seconds = (r.get("verify") or {}).get("seconds")
         who = r.get("actor", "")
         if r.get("mode") == "auto":
             auto = r.get("autonomous") or {}
             who = f"{who} (autonomous: AUTO by {auto.get('by')}, {auto.get('reason')})"
-        events.append(_event(r.get("at"), "sdn",
-                             f"SDN {what.lower()} on {r.get('dpid_hex')}: {r.get('outcome')}",
-                             [], who=who, detail="; ".join(r.get("words") or []),
-                             outcome=r.get("outcome", ""),
-                             record=[("Operation", r.get("id")), ("Controller", r.get("connection")),
-                                     ("Requests' hash", r.get("hash")),
-                                     ("Action", response.get("action")),
-                                     ("Re-applies", response.get("of")),
-                                     ("Detection", (response.get("detection") or {}).get("words")),
-                                     ("Verify", checks), ("Error", r.get("error"))]))
+        # The recorded words name the switch by its datapath id; the row says its name. A
+        # configuration that kept its changes says those; one from before they were kept, its
+        # template's lines, as it always did.
+        words = [w.replace(r["dpid_hex"], switch) if switch and r.get("dpid_hex") else w
+                 for w in ([] if configured and "changes" in r else r.get("words") or [])]
+        if configured and "changes" in r:
+            # Verify, with how long it took.
+            done = (r.get("verify") or {}).get("checks") or []
+            passed = sum(1 for c in done if c.get("state") == "pass")
+            words = [f"Verify: {passed} of {len(done)} check{'s' if len(done) != 1 else ''} "
+                     f"passed" + (f" in {seconds} s" if seconds is not None else "")] \
+                if done else []
+        # Why it ended as it did, in the row and not only its record: the switch named, its
+        # datapath id left to the record's details.
+        why = str(r.get("error") or "")
+        if why and switch and r.get("dpid_hex"):
+            why = why.replace(f"datapath {r['dpid_hex']}", f"{switch}'s datapath")\
+                .replace(r["dpid_hex"], switch)
+        if why:
+            words.append(why)
+        device = [switch] if switch and (members is None or switch in members) else []
+        events.append(_event(
+            r.get("at"), "sdn",
+            f"{what} on {switch or 'a switch no stored read names'}: "
+            + ", ".join(x for x in (sent, outcome) if x),
+            device, subject=switch, who=who,
+            detail="; ".join(words), outcome=r.get("outcome", ""),
+            record=[("Operation", r.get("id")), ("Datapath", r.get("dpid_hex")),
+                    ("Controller", r.get("connection")),
+                    ("Requests' hash", r.get("hash")),
+                    ("NSOT export", (r.get("source") or {}).get("export_sha256")
+                     or r.get("export_sha256")),
+                    ("Export's commit", (r.get("source") or {}).get("export_commit")),
+                    ("Action", response.get("action")),
+                    ("Re-applies", response.get("of")),
+                    ("Detection", (response.get("detection") or {}).get("words")),
+                    ("Verify", checks),
+                    ("Verify took", f"{seconds} s" if seconds is not None else ""),
+                    ("Error", r.get("error"))]))
+        # Rule 2 (C2817): the ids and hashes under a collapsed "Details for the record".
+        events[-1]["record_closed"] = True
+        if configured:
+            built = openflow_config.built_from(ctx["ref"].name, r.get("source"))
+            if built:
+                events[-1]["built_from"] = built
+            if r.get("changes") and r.get("sent"):
+                events[-1]["changes"] = [dict(c) for c in r["changes"]]
     events = events[-ctx["limit"]:]
     return _out(events)
 
@@ -2687,10 +2809,12 @@ def short_who(who: str) -> str:
     return (who or "").split(" (", 1)[0].strip()
 
 
-def devices_words(devices: list) -> str:
-    """The Device column: the fleet's own record, every device, one, a few, or how many."""
+def devices_words(devices: list, subject: str = "") -> str:
+    """The Device column: the fleet's own record, every device, one, a few, or how many; a
+    record about one named thing that is no device of the inventory (*subject*, an OpenFlow
+    switch NetBox names) says that name."""
     if not devices:
-        return "fleet"
+        return subject or "fleet"
     if "*" in devices:
         return "every device"
     if len(devices) <= 3:
@@ -3004,7 +3128,7 @@ def _kept(reads, ctx, device, person, wanted, unverified, call, before, reused) 
         # The row's ONE line (the operator, 2026-10-02): what, its marks and the person's short
         # name; the full wording, who with how they were identified, expands under the row.
         e["who_short"] = short_who(e.get("who", ""))
-        e["devices_words"] = devices_words(e["devices"])
+        e["devices_words"] = devices_words(e["devices"], e.pop("subject", ""))
     people = sorted({e["who_short"] for e in events if e["who_short"]})
     counts = {}
     for e in events:

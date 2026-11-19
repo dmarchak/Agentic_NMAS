@@ -70,6 +70,11 @@
         {#- C2823: what happened, as the decision stated it, facts first (their times in the
             viewer's zone, UTC on hover), then a hypothesis labelled as one; then the outcome. -#}
         {%- if e.heal_cause %}{{ heal_cause(e.heal_cause) }}{% endif %}
+        {#- An OpenFlow configuration (the operator, 2026-11-10): what it was built from, each
+            value with where it came from, and each value before and after, as its record
+            kept them (`history_sources.sdn_operations`). -#}
+        {%- if e.built_from %}<p class="tl-built">{% with b = e.built_from %}{% include "v2/_sdn_built_from.html" %}{% endwith %}.</p>{% endif %}
+        {%- if e.changes %}<ul class="tl-changes">{% for c in e.changes %}<li><span class="of-change-value">{{ c.value }}</span>: {{ c.before }} → {{ c.after }}</li>{% endfor %}</ul>{% endif %}
         <p>{{ e.detail }}{% if e.sha %} <code class="muted">{{ e.sha[:10] }}</code>{% endif %}</p>
         {%- if e.who %}<p class="muted">By {{ e.who }}</p>{% endif %}
         {%- if e.kind == 'golden' %}<p class="muted" data-concept="golden-is-a-record">A golden is a record of what the device ran when it was captured, not a target: the target is its committed intent, rendered, and a deploy sends that.</p>{% endif %}

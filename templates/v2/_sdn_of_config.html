@@ -1,7 +1,11 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, how -%}
 {#- SDN › Switches, Configure from NetBox… (board lab9-sdn artboard A, the preview and result
     cards): each switch's exact program, the export it read, its verify, its undo and the hash;
-    Configure N switches bound to that hash; the result per switch, sent, verify and outcome.
+    Configure N switches bound to that hash; the result per switch: what was sent (or "already
+    as intended, nothing sent"), each value before and after, Verify with how long it took, the
+    outcome, and under it what the switch's program was built from, each value with where it
+    came from (v2/_sdn_built_from.html; the operator, 2026-11-10). A row's identifiers (its
+    operation, its datapath, each check's words) sit under "Details for the record".
     modules/sdn_switches_page.py builds `d`; drawn in #of-config-op. -#}
 {%- set net = d.network -%}
 {%- macro close(words='Back to Switches') -%}<a class="btn btn-small" href="{{ url_for('sdn_switches_v2.page', list=net) }}" hx-get="{{ url_for('sdn_switches_v2.slot', card='config') }}" hx-target="#of-config-op" hx-swap="outerHTML">{{ words }}</a>{%- endmacro -%}
@@ -11,12 +15,13 @@
   <p class="muted small">From the committed NSOT export at {% for e in d.exports %}<span class="mono" title="sha256:{{ e }}">{{ e[:7] }}</span>{{ ', ' if not loop.last }}{% else %}none{% endfor %} (<a href="{{ url_for('sdn_v2.apps', list=net) }}#nsot-export">Export from NetBox…</a> on SDN › Apps if NetBox has moved). Each switch's exact program, then confirm by hash. Merge-only: nothing outside its OpenFlow section is sent, and nothing is saved to the startup configuration.</p>
   {%- for p in d.plans %}
   <h3>{{ p.device }} · {{ p.family }}{% if p.template == 'ovs' %} (one OVSDB transaction){% endif %}{% if p.unchanged %} {{ badge('already as intended', 'ok') }}{% endif %}</h3>
-  {%- if p.unchanged %}<p class="small">Its running configuration's OpenFlow layer is the program's: nothing is sent; Verify still reads the controller's switch list.</p>
+  {%- if p.unchanged %}<p class="small">{{ p.device }} already reads as its program sets it: nothing is sent; Verify still reads it back and the controller's switch list.</p>
   {%- else %}
   <pre class="mono small of-program">{{ p.program | join('\n') }}</pre>
-  {%- if p.different %}<p class="small faint">Differs now: {{ p.different | join('; ') }}</p>{% endif %}
   {%- endif %}
   <dl class="sdn-kv">
+    {%- if p.changes %}<dt>Changes</dt><dd>{% for c in p.changes %}<div class="of-change"><span class="of-change-value">{{ c.value }}</span>: {{ c.before }} → {{ c.after }}</div>{% endfor %}</dd>{% endif %}
+    {%- if p.built %}<dt>Values</dt><dd>{% with b = p.built %}{% include "v2/_sdn_built_from.html" %}{% endwith %}</dd>{% endif %}
     {%- if p.version %}<dt>Release</dt><dd>{{ p.version }}</dd>{% endif %}
     {%- if p.defaults %}<dt>Defaults used</dt><dd>{{ p.defaults | join('; ') }}</dd>{% endif %}
     {%- if p.excluded %}<dt>Left out</dt><dd>{{ p.excluded | join('; ') }}</dd>{% endif %}
@@ -44,18 +49,23 @@
 {%- elif d.state_card == 'result' %}
 <section class="card sdn-op of-op" id="of-config-op" data-holds-live="review" aria-label="The result">
   <div class="sdn-ctl-hd"><h2>Configured {{ d.ok }} of {{ d.total }}</h2>{{ badge({'ok': 'verified', 'warn': 'partial', 'danger': 'not configured'}[d.level], d.level) }}</div>
-  <div class="table-wrap"><table class="table">
-    <thead><tr><th scope="col">Switch</th><th scope="col">Sent</th><th scope="col">Verify</th><th scope="col">Outcome</th></tr></thead>
-    <tbody>
+  <div class="table-wrap"><table class="table of-result">
+    <thead><tr><th scope="col">Switch</th><th scope="col">Sent</th><th scope="col">Before → after</th><th scope="col">Verify</th><th scope="col">Outcome</th></tr></thead>
     {%- for r in d.results %}
+    <tbody class="of-result-row" data-switch="{{ r.device }}">
     <tr>
       <td data-l="Switch" class="mono">{{ r.device }}</td>
-      <td data-l="Sent">{% if r.sent %}{% for s in r.sent %}{% if s.lines %}{{ s.lines }} lines{% else %}1 transaction{% endif %}{% endfor %}{% else %}nothing{% endif %}</td>
-      <td data-l="Verify">{% for c in r.verify %}{{ c.words }}{{ '; ' if not loop.last }}{% else %}not reached{% endfor %}</td>
+      <td data-l="Sent">{% if r.as_intended %}already as intended, nothing sent{% elif r.sent_words %}{{ r.sent_words }}<details data-keep="of-sent-{{ r.device }}"><summary class="small">What was sent</summary><pre class="mono small of-program">{{ r.sent_lines | join('\n') }}</pre></details>{% else %}nothing{% endif %}</td>
+      <td data-l="Before → after">{% for c in r.changes %}<div class="of-change"><span class="of-change-value">{{ c.value }}</span>: {{ c.before }} → {{ c.after }}</div>{% else %}<span class="faint">no value changed</span>{% endfor %}{% if r.changes and r.rollback.ran %}<div class="small faint">{{ 'sent, then put back' if r.rollback.ok else 'sent, and not put back as it was' }}</div>{% endif %}</td>
+      <td data-l="Verify">{% if r.verify %}{{ r.verify_passed }} of {{ r.verify | length }} check{{ 's' if r.verify | length != 1 }} passed{% if r.verify_seconds is not none %} in {{ r.verify_seconds }} s{% endif %}{% if r.verify_at %}, {{ stamp(r.verify_at) }}{% endif %}{% else %}not reached{% endif %}
+        {%- if r.verify or r.id %}<details class="tl-record-d" data-keep="of-rec-{{ r.device }}"><summary>Details for the record</summary><dl class="tl-record">{% if r.id %}<dt>Operation</dt><dd class="mono">{{ r.id }}</dd>{% endif %}{% if r.dpid %}<dt>Datapath</dt><dd class="mono">{{ r.dpid }}</dd>{% endif %}{% for c in r.verify %}<dt>{{ c.name }}</dt><dd>{{ c.state | replace('_', ' ') }}: {{ c.words }}</dd>{% endfor %}</dl></details>{% endif %}</td>
       <td data-l="Outcome">{{ badge(r.outcome.replace('_', ' '), {'verified': 'ok', 'rolled_back': 'warn'}.get(r.outcome, 'danger')) }}{% if r.error and r.outcome != 'verified' %} <span class="small">{{ r.error }}</span>{% endif %}{% if r.rollback.ran %} <span class="small faint">{{ r.rollback.words }}</span>{% endif %}{% if not r.recorded and r.id %} <span class="small">its record could not be kept</span>{% endif %}</td>
     </tr>
-    {%- endfor %}
+    {%- if r.built %}
+    <tr class="of-built"><td colspan="5" class="small">{% with b = r.built %}{% include "v2/_sdn_built_from.html" %}{% endwith %}.</td></tr>
+    {%- endif %}
     </tbody>
+    {%- endfor %}
   </table></div>
   <p class="muted small">Recorded on History, one record per switch{% if d.results | selectattr('saved', 'equalto', False) | list %}; {{ (d.results | selectattr('saved', 'equalto', False) | first).save_words }}{% endif %}.</p>
   <div class="apps-acts"><a class="btn btn-small" href="{{ url_for('v2.history_page', kind='sdn') }}">Open the record</a>{{ close() }}{{ how('openflow-config', 'result') }}</div>

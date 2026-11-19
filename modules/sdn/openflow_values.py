@@ -35,6 +35,15 @@ physical ports) and no number given to two ports of one switch. Whether a port n
 REQUIRED, and whether it must equal the platform's own numbering, is the platform profile's
 (`port_numbering`), checked at render (`openflow_templates.numbering_problems`).
 
+**Where each value came from** (``origins``, beside the values): one entry per value as it was
+RESOLVED here, never worked out again by a reader: ``{"value", "is", "from"}``, the controller
+with the Service and which of its addresses was taken (its own, or its device's primary IPv4 or
+IPv6), the version, transport and fail mode each from the config context or Mercury's default,
+the instance, the datapath id (named, never printed: it is an identifier), the ports and their
+numbers. `origin_words` says them as clauses, values that share an origin in one. An export
+keeps the RENDERED config context, not which context object supplied a key, so an origin says
+"the device's config context" and cannot name the object.
+
 **From NetBox or from an export:** `from_netbox` takes the records as NetBox's REST API returns
 them; `from_export` takes a committed NSOT export (`modules/nsot/export.py`), so a plan reads the
 same bytes offline that it names the hash of.
@@ -94,6 +103,48 @@ def _service_parent(svc: dict) -> str:
     return str(parent.get("name") or parent.get("display") or "")
 
 
+#: An origin's words for a value the config context gave, and for one it did not.
+FROM_CONTEXT = "the device's config context (key openflow)"
+FROM_DEFAULT = "Mercury's default (the config context gives none)"
+
+
+def _origin(value: str, text: str, where: str) -> dict:
+    return {"value": value, "is": text, "from": where}
+
+
+def _endpoint(address: str, port: str) -> str:
+    """``address:port`` as a person reads it, an IPv6 address in brackets."""
+    try:
+        six = ipaddress.ip_address(address).version == 6
+    except ValueError:
+        six = False
+    host = f"[{address}]" if six else address
+    return f"{host or 'no address'}:{port or 'no port'}"
+
+
+def origin_words(origins: list) -> list:
+    """*origins* as clauses, in order: ``"<value> <is> from <where>"``, consecutive values
+    sharing one origin said together (``version 1.3, transport tcp, fail_mode secure from
+    …``)."""
+    out, run, where = [], [], None
+
+    def close():
+        if run:
+            out.append(", ".join(run) + (f" from {where}" if where else ""))
+
+    for o in origins or []:
+        said = " ".join(x for x in (str(o.get("value") or ""), str(o.get("is") or "")) if x)
+        if not said:
+            continue
+        if run and o.get("from") != where:
+            close()
+            run = []
+        where = o.get("from") or ""
+        run.append(said)
+    close()
+    return out
+
+
 def from_netbox(device: dict, interfaces: list, services: list, controllers: dict,
                 vlans=(), prefixes=()) -> dict:
     """The values from NetBox records already fetched (the seam tests use): *device* (with its
@@ -101,12 +152,13 @@ def from_netbox(device: dict, interfaces: list, services: list, controllers: dic
     ``untagged_vlan`` and ``ip_addresses``), the *services* named ``openflow``, and
     *controllers* (``{device name: its record}``, for a Service with no address of its own);
     the site's *vlans* and *prefixes*, for what they declare protected (`protected.TAG`).
-    ``{"ok", "values", "defaults", "error"}``; a value of the wrong shape is refused, named.
-    The values carry the device's protected objects (``protected.objects``) and the ports
-    carrying the OpenFlow VLAN (``openflow.vlan_members``)."""
+    ``{"ok", "values", "defaults", "origins", "error"}``; a value of the wrong shape is refused,
+    named. The values carry the device's protected objects (``protected.objects``) and the
+    ports carrying the OpenFlow VLAN (``openflow.vlan_members``); ``origins`` says where each
+    value came from, as it was resolved (the module's "Where each value came from")."""
     ctx = (device.get("config_context") or {}).get("openflow") or {}
     cf = device.get("custom_fields") or {}
-    v, defaults, bad = {"switch.name": device.get("name", "")}, [], []
+    v, defaults, bad, origins = {"switch.name": device.get("name", "")}, [], [], []
 
     v["switch.address"] = _addr(device.get("primary_ip4")) or _addr(device.get("primary_ip6"))
 
@@ -115,7 +167,7 @@ def from_netbox(device: dict, interfaces: list, services: list, controllers: dic
         want = str(ctx.get("controller") or "")
         chosen = [s for s in services if _service_parent(s) == want]
         if not want or len(chosen) != 1:
-            return {"ok": False, "values": {}, "defaults": [], "error": (
+            return {"ok": False, "values": {}, "defaults": [], "origins": [], "error": (
                 f"NetBox holds {len(services)} 'openflow' Services "
                 f"({', '.join(sorted(_service_parent(s) for s in services))}), and the config "
                 f"context's openflow.controller names {want or 'none'}: name one")}
@@ -124,6 +176,10 @@ def from_netbox(device: dict, interfaces: list, services: list, controllers: dic
         target = service_target(svc, controllers.get(_service_parent(svc)) or {})
         v["controller.port"], v["controller.address"] = target["port"], target["address"]
         v["controller.name"] = _service_parent(svc)
+        origins.append(_origin(
+            "controller", _endpoint(target["address"], target["port"]),
+            f"NetBox Service '{SERVICE}' on {_service_parent(svc) or 'no device'}"
+            + (f" ({target['address_from']})" if target["address_from"] else "")))
         proto = str(((svc.get("protocol") or {}).get("value")
                      if isinstance(svc.get("protocol"), dict) else svc.get("protocol")) or "")
         if proto and proto.lower() != "tcp":
@@ -133,13 +189,25 @@ def from_netbox(device: dict, interfaces: list, services: list, controllers: dic
         given = ctx.get(key)
         if given in (None, ""):
             defaults.append(f"openflow.{key} {default} (no openflow.{key} in the config context)")
+            origins.append(_origin(key, str(default), FROM_DEFAULT))
             given = default
+        else:
+            origins.append(_origin(key, str(given), FROM_CONTEXT))
         v[f"openflow.{key}"] = str(given)
     v["openflow.instance"] = str(cf.get("openflow_instance") or ctx.get("instance") or "")
+    if v["openflow.instance"]:
+        origins.append(_origin("instance", v["openflow.instance"],
+                               "custom field openflow_instance" if cf.get("openflow_instance")
+                               else FROM_CONTEXT))
     # The Mercury controller connection a switch's appearance is verified against, when the
     # network has more than one (SDN › Controllers' name).
     v["openflow.connection"] = str(ctx.get("connection") or "")
     v["openflow.datapath_id"] = str(cf.get("openflow_datapath_id") or "").lower()
+    # Named, never printed: a datapath id is an identifier, kept with the record's details.
+    origins.append(_origin("DPID", "", "custom field openflow_datapath_id")
+                   if v["openflow.datapath_id"] else
+                   _origin("DPID", "read from the switch itself (the custom field "
+                                   "openflow_datapath_id is empty)", ""))
 
     tagged = [i for i in interfaces or [] if TAG in _slugs(i)]
     # B, the protected set (modules/protected.py): the management interface and everything
@@ -173,8 +241,18 @@ def from_netbox(device: dict, interfaces: list, services: list, controllers: dic
         str(i.get("name") or ""): str((i.get("custom_fields") or {}).get("openflow_port"))
         for i in of_ifaces
         if (i.get("custom_fields") or {}).get("openflow_port") not in (None, "")}
+    origins.append(_origin("ports", ", ".join(v["ports"]) or "none",
+                           f"interfaces tagged {TAG}"))
+    if v["port.openflow_port"]:
+        origins.append(_origin(
+            "OpenFlow port numbers",
+            ", ".join(f"{p} {n}" for p, n in sorted(v["port.openflow_port"].items())),
+            "each interface's custom field openflow_port"))
     vlans ={(i.get("untagged_vlan") or {}).get("vid") for i in of_ifaces}
     v["openflow.vlan"] = str(vlans.pop()) if len(vlans) == 1 and None not in vlans else ""
+    if v["openflow.vlan"]:
+        origins.append(_origin("OpenFlow VLAN", v["openflow.vlan"],
+                               f"the untagged VLAN of the interfaces tagged {TAG}"))
     if len({(i.get("untagged_vlan") or {}).get("vid") for i in of_ifaces}) > 1:
         bad.append("the interfaces tagged openflow are on more than one untagged VLAN: "
                    + ", ".join(sorted(str((i.get("untagged_vlan") or {}).get("vid"))
@@ -191,20 +269,25 @@ def from_netbox(device: dict, interfaces: list, services: list, controllers: dic
 
     bad += _shape_problems(v)
     if bad:
-        return {"ok": False, "values": v, "defaults": defaults, "error": "; ".join(bad)}
-    return {"ok": True, "values": v, "defaults": defaults, "error": ""}
+        return {"ok": False, "values": v, "defaults": defaults, "origins": origins,
+                "error": "; ".join(bad)}
+    return {"ok": True, "values": v, "defaults": defaults, "origins": origins, "error": ""}
 
 
 def service_target(svc: dict, parent: dict) -> dict:
-    """Where an ``openflow`` Service listens: ``{"address", "port"}``, its first IP address,
-    else its device's primary IPv4, else its primary IPv6, and its first port (text, "" when
-    none). One answer for a switch's ``controller.*`` values and the controller host's own
-    listen address (the controller app deploy, `modules/apps/sources.py`)."""
+    """Where an ``openflow`` Service listens: ``{"address", "port", "address_from"}``, its first
+    IP address, else its device's primary IPv4, else its primary IPv6, and its first port (text,
+    "" when none); ``address_from`` says which of the three the address is ("" for none). One
+    answer for a switch's ``controller.*`` values and the controller host's own listen address
+    (the controller app deploy, `modules/apps/sources.py`)."""
     ports = svc.get("ports") or []
     own = [_addr(a) for a in svc.get("ipaddresses") or [] if _addr(a)]
-    return {"port": str(ports[0]) if ports else "",
-            "address": (own[0] if own else _addr((parent or {}).get("primary_ip4"))
-                        or _addr((parent or {}).get("primary_ip6")))}
+    primary4 = _addr((parent or {}).get("primary_ip4"))
+    primary6 = _addr((parent or {}).get("primary_ip6"))
+    address, how = ((own[0], "the Service's own IP address") if own else
+                    (primary4, "its device's primary IPv4 address") if primary4 else
+                    (primary6, "its device's primary IPv6 address") if primary6 else ("", ""))
+    return {"port": str(ports[0]) if ports else "", "address": address, "address_from": how}
 
 
 def management_reason(device: dict, iface: dict) -> str:
@@ -301,16 +384,29 @@ def _shape_problems(v: dict) -> list:
     return bad
 
 
+def datapath_names(export: dict) -> dict:
+    """``{datapath id (16 hex, lower case): device name}`` for every device of *export* whose
+    custom field ``openflow_datapath_id`` gives one (the same field `from_netbox` reads): one
+    pass over the export's devices, nothing read per device, for a reader that has a datapath
+    id and wants the switch's name (History's SDN rows)."""
+    out = {}
+    for d in (export.get("body") or {}).get("devices") or []:
+        dpid = str((d.get("custom_fields") or {}).get("openflow_datapath_id") or "").lower()
+        if d.get("name") and _HEX16.match(dpid) and set(dpid) != {"0"}:
+            out[dpid] = str(d["name"])
+    return out
+
+
 def from_export(export: dict, device_name: str) -> dict:
     """*device_name*'s values from a committed NSOT export (`modules/nsot/export.py`'s document),
     with no NetBox read: the export's records put back in NetBox's shapes and read by
-    `from_netbox`, so both read one way. ``{"ok", "values", "defaults", "error"}``; the values
-    carry the export's hash (``nsot.export_sha256``)."""
+    `from_netbox`, so both read one way. ``{"ok", "values", "defaults", "origins", "error"}``;
+    the values carry the export's hash (``nsot.export_sha256``)."""
     from modules.nsot import export as X
 
     dev = X.device(export, device_name)
     if dev is None:
-        return {"ok": False, "values": {}, "defaults": [],
+        return {"ok": False, "values": {}, "defaults": [], "origins": [],
                 "error": f"the NSOT export ({str(export.get('sha256'))[:12]}) holds no device "
                          f"{device_name!r}"}
 
