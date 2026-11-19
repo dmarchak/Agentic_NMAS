@@ -115,7 +115,10 @@ Each switch's flow table, Mercury's expected flows beside what is installed.
   severity, why and the evidence ids it cites, checked against the snapshot before it is shown
   (a finding citing nothing the snapshot holds is dropped, and the card says how many were).
   Beside it, the snapshot's size and time, the model and about what a call costs, and
-  **Collect now**, which reads the switches again as a job. **Planted issues** is the sheet
+  **Collect now**, which reads the switches again as a job. Under them, the latest snapshot's
+  id as text with **Copy**, when it was collected (UTC) and what it holds, and **Kept
+  snapshots**, which lists every snapshot kept when you open it: its id, time, switches,
+  flows and whether its seal holds ([Collect now](sdn-analyse#collect)). **Planted issues** is the sheet
   that compares the findings with problems you planted, each **found** or **missed** with your
   why, or **planted after this analysis** (neither, and outside the counts) when it was
   planted after the analysis was made. Each row's **Edit…** corrects its name and evidence

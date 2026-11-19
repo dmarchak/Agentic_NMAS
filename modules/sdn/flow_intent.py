@@ -21,7 +21,13 @@ database once moved; `records_store_flow_intent`): append-only, one line per eve
   bands, and when Mercury removes it: a meter has no timeout of its own), and its removal;
 - ``operation``: one flow operation's whole run (`flow_ops.apply`): its requests and their
   hash, who confirmed it, each answer, Verify's checks, the rollback and the outcome, which
-  History reads.
+  History reads;
+- ``refused``: a verified person's press the protected set refused (C2944, `record_refusal`;
+  an unverified request's is not recorded, `refusal_not_recorded`): who and
+  how verified, when, the switch, what was asked, each protected flow class, object or the
+  control channel that refused it with its citation, and the refusal's words. Nothing was
+  sent. History and History › Export's failure log read these (`refusals`). A reader that
+  does not know the kind passes it by: every reader here keeps rows by their kind.
 Each append holds the store's cross-process lock across its read (a cookie is recorded once)
 and its write (`records_migrate.store_append`, owner-only, a line at a time).
 
@@ -428,6 +434,88 @@ def operations(network: str) -> dict:
         return {"state": "unreadable", "rows": [], "error": got["error"]}
     return {"state": got["state"], "rows": [r for r in got["rows"]
                                             if r.get("kind") == "operation"], "error": ""}
+
+
+# ───────────────────────────────────────────────────────────────────────────── refusals
+
+#: What a refused write was, and where its press was refused (C2944), as the record names
+#: them and History and History › Export say them.
+REFUSED_WHAT = {"flow": "flow change", "policy": "policy", "response": "response",
+                "reapply": "re-apply", "dhcp-steering": "DHCP steering"}
+REFUSED_STAGE = {"preview": "at its preview", "confirm": "at its confirm",
+                 "draft": "when it was drafted", "check": "when it was checked again"}
+#: Why a refusal is not recorded for a request that is no verified person's, in the words its
+#: card draws (`refusal_not_recorded`).
+NOT_A_PERSON = "a refusal's record is made for a verified person, and this request is not one"
+
+
+def refusal_not_recorded(actor: str, actor_verified: str) -> str:
+    """Why a refusal by the protected set is NOT recorded for *actor*, or ``""``: a record is
+    made for a verified person only (the test C3022's checks make: no actor, or one whose
+    ``actor_verified`` is empty or ``none``). The one check: `record_refusal` refuses by it,
+    so no caller can write past it, and `flow_ops.keep_refusal` asks it first to say so on
+    the card. A preview stays ungated and answers an unverified press as it always did; only
+    the record needs a person, so a request nobody verified cannot append to the store."""
+    return NOT_A_PERSON if not actor or actor_verified in ("", "none") else ""
+
+
+def record_refusal(network: str, *, what: str, stage: str, actor: str, refused_by: list,
+                   words: str, actor_verified: str = "", connection: str = "", dpid=None,
+                   asked=(), call_id: str = "", policy: dict = None, at: float = None) -> dict:
+    """Record a write the protected set refused (C2944; `protected.flow_refusal_detail`, or a
+    policy's own protected check): a person's press of a preview, a draft or a confirm that
+    sent nothing. *what* is a `REFUSED_WHAT` key and *stage* a `REFUSED_STAGE` key; *actor*
+    who pressed and *actor_verified* how that was established, which must be a verified
+    person's (`refusal_not_recorded`: an actor verified ``none`` or not at all is refused,
+    and nothing is written); *connection* and *dpid* the
+    switch it was for, where one was reached; *asked* what was asked, in words; *refused_by*
+    each thing of the protected set that refused it (`protected.refused_by`: its guard, name,
+    invariant, source, what met it and its citation); *words* the refusal as it was said;
+    *call_id* the AI call that drafted a policy; *policy* its id and words. Every text is
+    masked at rest. Answers the row; raises `IntentRefused` naming why it was not kept.
+
+    The planner never calls this: a plan is every preview's and writes nothing. It is
+    written where a person's press is answered (`flow_ops.keep_refusal`)."""
+    from modules.redact import redact_text
+    from modules.sdn.drivers.base import dpid_hex
+
+    if what not in REFUSED_WHAT or stage not in REFUSED_STAGE:
+        raise IntentRefused(f"a refusal's record names what was refused (one of "
+                            f"{', '.join(REFUSED_WHAT)}) and where (one of "
+                            f"{', '.join(REFUSED_STAGE)}), not {what!r} and {stage!r}")
+    unverified = refusal_not_recorded(actor, actor_verified)
+    if unverified:
+        raise IntentRefused(f"{unverified} (the actor is {actor or 'not named'}, verified "
+                            f"{actor_verified or 'by nothing recorded'}); nothing was recorded")
+    if not refused_by:
+        raise IntentRefused("a refusal's record names what of the protected set refused it")
+    at = time.time() if at is None else float(at)
+    row = {"kind": "refused", "network": network,
+           "id": f"sdnrf-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime(at))}-"
+                 f"{secrets.token_hex(4)}",
+           "at": _iso(at), "what": what, "stage": stage, "actor": actor,
+           "actor_verified": actor_verified, "connection": connection or "",
+           "dpid": dpid, "dpid_hex": dpid_hex(dpid) if dpid is not None else "",
+           "asked": [redact_text(str(a)) for a in asked or () if str(a or "").strip()],
+           "refused_by": [dict(b, name=redact_text(str(b.get("name") or "")),
+                               source=redact_text(str(b.get("source") or "")),
+                               met=[redact_text(str(m)) for m in b.get("met") or []])
+                          for b in refused_by],
+           "words": redact_text(str(words or "")), "call_id": call_id or ""}
+    if policy:
+        row["policy"] = {"id": str(policy.get("id") or ""),
+                         "words": redact_text(str(policy.get("words") or ""))}
+    return _append(network, row, lambda rows: None)
+
+
+def refusals(network: str) -> dict:
+    """*network*'s refusals by the protected set, oldest first: ``{"state", "rows",
+    "error"}``; absent and unreadable are different answers."""
+    got = read(network)
+    if got["state"] == "unreadable":
+        return {"state": "unreadable", "rows": [], "error": got["error"]}
+    return {"state": got["state"], "rows": [r for r in got["rows"]
+                                            if r.get("kind") == "refused"], "error": ""}
 
 
 # ───────────────────────────────────────────────────────────────────────────── comparing

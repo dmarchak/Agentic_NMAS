@@ -16,6 +16,14 @@ from each source in `FAILURE_SOURCES`:
 - each SDN detection a person dismissed, with the reason and who (`loop.responses_record`);
 - each AI classification the check refused (the proposed response's refused call);
 - each response AUTO decided on and sent nothing for, a protected-flow refusal named as one;
+- each press of a person's the protected set refused (C2944; the flow intent's refusal
+  records, `flow_intent.record_refusal`): a flow change, a policy, a response or a re-apply
+  refused at its preview, its draft or its confirm, with who and how they were verified, what
+  was asked and each protected flow class, object or the control channel that refused it,
+  with its citation; and, from the ledger, each SDN policy call whose use says the protected
+  set refused its answer and that no refusal record names (one made before the records were
+  kept). Each protected-flow refusal's row says which it was: AUTO's response, a person's
+  flow change (policy, response, re-apply), or an AI call's answer;
 - each SDN flow operation whose Verify failed or whose controller refused a request, and what
   its rollback achieved (`flow_intent.operations`);
 - each evaluation call that classified a collection no rule fired on as a threat: a false
@@ -104,12 +112,31 @@ B4_TECHNIQUES = {"baseline": "without tools", "tools": "with the trace tool"}
 #: (`protected.flow_refusal` "(B, C2379)", `control_plane.refusal` "(C2022)"), so an AUTO
 #: failure carrying one is a protected-flow refusal.
 PROTECTED_MARKS = ("C2379", "C2022")
+#: Which write a protected-flow refusal refused, said first in its row's ``got`` (C2944):
+#: AUTO's response (the SDN responses store), a person's press (the flow intent's refusal
+#: records, by what was refused), and an AI call's answer whose use says the protected set
+#: refused it, where no refusal record names the call (the ledger).
+REFUSED_AUTO = "AUTO's response"
+REFUSED_PERSON = "a person's {what}"
+REFUSED_CALL = "an AI call's answer"
+#: What every protected-flow refusal's row expected.
+REFUSED_EXPECTED = ("no write that meets a protected flow class, a protected object or the "
+                    "control channel")
+#: The length the features that cut a reason for a call's use cut it to (`policy_intent.draft`
+#: until C3014, and the model's own question or reason in `intent_words`, `heal_analysis` and
+#: `policy_intent` still), and what the file says of a detail exactly that long.
+USE_DETAIL_CUT = 200
+USE_DETAIL_CUT_WORDS = (f"[{USE_DETAIL_CUT} characters: as long as the cut made when this "
+                        "was recorded, so its end may be missing]")
 #: What no store Mercury reads holds, said in each failure file and on the page.
 NOT_RECORDED = ("the per-case misses of nmas-intent-cases, nmas-heal-cases, nmas-nl-cases and "
                 "nmas-assistant-cases are written only to each script's own --out report, so "
                 "they are not here; attach that report beside this file. B3's false-positive "
                 "runs, B4's analyst evaluations and nmas-sdn-cases' classification misses are "
-                "here")
+                "here. A person's flow change or policy that the protected set refused is "
+                "here from the release that began keeping a record of each one; a refusal "
+                "made before it was kept nowhere, and is here only as its AI call where it "
+                "made one")
 
 #: The export's steps, as the manual's How it works page names them.
 STEPS = (
@@ -120,13 +147,17 @@ STEPS = (
               "from the rows read now, never carried forward"),
     ("failures", "from each network's own records: SDN detections dismissed, classifications "
                  "the check refused, responses AUTO could not send (a protected-flow refusal "
-                 "named), flow operations Verify failed and what their rollback achieved, the "
+                 "named), each flow change, policy, response or re-apply of a person's that "
+                 "the protected set refused (who, what was asked, each protected flow that "
+                 "refused it), flow operations Verify failed and what their rollback "
+                 "achieved, the "
                  "planted issues each analysis in the range missed, and its record of SDN "
                  "evaluation runs (each false positive a normal-traffic run found, each analyst "
                  "evaluation run that missed, kept a false positive or answered a benign case "
                  "as a threat, each classification case a recording missed); from the ledger, "
-                 "evaluation false positives; and AI answers a person said were wrong, with "
-                 "their review"),
+                 "evaluation false positives and policy answers the protected set refused "
+                 "before a record of each was kept; and AI answers a person said were wrong, "
+                 "with their review"),
     ("mask", "every text a row carries masked on the way out, as History masks what it draws"),
     ("file", f"CSV or JSON, its first lines the log, its range, its network, when it was made "
              f"and by whom; at most {MAX_ROWS} rows, the rest counted; nothing is written"),
@@ -301,12 +332,27 @@ def _subject(row: dict) -> str:
     return subject_words(row.get("subject"))
 
 
+def _use_words(use: dict) -> str:
+    """What became of a call's answer, from its use row: the feature's word and its detail,
+    whole (C3014: the file keeps the whole reason; nothing here shortens it). A detail of
+    exactly `USE_DETAIL_CUT` characters is as long as the cut some features made when they
+    recorded it, so the file says its end may be missing rather than show a cut reason as a
+    whole one."""
+    detail = _use_detail(use)
+    return (use.get("use") or "") + (f" ({detail})" if detail else "")
+
+
+def _use_detail(use: dict) -> str:
+    """A use row's detail, whole, saying so when it is as long as a recorded cut."""
+    detail = use.get("detail") or ""
+    return f"{detail} {USE_DETAIL_CUT_WORDS}" if len(detail) == USE_DETAIL_CUT else detail
+
+
 def _call_row(row: dict, uses: list) -> dict:
     tokens = row.get("tokens") or {}
     kind, by = _trigger(row)
     key = outcome(row, uses)
-    then = "; ".join((u.get("use") or "") + (f" ({u['detail']})" if u.get("detail") else "")
-                     for u in uses)
+    then = "; ".join(_use_words(u) for u in uses)
     return _masked_row({
         "at": row.get("at") or "", "day": _day(row.get("at")), "call": row.get("id") or "",
         "feature": row.get("feature") or "", "trigger": kind, "by": by,
@@ -464,11 +510,62 @@ def _from_responses(network: str, rng: dict, ctx: dict) -> dict:
                                 source="sdn_responses"))
         if kind == "proposed" and r.get("auto_failed"):
             why = str(r["auto_failed"])
-            out.append(_failure(at, "protected_refusal" if any(m in why for m in PROTECTED_MARKS)
-                                else "auto_failed", network,
+            marks = [m for m in PROTECTED_MARKS if m in why]
+            out.append(_failure(at, "protected_refusal" if marks else "auto_failed", network,
                                 _detection_words(r.get("detection")), reason=why,
                                 who="AUTO", outcome=f"nothing sent; a person's ({rid})",
+                                expected=REFUSED_EXPECTED if marks else "",
+                                got=(f"{REFUSED_AUTO}: refused by the protected set "
+                                     f"({', '.join(marks)})" if marks else ""),
                                 link=link, source="sdn_responses"))
+    return {"rows": out, "errors": []}
+
+
+def _from_refusals(network: str, rng: dict, ctx: dict) -> dict:
+    """Each press of the network's the protected set refused (C2944; the flow intent's
+    refusal records, `flow_intent.record_refusal`): a person's flow change, policy, response
+    or re-apply refused at its preview, its draft or its confirm, with who and how they were
+    verified, what was asked, and each protected flow class, object or the control channel
+    that refused it with its citation. Every record's AI call is noted (`ctx`), in the range
+    or not, so the ledger's row for the same call is not a second one."""
+    from modules.history_sources import actor_words, sdn_refused_by
+    from modules.sdn import flow_intent
+
+    def _who(actor, verified):
+        w = actor_words(actor, verified)
+        return w["who"] + (f" ({w['how']})" if w["how"] else "")
+
+    got = flow_intent.refusals(network)
+    if got["state"] == "unreadable":
+        return {"rows": [], "errors": [f"{network}'s refusals by the protected set could not "
+                                       f"be read: {got['error']}"]}
+    out = []
+    for r in got["rows"]:
+        if r.get("call_id"):
+            ctx.setdefault("refusal_calls", set()).add(r["call_id"])
+        at = r.get("at")
+        if not _in(_instant(at), rng):
+            continue
+        what = flow_intent.REFUSED_WHAT.get(r.get("what"), "flow change")
+        kind = REFUSED_PERSON.format(what=what)
+        stage = flow_intent.REFUSED_STAGE.get(r.get("stage"), "")
+        switch = f" on {r['dpid_hex']}" if r.get("dpid_hex") else ""
+        asked = "; ".join(r.get("asked") or [])
+        call = r.get("call_id") or ""
+        out.append(_failure(
+            at, "protected_refusal", network,
+            f"{kind[0].upper()}{kind[1:]}{switch}, refused {stage}".rstrip()
+            + (f": {asked}" if asked else ""),
+            reason=r.get("words") or "",
+            who=_who(r.get("actor") or "", r.get("actor_verified") or ""),
+            outcome=f"nothing sent; recorded ({r.get('id')})",
+            case=(r.get("policy") or {}).get("id") or r.get("id") or "",
+            expected=REFUSED_EXPECTED,
+            got=f"{kind}: refused by {sdn_refused_by(r) or 'the protected set'}"
+                + (f"; drafted by AI call {call}" if call else ""),
+            link=(history_call_link(call) if call
+                  else _history_day_link(network, "sdn", _day(at))),
+            source="sdn_refusals"))
     return {"rows": out, "errors": []}
 
 
@@ -743,6 +840,49 @@ def _from_evaluations(network: str, rng: dict, ctx: dict) -> dict:
     return {"rows": out, "errors": []}
 
 
+def _from_refused_calls(network: str, rng: dict, ctx: dict) -> dict:
+    """The ledger's SDN policy calls whose answer the protected set refused, by the call's
+    use row ("refused by validation", its detail opening with the check's own words,
+    `policy_intent.PROTECTED_LEAD`): the only record of such a refusal made before refusal
+    records were kept (C2944). A call a refusal record names is that record's row, never a
+    second one (`failures` drops it, once every network's records are read). Ledger-wide:
+    read once, for the first network asked (`ctx`)."""
+    if ctx.get("refused_calls_read"):
+        return {"rows": [], "errors": []}
+    ctx["refused_calls_read"] = True
+    led = ctx["ledger"]
+    if led["state"] == "unreadable":
+        return {"rows": [], "errors": []}      # said once, by the call log's read
+    from modules.sdn import policy_intent
+
+    want, out = ctx["want"], []
+    for r in led["rows"]:
+        if r.get("feature") != policy_intent.FEATURE or not _in(_instant(r.get("at")), rng):
+            continue
+        uses = led["uses"].get(r.get("id")) or []
+        last = uses[-1] if uses else {}
+        if not str(last.get("use") or "").startswith("refused") \
+                or not str(last.get("detail") or "").startswith(policy_intent.PROTECTED_LEAD):
+            continue
+        net = call_network(r)
+        if want and net != want:
+            continue
+        _kind, by = _trigger(r)
+        out.append(_failure(r.get("at"), "protected_refusal", net,
+                            f"{REFUSED_CALL[0].upper()}{REFUSED_CALL[1:]}, "
+                            f"{last.get('use')}: an SDN policy drafted for "
+                            f"{(r.get('subject') or {}).get('id') or net or 'no named network'}",
+                            reason=_use_detail(last),
+                            who=by,
+                            outcome="nothing sent; kept only as the call's use: it was made "
+                                    "before a refusal was a record of its own",
+                            case=r.get("id") or "", expected=REFUSED_EXPECTED,
+                            got=f"{REFUSED_CALL}: refused by the protected set, in the "
+                                "words its use recorded",
+                            link=history_call_link(r.get("id") or ""), source="ai_calls"))
+    return {"rows": out, "errors": []}
+
+
 def _from_feedback(network: str, rng: dict, ctx: dict) -> dict:
     """Each AI answer a person said was wrong, and what its review did. Installation-wide:
     read once (`ctx`); a call's network from its row in the ledger."""
@@ -787,10 +927,12 @@ def _from_feedback(network: str, rng: dict, ctx: dict) -> dict:
 #: by the call's network.
 FAILURE_SOURCES = (
     ("sdn_responses", _from_responses),
+    ("sdn_refusals", _from_refusals),
     ("sdn_operations", _from_operations),
     ("sdn_analyst", _from_planted),
     ("sdn_evaluations", _from_evaluation_runs),
     ("ai_calls", _from_evaluations),
+    ("ai_calls", _from_refused_calls),
     ("ai_feedback", _from_feedback),
 )
 
@@ -829,6 +971,10 @@ def failures(network: str, start: str, end: str, now: float = None,
                                               f"({type(exc).__name__}: {exc})"]}
             rows += got["rows"]
             errors += got["errors"]
+    # A refused call a refusal record names is that record's row (`_from_refused_calls`).
+    named = ctx.get("refusal_calls") or set()
+    rows = [r for r in rows if not (r["kind"] == "protected_refusal"
+                                    and r["source"] == "ai_calls" and r["case"] in named)]
     # By time; within a second each source's own order (a stable sort).
     rows.sort(key=lambda r: _instant(r["at"]) or 0.0)
     n = collections.Counter(r["kind"] for r in rows)

@@ -12,7 +12,9 @@
     the sheet; with no re-check neither is drawn. Each planted row's Edit… and
     Remove… (C2913, board I revised 2026-11-10) open in place; an issue planted after the
     analysis is marked so, neither found nor missed (C2956); Changes to the sheet lists the
-    sheet's history, newest first. Included by _sdn_view.html on Flows, and
+    sheet's history, newest first. Under the bar (C3001): the latest snapshot's id as text
+    with Copy, its collection time and what it holds, and Kept snapshots, collapsed, which
+    asks for one page of them when opened (_sdn_snapshots.html). Included by _sdn_view.html on Flows, and
     drawn alone by routes/sdn_analyse_v2.py after each press. Lab 9 B4's Analyse with the trace
     tool is its own card under the two (_sdn_analyse_tools.html). -#}
 {%- set c = ai_control('sdn_analyse') %}
@@ -44,6 +46,24 @@
 {%- endif %}
 {%- if an.collect_failed %}
 <p class="small notice notice-warn" role="status">The last collection, started by {{ an.collect_failed.by }} {{ stamp(an.collect_failed.at) }}, kept nothing: {{ an.collect_failed.error }}.{% if s.id %} The snapshot above is the last one kept.{% endif %}</p>
+{%- endif %}
+{#- C3001: the snapshot the bar names, by its id as text (what Analyse and the evaluation are
+    given), with when it was collected in UTC and what it holds; a collection History could
+    not be given a record of; and every kept snapshot, a collapsed list that reads one page
+    (`sdn_analyse_v2.snapshots`) when it is opened. -#}
+{%- if s.id %}
+<p class="small sdn-an-snap" id="sdn-an-snap">Snapshot <code class="mono">{{ s.id }}</code> <button type="button" class="btn btn-small" x-data="copy" data-label="Copy" data-copy="{{ s.id }}" x-on:click="copy" x-text="label">Copy</button> collected <time datetime="{{ s.collected_at }}">{{ s.collected_at | replace('T', ' ') | replace('Z', ' UTC') }}</time> by {{ s.by }}{% if s.flows is number %}: {{ s.switches }} switch{{ 'es' if s.switches != 1 }}, {{ s.flows }} flow{{ 's' if s.flows != 1 }}{% if s.flows_read != s.flows %} of the {{ s.flows_read }} read{% endif %}{% endif %}.</p>
+{%- endif %}
+{%- if an.unrecorded %}
+<p class="small notice notice-warn" role="status">The last collection could not be recorded for History: {{ an.unrecorded }}.</p>
+{%- endif %}
+{%- if an.kept.error %}
+<p class="small notice notice-warn" role="status">The kept snapshots cannot be counted: {{ an.kept.error }}.</p>
+{%- elif an.kept.count %}
+<details class="sdn-an-kept" data-keep="sdn-an-kept" hx-get="{{ url_for('sdn_analyse_v2.snapshots', list=an.network) }}" hx-trigger="toggle once" hx-target="find .sdn-an-kept-rows" hx-swap="innerHTML" data-what="the kept snapshots">
+  <summary class="small">Kept snapshots ({{ an.kept.count }}){% if s.id %}, the newest collected {{ stamp(s.collected_at) }}{% endif %}</summary>
+  <div class="sdn-an-kept-rows"><p class="muted small">Reading the kept snapshots and checking each one's seal…</p></div>
+</details>
 {%- endif %}
 {%- if said.ask and not said.ask.ok %}
 <p class="small notice notice-warn" role="alert">Couldn't analyse: {{ said.ask.detail or said.ask.error }}. Nothing of an answer is used.</p>

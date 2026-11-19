@@ -51,6 +51,16 @@ and kept (``installed``), edited in place (``amended``), Mercury's flow removed
 (``withdrawn``), each meter, and the operation's whole run (``operation``), which History
 reads (`history_sources.sdn_operations`).
 
+**A refusal by the protected set is a record too, for a verified person** (``refused``, C2944;
+`keep_refusal`; a press nobody verified is answered as before and not recorded, and its card
+says so): who
+pressed and how they were verified, the switch, what was asked and each protected flow class,
+object or the control channel that refused it, with its citation. The plan carries what
+refused it (``refused_by``) and writes nothing, since it is every preview's, the closed loop's
+and the apply's own; the record is written where a person's press is answered: a preview's
+route, a policy's draft, and `apply` for a person's confirm (never AUTO's, whose refusal the
+response itself keeps as ``auto_failed``). History and History › Export's failure log read it.
+
 **Timeouts.** Every response flow carries a hard timeout (the network's
 `sdn_response_hard_timeout_seconds`, at most `sdn_response_max_seconds`); a meter has no
 timeout in OpenFlow, so a response's meter is recorded with its expiry and removed by
@@ -412,9 +422,12 @@ def plan(network: str, ask: dict, *, driver=None, writer: str = None) -> dict:
         from modules import protected
         who = writer or ("response" if ask.get("response") or ask.get("action") else "person")
         pset = protected.for_network(network)
-        refused = protected.flow_refusal(pset, changes, dpid, conn, writer=who)
-        if refused:
-            raise Refused(refused)
+        refused = protected.flow_refusal_detail(pset, changes, dpid, conn, writer=who)
+        if refused["words"]:
+            # What of the protected set refused it, for the record a refused press keeps
+            # (`keep_refusal`, C2944). The plan writes nothing: it is every preview's.
+            out["refused_by"] = refused["by"]
+            raise Refused(refused["words"])
         note = protected.switch_note(pset, dpid)
         if note:
             out["warnings"].append(note)
@@ -987,7 +1000,8 @@ def apply(network: str, ask: dict, confirmed_hash: str, *, actor: str, actor_ver
     module's docstring. ``{"ok", "error", "at", "outcome", "id", "hash", "plan", "sent",
     "verify", "counters", "rollback", "record"}``; ``at`` the stage reached (plan, hash, hold,
     send, verify, rollback, record) and ``outcome`` one of ``refused``, ``verified``,
-    ``rolled_back``, ``rollback_failed``."""
+    ``rolled_back``, ``rollback_failed``. A person's confirm the protected set refused
+    carries ``refusal``, the record it kept (`keep_refusal`)."""
     from modules.nsot import device_ops
 
     op_id = f"sdnop-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime(now()))}-{secrets.token_hex(4)}"
@@ -1008,6 +1022,16 @@ def apply(network: str, ask: dict, confirmed_hash: str, *, actor: str, actor_ver
     out["plan"] = p
     if not p["ok"]:
         out["error"] = p["error"]
+        if mode == "hitl" and actor_verified != "system":
+            # A person's confirm the protected set refused is a record (C2944). AUTO's is the
+            # response's own (`auto_failed`, the closed loop's), never kept twice; Mercury's
+            # own cleanup (`expire_meters`, verified as ``system``) is no person's press.
+            policy = (response or {}).get("policy") or {}
+            out["refusal"] = keep_refusal(network, p, what=(response or {}).get("kind")
+                                          or "flow", stage="confirm", actor=actor,
+                                          actor_verified=actor_verified,
+                                          call_id=policy.get("call_id") or "",
+                                          policy=policy or None, now=now())
         return out
     out["at"], out["hash"] = "hash", p["hash"]
     if p["hash"] != confirmed_hash:
@@ -1075,6 +1099,48 @@ def apply(network: str, ask: dict, confirmed_hash: str, *, actor: str, actor_ver
         out["error"] = ((out["error"] + "; ") if out["error"] else "") + \
             f"the record could not be kept: {out['record']['error']}"
     return out
+
+
+def keep_refusal(network: str, p: dict, *, what: str, stage: str, actor: str,
+                 actor_verified: str = "", asked=None, words: str = None, call_id: str = "",
+                 policy: dict = None, now: float = None) -> dict:
+    """Keep the record of a person's press the protected set refused (C2944): *p* is a plan
+    (`plan`'s answer), refused, carrying what refused it (``refused_by``), or a policy's check
+    carrying the same (`policy_intent.keep_refusal`, which gives *asked* and *words*: a plan's
+    are its changes in words and its error). ``{}`` when *p* was not refused by the protected
+    set (any other refusal is no record here); else ``{"kept", "id", "error", "unverified"}``:
+    *kept* False with why when the record could not be written, which the card says and the
+    log keeps; *unverified* True when it was not written because the press is no verified
+    person's (`flow_intent.refusal_not_recorded`), which the card says with what to do.
+
+    Called where a person's press is answered (a preview's route, a draft, `apply` for a
+    confirm), never by `plan`: the plan is every preview's, the closed loop's and the
+    apply's own, and writes nothing. *what* is a `flow_intent.REFUSED_WHAT` key (any other
+    is kept as a flow change) and *stage* a `flow_intent.REFUSED_STAGE` key."""
+    from modules.sdn import flow_intent
+
+    by = (p or {}).get("refused_by") or []
+    if (p or {}).get("ok") or not by:
+        return {}
+    unverified = flow_intent.refusal_not_recorded(actor, actor_verified)
+    if unverified:
+        # No record for a request nobody verified (the store's own check, asked here first so
+        # the card can say so): the refusal stands, and nothing is written.
+        return {"kept": False, "id": "", "error": unverified, "unverified": True}
+    try:
+        row = flow_intent.record_refusal(
+            network, what=what if what in flow_intent.REFUSED_WHAT else "flow", stage=stage,
+            actor=actor, actor_verified=actor_verified,
+            connection=p.get("connection") or "", dpid=p.get("dpid"),
+            asked=p.get("words") or [] if asked is None else asked, refused_by=by,
+            words=p.get("error") or "" if words is None else words, call_id=call_id,
+            policy=policy, at=now)
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        log.error("sdn flow_ops: a refusal by the protected set on %s could not be recorded "
+                  "(%s)", network, type(exc).__name__)
+        return {"kept": False, "id": "", "error": f"{type(exc).__name__}: {exc}",
+                "unverified": False}
+    return {"kept": True, "id": row["id"], "error": "", "unverified": False}
 
 
 def _record(network, p, out, *, actor, actor_verified, mode, autonomous, response, started,

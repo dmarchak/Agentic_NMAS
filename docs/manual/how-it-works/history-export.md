@@ -20,9 +20,11 @@ days. The export reads; it writes nothing, and it asks no device, controller or 
 3. `failures`: each source's rows, one row each with its record's link:
    - from each network's own records: every SDN detection a person dismissed (the reason and
      who), every AI classification the check refused (its call), every response AUTO decided
-     on and could not send (a protected-flow refusal named as one), and every flow operation
-     whose Verify failed or whose request the controller refused, with what its rollback
-     achieved;
+     on and could not send (a protected-flow refusal named as one), every flow change,
+     policy, response or re-apply of a verified person's that the protected set refused (who
+     and how they were verified, what was asked, and each protected flow, protected object or
+     the control channel that refused it, with its citation), and every flow operation whose
+     Verify failed or whose request the controller refused, with what its rollback achieved;
    - from SDN › Flows' analyses: every planted issue each analysis in the range missed, B1's
      and the trace tool's, one row per issue per analysis, linking that analysis's call; an
      issue planted after an analysis was made is not its miss;
@@ -35,7 +37,8 @@ days. The export reads; it writes nothing, and it asks no device, controller or 
      recording (`nmas-sdn-cases`) missed, with its case, the case file's expectation, what was
      got, the judge's misses and the recording's run, linking its call where it made one;
    - from the ledger: every evaluation call that found a threat in a collection no rule fired
-     on, a false positive by the evaluation's own definition;
+     on, a false positive by the evaluation's own definition; and every policy's AI call whose
+     answer the protected set refused before Mercury kept a record of each refusal;
    - from Was this right?: every AI answer a person said was wrong, and its review.
 4. `mask`: every text a row carries is masked on the way out, as History masks what it draws.
 5. `file`: CSV or JSON. Its first lines name the log, the range, the network, when it was made
@@ -60,6 +63,36 @@ days. The export reads; it writes nothing, and it asks no device, controller or 
 | `link` | the call's row on History |
 
 Then the totals by UTC day and by feature: calls, dollars, each outcome, the tokens.
+
+`then` holds the whole reason, however long. Some features cut a reason to 200 characters
+when they recorded it. The file cannot tell such a reason from a whole one of that length, so
+it marks every reason exactly 200 characters long: "[200 characters: as long as the cut made
+when this was recorded, so its end may be missing]".
+
+## Protected-flow refusals
+
+A write the protected set refuses sends nothing, and it is counted under **protected-flow
+refusals** whoever made it. Each row's `got` column begins with which it was:
+
+| `got` begins | What was refused | Where it is kept |
+|---|---|---|
+| AUTO's response | a response AUTO decided on | the response itself, on SDN › Responses |
+| a person's flow change | Add, Edit or Remove on SDN › Flows, at its preview or its confirm | the network's flow record; a row on History |
+| a person's policy | a policy on SDN › Policies, when it was drafted, checked again, previewed or confirmed | the same record; a row on History; its AI call is named |
+| a person's response, a person's re-apply | a response or a Re-apply… a person previewed or confirmed | the same record; a row on History |
+| an AI call's answer | a policy refused before Mercury kept a record of each refusal | only the call's own row |
+
+The row's `reason` is the refusal as it was said. `who` names the person and, when they were
+verified another way than the access proxy's sign-in (the local account, a host login), how.
+`got` names each protected flow, protected object or the control channel that refused it,
+with its citation.
+
+A record is made for a verified person only. A preview needs no sign-in, so someone not
+signed in can still be refused by the protected set; that refusal is drawn on their card,
+which says it is not recorded, and it is not in this file.
+
+A flow change or a policy refused before Mercury kept these records was kept nowhere, so it
+is not in the file; a policy's refusal from then is there only as its AI call.
 
 ## Which network a call belongs to
 

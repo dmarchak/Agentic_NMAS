@@ -401,6 +401,27 @@ def test_each_sealed_snapshot_is_a_hardware_case_with_the_issues_standing_at_its
         f"--clean names snap-0000000000000000, which {lab.copy}/snapshots/ does not hold")
 
 
+def test_a_clean_case_is_named_by_why_it_is_clean(lab, tmp_path):
+    """C3029: S0 was collected before any issue was planted, S3 with two standing on the sheet;
+    each named clean reads as what it is, never both as "every planted issue restored". A copy
+    whose sheet holds no issue says that."""
+    import shutil
+
+    got = EV.load_hardware(lab.copy, NET, clean=[lab.s0["id"], lab.s3["id"]])
+    assert got["error"] == ""
+    assert {c["key"]: c["name"] for c in got["cases"] if c["clean"]} == {
+        lab.s0["id"]: "clean: collected before any issue was planted",
+        lab.s3["id"]: "clean: every planted issue restored"}
+    s0 = got["cases"][0]
+    assert s0["key"] == lab.s0["id"], "the earliest collection first"
+    assert s0["sheet_issues"] == 0 and EV.case_issues(s0) == [] and EV.kind_of(s0) == "benign"
+    bare = tmp_path / "bare" / "sdn_analyst"
+    shutil.copytree(lab.copy, bare)
+    os.remove(bare / "planted.json")
+    none = EV.load_hardware(str(bare), NET, clean=[lab.s0["id"]], keys=[lab.s0["id"]])
+    assert [c["name"] for c in none["cases"]] == ["clean: no issue is on the sheet"]
+
+
 def test_a_hardware_run_on_fake_arms_scores_each_issue_by_b1_s_rule(lab):
     """The baseline cites A only (S1's one issue found, S2 misses B) and calls the clean S3's
     port 3 a medium threat; the technique cites every standing issue and answers S3 with
