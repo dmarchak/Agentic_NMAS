@@ -3234,6 +3234,33 @@ def _sdn_analyse(client, _lab, _mp):
         region = client.post("/v2/sdn/analyse/planted", data={
             "list": "Lab", "name": "", "evidence": "nothing"}, headers={"HX-Request": "true"})
         assert region.status_code == 422 and "Couldn't add" in region.get_data(as_text=True)
+        # Check this answer again (the Lab 9 sitting, 2026-11-10): each analysis's recorded
+        # answer, planted in a record of AI calls of this provider's own (the gateway's ask is
+        # the stub above, which records nothing), checked again through the route, so each
+        # card draws the re-check under its first check (a finding kept, one dropped), the
+        # sheet's label and the comparison's note; then a refusal, said in place.
+        from modules.ai import calls
+        mp.setattr(calls, "_path",
+                   lambda: os.path.join(AN._dir("Lab"), "v2-context-ai_calls.jsonl"))
+        press = {"HX-Request": "true"}
+        for result, task, answer in ((r, AN.FEATURE, output), (t, AT.FEATURE, second)):
+            assert calls.record({
+                "id": result["call_id"], "feature": task, "actor": "v2-context@example.com",
+                "model": result["model"], "prompt": "sdn_analyse.v1", "schema": "sdn_analyse.v1",
+                "subject": {"kind": "sdn_snapshot", "id": snap["id"], "devices": []},
+                "response": answer.model_dump_json(), "verdict": "ok",
+                "cost_usd": 0.0021})["recorded"]
+            again = client.post("/v2/sdn/analyse/recheck", headers=press,
+                                data={"list": "Lab", "analysis": result["id"]})
+            assert again.status_code == 200, again.get_data(as_text=True)[:400]
+        html = again.get_data(as_text=True)
+        assert html.count(", no new AI call: 1 finding<") == 2, "both cards draw their re-check"
+        assert 'id="sdn-an-marks-from"' in html
+        assert html.count("counted from the answer as checked again, no new AI call") == 2
+        refused = client.post("/v2/sdn/analyse/recheck", headers=press,
+                              data={"list": "Lab", "analysis": "an-0000000000000000"})
+        assert refused.status_code == 422
+        assert "Couldn't check again" in refused.get_data(as_text=True)
     finally:
         mp.undo()
         shutil.rmtree(AN._dir("Lab"), ignore_errors=True)

@@ -121,14 +121,18 @@ Each switch's flow table, Mercury's expected flows beside what is installed.
   planted after the analysis was made. Each row's **Edit…** corrects its name and evidence
   (**Save changes**), and **Remove…** takes it off the sheet (**Remove from the sheet**),
   keeping its record; **Changes to the sheet** lists who changed what, and when. **Download
-  the sheet** gives it as Markdown or CSV. How it works: [Analyse this
+  the sheet** gives it as Markdown or CSV. Under the findings, **Check this answer again**
+  makes no AI call: it reads the call's recorded answer again and checks it against the same
+  snapshot, draws that result under the first one, and marks the sheet from it, saying so
+  ([Check this answer again](sdn-analyse#recheck)). How it works: [Analyse this
   network](sdn-analyse).
 - **Analyse with the trace tool**, its own card under those two (an AI control): the same
   question about the same snapshot, the model first asking Mercury for up to three reads (a
   packet trace through the flow tables, a switch's flows, its ports, a link's state), each
   checked and answered from the snapshot alone, then answering. Under its findings, **Tool
   calls** lists each read with what it returned; when both have answered the same snapshot, a
-  table compares their findings, found, missed, false positives, calls and cost. How it works:
+  table compares their findings, found, missed, false positives, calls and cost. Its own
+  **Check this answer again** does the same for its answer, with no AI call. How it works:
   [Analyse with the trace tool](sdn-analyse-tools).
 - **Trace a packet…**, beside the filter, opens Topology › Path… on this network with the Flow
   tables layer chosen and its form open: the trace has one home ([A flow-table

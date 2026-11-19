@@ -83,6 +83,25 @@ planted issue and is not named clean, is skipped, and the run says why. These ca
 reported as their own role; whether the trace tool improves results is still judged on the
 blind cases alone.
 
+Four more cases, the role `sitting`, model what both techniques got wrong on the lab's
+switches on 2026-11-10, rebuilt on Mercury's test fabric: a flow that sends traffic for a host
+out of a port leading away from it, which must be found (IPv4 and IPv6), and a flow dropping
+DHCP replies beside a flow forwarding DHCP requests, which share no packet and must not be
+reported as a conflict (DHCP and DHCPv6). A run that cites both of those flows in one finding
+above info counts as a benign case answered as a threat. They are never blind and decide
+nothing; `--roles sitting` runs them alone.
+
+`--prompt 2` asks both techniques with the next version of the prompt, which says each
+evidence item is one id and nothing else, so it can be measured before it replaces the
+version in use. The report names the prompts it asked.
+
+## Check this answer again
+
+**Check this answer again**, under the findings, makes no AI call: it reads the recorded
+answer again and checks it against the same snapshot and the reads that ran, draws the result
+under the first one, and counts found, missed and the comparison's row from it, saying so
+([Check this answer again](sdn-analyse#recheck)).
+
 ## Was this right?
 
 Under the findings, **Was this right?** records your verdict on the answer

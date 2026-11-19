@@ -244,6 +244,47 @@ def test_without_yes_spend_nothing_is_asked_and_with_it_the_report_is_written(wo
     assert data["meta"]["estimate"]["calls"] == 6
 
 
+def test_prompt_asks_both_arms_with_a_candidate_and_the_report_names_what_was_asked(world, tmp_path):  # noqa: F811
+    """``--prompt N`` (a version measured before it is adopted): both arms ask version N of the
+    analyst's prompt, the trace tool the two built on it; without it they ask the ones in use;
+    the estimate's line and the report name the prompts asked."""
+    from modules.sdn import analyst
+
+    said = []
+    send = Scripted()
+    arms = {"baseline": analyst.ask_snapshot, "tools": AT.ask_snapshot}
+    argv = ["--list", NET, "--runs", "1", "--roles", "recorded", "--cases", "unauthorised-s2",
+            "--out", str(tmp_path / "out")]
+    in_use = EV.asked_prompts()[0]
+    assert in_use["in_use"] and in_use["baseline_prompt"] == "{}.v{}".format(*AN.PROMPT)
+    assert EV.main(argv + ["--prompt", "9"], arms=arms, root=ROOT, send=send,
+                   out=said.append) == 2
+    assert "--prompt 9: sdn_analyse has no prompt version 9; it has v1, v2" in said[-1]
+    assert "nothing was asked" in said[-1] and send.bodies == []
+    assert EV.main(argv + ["--prompt", "2"], arms=arms, root=ROOT, send=send,
+                   out=said.append) == 2
+    assert any("prompts sdn_analyse.v2 and sdn_analyse_tools.v3 and v4" in w for w in said)
+    assert send.bodies == [], "without --yes-spend nothing is asked"
+    assert EV.main(argv + ["--prompt", "2", "--yes-spend", "--actor", "evaluation:b4-v2"],
+                   arms=arms, root=ROOT, send=send, out=said.append) == 0
+    rows = [r for r in calls.read()["rows"] if r.get("actor") == "evaluation:b4-v2"]
+    assert sorted({r["prompt"] for r in rows}) == ["sdn_analyse.v2", "sdn_analyse_tools.v3",
+                                                   "sdn_analyse_tools.v4"]
+    data = json.load(open(tmp_path / "out" / "b4-eval-b4-v2.json", encoding="utf-8"))
+    assert data["meta"]["baseline_prompt"] == "sdn_analyse.v2"
+    assert data["meta"]["tools_prompts"] == "sdn_analyse_tools.v3 and v4"
+    md = open(tmp_path / "out" / "b4-eval-b4-v2.md", encoding="utf-8").read()
+    assert "prompt sdn_analyse.v2; technique:" in md and "prompts sdn_analyse_tools.v3 and v4" in md
+    # Without --prompt, the ones in use, and the report says those.
+    assert EV.main(argv + ["--yes-spend", "--actor", "evaluation:b4-in-use"], arms=arms,
+                   root=ROOT, send=send, out=said.append) == 0
+    rows = [r for r in calls.read()["rows"] if r.get("actor") == "evaluation:b4-in-use"]
+    assert in_use["baseline_prompt"] in {r["prompt"] for r in rows}
+    data = json.load(open(tmp_path / "out" / "b4-eval-b4-in-use.json", encoding="utf-8"))
+    assert data["meta"]["baseline_prompt"] == in_use["baseline_prompt"]
+    assert data["meta"]["prompt_in_use"] is True
+
+
 @pytest.mark.parametrize("extra, words", [
     (["--out", ROOT + "/tmp-b4"], "is inside the checkout"),
     (["--out", "/tmp/elsewhere", "--actor", "op@example.com"], "reads as a person's address"),
@@ -463,3 +504,164 @@ def test_a_hardware_run_out_of_shape_is_refused(networks, extra, words):  # noqa
     got = EV.main(["--list", NET, "--out", "/tmp/elsewhere"] + extra, arms={}, root=ROOT,
                   out=said.append)
     assert got == 2 and words in said[-1]
+
+
+# ── the Lab 9 sitting's cases (the role "sitting") ────────────────────────────────────────────
+#
+# What the analyst got wrong on the lab's hardware on 2026-11-10, modelled on the analyst tests'
+# own fabric (tests/sdn_sitting_cases.py builds the file from the recorded controller, flows and
+# hosts planted; nothing of the lab's): a planted misdirected flow B1 missed, and a pair of DHCP
+# flows with disjoint matches both techniques reported as a conflict; each in IPv4 and IPv6.
+
+SITTING_KEYS = ["misdirected-icmp-ipv4", "misdirected-icmp-ipv6", "dhcp-disjoint-ipv4",
+                "dhcp-disjoint-ipv6"]
+OVS4, FAR_EDGE = "0000000000000004", "0000029625637b84"
+
+
+def test_the_sitting_s_cases_are_what_the_test_fabric_builds_each_a_sealed_whole_snapshot(world):  # noqa: F811
+    import re
+
+    from modules.sdn import flow_ops
+    from tests import sdn_sitting_cases as SC
+
+    loaded = EV.load_cases(ROOT, ["sitting"])
+    assert [c["key"] for c in loaded] == SITTING_KEYS
+    assert "sitting" in EV.ROLES and EV.FIXTURE_ROLES == EV.ROLES_1913 + ("sitting",)
+    with open(os.path.join(ROOT, SC.FILE), encoding="utf-8") as fh:
+        text = fh.read()
+    assert text == SC.text(), "the file is what tests/sdn_sitting_cases.py builds, never typed"
+    # Nothing of a lab: documentation addresses, the limited broadcast DHCP is sent to, and the
+    # recording's own placeholder for its controller.
+    quads = set(re.findall(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", text))
+    assert quads and all(q.startswith("198.51.100.") or q == "255.255.255.255" for q in quads)
+    assert json.loads(text)["model"] == profiles.task("sdn_analyse")["model"]
+    for case in loaded:
+        assert case["role"] == "sitting" and "the Lab 9 sitting of 2026-11-10" in case["about"]
+        snap = EV.case_snapshot(case, NET)
+        assert AN.intact(snap) and snap["network"] == NET
+        assert (len(snap["switches"]), len(snap["links"]), len(snap["hosts"])) == (5, 5, 3)
+        assert not any(s.get("partial") for s in snap["switches"]), "its tables are whole"
+        ids, facts = AN.evidence_ids(snap), AN.facts(snap)
+        if EV.kind_of(case) == "threat":
+            (issue,) = EV.case_issues(case)
+            (planted,) = issue["evidence"]
+            assert planted in ids and planted.startswith(f"flow:ctl-1:{OVS4}:t0:p200:")
+            line = next(ln for ln in facts.splitlines() if ln.startswith(planted + " "))
+            dst = "ipv6_dst=2001:db8::20" if "ipv6" in case["key"] else "ipv4_dst=198.51.100.20"
+            assert dst in line and "actions OUTPUT:3" in line
+            # The fabric's own links and flows say where that host is: every other flow for
+            # it on the switch leaves by port 1, the link to the switch it is on.
+            others = [ln for ln in facts.splitlines()
+                      if ln.startswith(f"flow:ctl-1:{OVS4}:") and dst in ln and ln != line]
+            assert others and all("actions OUTPUT:1," in ln for ln in others)
+            assert {f"link:ctl-1:{OVS4}:1-{FAR_EDGE}:18",
+                    f"link:ctl-1:{OVS4}:3-00c802d5027901e6:3"} <= ids
+            assert any(h["dpid_hex"] == FAR_EDGE and (h["ipv4"], h["ipv6"]) ==
+                       (["198.51.100.20"], ["2001:db8::20"]) for h in snap["hosts"])
+        else:
+            assert EV.kind_of(case) == "benign" and EV.case_issues(case) == []
+            ((drop, request),) = EV.disjoint_groups(case)
+            assert drop.startswith(f"drop:ctl-1:{FAR_EDGE}:") and {drop, request} <= ids
+            edge = next(s for s in snap["switches"] if s["dpid_hex"] == FAR_EDGE)
+            dropped = next(f for f in edge["drops"] if f["id"] == drop)["match"]
+            forwarded = next(f for f in edge["flows"] if f["id"] == request)["match"]
+            assert flow_ops.disjoint(dropped, forwarded), "no packet matches both"
+            ports = (547, 546) if "ipv6" in case["key"] else (67, 68)
+            assert (dropped["udp_src"], dropped["udp_dst"]) == ports
+            assert forwarded["udp_dst"] == ports[0] and "udp_src" not in forwarded
+
+
+def test_a_sitting_case_is_scored_by_the_flow_it_plants_or_the_pair_it_names_disjoint(world):  # noqa: F811
+    by = {c["key"]: c for c in EV.load_cases(ROOT, ["sitting"])}
+    assert sorted(by) == sorted(SITTING_KEYS)
+    port3 = f"port:ctl-1:{OVS3}:3"
+
+    def scored(case, *findings):
+        return EV.score_run(case, EV.case_snapshot(case, NET),
+                            {"ok": True, "findings": list(findings)})
+
+    for key in ("misdirected-icmp-ipv4", "misdirected-icmp-ipv6"):
+        (flow,) = EV.case_issues(by[key])[0]["evidence"]
+        # The sitting's miss: the recording's down port reported, the planted flow not.
+        missed = scored(by[key], finding([port3], "high", "Port 3 is down"))
+        assert missed["missed"] and missed["correct"] is False
+        found = scored(by[key], finding([flow], "medium", "ICMP for the host leaves by port 3"))
+        assert found["found"] and found["correct"] is True and not found["missed"]
+        noted = scored(by[key], finding([flow], "info", "A flow for ICMP"))
+        assert noted["found"] and noted["correct"] is False, "info is not a finding of it"
+    for key in ("dhcp-disjoint-ipv4", "dhcp-disjoint-ipv6"):
+        ((drop, request),) = EV.disjoint_groups(by[key])
+        # The sitting's false positive, at any severity above info.
+        conflict = scored(by[key], finding([drop, request], "low",
+                                           "The drop flow conflicts with the DHCP forward"))
+        assert conflict["threat_answered"] and conflict["false_conflicts"] == 1
+        assert conflict["correct"] is False
+        # Each flow reported apart, the recording's down port, and a note citing both: correct.
+        apart = scored(by[key], finding([drop], "high", "A drop flow that matched no packet"),
+                       finding([port3], "high", "Port 3 is down"),
+                       finding([request], "medium", "DHCP requests are rewritten"),
+                       finding([drop, request], "info", "DHCP is steered on this port"))
+        assert apart["correct"] is True and not apart["threat_answered"]
+        assert apart["false_conflicts"] == 0
+    # 19.13's benign cases name no disjoint flows: judged by severity alone, as before.
+    (normal,) = cases("normal-2")
+    assert EV.disjoint_groups(normal) == []
+    quiet = scored(normal, finding(["rate:lab:0000000000000001:3"], "low", "A quiet port"))
+    assert quiet["correct"] is True and quiet["false_conflicts"] == 0
+
+
+def test_the_sitting_s_cases_run_as_their_own_role_and_each_wrong_run_is_kept(world, tmp_path):  # noqa: F811
+    from modules import history_export
+    from modules.sdn import evaluations
+
+    loaded = EV.load_cases(ROOT, ["sitting"])
+    by_snap = {EV.case_snapshot(c, NET)["id"]: c for c in loaded}
+    assert len(by_snap) == 4
+    port3 = f"port:ctl-1:{OVS3}:3"
+
+    def as_at_the_sitting(network, snap, **kw):
+        """Misses the planted flow; sets the DHCP pair against each other."""
+        groups = EV.disjoint_groups(by_snap[snap["id"]])
+        cited = groups[0] if groups else [port3]
+        return {"ok": True, "call_id": "", "calls": [],
+                "findings": [finding(cited, "medium", "As answered at the sitting")]}
+
+    def right(network, snap, **kw):
+        issues = EV.case_issues(by_snap[snap["id"]])
+        found = [finding(issues[0]["evidence"], "high", "The misdirected flow")] if issues else []
+        return {"ok": True, "call_id": "", "calls": [], "findings": found}
+
+    said = []
+    argv = ["--list", NET, "--runs", "1", "--roles", "sitting", "--out", str(tmp_path / "out")]
+    arms = {"baseline": as_at_the_sitting, "tools": right}
+    assert EV.main(argv, arms=arms, root=ROOT, out=said.append) == 2
+    assert any("4 cases (0 of them the lab hardware's snapshots) x 1 runs x 2 techniques: at "
+               "most 12 calls" in w for w in said)
+    assert EV.main(argv + ["--yes-spend", "--actor", "evaluation:b4-sitting"], arms=arms,
+                   root=ROOT, out=said.append) == 0
+    md = open(tmp_path / "out" / "b4-eval-b4-sitting.md", encoding="utf-8").read()
+    data = json.load(open(tmp_path / "out" / "b4-eval-b4-sitting.json", encoding="utf-8"))
+    assert "## sitting (not blind)" in md and "- Cases: 0 from 19.13's files" in md
+    assert "- The Lab 9 sitting's cases: 4, modelled on the test fabric" in md
+    assert "| misdirected-icmp-ipv4 | sitting | threat | 0 of 1 | 1 of 1 |" in md
+    assert "| dhcp-disjoint-ipv6 | sitting | benign | 0 of 1 | 1 of 1 |" in md
+    role = data["summary"]["roles"]["sitting"]
+    b, t = role["techniques"]["baseline"], role["techniques"]["tools"]
+    assert (role["cases"], b["reliable"], t["reliable"]) == (4, 0, 4)
+    assert (b["misses"], b["benign_threat_runs"], t["misses"], t["benign_threat_runs"]) == \
+        (2, 2, 0, 0)
+    assert data["summary"]["pass_rule"]["improves"] is None, "the blind role alone decides"
+    kept = evaluations.read(NET)["rows"]
+    assert [(r["case"], r["role"], r["technique"], r["missed"], r["threat_answered"],
+             r["false_conflicts"]) for r in kept] == [
+        ("misdirected-icmp-ipv4", "sitting", "baseline", True, False, 0),
+        ("misdirected-icmp-ipv6", "sitting", "baseline", True, False, 0),
+        ("dhcp-disjoint-ipv4", "sitting", "baseline", False, True, 1),
+        ("dhcp-disjoint-ipv6", "sitting", "baseline", False, True, 1)]
+    conflict = kept[2]
+    assert conflict["disjoint"] == EV.disjoint_groups(by_snap[conflict["snapshot"]])
+    (row,) = [r for r in history_export._b4_rows(NET, conflict)
+              if r["kind"] == "eval_benign_threat"]
+    assert row["expected"].startswith("no finding above info citing both flows of a pair whose "
+                                      "matches are disjoint: drop:ctl-1:")
+    assert AN._latest(NET) == {}, "the network's analyst store is untouched"

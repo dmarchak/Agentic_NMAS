@@ -441,3 +441,117 @@ def test_the_trace_tool_is_an_ai_control_and_the_rest_stay_usable(tw, monkeypatc
         assert "Collect now" in text and "Download the sheet" in text
         assert "the same snapshot" in text and "3 hosts a trace can take" in text
     AIC.check_screen(monkeypatch, get, "sdn_analyse_tools", parity)
+
+
+# ── the prompts built on B1's v2: an evidence item is one id (the Lab 9 sitting, 2026-11-10) ──
+
+#: prompts/sdn_analyse_tools.v1.md and .v2.md as released (pass 1 and pass 2 on B1's v1).
+RELEASED_SHA256 = {1: "c6578a1cab0fabc697add39a0da2f07e7c844c84ad3c5942d5dba4f246cb5302",
+                   2: "bd63b58a93d3a75120196f22e8ba00aebb7237b43e33b0842d753069dee05b36"}
+
+
+def test_the_prompts_built_on_b1_s_v2_are_its_text_with_the_reads_part_and_asked_only_when_named(tw):
+    from modules.ai import prompts
+
+    assert {("sdn_analyse_tools", 3), ("sdn_analyse_tools", 4)} <= set(prompts.available())
+    assert AT.PASSES_OF[2] == (("sdn_analyse_tools", 3), ("sdn_analyse_tools", 4))
+    for version, sha in RELEASED_SHA256.items():
+        assert prompts.load("sdn_analyse_tools", version)["sha256"] == sha, "never edited"
+    b1_was, b1_now = (prompts.load("sdn_analyse", v)["text"] for v in (1, 2))
+    was = [prompts.load(*p)["text"] for p in AT.PASSES_OF[1]]
+    now = [prompts.load(*p)["text"] for p in AT.PASSES_OF[2]]
+    # "Same prompt otherwise": each is B1's v2 whole, then that pass's reads' part.
+    assert all(t.startswith(b1_now) for t in now) and all(t.startswith(b1_was) for t in was)
+    assert now[0][len(b1_now):] == was[0][len(b1_was):], "pass 1's reads' part is unchanged"
+    assert "that id alone and never the read's words" in now[1]
+    # The pair in use is the one built on B1's prompt in use, so both are adopted together.
+    assert (AT.PROMPT_FIRST, AT.PROMPT_SECOND) == AT.PASSES_OF[AN.PROMPT[1]]
+    assert AT.LOOP is AT.LOOPS[AN.PROMPT[1]]
+    snap, _s = collected_snapshot()
+    (drop,) = flows_of(snap)["drops"]
+    tw.script = [{"findings": [], "reads": [ask("switch_flows", dpid=OVS3)]},
+                 {"findings": [finding([f"{drop['id']} table 0, priority 500, a drop",
+                                        "read:1 the switch's flows"], "medium",
+                                       "A drop flow on OVS 3")]}]
+    actor = "evaluation:v2-candidate"
+    r = AT.ask_snapshot(NET, snap, actor=actor, trigger=triggers.evaluation(actor),
+                        send=tw.send, prompt=2)
+    rows = [x for x in calls.read()["rows"] if x.get("feature") == AT.FEATURE]
+    assert [(x["prompt"], x["schema"]) for x in reversed(rows)] == [
+        ("sdn_analyse_tools.v3", "sdn_analyse_tools.v2"), ("sdn_analyse_tools.v4", "sdn_analyse.v2")]
+    assert [b["system"][0]["text"] for b in tw.sent] == now
+    # B1's check stays in force: entries cited as whole lines, a read among them, are cut.
+    assert r["ok"] and r["findings"][0]["evidence"] == [drop["id"], "read:1"]
+    assert r["trimmed_ids"] == 2
+    with pytest.raises(ValueError, match="no trace-tool prompts are built on sdn_analyse v9"):
+        AT.loop_for(9)
+
+
+# ── check this answer again: no new call (the Lab 9 sitting, 2026-11-10) ─────────────────────
+
+def test_the_trace_tool_s_recorded_answer_is_checked_again_against_the_reads_that_ran(
+        tw, monkeypatch):
+    """The trace tool's final answer, recorded, read again with no new call: held to the same
+    sealed snapshot AND the reads its record says ran; kept beside the first check; its found
+    and missed counts and the comparison's row then come from it, and say so, on the card the
+    press redraws."""
+    import re
+
+    import app as APP
+
+    snap, _s = collected_snapshot()
+    (drop,) = flows_of(snap)["drops"]
+    assert AN.add_planted(NET, "A stale drop", drop["id"], actor=PERSON)["ok"]
+    tw.script = [{"findings": [finding([drop["id"]], "medium", "B1 sees the drop flow")]}]
+    with pressed_by(PERSON):
+        b1 = AN.analyse(NET, snap["id"], actor=PERSON, trigger=triggers.person(PERSON),
+                        send=tw.send)
+    tw.script = [
+        {"findings": [], "reads": [ask("trace", src="198.51.100.250", dst="198.51.100.20",
+                                       proto="icmp")]},
+        {"findings": [finding([f"{drop['id']} table 0, priority 500, a drop"], "medium",
+                              "A drop flow on OVS 3"),
+                      finding(["read:1"], "low", "The trace is dropped")]}]
+    # As the check stood at the sitting: an entry compared whole, so the whole line kept nothing.
+    with monkeypatch.context() as m:
+        m.setattr(AN, "evidence_id", lambda entry: str(entry if entry is not None else "").strip())
+        r = tools(tw, snap)
+    assert r["ok"] and [f["finding"] for f in r["findings"]] == ["The trace is dropped"]
+    assert r["dropped"] == 1 and AN.view(NET)["tools"]["missed"] == 1
+    before = calls.read()["rows"]
+    c = APP.app.test_client()
+    page = unescape(c.get(f"/v2/sdn/flows?list={NET}").get_data(as_text=True))
+    forms = re.findall(r'<form[^>]*hx-post="(/v2/sdn/analyse/recheck[^"]*)"[^>]*>(.*?)</form>',
+                       page, re.S)
+    assert len(forms) == 2, "one on each findings card"
+    carried = [dict(re.findall(r'<input type="hidden" name="(\w+)" value="([^"]*)"', body))
+               for _url, body in forms]
+    assert carried == [{"list": NET, "analysis": b1["id"]}, {"list": NET, "analysis": r["id"]}]
+    assert "and to the reads that ran" in forms[1][1] and "Makes no AI call" in forms[1][1]
+    pressed = c.post(forms[1][0], data=carried[1], headers={"HX-Request": "true"})
+    html = unescape(pressed.get_data(as_text=True))
+    assert pressed.status_code == 200
+    assert len(tw.sent) == 3 and calls.read()["rows"] == before, "no call made, none recorded"
+    kept = AN.analysis(NET, r["id"])
+    again = kept["rechecked"]
+    assert [f["finding"] for f in kept["findings"]] == ["The trace is dropped"], "as it was"
+    assert [(f["finding"], f["evidence"]) for f in again["findings"]] == [
+        ("A drop flow on OVS 3", [drop["id"]]), ("The trace is dropped", ["read:1"])]
+    assert again["dropped"] == 0 and again["trimmed_ids"] == 1
+    assert "rechecked" not in AN.analysis(NET, b1["id"]), "B1's analysis is not touched"
+    # The card: both checks, the counts and the comparison's row from the re-check, each said.
+    card = html[html.index('aria-labelledby="sdn-an-t"'):]
+    assert ">With the trace tool: 1 finding</h2>" in card
+    region = card[card.index('id="sdn-an-recheck-tools"'):card.index(">Tool calls</h3>")]
+    assert re.search(r">Checked again <time[^>]*>[^<]*</time> by " + re.escape(again["by"])
+                     + r", no new AI call: 2 findings</h3>", region)
+    assert "A drop flow on OVS 3" in region and "no claim was dropped" in region
+    assert "1 found · 0 missed, marked from the answer as checked again (no new AI call)" in card
+    rows = {row["name"]: row for row in AN.view(NET)["tools"]["comparison"]["rows"]}
+    assert rows["With the trace tool"]["rechecked"] is True and rows["With the trace tool"]["found"] == 1
+    assert rows["Without tools (B1)"]["rechecked"] is False
+    assert card.count("counted from the answer as checked again, no new AI call") == 1
+    (use,) = [u for u in calls.uses()[r["call_id"]] if u["use"].startswith("checked again")]
+    assert use["use"] == "checked again: 2 findings, 0 dropped by the check"
+    final = "{}.v{}".format(*AN.SCHEMA_OF[AN.PROMPT[1]].__ai_schema__)
+    assert f"the recorded answer read as {final}" in use["detail"]

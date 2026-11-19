@@ -607,6 +607,10 @@ HISTORY = {
                                 "their reads (answered from the kept snapshot) in the send "
                                 "log, the findings in the network's analyst record; no device "
                                 "changes (Lab 9 B4)",
+    "sdn_analyse_v2.recheck": "n/a: no AI call and no device: a recorded answer checked again "
+                              "against its kept snapshot, the result in the network's analyst "
+                              "record beside the first check and a row of the call's record of "
+                              "use",
     "sdn_analyse_v2.planted_add": "n/a: a planted issue is kept on the network's evaluation "
                                   "sheet (modules/sdn/analyst.py), never a device's record",
     "sdn_analyse_v2.planted_why": "n/a: a person's note on the network's evaluation sheet, "

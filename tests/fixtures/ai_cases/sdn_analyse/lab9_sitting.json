@@ -1,0 +1,4979 @@
+{
+ "about": "The SDN analyst's cases modelled on the Lab 9 sitting of 2026-11-10 (modules/sdn/b4_eval.py, the role sitting): two planted misdirected flows (IPv4 and IPv6) to be found, and two benign pairs of DHCP flows whose matches are disjoint (IPv4 and DHCPv6), which no finding may set against each other. Built by tests/sdn_sitting_cases.py from the analyst tests' fabric (the recorded controller's switches, links and port descriptions; flow tables, counters and hosts planted): each case's collection is what Mercury's collector returned through its real Ryu driver, with nothing of the lab's hardware or its data. Never blind: the expectations were written knowing what the sitting got wrong. No model was called in building this set, and none is recorded here; model names the task's pin its runs are judged on.",
+ "cases": [
+  {
+   "about": "Modelled on the Lab 9 sitting of 2026-11-10, where the analyst without tools missed a planted misdirected flow. On Open vSwitch 4 a flow at priority 200 sends ICMP for 198.51.100.20 out port 3, the link to another switch; every other flow for that host leaves by port 1, the link to the switch it is on (the fabric's own links, and the host table for the trace tool). To be found by a kept finding citing the flow, at any severity above info.",
+   "collection": {
+    "calls": 22,
+    "collected_at": "2026-11-06T21:20:00Z",
+    "controllers": [
+     {
+      "connection": "ctl-1",
+      "error": "",
+      "hosts": [
+       {
+        "dpid": 3,
+        "dpid_hex": "0000000000000003",
+        "ipv4": [
+         "198.51.100.10"
+        ],
+        "ipv6": [
+         "2001:db8::10"
+        ],
+        "mac": "0a:00:00:00:00:10",
+        "port_hw_addr": "02:27:f5:b7:b9:26",
+        "port_name": "eno4",
+        "port_no": 3
+       },
+       {
+        "dpid": 3,
+        "dpid_hex": "0000000000000003",
+        "ipv4": [
+         "198.51.100.43"
+        ],
+        "ipv6": [
+         "2001:db8::43"
+        ],
+        "mac": "0a:00:00:00:00:43",
+        "port_hw_addr": "02:27:f5:b7:b9:26",
+        "port_name": "eno4",
+        "port_no": 3
+       },
+       {
+        "dpid": 2843895626628,
+        "dpid_hex": "0000029625637b84",
+        "ipv4": [
+         "198.51.100.20"
+        ],
+        "ipv6": [
+         "2001:db8::20"
+        ],
+        "mac": "0a:00:00:00:00:20",
+        "port_hw_addr": "02:81:cc:50:6e:23",
+        "port_name": "Ethernet17",
+        "port_no": 17
+       }
+      ],
+      "kind": "ryu",
+      "links": [
+       {
+        "dst": {
+         "dpid": 56298109234905574,
+         "dpid_hex": "00c802d5027901e6",
+         "hw_addr": "02:98:36:3e:1a:1b",
+         "name": "3",
+         "port_no": 3
+        },
+        "src": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:c0:9f:d9:d5:4d",
+         "name": "eno4",
+         "port_no": 3
+        }
+       },
+       {
+        "dst": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:c0:9f:d9:d5:4d",
+         "name": "eno4",
+         "port_no": 3
+        },
+        "src": {
+         "dpid": 56298109234905574,
+         "dpid_hex": "00c802d5027901e6",
+         "hw_addr": "02:98:36:3e:1a:1b",
+         "name": "3",
+         "port_no": 3
+        }
+       },
+       {
+        "dst": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:64:30:44:1a:ca",
+         "name": "eno3",
+         "port_no": 2
+        },
+        "src": {
+         "dpid": 3,
+         "dpid_hex": "0000000000000003",
+         "hw_addr": "02:88:a6:b6:9e:63",
+         "name": "eno3",
+         "port_no": 2
+        }
+       },
+       {
+        "dst": {
+         "dpid": 3,
+         "dpid_hex": "0000000000000003",
+         "hw_addr": "02:88:a6:b6:9e:63",
+         "name": "eno3",
+         "port_no": 2
+        },
+        "src": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:64:30:44:1a:ca",
+         "name": "eno3",
+         "port_no": 2
+        }
+       },
+       {
+        "dst": {
+         "dpid": 56298109234905574,
+         "dpid_hex": "00c802d5027901e6",
+         "hw_addr": "02:f4:f9:0b:3c:69",
+         "name": "2",
+         "port_no": 2
+        },
+        "src": {
+         "dpid": 2214744208935,
+         "dpid_hex": "00000203a90ab627",
+         "hw_addr": "02:df:60:fa:2e:07",
+         "name": "Ethernet19",
+         "port_no": 19
+        }
+       },
+       {
+        "dst": {
+         "dpid": 3,
+         "dpid_hex": "0000000000000003",
+         "hw_addr": "02:9c:90:e0:25:ad",
+         "name": "eno2",
+         "port_no": 1
+        },
+        "src": {
+         "dpid": 2214744208935,
+         "dpid_hex": "00000203a90ab627",
+         "hw_addr": "02:83:61:2b:d6:60",
+         "name": "Ethernet18",
+         "port_no": 18
+        }
+       },
+       {
+        "dst": {
+         "dpid": 2214744208935,
+         "dpid_hex": "00000203a90ab627",
+         "hw_addr": "02:83:61:2b:d6:60",
+         "name": "Ethernet18",
+         "port_no": 18
+        },
+        "src": {
+         "dpid": 3,
+         "dpid_hex": "0000000000000003",
+         "hw_addr": "02:9c:90:e0:25:ad",
+         "name": "eno2",
+         "port_no": 1
+        }
+       },
+       {
+        "dst": {
+         "dpid": 2214744208935,
+         "dpid_hex": "00000203a90ab627",
+         "hw_addr": "02:df:60:fa:2e:07",
+         "name": "Ethernet19",
+         "port_no": 19
+        },
+        "src": {
+         "dpid": 56298109234905574,
+         "dpid_hex": "00c802d5027901e6",
+         "hw_addr": "02:f4:f9:0b:3c:69",
+         "name": "2",
+         "port_no": 2
+        }
+       },
+       {
+        "dst": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:9a:d0:2d:f3:b3",
+         "name": "eno2",
+         "port_no": 1
+        },
+        "src": {
+         "dpid": 2843895626628,
+         "dpid_hex": "0000029625637b84",
+         "hw_addr": "02:90:d3:08:55:b4",
+         "name": "Ethernet18",
+         "port_no": 18
+        }
+       },
+       {
+        "dst": {
+         "dpid": 2843895626628,
+         "dpid_hex": "0000029625637b84",
+         "hw_addr": "02:90:d3:08:55:b4",
+         "name": "Ethernet18",
+         "port_no": 18
+        },
+        "src": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:9a:d0:2d:f3:b3",
+         "name": "eno2",
+         "port_no": 1
+        }
+       }
+      ],
+      "links_error": "",
+      "own_cookies": [
+       0
+      ],
+      "state": "ok",
+      "switches": [
+       {
+        "active_flows": 5,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 4,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "L3",
+         "scan_by_ports": false,
+         "words": "flows match IP addresses and no transport port: they cannot show a per-port scan; a scan shows only as packet rates, at lower confidence"
+        },
+        "dpid": 3,
+        "dpid_hex": "0000000000000003",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 90000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p100:822cf521dd",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.20"
+          },
+          "packet_count": 900,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 30000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p100:2582473780",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::20"
+          },
+          "packet_count": 300,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 84000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p100:fc93a86595",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.10"
+          },
+          "packet_count": 840,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 28000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p100:58a88032af",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::10"
+          },
+          "packet_count": 280,
+          "priority": 100,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 3,
+          "hw_addr": "02:9c:90:e0:25:ad",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno2",
+          "port_no": 1,
+          "state": 4
+         },
+         {
+          "admin_up": false,
+          "config": 1,
+          "curr_speed": 0,
+          "dpid": 3,
+          "hw_addr": "02:9c:90:e0:25:ad",
+          "link_up": false,
+          "live": false,
+          "max_speed": 0,
+          "name": "br0",
+          "port_no": "LOCAL",
+          "state": 1
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 3,
+          "hw_addr": "02:88:a6:b6:9e:63",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno3",
+          "port_no": 2,
+          "state": 4
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 0,
+          "dpid": 3,
+          "hw_addr": "02:27:f5:b7:b9:26",
+          "link_up": false,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "eno4",
+          "port_no": 3,
+          "state": 1
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:0000000000000003:1",
+          "port_no": 1,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000003:2",
+          "port_no": 2,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000003:3",
+          "port_no": 3,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000003:LOCAL",
+          "port_no": "LOCAL",
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 6,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 5,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "L3",
+         "scan_by_ports": false,
+         "words": "flows match IP addresses and no transport port: they cannot show a per-port scan; a scan shows only as packet rates, at lower confidence"
+        },
+        "dpid": 4,
+        "dpid_hex": "0000000000000004",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 1,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 90000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p100:822cf521dd",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.20"
+          },
+          "packet_count": 900,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 1,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 30000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p100:2582473780",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::20"
+          },
+          "packet_count": 300,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 84000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p100:fc93a86595",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.10"
+          },
+          "packet_count": 840,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 28000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p100:58a88032af",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::10"
+          },
+          "packet_count": 280,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 23520,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p200:c1f8889a75",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ip_proto": 1,
+           "ipv4_dst": "198.51.100.20"
+          },
+          "packet_count": 240,
+          "priority": 200,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 4,
+          "hw_addr": "02:9a:d0:2d:f3:b3",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno2",
+          "port_no": 1,
+          "state": 4
+         },
+         {
+          "admin_up": false,
+          "config": 1,
+          "curr_speed": 0,
+          "dpid": 4,
+          "hw_addr": "02:9a:d0:2d:f3:b3",
+          "link_up": false,
+          "live": false,
+          "max_speed": 0,
+          "name": "br0",
+          "port_no": "LOCAL",
+          "state": 1
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 4,
+          "hw_addr": "02:64:30:44:1a:ca",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno3",
+          "port_no": 2,
+          "state": 4
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 4,
+          "hw_addr": "02:c0:9f:d9:d5:4d",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno4",
+          "port_no": 3,
+          "state": 4
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:0000000000000004:1",
+          "port_no": 1,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000004:2",
+          "port_no": 2,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000004:3",
+          "port_no": 3,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000004:LOCAL",
+          "port_no": "LOCAL",
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 1,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 0,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "none",
+         "scan_by_ports": false,
+         "words": "no flow but the match-all, so nothing shows what traffic crosses this switch beyond its port counters"
+        },
+        "dpid": 2214744208935,
+        "dpid_hex": "00000203a90ab627",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 2214744208935,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:00000203a90ab627:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 2214744208935,
+          "hw_addr": "02:83:61:2b:d6:60",
+          "link_up": true,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "Ethernet18",
+          "port_no": 18,
+          "state": 0
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 2214744208935,
+          "hw_addr": "02:df:60:fa:2e:07",
+          "link_up": true,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "Ethernet19",
+          "port_no": 19,
+          "state": 0
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:00000203a90ab627:18",
+          "port_no": 18,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:00000203a90ab627:19",
+          "port_no": 19,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 5,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 4,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "L3",
+         "scan_by_ports": false,
+         "words": "flows match IP addresses and no transport port: they cannot show a per-port scan; a scan shows only as packet rates, at lower confidence"
+        },
+        "dpid": 2843895626628,
+        "dpid_hex": "0000029625637b84",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 17,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 90000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p100:822cf521dd",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.20"
+          },
+          "packet_count": 900,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 17,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 30000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p100:2582473780",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::20"
+          },
+          "packet_count": 300,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 18,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 84000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p100:fc93a86595",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.10"
+          },
+          "packet_count": 840,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 18,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 28000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p100:58a88032af",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::10"
+          },
+          "packet_count": 280,
+          "priority": 100,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 2843895626628,
+          "hw_addr": "02:90:d3:08:55:b4",
+          "link_up": true,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "Ethernet18",
+          "port_no": 18,
+          "state": 0
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 2843895626628,
+          "hw_addr": "02:81:cc:50:6e:23",
+          "link_up": true,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "Ethernet17",
+          "port_no": 17,
+          "state": 0
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:0000029625637b84:17",
+          "port_no": 17,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000029625637b84:18",
+          "port_no": 18,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 1,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 0,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "none",
+         "scan_by_ports": false,
+         "words": "no flow but the match-all, so nothing shows what traffic crosses this switch beyond its port counters"
+        },
+        "dpid": 56298109234905574,
+        "dpid_hex": "00c802d5027901e6",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 56298109234905574,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:00c802d5027901e6:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 56298109234905574,
+          "hw_addr": "02:98:36:3e:1a:1b",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "3",
+          "port_no": 3,
+          "state": 4
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 0,
+          "dpid": 56298109234905574,
+          "hw_addr": "02:d5:02:79:01:e6",
+          "link_up": true,
+          "live": false,
+          "max_speed": 0,
+          "name": "local",
+          "port_no": "LOCAL",
+          "state": 0
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 56298109234905574,
+          "hw_addr": "02:f4:f9:0b:3c:69",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "2",
+          "port_no": 2,
+          "state": 4
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:00c802d5027901e6:2",
+          "port_no": 2,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:00c802d5027901e6:3",
+          "port_no": 3,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:00c802d5027901e6:LOCAL",
+          "port_no": "LOCAL",
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       }
+      ],
+      "url": "http://controller.example.invalid:8080"
+     }
+    ],
+    "error": "",
+    "interval_s": 5.0,
+    "network": "Default",
+    "state": "ok",
+    "summary": {
+     "controllers": 1,
+     "drop_flows": 0,
+     "flows": 18,
+     "partial": 0,
+     "scan_by_ports": 0,
+     "switches": 5,
+     "unreadable": 0
+    }
+   },
+   "expect": {
+    "cites_any": [
+     "flow:ctl-1:0000000000000004:t0:p200:c1f8889a75"
+    ],
+    "severity": [
+     "low",
+     "medium",
+     "high",
+     "critical"
+    ],
+    "threat_detected": true
+   },
+   "key": "misdirected-icmp-ipv4",
+   "name": "ICMP for a host sent out a port that leads away from it (ipv4)"
+  },
+  {
+   "about": "Modelled on the Lab 9 sitting of 2026-11-10, where the analyst without tools missed a planted misdirected flow. On Open vSwitch 4 a flow at priority 200 sends ICMPv6 for 2001:db8::20 out port 3, the link to another switch; every other flow for that host leaves by port 1, the link to the switch it is on (the fabric's own links, and the host table for the trace tool). To be found by a kept finding citing the flow, at any severity above info.",
+   "collection": {
+    "calls": 22,
+    "collected_at": "2026-11-06T21:20:00Z",
+    "controllers": [
+     {
+      "connection": "ctl-1",
+      "error": "",
+      "hosts": [
+       {
+        "dpid": 3,
+        "dpid_hex": "0000000000000003",
+        "ipv4": [
+         "198.51.100.10"
+        ],
+        "ipv6": [
+         "2001:db8::10"
+        ],
+        "mac": "0a:00:00:00:00:10",
+        "port_hw_addr": "02:27:f5:b7:b9:26",
+        "port_name": "eno4",
+        "port_no": 3
+       },
+       {
+        "dpid": 3,
+        "dpid_hex": "0000000000000003",
+        "ipv4": [
+         "198.51.100.43"
+        ],
+        "ipv6": [
+         "2001:db8::43"
+        ],
+        "mac": "0a:00:00:00:00:43",
+        "port_hw_addr": "02:27:f5:b7:b9:26",
+        "port_name": "eno4",
+        "port_no": 3
+       },
+       {
+        "dpid": 2843895626628,
+        "dpid_hex": "0000029625637b84",
+        "ipv4": [
+         "198.51.100.20"
+        ],
+        "ipv6": [
+         "2001:db8::20"
+        ],
+        "mac": "0a:00:00:00:00:20",
+        "port_hw_addr": "02:81:cc:50:6e:23",
+        "port_name": "Ethernet17",
+        "port_no": 17
+       }
+      ],
+      "kind": "ryu",
+      "links": [
+       {
+        "dst": {
+         "dpid": 56298109234905574,
+         "dpid_hex": "00c802d5027901e6",
+         "hw_addr": "02:98:36:3e:1a:1b",
+         "name": "3",
+         "port_no": 3
+        },
+        "src": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:c0:9f:d9:d5:4d",
+         "name": "eno4",
+         "port_no": 3
+        }
+       },
+       {
+        "dst": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:c0:9f:d9:d5:4d",
+         "name": "eno4",
+         "port_no": 3
+        },
+        "src": {
+         "dpid": 56298109234905574,
+         "dpid_hex": "00c802d5027901e6",
+         "hw_addr": "02:98:36:3e:1a:1b",
+         "name": "3",
+         "port_no": 3
+        }
+       },
+       {
+        "dst": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:64:30:44:1a:ca",
+         "name": "eno3",
+         "port_no": 2
+        },
+        "src": {
+         "dpid": 3,
+         "dpid_hex": "0000000000000003",
+         "hw_addr": "02:88:a6:b6:9e:63",
+         "name": "eno3",
+         "port_no": 2
+        }
+       },
+       {
+        "dst": {
+         "dpid": 3,
+         "dpid_hex": "0000000000000003",
+         "hw_addr": "02:88:a6:b6:9e:63",
+         "name": "eno3",
+         "port_no": 2
+        },
+        "src": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:64:30:44:1a:ca",
+         "name": "eno3",
+         "port_no": 2
+        }
+       },
+       {
+        "dst": {
+         "dpid": 56298109234905574,
+         "dpid_hex": "00c802d5027901e6",
+         "hw_addr": "02:f4:f9:0b:3c:69",
+         "name": "2",
+         "port_no": 2
+        },
+        "src": {
+         "dpid": 2214744208935,
+         "dpid_hex": "00000203a90ab627",
+         "hw_addr": "02:df:60:fa:2e:07",
+         "name": "Ethernet19",
+         "port_no": 19
+        }
+       },
+       {
+        "dst": {
+         "dpid": 3,
+         "dpid_hex": "0000000000000003",
+         "hw_addr": "02:9c:90:e0:25:ad",
+         "name": "eno2",
+         "port_no": 1
+        },
+        "src": {
+         "dpid": 2214744208935,
+         "dpid_hex": "00000203a90ab627",
+         "hw_addr": "02:83:61:2b:d6:60",
+         "name": "Ethernet18",
+         "port_no": 18
+        }
+       },
+       {
+        "dst": {
+         "dpid": 2214744208935,
+         "dpid_hex": "00000203a90ab627",
+         "hw_addr": "02:83:61:2b:d6:60",
+         "name": "Ethernet18",
+         "port_no": 18
+        },
+        "src": {
+         "dpid": 3,
+         "dpid_hex": "0000000000000003",
+         "hw_addr": "02:9c:90:e0:25:ad",
+         "name": "eno2",
+         "port_no": 1
+        }
+       },
+       {
+        "dst": {
+         "dpid": 2214744208935,
+         "dpid_hex": "00000203a90ab627",
+         "hw_addr": "02:df:60:fa:2e:07",
+         "name": "Ethernet19",
+         "port_no": 19
+        },
+        "src": {
+         "dpid": 56298109234905574,
+         "dpid_hex": "00c802d5027901e6",
+         "hw_addr": "02:f4:f9:0b:3c:69",
+         "name": "2",
+         "port_no": 2
+        }
+       },
+       {
+        "dst": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:9a:d0:2d:f3:b3",
+         "name": "eno2",
+         "port_no": 1
+        },
+        "src": {
+         "dpid": 2843895626628,
+         "dpid_hex": "0000029625637b84",
+         "hw_addr": "02:90:d3:08:55:b4",
+         "name": "Ethernet18",
+         "port_no": 18
+        }
+       },
+       {
+        "dst": {
+         "dpid": 2843895626628,
+         "dpid_hex": "0000029625637b84",
+         "hw_addr": "02:90:d3:08:55:b4",
+         "name": "Ethernet18",
+         "port_no": 18
+        },
+        "src": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:9a:d0:2d:f3:b3",
+         "name": "eno2",
+         "port_no": 1
+        }
+       }
+      ],
+      "links_error": "",
+      "own_cookies": [
+       0
+      ],
+      "state": "ok",
+      "switches": [
+       {
+        "active_flows": 5,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 4,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "L3",
+         "scan_by_ports": false,
+         "words": "flows match IP addresses and no transport port: they cannot show a per-port scan; a scan shows only as packet rates, at lower confidence"
+        },
+        "dpid": 3,
+        "dpid_hex": "0000000000000003",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 90000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p100:822cf521dd",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.20"
+          },
+          "packet_count": 900,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 30000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p100:2582473780",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::20"
+          },
+          "packet_count": 300,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 84000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p100:fc93a86595",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.10"
+          },
+          "packet_count": 840,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 28000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p100:58a88032af",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::10"
+          },
+          "packet_count": 280,
+          "priority": 100,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 3,
+          "hw_addr": "02:9c:90:e0:25:ad",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno2",
+          "port_no": 1,
+          "state": 4
+         },
+         {
+          "admin_up": false,
+          "config": 1,
+          "curr_speed": 0,
+          "dpid": 3,
+          "hw_addr": "02:9c:90:e0:25:ad",
+          "link_up": false,
+          "live": false,
+          "max_speed": 0,
+          "name": "br0",
+          "port_no": "LOCAL",
+          "state": 1
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 3,
+          "hw_addr": "02:88:a6:b6:9e:63",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno3",
+          "port_no": 2,
+          "state": 4
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 0,
+          "dpid": 3,
+          "hw_addr": "02:27:f5:b7:b9:26",
+          "link_up": false,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "eno4",
+          "port_no": 3,
+          "state": 1
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:0000000000000003:1",
+          "port_no": 1,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000003:2",
+          "port_no": 2,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000003:3",
+          "port_no": 3,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000003:LOCAL",
+          "port_no": "LOCAL",
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 6,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 5,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "L3",
+         "scan_by_ports": false,
+         "words": "flows match IP addresses and no transport port: they cannot show a per-port scan; a scan shows only as packet rates, at lower confidence"
+        },
+        "dpid": 4,
+        "dpid_hex": "0000000000000004",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 1,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 90000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p100:822cf521dd",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.20"
+          },
+          "packet_count": 900,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 1,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 30000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p100:2582473780",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::20"
+          },
+          "packet_count": 300,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 84000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p100:fc93a86595",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.10"
+          },
+          "packet_count": 840,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 28000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p100:58a88032af",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::10"
+          },
+          "packet_count": 280,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 23520,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p200:e110d73ebe",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ip_proto": 58,
+           "ipv6_dst": "2001:db8::20"
+          },
+          "packet_count": 240,
+          "priority": 200,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 4,
+          "hw_addr": "02:9a:d0:2d:f3:b3",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno2",
+          "port_no": 1,
+          "state": 4
+         },
+         {
+          "admin_up": false,
+          "config": 1,
+          "curr_speed": 0,
+          "dpid": 4,
+          "hw_addr": "02:9a:d0:2d:f3:b3",
+          "link_up": false,
+          "live": false,
+          "max_speed": 0,
+          "name": "br0",
+          "port_no": "LOCAL",
+          "state": 1
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 4,
+          "hw_addr": "02:64:30:44:1a:ca",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno3",
+          "port_no": 2,
+          "state": 4
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 4,
+          "hw_addr": "02:c0:9f:d9:d5:4d",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno4",
+          "port_no": 3,
+          "state": 4
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:0000000000000004:1",
+          "port_no": 1,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000004:2",
+          "port_no": 2,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000004:3",
+          "port_no": 3,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000004:LOCAL",
+          "port_no": "LOCAL",
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 1,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 0,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "none",
+         "scan_by_ports": false,
+         "words": "no flow but the match-all, so nothing shows what traffic crosses this switch beyond its port counters"
+        },
+        "dpid": 2214744208935,
+        "dpid_hex": "00000203a90ab627",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 2214744208935,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:00000203a90ab627:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 2214744208935,
+          "hw_addr": "02:83:61:2b:d6:60",
+          "link_up": true,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "Ethernet18",
+          "port_no": 18,
+          "state": 0
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 2214744208935,
+          "hw_addr": "02:df:60:fa:2e:07",
+          "link_up": true,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "Ethernet19",
+          "port_no": 19,
+          "state": 0
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:00000203a90ab627:18",
+          "port_no": 18,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:00000203a90ab627:19",
+          "port_no": 19,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 5,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 4,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "L3",
+         "scan_by_ports": false,
+         "words": "flows match IP addresses and no transport port: they cannot show a per-port scan; a scan shows only as packet rates, at lower confidence"
+        },
+        "dpid": 2843895626628,
+        "dpid_hex": "0000029625637b84",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 17,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 90000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p100:822cf521dd",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.20"
+          },
+          "packet_count": 900,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 17,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 30000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p100:2582473780",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::20"
+          },
+          "packet_count": 300,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 18,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 84000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p100:fc93a86595",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.10"
+          },
+          "packet_count": 840,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 18,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 28000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p100:58a88032af",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::10"
+          },
+          "packet_count": 280,
+          "priority": 100,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 2843895626628,
+          "hw_addr": "02:90:d3:08:55:b4",
+          "link_up": true,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "Ethernet18",
+          "port_no": 18,
+          "state": 0
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 2843895626628,
+          "hw_addr": "02:81:cc:50:6e:23",
+          "link_up": true,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "Ethernet17",
+          "port_no": 17,
+          "state": 0
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:0000029625637b84:17",
+          "port_no": 17,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000029625637b84:18",
+          "port_no": 18,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 1,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 0,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "none",
+         "scan_by_ports": false,
+         "words": "no flow but the match-all, so nothing shows what traffic crosses this switch beyond its port counters"
+        },
+        "dpid": 56298109234905574,
+        "dpid_hex": "00c802d5027901e6",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 56298109234905574,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:00c802d5027901e6:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 56298109234905574,
+          "hw_addr": "02:98:36:3e:1a:1b",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "3",
+          "port_no": 3,
+          "state": 4
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 0,
+          "dpid": 56298109234905574,
+          "hw_addr": "02:d5:02:79:01:e6",
+          "link_up": true,
+          "live": false,
+          "max_speed": 0,
+          "name": "local",
+          "port_no": "LOCAL",
+          "state": 0
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 56298109234905574,
+          "hw_addr": "02:f4:f9:0b:3c:69",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "2",
+          "port_no": 2,
+          "state": 4
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:00c802d5027901e6:2",
+          "port_no": 2,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:00c802d5027901e6:3",
+          "port_no": 3,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:00c802d5027901e6:LOCAL",
+          "port_no": "LOCAL",
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       }
+      ],
+      "url": "http://controller.example.invalid:8080"
+     }
+    ],
+    "error": "",
+    "interval_s": 5.0,
+    "network": "Default",
+    "state": "ok",
+    "summary": {
+     "controllers": 1,
+     "drop_flows": 0,
+     "flows": 18,
+     "partial": 0,
+     "scan_by_ports": 0,
+     "switches": 5,
+     "unreadable": 0
+    }
+   },
+   "expect": {
+    "cites_any": [
+     "flow:ctl-1:0000000000000004:t0:p200:e110d73ebe"
+    ],
+    "severity": [
+     "low",
+     "medium",
+     "high",
+     "critical"
+    ],
+    "threat_detected": true
+   },
+   "key": "misdirected-icmp-ipv6",
+   "name": "ICMPv6 for a host sent out a port that leads away from it (ipv6)"
+  },
+  {
+   "about": "Modelled on the Lab 9 sitting of 2026-11-10, where both techniques set a flow dropping DHCP replies against a flow forwarding DHCP requests and reported a conflict. On the far edge switch's edge port, DHCP requests from the port are forwarded toward the server and DHCP replies arriving on it are dropped (the trusted-port rule, modules/sdn/dhcp_steer.py's shapes); no packet matches both, so neither shadows the other. Benign: no kept finding above info may cite both flows together. Other findings (the recording's own port down) are not judged here.",
+   "collection": {
+    "calls": 22,
+    "collected_at": "2026-11-06T21:20:00Z",
+    "controllers": [
+     {
+      "connection": "ctl-1",
+      "error": "",
+      "hosts": [
+       {
+        "dpid": 3,
+        "dpid_hex": "0000000000000003",
+        "ipv4": [
+         "198.51.100.10"
+        ],
+        "ipv6": [
+         "2001:db8::10"
+        ],
+        "mac": "0a:00:00:00:00:10",
+        "port_hw_addr": "02:27:f5:b7:b9:26",
+        "port_name": "eno4",
+        "port_no": 3
+       },
+       {
+        "dpid": 3,
+        "dpid_hex": "0000000000000003",
+        "ipv4": [
+         "198.51.100.43"
+        ],
+        "ipv6": [
+         "2001:db8::43"
+        ],
+        "mac": "0a:00:00:00:00:43",
+        "port_hw_addr": "02:27:f5:b7:b9:26",
+        "port_name": "eno4",
+        "port_no": 3
+       },
+       {
+        "dpid": 2843895626628,
+        "dpid_hex": "0000029625637b84",
+        "ipv4": [
+         "198.51.100.20"
+        ],
+        "ipv6": [
+         "2001:db8::20"
+        ],
+        "mac": "0a:00:00:00:00:20",
+        "port_hw_addr": "02:81:cc:50:6e:23",
+        "port_name": "Ethernet17",
+        "port_no": 17
+       }
+      ],
+      "kind": "ryu",
+      "links": [
+       {
+        "dst": {
+         "dpid": 56298109234905574,
+         "dpid_hex": "00c802d5027901e6",
+         "hw_addr": "02:98:36:3e:1a:1b",
+         "name": "3",
+         "port_no": 3
+        },
+        "src": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:c0:9f:d9:d5:4d",
+         "name": "eno4",
+         "port_no": 3
+        }
+       },
+       {
+        "dst": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:c0:9f:d9:d5:4d",
+         "name": "eno4",
+         "port_no": 3
+        },
+        "src": {
+         "dpid": 56298109234905574,
+         "dpid_hex": "00c802d5027901e6",
+         "hw_addr": "02:98:36:3e:1a:1b",
+         "name": "3",
+         "port_no": 3
+        }
+       },
+       {
+        "dst": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:64:30:44:1a:ca",
+         "name": "eno3",
+         "port_no": 2
+        },
+        "src": {
+         "dpid": 3,
+         "dpid_hex": "0000000000000003",
+         "hw_addr": "02:88:a6:b6:9e:63",
+         "name": "eno3",
+         "port_no": 2
+        }
+       },
+       {
+        "dst": {
+         "dpid": 3,
+         "dpid_hex": "0000000000000003",
+         "hw_addr": "02:88:a6:b6:9e:63",
+         "name": "eno3",
+         "port_no": 2
+        },
+        "src": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:64:30:44:1a:ca",
+         "name": "eno3",
+         "port_no": 2
+        }
+       },
+       {
+        "dst": {
+         "dpid": 56298109234905574,
+         "dpid_hex": "00c802d5027901e6",
+         "hw_addr": "02:f4:f9:0b:3c:69",
+         "name": "2",
+         "port_no": 2
+        },
+        "src": {
+         "dpid": 2214744208935,
+         "dpid_hex": "00000203a90ab627",
+         "hw_addr": "02:df:60:fa:2e:07",
+         "name": "Ethernet19",
+         "port_no": 19
+        }
+       },
+       {
+        "dst": {
+         "dpid": 3,
+         "dpid_hex": "0000000000000003",
+         "hw_addr": "02:9c:90:e0:25:ad",
+         "name": "eno2",
+         "port_no": 1
+        },
+        "src": {
+         "dpid": 2214744208935,
+         "dpid_hex": "00000203a90ab627",
+         "hw_addr": "02:83:61:2b:d6:60",
+         "name": "Ethernet18",
+         "port_no": 18
+        }
+       },
+       {
+        "dst": {
+         "dpid": 2214744208935,
+         "dpid_hex": "00000203a90ab627",
+         "hw_addr": "02:83:61:2b:d6:60",
+         "name": "Ethernet18",
+         "port_no": 18
+        },
+        "src": {
+         "dpid": 3,
+         "dpid_hex": "0000000000000003",
+         "hw_addr": "02:9c:90:e0:25:ad",
+         "name": "eno2",
+         "port_no": 1
+        }
+       },
+       {
+        "dst": {
+         "dpid": 2214744208935,
+         "dpid_hex": "00000203a90ab627",
+         "hw_addr": "02:df:60:fa:2e:07",
+         "name": "Ethernet19",
+         "port_no": 19
+        },
+        "src": {
+         "dpid": 56298109234905574,
+         "dpid_hex": "00c802d5027901e6",
+         "hw_addr": "02:f4:f9:0b:3c:69",
+         "name": "2",
+         "port_no": 2
+        }
+       },
+       {
+        "dst": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:9a:d0:2d:f3:b3",
+         "name": "eno2",
+         "port_no": 1
+        },
+        "src": {
+         "dpid": 2843895626628,
+         "dpid_hex": "0000029625637b84",
+         "hw_addr": "02:90:d3:08:55:b4",
+         "name": "Ethernet18",
+         "port_no": 18
+        }
+       },
+       {
+        "dst": {
+         "dpid": 2843895626628,
+         "dpid_hex": "0000029625637b84",
+         "hw_addr": "02:90:d3:08:55:b4",
+         "name": "Ethernet18",
+         "port_no": 18
+        },
+        "src": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:9a:d0:2d:f3:b3",
+         "name": "eno2",
+         "port_no": 1
+        }
+       }
+      ],
+      "links_error": "",
+      "own_cookies": [
+       0
+      ],
+      "state": "ok",
+      "switches": [
+       {
+        "active_flows": 6,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 4,
+          "L4": 1,
+          "none": 1
+         },
+         "granularity": "L4",
+         "scan_by_ports": true,
+         "words": "flows match transport ports, so a scan shows as distinct destination ports per source"
+        },
+        "dpid": 3,
+        "dpid_hex": "0000000000000003",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 90000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p100:822cf521dd",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.20"
+          },
+          "packet_count": 900,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 30000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p100:2582473780",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::20"
+          },
+          "packet_count": 300,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 84000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p100:fc93a86595",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.10"
+          },
+          "packet_count": 840,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 28000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p100:58a88032af",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::10"
+          },
+          "packet_count": 280,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4104,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p1000:a171df7d5e",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "0a:00:00:00:00:43",
+           "eth_type": 2048,
+           "ip_proto": 17,
+           "ipv4_dst": "255.255.255.255",
+           "udp_dst": 67
+          },
+          "packet_count": 12,
+          "priority": 1000,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 3,
+          "hw_addr": "02:9c:90:e0:25:ad",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno2",
+          "port_no": 1,
+          "state": 4
+         },
+         {
+          "admin_up": false,
+          "config": 1,
+          "curr_speed": 0,
+          "dpid": 3,
+          "hw_addr": "02:9c:90:e0:25:ad",
+          "link_up": false,
+          "live": false,
+          "max_speed": 0,
+          "name": "br0",
+          "port_no": "LOCAL",
+          "state": 1
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 3,
+          "hw_addr": "02:88:a6:b6:9e:63",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno3",
+          "port_no": 2,
+          "state": 4
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 0,
+          "dpid": 3,
+          "hw_addr": "02:27:f5:b7:b9:26",
+          "link_up": false,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "eno4",
+          "port_no": 3,
+          "state": 1
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:0000000000000003:1",
+          "port_no": 1,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000003:2",
+          "port_no": 2,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000003:3",
+          "port_no": 3,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000003:LOCAL",
+          "port_no": "LOCAL",
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 6,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 4,
+          "L4": 1,
+          "none": 1
+         },
+         "granularity": "L4",
+         "scan_by_ports": true,
+         "words": "flows match transport ports, so a scan shows as distinct destination ports per source"
+        },
+        "dpid": 4,
+        "dpid_hex": "0000000000000004",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 1,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 90000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p100:822cf521dd",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.20"
+          },
+          "packet_count": 900,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 1,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 30000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p100:2582473780",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::20"
+          },
+          "packet_count": 300,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 84000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p100:fc93a86595",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.10"
+          },
+          "packet_count": 840,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 28000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p100:58a88032af",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::10"
+          },
+          "packet_count": 280,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4104,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p1000:a171df7d5e",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "0a:00:00:00:00:43",
+           "eth_type": 2048,
+           "ip_proto": 17,
+           "ipv4_dst": "255.255.255.255",
+           "udp_dst": 67
+          },
+          "packet_count": 12,
+          "priority": 1000,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 4,
+          "hw_addr": "02:9a:d0:2d:f3:b3",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno2",
+          "port_no": 1,
+          "state": 4
+         },
+         {
+          "admin_up": false,
+          "config": 1,
+          "curr_speed": 0,
+          "dpid": 4,
+          "hw_addr": "02:9a:d0:2d:f3:b3",
+          "link_up": false,
+          "live": false,
+          "max_speed": 0,
+          "name": "br0",
+          "port_no": "LOCAL",
+          "state": 1
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 4,
+          "hw_addr": "02:64:30:44:1a:ca",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno3",
+          "port_no": 2,
+          "state": 4
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 4,
+          "hw_addr": "02:c0:9f:d9:d5:4d",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno4",
+          "port_no": 3,
+          "state": 4
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:0000000000000004:1",
+          "port_no": 1,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000004:2",
+          "port_no": 2,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000004:3",
+          "port_no": 3,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000004:LOCAL",
+          "port_no": "LOCAL",
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 1,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 0,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "none",
+         "scan_by_ports": false,
+         "words": "no flow but the match-all, so nothing shows what traffic crosses this switch beyond its port counters"
+        },
+        "dpid": 2214744208935,
+        "dpid_hex": "00000203a90ab627",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 2214744208935,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:00000203a90ab627:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 2214744208935,
+          "hw_addr": "02:83:61:2b:d6:60",
+          "link_up": true,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "Ethernet18",
+          "port_no": 18,
+          "state": 0
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 2214744208935,
+          "hw_addr": "02:df:60:fa:2e:07",
+          "link_up": true,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "Ethernet19",
+          "port_no": 19,
+          "state": 0
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:00000203a90ab627:18",
+          "port_no": 18,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:00000203a90ab627:19",
+          "port_no": 19,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 7,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 4,
+          "L4": 2,
+          "none": 1
+         },
+         "granularity": "L4",
+         "scan_by_ports": true,
+         "words": "flows match transport ports, so a scan shows as distinct destination ports per source"
+        },
+        "dpid": 2843895626628,
+        "dpid_hex": "0000029625637b84",
+        "drop_flows": [
+         {
+          "actions": [],
+          "byte_count": 0,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p1000:0c1b137b9c",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "in_port": 17,
+           "ip_proto": 17,
+           "ipv4_dst": "255.255.255.255",
+           "udp_dst": 68,
+           "udp_src": 67
+          },
+          "packet_count": 0,
+          "priority": 1000,
+          "table_id": 0
+         }
+        ],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 17,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 90000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p100:822cf521dd",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.20"
+          },
+          "packet_count": 900,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 17,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 30000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p100:2582473780",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::20"
+          },
+          "packet_count": 300,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 18,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 84000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p100:fc93a86595",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.10"
+          },
+          "packet_count": 840,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 18,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 28000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p100:58a88032af",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::10"
+          },
+          "packet_count": 280,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "field": "eth_dst",
+            "type": "SET_FIELD",
+            "value": "0a:00:00:00:00:43"
+           },
+           {
+            "port": 18,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4104,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p1000:1206f46ec8",
+          "idle_timeout": 0,
+          "match": {
+           "eth_dst": "ff:ff:ff:ff:ff:ff",
+           "eth_type": 2048,
+           "in_port": 17,
+           "ip_proto": 17,
+           "ipv4_dst": "255.255.255.255",
+           "udp_dst": 67
+          },
+          "packet_count": 12,
+          "priority": 1000,
+          "table_id": 0
+         },
+         {
+          "actions": [],
+          "byte_count": 0,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p1000:0c1b137b9c",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "in_port": 17,
+           "ip_proto": 17,
+           "ipv4_dst": "255.255.255.255",
+           "udp_dst": 68,
+           "udp_src": 67
+          },
+          "packet_count": 0,
+          "priority": 1000,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 2843895626628,
+          "hw_addr": "02:90:d3:08:55:b4",
+          "link_up": true,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "Ethernet18",
+          "port_no": 18,
+          "state": 0
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 2843895626628,
+          "hw_addr": "02:81:cc:50:6e:23",
+          "link_up": true,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "Ethernet17",
+          "port_no": 17,
+          "state": 0
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:0000029625637b84:17",
+          "port_no": 17,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000029625637b84:18",
+          "port_no": 18,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 1,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 0,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "none",
+         "scan_by_ports": false,
+         "words": "no flow but the match-all, so nothing shows what traffic crosses this switch beyond its port counters"
+        },
+        "dpid": 56298109234905574,
+        "dpid_hex": "00c802d5027901e6",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 56298109234905574,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:00c802d5027901e6:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 56298109234905574,
+          "hw_addr": "02:98:36:3e:1a:1b",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "3",
+          "port_no": 3,
+          "state": 4
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 0,
+          "dpid": 56298109234905574,
+          "hw_addr": "02:d5:02:79:01:e6",
+          "link_up": true,
+          "live": false,
+          "max_speed": 0,
+          "name": "local",
+          "port_no": "LOCAL",
+          "state": 0
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 56298109234905574,
+          "hw_addr": "02:f4:f9:0b:3c:69",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "2",
+          "port_no": 2,
+          "state": 4
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:00c802d5027901e6:2",
+          "port_no": 2,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:00c802d5027901e6:3",
+          "port_no": 3,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:00c802d5027901e6:LOCAL",
+          "port_no": "LOCAL",
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       }
+      ],
+      "url": "http://controller.example.invalid:8080"
+     }
+    ],
+    "error": "",
+    "interval_s": 5.0,
+    "network": "Default",
+    "state": "ok",
+    "summary": {
+     "controllers": 1,
+     "drop_flows": 1,
+     "flows": 21,
+     "partial": 0,
+     "scan_by_ports": 3,
+     "switches": 5,
+     "unreadable": 0
+    }
+   },
+   "expect": {
+    "disjoint": [
+     [
+      "drop:ctl-1:0000029625637b84:t0:p1000:0c1b137b9c",
+      "flow:ctl-1:0000029625637b84:t0:p1000:1206f46ec8"
+     ]
+    ],
+    "severity": [
+     "none",
+     "info",
+     "low",
+     "medium",
+     "high",
+     "critical"
+    ],
+    "threat_detected": false
+   },
+   "key": "dhcp-disjoint-ipv4",
+   "name": "A drop of DHCP replies beside a forward of DHCP requests: disjoint matches, no conflict (ipv4)"
+  },
+  {
+   "about": "Modelled on the Lab 9 sitting of 2026-11-10, where both techniques set a flow dropping DHCP replies against a flow forwarding DHCP requests and reported a conflict. On the far edge switch's edge port, DHCPv6 requests from the port are forwarded toward the server and DHCPv6 replies arriving on it are dropped (the trusted-port rule, modules/sdn/dhcp_steer.py's shapes); no packet matches both, so neither shadows the other. Benign: no kept finding above info may cite both flows together. Other findings (the recording's own port down) are not judged here.",
+   "collection": {
+    "calls": 22,
+    "collected_at": "2026-11-06T21:20:00Z",
+    "controllers": [
+     {
+      "connection": "ctl-1",
+      "error": "",
+      "hosts": [
+       {
+        "dpid": 3,
+        "dpid_hex": "0000000000000003",
+        "ipv4": [
+         "198.51.100.10"
+        ],
+        "ipv6": [
+         "2001:db8::10"
+        ],
+        "mac": "0a:00:00:00:00:10",
+        "port_hw_addr": "02:27:f5:b7:b9:26",
+        "port_name": "eno4",
+        "port_no": 3
+       },
+       {
+        "dpid": 3,
+        "dpid_hex": "0000000000000003",
+        "ipv4": [
+         "198.51.100.43"
+        ],
+        "ipv6": [
+         "2001:db8::43"
+        ],
+        "mac": "0a:00:00:00:00:43",
+        "port_hw_addr": "02:27:f5:b7:b9:26",
+        "port_name": "eno4",
+        "port_no": 3
+       },
+       {
+        "dpid": 2843895626628,
+        "dpid_hex": "0000029625637b84",
+        "ipv4": [
+         "198.51.100.20"
+        ],
+        "ipv6": [
+         "2001:db8::20"
+        ],
+        "mac": "0a:00:00:00:00:20",
+        "port_hw_addr": "02:81:cc:50:6e:23",
+        "port_name": "Ethernet17",
+        "port_no": 17
+       }
+      ],
+      "kind": "ryu",
+      "links": [
+       {
+        "dst": {
+         "dpid": 56298109234905574,
+         "dpid_hex": "00c802d5027901e6",
+         "hw_addr": "02:98:36:3e:1a:1b",
+         "name": "3",
+         "port_no": 3
+        },
+        "src": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:c0:9f:d9:d5:4d",
+         "name": "eno4",
+         "port_no": 3
+        }
+       },
+       {
+        "dst": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:c0:9f:d9:d5:4d",
+         "name": "eno4",
+         "port_no": 3
+        },
+        "src": {
+         "dpid": 56298109234905574,
+         "dpid_hex": "00c802d5027901e6",
+         "hw_addr": "02:98:36:3e:1a:1b",
+         "name": "3",
+         "port_no": 3
+        }
+       },
+       {
+        "dst": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:64:30:44:1a:ca",
+         "name": "eno3",
+         "port_no": 2
+        },
+        "src": {
+         "dpid": 3,
+         "dpid_hex": "0000000000000003",
+         "hw_addr": "02:88:a6:b6:9e:63",
+         "name": "eno3",
+         "port_no": 2
+        }
+       },
+       {
+        "dst": {
+         "dpid": 3,
+         "dpid_hex": "0000000000000003",
+         "hw_addr": "02:88:a6:b6:9e:63",
+         "name": "eno3",
+         "port_no": 2
+        },
+        "src": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:64:30:44:1a:ca",
+         "name": "eno3",
+         "port_no": 2
+        }
+       },
+       {
+        "dst": {
+         "dpid": 56298109234905574,
+         "dpid_hex": "00c802d5027901e6",
+         "hw_addr": "02:f4:f9:0b:3c:69",
+         "name": "2",
+         "port_no": 2
+        },
+        "src": {
+         "dpid": 2214744208935,
+         "dpid_hex": "00000203a90ab627",
+         "hw_addr": "02:df:60:fa:2e:07",
+         "name": "Ethernet19",
+         "port_no": 19
+        }
+       },
+       {
+        "dst": {
+         "dpid": 3,
+         "dpid_hex": "0000000000000003",
+         "hw_addr": "02:9c:90:e0:25:ad",
+         "name": "eno2",
+         "port_no": 1
+        },
+        "src": {
+         "dpid": 2214744208935,
+         "dpid_hex": "00000203a90ab627",
+         "hw_addr": "02:83:61:2b:d6:60",
+         "name": "Ethernet18",
+         "port_no": 18
+        }
+       },
+       {
+        "dst": {
+         "dpid": 2214744208935,
+         "dpid_hex": "00000203a90ab627",
+         "hw_addr": "02:83:61:2b:d6:60",
+         "name": "Ethernet18",
+         "port_no": 18
+        },
+        "src": {
+         "dpid": 3,
+         "dpid_hex": "0000000000000003",
+         "hw_addr": "02:9c:90:e0:25:ad",
+         "name": "eno2",
+         "port_no": 1
+        }
+       },
+       {
+        "dst": {
+         "dpid": 2214744208935,
+         "dpid_hex": "00000203a90ab627",
+         "hw_addr": "02:df:60:fa:2e:07",
+         "name": "Ethernet19",
+         "port_no": 19
+        },
+        "src": {
+         "dpid": 56298109234905574,
+         "dpid_hex": "00c802d5027901e6",
+         "hw_addr": "02:f4:f9:0b:3c:69",
+         "name": "2",
+         "port_no": 2
+        }
+       },
+       {
+        "dst": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:9a:d0:2d:f3:b3",
+         "name": "eno2",
+         "port_no": 1
+        },
+        "src": {
+         "dpid": 2843895626628,
+         "dpid_hex": "0000029625637b84",
+         "hw_addr": "02:90:d3:08:55:b4",
+         "name": "Ethernet18",
+         "port_no": 18
+        }
+       },
+       {
+        "dst": {
+         "dpid": 2843895626628,
+         "dpid_hex": "0000029625637b84",
+         "hw_addr": "02:90:d3:08:55:b4",
+         "name": "Ethernet18",
+         "port_no": 18
+        },
+        "src": {
+         "dpid": 4,
+         "dpid_hex": "0000000000000004",
+         "hw_addr": "02:9a:d0:2d:f3:b3",
+         "name": "eno2",
+         "port_no": 1
+        }
+       }
+      ],
+      "links_error": "",
+      "own_cookies": [
+       0
+      ],
+      "state": "ok",
+      "switches": [
+       {
+        "active_flows": 6,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 4,
+          "L4": 1,
+          "none": 1
+         },
+         "granularity": "L4",
+         "scan_by_ports": true,
+         "words": "flows match transport ports, so a scan shows as distinct destination ports per source"
+        },
+        "dpid": 3,
+        "dpid_hex": "0000000000000003",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 90000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p100:822cf521dd",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.20"
+          },
+          "packet_count": 900,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 30000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p100:2582473780",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::20"
+          },
+          "packet_count": 300,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 84000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p100:fc93a86595",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.10"
+          },
+          "packet_count": 840,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 28000,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p100:58a88032af",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::10"
+          },
+          "packet_count": 280,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 3,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4104,
+          "cookie": 0,
+          "dpid": 3,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000003:t0:p1000:8ecc6a5099",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ip_proto": 17,
+           "ipv6_dst": "ff02::1:2",
+           "udp_dst": 547
+          },
+          "packet_count": 12,
+          "priority": 1000,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 3,
+          "hw_addr": "02:9c:90:e0:25:ad",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno2",
+          "port_no": 1,
+          "state": 4
+         },
+         {
+          "admin_up": false,
+          "config": 1,
+          "curr_speed": 0,
+          "dpid": 3,
+          "hw_addr": "02:9c:90:e0:25:ad",
+          "link_up": false,
+          "live": false,
+          "max_speed": 0,
+          "name": "br0",
+          "port_no": "LOCAL",
+          "state": 1
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 3,
+          "hw_addr": "02:88:a6:b6:9e:63",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno3",
+          "port_no": 2,
+          "state": 4
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 0,
+          "dpid": 3,
+          "hw_addr": "02:27:f5:b7:b9:26",
+          "link_up": false,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "eno4",
+          "port_no": 3,
+          "state": 1
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:0000000000000003:1",
+          "port_no": 1,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000003:2",
+          "port_no": 2,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000003:3",
+          "port_no": 3,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000003:LOCAL",
+          "port_no": "LOCAL",
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 6,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 4,
+          "L4": 1,
+          "none": 1
+         },
+         "granularity": "L4",
+         "scan_by_ports": true,
+         "words": "flows match transport ports, so a scan shows as distinct destination ports per source"
+        },
+        "dpid": 4,
+        "dpid_hex": "0000000000000004",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 1,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 90000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p100:822cf521dd",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.20"
+          },
+          "packet_count": 900,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 1,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 30000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p100:2582473780",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::20"
+          },
+          "packet_count": 300,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 84000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p100:fc93a86595",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.10"
+          },
+          "packet_count": 840,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 28000,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p100:58a88032af",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::10"
+          },
+          "packet_count": 280,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 2,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4104,
+          "cookie": 0,
+          "dpid": 4,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000000000000004:t0:p1000:8ecc6a5099",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ip_proto": 17,
+           "ipv6_dst": "ff02::1:2",
+           "udp_dst": 547
+          },
+          "packet_count": 12,
+          "priority": 1000,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 4,
+          "hw_addr": "02:9a:d0:2d:f3:b3",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno2",
+          "port_no": 1,
+          "state": 4
+         },
+         {
+          "admin_up": false,
+          "config": 1,
+          "curr_speed": 0,
+          "dpid": 4,
+          "hw_addr": "02:9a:d0:2d:f3:b3",
+          "link_up": false,
+          "live": false,
+          "max_speed": 0,
+          "name": "br0",
+          "port_no": "LOCAL",
+          "state": 1
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 4,
+          "hw_addr": "02:64:30:44:1a:ca",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno3",
+          "port_no": 2,
+          "state": 4
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 4,
+          "hw_addr": "02:c0:9f:d9:d5:4d",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "eno4",
+          "port_no": 3,
+          "state": 4
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:0000000000000004:1",
+          "port_no": 1,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000004:2",
+          "port_no": 2,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000004:3",
+          "port_no": 3,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000000000000004:LOCAL",
+          "port_no": "LOCAL",
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 1,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 0,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "none",
+         "scan_by_ports": false,
+         "words": "no flow but the match-all, so nothing shows what traffic crosses this switch beyond its port counters"
+        },
+        "dpid": 2214744208935,
+        "dpid_hex": "00000203a90ab627",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 2214744208935,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:00000203a90ab627:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 2214744208935,
+          "hw_addr": "02:83:61:2b:d6:60",
+          "link_up": true,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "Ethernet18",
+          "port_no": 18,
+          "state": 0
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 2214744208935,
+          "hw_addr": "02:df:60:fa:2e:07",
+          "link_up": true,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "Ethernet19",
+          "port_no": 19,
+          "state": 0
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:00000203a90ab627:18",
+          "port_no": 18,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:00000203a90ab627:19",
+          "port_no": 19,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 7,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 4,
+          "L4": 2,
+          "none": 1
+         },
+         "granularity": "L4",
+         "scan_by_ports": true,
+         "words": "flows match transport ports, so a scan shows as distinct destination ports per source"
+        },
+        "dpid": 2843895626628,
+        "dpid_hex": "0000029625637b84",
+        "drop_flows": [
+         {
+          "actions": [],
+          "byte_count": 0,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p1000:fa0b764f00",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "in_port": 17,
+           "ip_proto": 17,
+           "udp_dst": 546,
+           "udp_src": 547
+          },
+          "packet_count": 0,
+          "priority": 1000,
+          "table_id": 0
+         }
+        ],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 17,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 90000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p100:822cf521dd",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.20"
+          },
+          "packet_count": 900,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 17,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 30000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p100:2582473780",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::20"
+          },
+          "packet_count": 300,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 18,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 84000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p100:fc93a86595",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 2048,
+           "ipv4_dst": "198.51.100.10"
+          },
+          "packet_count": 840,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 18,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 28000,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p100:58a88032af",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "ipv6_dst": "2001:db8::10"
+          },
+          "packet_count": 280,
+          "priority": 100,
+          "table_id": 0
+         },
+         {
+          "actions": [
+           {
+            "port": 18,
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4104,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p1000:bbac7e7183",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "in_port": 17,
+           "ip_proto": 17,
+           "ipv6_dst": "ff02::1:2",
+           "udp_dst": 547
+          },
+          "packet_count": 12,
+          "priority": 1000,
+          "table_id": 0
+         },
+         {
+          "actions": [],
+          "byte_count": 0,
+          "cookie": 0,
+          "dpid": 2843895626628,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:0000029625637b84:t0:p1000:fa0b764f00",
+          "idle_timeout": 0,
+          "match": {
+           "eth_type": 34525,
+           "in_port": 17,
+           "ip_proto": 17,
+           "udp_dst": 546,
+           "udp_src": 547
+          },
+          "packet_count": 0,
+          "priority": 1000,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 2843895626628,
+          "hw_addr": "02:90:d3:08:55:b4",
+          "link_up": true,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "Ethernet18",
+          "port_no": 18,
+          "state": 0
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 2843895626628,
+          "hw_addr": "02:81:cc:50:6e:23",
+          "link_up": true,
+          "live": false,
+          "max_speed": 1000000,
+          "name": "Ethernet17",
+          "port_no": 17,
+          "state": 0
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:0000029625637b84:17",
+          "port_no": 17,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:0000029625637b84:18",
+          "port_no": 18,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       },
+       {
+        "active_flows": 1,
+        "coverage": {
+         "by_granularity": {
+          "L2": 0,
+          "L3": 0,
+          "L4": 0,
+          "none": 1
+         },
+         "granularity": "none",
+         "scan_by_ports": false,
+         "words": "no flow but the match-all, so nothing shows what traffic crosses this switch beyond its port counters"
+        },
+        "dpid": 56298109234905574,
+        "dpid_hex": "00c802d5027901e6",
+        "drop_flows": [],
+        "error": "",
+        "flows": [
+         {
+          "actions": [
+           {
+            "port": "CONTROLLER",
+            "type": "OUTPUT"
+           }
+          ],
+          "byte_count": 4000,
+          "cookie": 0,
+          "dpid": 56298109234905574,
+          "duration_sec": 0,
+          "hard_timeout": 0,
+          "id": "flow:ctl-1:00c802d5027901e6:t0:p0:44136fa355",
+          "idle_timeout": 0,
+          "match": {},
+          "packet_count": 40,
+          "priority": 0,
+          "table_id": 0
+         }
+        ],
+        "port_desc": [
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 56298109234905574,
+          "hw_addr": "02:98:36:3e:1a:1b",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "3",
+          "port_no": 3,
+          "state": 4
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 0,
+          "dpid": 56298109234905574,
+          "hw_addr": "02:d5:02:79:01:e6",
+          "link_up": true,
+          "live": false,
+          "max_speed": 0,
+          "name": "local",
+          "port_no": "LOCAL",
+          "state": 0
+         },
+         {
+          "admin_up": true,
+          "config": 0,
+          "curr_speed": 1000000,
+          "dpid": 56298109234905574,
+          "hw_addr": "02:f4:f9:0b:3c:69",
+          "link_up": true,
+          "live": true,
+          "max_speed": 1000000,
+          "name": "2",
+          "port_no": 2,
+          "state": 4
+         }
+        ],
+        "port_desc_error": "",
+        "ports": [
+         {
+          "id": "port:ctl-1:00c802d5027901e6:2",
+          "port_no": 2,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:00c802d5027901e6:3",
+          "port_no": 3,
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         },
+         {
+          "id": "port:ctl-1:00c802d5027901e6:LOCAL",
+          "port_no": "LOCAL",
+          "rx_bytes_delta": 0,
+          "rx_bytes_per_s": 0.0,
+          "rx_dropped_delta": 0,
+          "rx_packets_delta": 0,
+          "rx_pps": 0.0,
+          "tx_bytes_delta": 0,
+          "tx_bytes_per_s": 0.0,
+          "tx_dropped_delta": 0,
+          "tx_packets_delta": 0,
+          "tx_pps": 0.0
+         }
+        ],
+        "sample": {
+         "elapsed_s": 5.0,
+         "interval_s": 5.0
+        },
+        "state": "ok"
+       }
+      ],
+      "url": "http://controller.example.invalid:8080"
+     }
+    ],
+    "error": "",
+    "interval_s": 5.0,
+    "network": "Default",
+    "state": "ok",
+    "summary": {
+     "controllers": 1,
+     "drop_flows": 1,
+     "flows": 21,
+     "partial": 0,
+     "scan_by_ports": 3,
+     "switches": 5,
+     "unreadable": 0
+    }
+   },
+   "expect": {
+    "disjoint": [
+     [
+      "drop:ctl-1:0000029625637b84:t0:p1000:fa0b764f00",
+      "flow:ctl-1:0000029625637b84:t0:p1000:bbac7e7183"
+     ]
+    ],
+    "severity": [
+     "none",
+     "info",
+     "low",
+     "medium",
+     "high",
+     "critical"
+    ],
+    "threat_detected": false
+   },
+   "key": "dhcp-disjoint-ipv6",
+   "name": "A drop of DHCPv6 replies beside a forward of DHCPv6 requests: disjoint matches, no conflict (ipv6)"
+  }
+ ],
+ "model": "claude-haiku-5-5",
+ "network": "default",
+ "path": "collection",
+ "task": "sdn_analyse"
+}

@@ -36,8 +36,10 @@ sent to a switch: the analysis reads, and it changes nothing on the network.
    high and critical; the finding; why; the evidence ids). An answer that is not that shape is
    refused, named, and nothing of it is used. Then each finding's evidence ids are held to the
    snapshot's: an id the snapshot does not hold is removed, and a finding left citing nothing
-   it holds is **dropped**. The card says how many were dropped and why. Long text is shortened
-   and said so; at most 20 findings are kept.
+   it holds is **dropped**. The card says how many were dropped and why. An evidence entry that
+   is a whole line of the snapshot (the id, then the fact's words) is read as its id, the
+   line's first word, which must still be an id the snapshot holds; the card says how many
+   entries were cut so. Long text is shortened and said so; at most 20 findings are kept.
 6. `compare`: each planted issue is **found** when a kept finding cites evidence it names, else
    **missed**; an issue planted after the analysis was made reads **planted after this
    analysis**, neither found nor missed, since it was not there to be found. **Why** is your
@@ -106,6 +108,32 @@ and why are kept in the network's planted-issue record, marked removed with who 
 Both are a verified person's, never a service's. Each change is listed, newest first, under
 **Changes to the sheet** (collapsed, under the card): who, when, and what the issue was and is
 (an addition, a why saved, a correction, a removal). The downloaded Markdown lists them all.
+
+## Check this answer again {#recheck}
+
+**Check this answer again**, under the findings, makes **no AI call** and costs nothing. The
+record of AI calls keeps every answer as the model gave it. This reads that answer again,
+parses it by the schema it was asked under, and holds it to the same kept snapshot with the
+check as it is now. Use it when the check has changed since the answer was made: an answer
+whose findings were dropped by an older check can be read by today's without asking the model
+again.
+
+The first check's findings and counts stay on the card exactly as they were. Under them the
+card draws **Checked again**, when and by whom, **no new AI call**, with the findings that check
+kept and what it dropped. The planted issues are then marked **found** or **missed** from the
+re-check, and a line above the sheet says so; the downloaded sheet and History › Export are
+marked the same way, the download naming the re-check and what the first check kept. Checking
+again later replaces the earlier re-check, never the first check. The call's record in History
+gains a line saying the answer was checked again, by whom.
+
+It is refused, saying why, and keeps nothing, when the analysis made no call or its call kept
+no answer (a call refused before anything was sent), when the record of AI calls no longer
+holds the call, when the recorded answer does not parse, when the snapshot changed since it
+was kept, or when a newer analysis was kept since the card was drawn.
+
+**Analyse with the trace tool** has the same control under its own findings. There the
+answer is also held to the reads that ran, as its first check was, and the comparison's row
+says when it is counted from a re-check.
 
 ## Was this right?
 
