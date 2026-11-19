@@ -37,8 +37,10 @@ load() {
   [ -f "$ENV" ] || die "no $ENV: run 'kit init <sha>' first"
   # shellcheck disable=SC1090
   set -a; . "$ENV"; set +a
-  : "${MERCURY_PORT:=5080}" "${NETBOX_PORT:=8001}"
+  : "${MERCURY_PORT:=5080}" "${NETBOX_PORT:=8001}" "${KIT_NETBOX_URL:=}"
 }
+# KIT_NETBOX_URL (kit.env, optional): an external NetBox the kit uses in place of its own stack.
+external_netbox() { [ -n "${KIT_NETBOX_URL:-}" ]; }
 in_wt() {        # in_wt CMD...: run Mercury's code from the worktree, on the kit's data only
   (cd "$WT" && env NMAS_DATA_DIR="$DATA" MERCURY_PORT="$MERCURY_PORT" NETBOX_PORT="$NETBOX_PORT" \
     PYTHONDONTWRITEBYTECODE=1 "$@")
@@ -90,7 +92,8 @@ cmd_init() {
   [ -f "$ENV" ] || cat > "$ENV" <<EOF
 # The laptop kit's settings (docs/LAB9_LAPTOP_RUN.md). LAB_IF is the lab Ethernet, WIFI_IF the
 # Wi-Fi that keeps the default route, LAB_PROFILE the NetworkManager profile on LAB_IF;
-# CONTROLLER_ADDR is filled at the lab.
+# CONTROLLER_ADDR is filled at the lab. KIT_NETBOX_URL, when set, names an external NetBox
+# (http://<host>:<port>): the kit then starts no NetBox of its own and Mercury uses that one.
 PIN_SHA=$sha
 MERCURY_PORT=5080
 NETBOX_PORT=8001
@@ -100,6 +103,7 @@ LAB_PROFILE=lab9
 CONTROLLER_ADDR=
 OPENFLOW_PORT=6653
 CONTROLLER_REST_PORT=8080
+KIT_NETBOX_URL=
 EOF
   sed -i "s/^PIN_SHA=.*/PIN_SHA=$sha/" "$ENV"
   chmod 0600 "$ENV"
@@ -112,8 +116,12 @@ EOF
   fi
   cmd_ensure_pepper
   load
-  "${COMPOSE[@]}" pull -q
-  echo "netbox: images pulled"
+  if external_netbox; then
+    echo "netbox: KIT_NETBOX_URL is set in $ENV, so the local NetBox stack's images are not pulled"
+  else
+    "${COMPOSE[@]}" pull -q
+    echo "netbox: images pulled"
+  fi
   ensure_code_repo
   in_wt "$PY" "$HERE/kit_settings.py" init
   echo "kit: initialised at $sha in $KIT_HOME; fill LAB_IF and CONTROLLER_ADDR in $ENV at the lab"
@@ -198,7 +206,11 @@ cmd_start() {
     --setenv=KIT_HOME="$KIT_HOME" "$HERE/kit" stop \
     && echo "identity exception: the kit's stop is scheduled at $until (nmas-sdn-kit-expiry.timer)" \
     || die "the expiry timer could not be scheduled, so the exception is not started"
-  "${COMPOSE[@]}" up -d
+  if external_netbox; then
+    echo "netbox: KIT_NETBOX_URL is set in $ENV, so the local NetBox stack is not started (Mercury uses that NetBox)"
+  else
+    "${COMPOSE[@]}" up -d
+  fi
   # Mercury runs as a transient user unit: detached from this shell (a backgrounded child kept
   # `kit start` waiting on it, 2026-11-05), stopped by its unit's identity, never a pattern.
   systemd-run --user --quiet --unit="$UNIT" --working-directory="$WT" \
@@ -231,7 +243,11 @@ cmd_stop() {
   fi
   systemctl --user reset-failed "$UNIT" >/dev/null 2>&1 || true
   rm -f "$RUN/mercury.pid"
-  "${COMPOSE[@]}" stop >/dev/null 2>&1 && echo "netbox: stopped" || true
+  if external_netbox; then
+    echo "netbox: KIT_NETBOX_URL is set, so there is no local NetBox stack to stop (the external NetBox is left alone)"
+  else
+    "${COMPOSE[@]}" stop >/dev/null 2>&1 && echo "netbox: stopped" || true
+  fi
   guard_off
 }
 
@@ -239,7 +255,11 @@ cmd_status() {
   load
   echo "kit: $KIT_HOME, pinned at ${PIN_SHA:-?} ($(git -C "$WT" log -1 --format=%h 2>/dev/null || echo 'no worktree'))"
   pid_alive && echo "mercury: running, pid $(cat "$RUN/mercury.pid")" || echo "mercury: not running"
-  "${COMPOSE[@]}" ps --format '{{.Service}} {{.State}}' 2>/dev/null | sed 's/^/netbox stack: /' || true
+  if external_netbox; then
+    echo "netbox: external, $KIT_NETBOX_URL (KIT_NETBOX_URL in kit.env); the local stack is not used"
+  else
+    "${COMPOSE[@]}" ps --format '{{.Service}} {{.State}}' 2>/dev/null | sed 's/^/netbox stack: /' || true
+  fi
   [ -d "$WT" ] && in_wt "$PY" "$HERE/kit_settings.py" last-exception || true
 }
 
@@ -247,19 +267,28 @@ cmd_preflight() {
   load
   local fails=0
   bash "$HERE/kit_preflight.sh" || fails=$?
-  # NetBox can save a v2 token: its running settings hold a pepper of id 1, at least 50
-  # characters. Read in the NetBox container (`manage.py shell -c`), the length printed, never
-  # the value; read-only. A v2 token's own creation is the operator's (the sheet, step 3).
-  local pep
-  pep=$("${COMPOSE[@]}" exec -T netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py \
-        shell -c "from django.conf import settings as s; p = getattr(s, 'API_TOKEN_PEPPERS', {}) or {}; print('pepper', 1 in p, len(p.get(1) or ''))" 2>/dev/null | tail -1)
-  case "$pep" in
-    "pepper True "*) n=${pep##* }
-      if [ "$n" -ge 50 ]; then echo "PASS NetBox can save a v2 token: its pepper (id 1) is set, $n characters"
-      else echo "FAIL NetBox can save a v2 token: its pepper (id 1) is $n characters, under 50"; fails=$((fails + 1)); fi ;;
-    "pepper False "*) echo "FAIL NetBox can save a v2 token: API_TOKEN_PEPPERS has no id 1 (kit init adds it; kit stop and start apply it)"; fails=$((fails + 1)) ;;
-    *) echo "FAIL NetBox can save a v2 token: NetBox's settings could not be read (is NetBox up? kit start)"; fails=$((fails + 1)) ;;
-  esac
+  if external_netbox; then
+    # An external NetBox (KIT_NETBOX_URL): its pepper and tokens are its own, so the local
+    # stack's read is skipped, and Mercury's own connection test (the NetBox card's Test) runs.
+    echo "SKIP NetBox can save a v2 token: KIT_NETBOX_URL is set, so the kit runs no local NetBox whose settings could be read"
+    if [ -d "$WT" ]; then in_wt "$PY" "$HERE/kit_settings.py" netbox-test || fails=$((fails + 1))
+    else echo "FAIL NetBox connection (Mercury's Test): no worktree (kit init <sha> first)"; fails=$((fails + 1)); fi
+  else
+    # NetBox can save a v2 token: its running settings hold a pepper of id 1, at least 50
+    # characters. Read in the NetBox container (`manage.py shell -c`), the length printed,
+    # never the value; read-only. A v2 token's own creation is the operator's (the sheet,
+    # step 3).
+    local pep
+    pep=$("${COMPOSE[@]}" exec -T netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py \
+          shell -c "from django.conf import settings as s; p = getattr(s, 'API_TOKEN_PEPPERS', {}) or {}; print('pepper', 1 in p, len(p.get(1) or ''))" 2>/dev/null | tail -1)
+    case "$pep" in
+      "pepper True "*) n=${pep##* }
+        if [ "$n" -ge 50 ]; then echo "PASS NetBox can save a v2 token: its pepper (id 1) is set, $n characters"
+        else echo "FAIL NetBox can save a v2 token: its pepper (id 1) is $n characters, under 50"; fails=$((fails + 1)); fi ;;
+      "pepper False "*) echo "FAIL NetBox can save a v2 token: API_TOKEN_PEPPERS has no id 1 (kit init adds it; kit stop and start apply it)"; fails=$((fails + 1)) ;;
+      *) echo "FAIL NetBox can save a v2 token: NetBox's settings could not be read (is NetBox up? kit start)"; fails=$((fails + 1)) ;;
+    esac
+  fi
   if [ -d "$WT" ]; then in_wt "$PY" "$HERE/kit_settings.py" safety || fails=$((fails + $?)); fi
   if cmd_check >/dev/null; then echo "PASS settings check"; else echo "FAIL settings check: kit check names each key"; fails=$((fails + 1)); fi
   echo "kit preflight: $fails FAIL in all"

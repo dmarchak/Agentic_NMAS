@@ -23,6 +23,24 @@ A separate Mercury installation on the laptop:
 
 `~/nmas-sdn-lab` is `KIT_HOME`; set `KIT_HOME` to move it.
 
+**An external NetBox: `KIT_NETBOX_URL` in `kit.env`.** Empty or absent, the kit runs its own
+NetBox as above. Set to a shared NetBox's URL (for example `http://<controller>:8000`, reached
+through an SSH tunnel), the kit uses that NetBox in place of its own:
+- `kit init` and `kit repin` store it as Mercury's `netbox_url` (Settings › NetBox shows it),
+  written over a stored URL and saying so; every other stored value is kept as before.
+- `kit start` starts no local NetBox stack, `kit stop` has none to stop, and `kit status`
+  names the external URL.
+- `kit check` accepts that URL, and only that URL (a trailing slash and the case of the scheme
+  and host aside), as a non-loopback `netbox_url`; the NMAS host's names and GitHub are refused
+  in it as in every setting.
+- `kit preflight` skips the local stack's checks (Docker, NetBox on loopback, the v2-token
+  pepper), each a `SKIP` line, and runs Mercury's own NetBox connection test, the NetBox
+  connection card's Test, as one PASS or FAIL line, counted. The API token is still entered in
+  Mercury (below), never in `kit.env`.
+
+`kit init` writes `KIT_NETBOX_URL=` empty into a new `kit.env` only; an existing `kit.env` is
+never rewritten, so add the line by hand there.
+
 **The refusals:**
 - **`kit start` refuses to start** when any setting points at the NMAS host's services, its
   golden repository or a GitHub config repository (`lab/sdn-laptop/kit_check.py`).
@@ -30,8 +48,9 @@ A separate Mercury installation on the laptop:
     config-repository remotes.
   - It takes the NMAS host's LAN address and tunnel name (and that name's domain) from
     `data/lab_hosts.json` through `scripts/nmas-host --field`. It prints key names, never values.
-  - It also refuses a Mercury bound off loopback, a NetBox that is not the kit's own, and a
-    missing host name (it cannot rule out what it was not given).
+  - It also refuses a Mercury bound off loopback, a NetBox that is neither the kit's own nor
+    the one `KIT_NETBOX_URL` declares, and a missing host name (it cannot rule out what it was
+    not given).
 - **`nmas-deploy` refuses to run from this installation:** `kit init` writes `.nmas-lab-kit` in
   the worktree's root, and `scripts/nmas-deploy` refuses any run from a checkout holding it, or
   aimed at one (`LAB_KIT_MARKER`, tests/test_lab_sdn_laptop_kit.py).
