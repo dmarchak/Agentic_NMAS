@@ -610,9 +610,14 @@ def control(network: str, state: str = "rest") -> dict:
 # ── the apply ────────────────────────────────────────────────────────────────────────────────
 
 def _author_env(actor: str) -> dict:
-    email = actor if "@" in actor else f"{actor}@mercury.invalid"
-    return {"GIT_AUTHOR_NAME": actor, "GIT_AUTHOR_EMAIL": email,
-            "GIT_COMMITTER_NAME": actor, "GIT_COMMITTER_EMAIL": email}
+    """The commit's author and committer: the verified person, as their name and as their
+    address alike. The registry reads a version's author back from the commit's address
+    (`coderepo._author`) and compares it with the person publishing (`lifecycle.same_person`),
+    so the address is the actor whole: one made up for an actor that is no address (the
+    installation's local account) named somebody else, and that person's own Draft was
+    published as another person's review."""
+    return {"GIT_AUTHOR_NAME": actor, "GIT_AUTHOR_EMAIL": actor,
+            "GIT_COMMITTER_NAME": actor, "GIT_COMMITTER_EMAIL": actor}
 
 
 def build(tmp: str, program: dict) -> str:

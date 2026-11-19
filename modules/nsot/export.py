@@ -436,7 +436,7 @@ def write(network: str, actor: str, actor_verified: str, *, data: bytes = None,
     from modules.filestore import write_atomic
     from modules.nsot import repo as R
 
-    if not actor or not actor_verified:
+    if not actor or actor_verified in ("", "none"):
         return {"ok": False, "error": "an export is committed as an accountable, verified actor"}
     if data is None:
         built = build(network, **kw)
