@@ -1946,6 +1946,11 @@ class TestSdnOperationCards(_Cards):
         # naming no one source address.
         "tripwire": ("_sdn_responses.html", "Watch its ports…", r"Watch its ports…",
                      "data: the watched row names no one source address"),
+        # The policy's other action for the rule (the operator, 2026-11-20): the scan's drop
+        # proposed, its rate limit beside it; blocked by a verified service, as the
+        # proposal's own Preview is.
+        "choice": ("_sdn_responses.html", "Preview the {{ c.label | lower }} instead…",
+                   r"Preview the rate-limit the source instead…", "viewer"),
     }
     FORM = "/v2/sdn/flow/form?list=Default&do=add&connection=lab-controller&dpid=0000000000000001"
     ADD = {"list": "Default", "do": "add", "connection": "lab-controller",
@@ -2039,6 +2044,13 @@ class TestSdnOperationCards(_Cards):
         html = _text(lab["client"].get("/v2/sdn/responses?list=Default"))
         assert "1 watching" in html, "floor: the watching row is drawn"
         return html
+
+    def drawn_choice(self, request):
+        return self._responses(request)
+
+    def blocked_choice(self, request, monkeypatch):
+        as_service(monkeypatch)
+        return self._responses(request)
 
     def drawn_tripwire(self, request):
         return self._rate(request, "198.51.100.11")
@@ -2317,9 +2329,10 @@ class TestThePopulation:
         switches and Confirm <template>, Lab 9 Objective 2, C2902, 2026-11-10; 82 until SDN ›
         Apps' DHCP steering, its Steer DHCP on N switches and Remove N steering flows, C2904;
         84 until Lab 9 A's Watch its ports…, on a watched High packet rate and a flood
-        incident, one site, 2026-11-20)."""
+        incident, one site, 2026-11-20; 85 until a response's other actions, each Preview the
+        <action> instead…, the same day)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 85, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 86, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

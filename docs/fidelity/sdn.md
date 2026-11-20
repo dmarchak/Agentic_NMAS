@@ -135,7 +135,17 @@ before: `bc6d23f0a8f1a92c62843ec4a978f71a42b797f6080a1c74e758aa9754ffe2c2`.
 | I (C2913): states the board does not draw | not drawn | Couldn't save or Couldn't remove with the reason in place, an all-removed sheet, the corrected-by hover | **deviation** (log: Board lab9-sdn I built for C2913 and C2956, 3) |
 
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html, templates/v2/_sdn_analyse_tools.html, templates/v2/_sdn_snapshots.html
-Templates sha256: `5979afcf5dcea6904b0de16cca44b4c7493dc68873353fd2886589e453b8a4ec`
+Templates sha256: `ba8f924b06d88d8794e9b98d2f639b2435d8c4ab4f619fe0f9264c34cce09ad3`
+Hashed again 2026-11-20 for the Lab 9 hardware's step 5 (the operator: the Scan card offered only
+the drop): a response awaiting a person gains, after its own Preview, one Preview the <action>
+instead… for each other action the network's response policy allows for its rule (its own
+fields; a rate limit's at the rule's default), and a faint "Not offered: <action>, since
+<why>." for a source drop the protected set refuses, checked when the response was proposed.
+The proposal's Preview, its fields and everything else draw as before; a deviation only there
+(log: "Board SdnResponses built for the scan's response choice"). Compared by reading the
+templates, with no new shot; the states are drawn by tests/test_sdn_scan_over_flood.py and
+tests/v2_context.py's SDN operations provider (the templates before hashed
+`5979afcf5dcea6904b0de16cca44b4c7493dc68873353fd2886589e453b8a4ec`).
 Hashed again 2026-11-20 for the review of 94fa79c8 and the scan over the flood: a flood
 incident of small packets from one source gains the same Watch its ports… beside its Preview,
 drawing its card into the incident's own slot; a response's rate-limit fields start at the

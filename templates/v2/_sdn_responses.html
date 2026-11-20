@@ -168,7 +168,29 @@
       {%- endif %}
       <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="sdn-flows"{{ gate('confirm') }}><span class="op-idle">Preview the {{ r.label | lower }}…</span><span class="op-busy">Reading the switch…</span></button>{{ how('sdn-flows', compact=True, op='Preview a response') }}
     </form>
+    {#- The policy's other actions for the rule (the operator, 2026-11-20: a scan's card offered
+        only its proposal), each its own Preview naming it; a source drop only where the
+        protected set allows it, checked when the response was proposed. -#}
+    {%- for c in r.choices %}
+    <form class="op-act sdn-choice" hx-post="{{ url_for('sdn_v2.response_preview', rid=r.id) }}" hx-target="#sdn-rp-{{ r.id }}" hx-swap="innerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="list" value="{{ g.network }}">
+      <input type="hidden" name="action" value="{{ c.action }}">
+      {%- if pk.state == 'several' %}
+      <label class="small">source <select name="source" required><option value="" disabled selected>one of the {{ pk.hosts | length }} hosts on port {{ pk.port }}…</option>{% for h in pk.hosts %}<option value="{{ h.address }}">{{ h.label }}</option>{% endfor %}</select></label>
+      {%- elif r.params.source %}<input type="hidden" name="source" value="{{ r.params.source }}">{% endif %}
+      <label class="small">for <input type="number" name="hard_timeout" min="1" max="{{ g.limits['values'].sdn_response_max_seconds if g.limits.ok else 3600 }}" value="{{ g.limits['values'].sdn_response_hard_timeout_seconds if g.limits.ok else 600 }}"> s</label>
+      {%- if c.action == 'rate_limit_source' %}
+      <label class="small">above <input type="number" name="rate" min="1" value="{{ r.rate_default.rate }}"></label>
+      <label class="small"><select name="unit"><option value="kbps"{% if r.rate_default.unit == 'kbps' %} selected{% endif %}>kbit/s</option><option value="pktps"{% if r.rate_default.unit == 'pktps' %} selected{% endif %}>packets/s</option></select></label>
+      <label class="small">burst <input type="number" name="burst" min="0" value="{{ r.rate_default.burst }}"></label>
+      {%- endif %}
+      <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn-flows"{{ gate('confirm') }}><span class="op-idle">Preview the {{ c.label | lower }} instead…</span><span class="op-busy">Reading the switch…</span></button>{{ how('sdn-flows', compact=True, op='Preview a response') }}
+    </form>
+    {%- endfor %}
     {%- endif %}
+    {%- for w in r.withheld %}
+    <p class="small faint sdn-withheld">Not offered: {{ w.label }}, since {{ w.why }}.</p>
+    {%- endfor %}
     {%- if r.tripwire.offered %}
     <form class="op-act sdn-tripwire" hx-post="{{ url_for('sdn_v2.watch_tripwire', wid=r.id) }}" hx-target="#sdn-rp-{{ r.id }}" hx-swap="innerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="list" value="{{ g.network }}">

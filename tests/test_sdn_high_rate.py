@@ -31,11 +31,15 @@ pytestmark = pytest.mark.usefixtures("calls")
 
 
 def walk(key: str) -> dict:
-    """The walk's detection *key*: a retired case rebuilt by today's rule, else as kept."""
+    """The walk's detection *key*: a retired case rebuilt by today's rule, else as kept. A
+    retired case is rebuilt over small packets (`rebuilt`'s *small*, the minimal edit): the
+    walk's floods were 1,512 B UDP streams, and the size cut (C4167) would leave their first
+    seconds no High packet rate at all; these tests are about a watched rate and its joins, and
+    the cut itself is tests/test_sdn_classify_walk_cases.py's."""
     data = load()
     retired = {c["key"]: c for c in data["retired"]}
     if key in retired:
-        return rebuilt(retired[key])[0]
+        return rebuilt(retired[key], small=True)[0]
     return next(c for c in data["cases"] if c["key"] == key)["detection"]
 
 

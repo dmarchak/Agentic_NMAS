@@ -348,7 +348,7 @@ def propose(network: str, detection: dict, action: str, risk: str, *, why: str,
     preview's failure (C2159) or its confirm's refusal before any request (C2195): the
     response is a person's as if AUTO were off, and the failure is kept on it, for its card
     and its Needs attention row."""
-    from modules.sdn import incidents
+    from modules.sdn import closed_loop, incidents
 
     now = time.time() if now is None else now
     for row in awaiting(network)["rows"]:
@@ -359,6 +359,14 @@ def propose(network: str, detection: dict, action: str, risk: str, *, why: str,
            "detection": incidents.stamp(detection, incident) if incident else detection,
            "classification": classification, "params": dict(params or {}),
            "classified": classified, "refused_call": refused_call}
+    # The other actions a person may preview (the operator, 2026-11-20: a scan's card offered
+    # only its proposal): the policy's for the rule, a source drop only where the protected
+    # set allows it, read once here so the card's page load reads nothing.
+    try:
+        row.update(closed_loop.response_choices(network, detection, action))
+    except Exception as exc:                          # noqa: BLE001 (said on the card)
+        row.update(choices=[], withheld=[{"action": "", "label": "Other actions",
+                                          "why": f"could not be checked ({type(exc).__name__})"}])
     if auto_failed:
         row["auto_failed"] = auto_failed
     if incident:
@@ -1156,6 +1164,64 @@ def _scan_supersedes(network: str, proposed: list, now: float, line) -> list:
                 f"incident {scan['id']}: Mercury's tripwires confirmed the scan, so the same "
                 "traffic is answered once, as a scan; seen also there, and closed here"),
                 response=r["id"], incident=scan["id"])
+        # The scan's target's replies, already a flood incident before the tripwires
+        # confirmed it (the Lab 9 hardware, 2026-11-20: the target's RSTs, its own Flood):
+        # a flood from the watched subnet that began within its window of the scanner's own
+        # (`_replies_to`) joins too, never answered against the target.
+        for r in _replies_to(rows, scan, src, floods):
+            seen_also(network, scan["id"], [r.get("detection") or {}], now=now)
+            closed_by(network, r["id"], "joined", incident=scan["id"], now=now,
+                      why=f"joined scan incident {scan['id']}: its traffic is the replies to "
+                          f"{src}'s scan, which Mercury's tripwires confirmed")
+            out.append({"id": r["id"], "into": scan["id"]})
+            line("incident", (
+                f"incident {r['id']} ({incidents.key_of(r).partition('|')[2]}) joins scan "
+                f"incident {scan['id']}: it is the replies to {src}'s scan (its source in the "
+                "subnet the tripwires watched, beginning with the scanner's own flood); "
+                "nothing is answered against a scan's target"),
+                response=r["id"], incident=scan["id"])
+    return out
+
+
+def _replies_to(rows: list, scan: dict, src: str, floods: list) -> list:
+    """The flood incidents awaiting a person (among *rows*) that are the replies to the
+    confirmed *scan* from *src*: from a host in a subnet its tripwires watched, other than
+    *src*, whose destinations (where named) include *src*, and whose flood began within its
+    window of one of *src*'s own *floods* (the scanner's traffic and its target's replies
+    begin together; a flood that did not is its own)."""
+    import ipaddress
+
+    from modules.sdn import detect, incidents
+
+    nets = []
+    for n in ((scan.get("detection") or {}).get("measurement") or {}).get("watched") or []:
+        try:
+            nets.append(ipaddress.ip_network(str(n), strict=False))
+        except ValueError:
+            continue
+    began = [incidents._epoch(((f.get("detection") or {}).get("measurement") or {})  # noqa
+                              .get("since")) for f in floods]
+    began = [b for b in began if b is not None]
+    out = []
+    for r in rows:
+        key = incidents.key_of(r)
+        rule, _bar, who = key.partition("|")
+        d = r.get("detection") or {}
+        if rule != "flood" or who == src or not nets or not began:
+            continue
+        try:
+            addr = ipaddress.ip_address(who)
+        except ValueError:
+            continue
+        if not any(addr.version == n.version and addr in n for n in nets):
+            continue
+        dests = detect._destinations(d) - {""}           # noqa: SLF001 (its own reading)
+        if dests and src not in dests:
+            continue
+        since = incidents._epoch((d.get("measurement") or {}).get("since"))  # noqa: SLF001
+        window = int((r.get("incident") or {}).get("window_s") or 0)
+        if since is not None and any(abs(since - b) <= window for b in began):
+            out.append(r)
     return out
 
 
@@ -1405,6 +1471,29 @@ def verdict_of(network: str, d: dict, got: dict) -> dict:
                        + f"; proposed {action}, checked in code"))
 
 
+def scan_rate(network: str, d: dict, verdict: dict) -> dict:
+    """*verdict* (`verdict_of`'s) for a scan Mercury's tripwires confirmed (the operator,
+    2026-11-20): its response is the rate limit in packets a second
+    (`closed_loop.rate_limit_default`'s scan default, 20 a second, a burst of 10), where the
+    network's response policy allows it for scans; a drop the AI recommended stays offered
+    beside it on the card where the protected set allows it (`closed_loop.response_choices`).
+    Any other verdict, or a policy that allows no rate limit for scans, is unchanged."""
+    from modules.sdn import closed_loop
+
+    action = "rate_limit_source"
+    if (d.get("rule"), d.get("basis")) != ("scan", "tripwire")             or verdict.get("action") in ("", action)             or closed_loop.policy_refusal(network, "scan", action):
+        return verdict
+    params = dict(closed_loop.rate_limit_default("scan"))
+    if (verdict.get("params") or {}).get("hard_timeout"):
+        params["hard_timeout"] = verdict["params"]["hard_timeout"]
+    return dict(verdict, action=action, risk=closed_loop.CATALOGUE[action]["risk"],
+                params=params,
+                words=(f"{verdict.get('words') or ''}; a scan Mercury's tripwires confirmed is "
+                       f"answered by a rate limit in packets a second ({params['rate']} a second, "
+                       f"a burst of {params['burst']}), {verdict.get('action')} offered beside "
+                       "it where the protected set allows it").lstrip("; "))
+
+
 #: A rate limit's parameters a drop does not take (`capable`).
 _RATE_PARAMS = ("unit", "rate", "burst", "meter_id", "targets", "not_metered", "ports_from")
 
@@ -1480,6 +1569,7 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
     def respond(d, inc, rec, verdict):
         """Detection *d*'s response in the network's mode (the module's docstring, step 4),
         on its classification *verdict*, for its new incident *inc* (*rec* its record)."""
+        verdict = scan_rate(network, d, verdict)
         verdict = capable(network, d, verdict)
         if verdict.get("capability_words"):
             line("respond", verdict["capability_words"])

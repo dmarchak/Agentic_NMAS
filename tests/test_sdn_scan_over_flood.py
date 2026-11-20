@@ -28,12 +28,21 @@ pytestmark = pytest.mark.usefixtures("calls")
 SRC = "192.0.2.61"
 
 
+WATCHED = "192.0.2.0/24"
+
+
 def scan(source=SRC, at=T0 + 60, basis="tripwire"):
-    return dict(det(3, source, "scan", at=at), basis=basis)
+    """A scan in `detect._tripwire_scans`' shape: no target, the subnet watched said."""
+    return dict(det(3, source, "scan", at=at), basis=basis, targets=[],
+                measurement={"what": "tripwire ports a source touched", "value": 16,
+                             "unit": "ports", "of": 16, "watched": [WATCHED]})
 
 
-def flood(source=SRC, at=T0):
-    return dict(det(3, source, "flood", at=at), basis="rate")
+def flood(source=SRC, at=T0, since=None):
+    """A flood in `detect.flood`'s shape, its measurement's ``since`` *since* (default *at*)."""
+    return dict(det(3, source, "flood", at=at), basis="rate", targets=[], port=3,
+                measurement={"what": "packets received a second", "value": 250, "unit": "pps",
+                             "since": LP._iso(at if since is None else since)})
 
 
 def waiting():
@@ -120,6 +129,103 @@ def test_a_flood_long_after_the_scan_s_last_sighting_is_its_own():
     f = flood(at=T0 + 600)
     a_pass([f], at=T0 + 600)
     assert set(waiting()) == {f"scan|{SRC}", f"flood|{SRC}"}, waiting()
+
+
+# ─────────────────────────────── the scan's answer and the card's choices (the operator, 2026-11-20)
+
+def test_a_tripwire_scan_is_proposed_as_a_rate_limit_in_packets_a_second():
+    """Step 5 on the Lab 9 hardware: the scan card offered only the drop. A scan the tripwires
+    confirmed is proposed as the rate limit at the scan's default, the drop beside it."""
+    from modules.sdn import closed_loop as CL
+    a_pass([scan(at=T0)])
+    (row,) = LP.awaiting("Default")["rows"]
+    assert row["action"] == "rate_limit_source"
+    assert {k: row["params"][k] for k in ("unit", "rate", "burst")} == \
+        CL.SCAN_RATE_LIMIT_DEFAULT
+    assert row["choices"] == [{"action": "drop_source",
+                               "label": CL.CATALOGUE["drop_source"]["label"]}]
+    assert row["withheld"] == []
+
+
+def test_an_ordinary_scan_keeps_the_policy_s_default_and_offers_the_rate_limit():
+    from modules.sdn import closed_loop as CL
+    a_pass([scan(at=T0, basis="ports")])
+    (row,) = LP.awaiting("Default")["rows"]
+    assert row["action"] == "drop_source"
+    assert row["choices"] == [{"action": "rate_limit_source",
+                               "label": CL.CATALOGUE["rate_limit_source"]["label"]}]
+
+
+def test_a_drop_the_protected_set_refuses_is_withheld_saying_why(monkeypatch):
+    """On the Lab 9 fabric a source drop meets an untouchable class no response owns: the
+    card offers the rate limit alone and says why the drop is not offered. The class is planted
+    in the protected set's own shape, and the refusal is the real guard's."""
+    from modules import protected
+    planted = {"state": "ok", "source": "planted", "sha256": "0" * 64, "objects": {},
+               "switches": {}, "ports": {}, "external": {"owners": [], "refused": []},
+               "error": "", "classes": [{
+                   "name": "management", "invariant": "untouchable", "owners": [],
+                   "match": [{"eth_type": 0x0800, "ipv4_src": WATCHED}],
+                   "source": "planted", "reason": "the path Mercury reaches every device on"}]}
+    monkeypatch.setattr(protected, "for_network", lambda network: planted)
+    a_pass([scan(at=T0)])
+    (row,) = LP.awaiting("Default")["rows"]
+    assert row["action"] == "rate_limit_source" and row["choices"] == []
+    (w,) = row["withheld"]
+    assert w["action"] == "drop_source" and "management" in w["why"], w
+
+
+# ───────────────────────────────────────────────── the scan's target's replies (the same report)
+
+def _collected(port_bytes):
+    """A collection holding switch 3's port 3 at 250 pps of *port_bytes* each."""
+    return {"controllers": [{"connection": "c1", "switches": [{
+        "dpid_hex": "0000000000000003", "ports": [
+            {"port_no": 3, "rx_pps": 250.0, "rx_bytes_per_s": 250.0 * port_bytes}]}]}]}
+
+
+@pytest.mark.parametrize("target,size,dests,replies", [
+    ("192.0.2.62", 54, [], True),
+    ("192.0.2.62", 1500, [], False),
+    ("198.51.100.62", 54, [], False),
+    ("192.0.2.62", 54, ["192.0.2.99"], False),
+    ("192.0.2.62", 54, [SRC], True),
+], ids=["rsts", "large", "another-subnet", "to-another-host", "to-the-scanner"])
+def test_the_scan_s_target_s_small_packets_are_its_replies(target, size, dests, replies):
+    from modules.sdn import detect as D
+    reply = dict(flood(source=target), dst_hosts=dests)
+    marked = D.mark_replies([scan(), reply], _collected(size))
+    (got,) = [m for m in marked if m["key"] == reply["key"]]
+    if replies:
+        assert got["source"] is None and got["replying_to"]["rule"] == "scan"
+        assert got["replying_to"]["source"] == SRC and got["replying_hosts"] == [target]
+    else:
+        assert got["source"] == target and "replying_to" not in got
+
+
+def test_the_replies_in_the_scan_s_pass_join_its_incident():
+    from modules.sdn import detect as D
+    reply = flood(source="192.0.2.62")
+    (marked,) = [m for m in D.mark_replies([scan(), reply], _collected(54))
+                 if m["key"] == reply["key"]]
+    a_pass([scan(), marked], at=T0 + 60)
+    assert list(waiting()) == [f"scan|{SRC}"], waiting()
+    (row,) = LP.awaiting("Default")["rows"]
+    assert marked["key"] in row["members"]
+
+
+@pytest.mark.parametrize("began,joins", [(T0 + 2, True), (T0 - 200, False)],
+                         ids=["with-the-scan", "long-before"])
+def test_a_reply_flood_already_waiting_joins_the_scan_that_began_with_it(began, joins):
+    """The hardware's order: scan A's 250 pps made the scanner's flood and its target's RSTs a
+    flood of their own, both waiting; the tripwire scan then opens and takes both. A flood from
+    the subnet that did not begin with the scanner's own is its own."""
+    a_pass([flood(at=T0)])
+    a_pass([flood(source="192.0.2.62", at=began, since=began)], at=max(T0, began),
+           still=[flood(at=T0), flood(source="192.0.2.62", at=began, since=began)])
+    a_pass([scan(at=T0 + 60)], at=T0 + 60)
+    want = {f"scan|{SRC}"} | (set() if joins else {"flood|192.0.2.62"})
+    assert set(waiting()) == want, waiting()
 
 
 def test_a_flood_of_several_large_packet_sources_offers_no_tripwire():

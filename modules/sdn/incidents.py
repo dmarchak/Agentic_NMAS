@@ -219,11 +219,26 @@ def group(detections: list, values: dict) -> list:
         if not k.startswith(SINGLE + "|"):
             continue
         (d,) = inc["members"]
+        replied = scan_reply_key(d)
+        if replied and replied in out:
+            # A scan's target's replies (`detect.scan_replied`): seen also on the scan's
+            # incident, their words saying so, never their own.
+            out[replied]["members"].append(d)
+            del out[k]
+            continue
         joins = link_incident(d, grouped, lambda c: c["key"])
         if joins is not None:
             joins["members"].append(via_link(d, joins["key"]))
             del out[k]
     return list(out.values())
+
+
+def scan_reply_key(d: dict) -> str:
+    """The incident key of the scan detection *d* replies to (`detect.mark_replies`, marked
+    ``replying_to`` a ``scan``), or ``""``."""
+    to = d.get("replying_to") or {}
+    src = _canon(to.get("source"))
+    return f"scan|{src}" if to.get("rule") == "scan" and src else ""
 
 
 def first_seen(members: list) -> dict:
@@ -369,7 +384,10 @@ def joinable(rows: list, d: dict, now: float) -> dict:
         return last is not None and at - last <= int(inc.get("window_s") or 0)
 
     if k.startswith(SINGLE + "|"):
-        return link_incident(d, [r for r in rows if within(r)], key_of)
+        # A scan's target's replies (`detect.scan_replied`) join that scan's incident.
+        replied = scan_reply_key(d)
+        hit = next((r for r in rows if replied and key_of(r) == replied and within(r)), None)
+        return hit or link_incident(d, [r for r in rows if within(r)], key_of)
     for r in rows:
         if key_of(r) == k and within(r):
             return r

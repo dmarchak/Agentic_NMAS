@@ -1476,7 +1476,56 @@ SCAN_RATE_LIMIT_DEFAULT = {"unit": "pktps", "rate": 20, "burst": 10}
 def rate_limit_default(rule: str) -> dict:
     """The rate limit's default parameters for a response answering *rule* (`answered_rule`)."""
     return dict(SCAN_RATE_LIMIT_DEFAULT if rule == "scan" else RATE_LIMIT_DEFAULT)
+
+
 RATE_UNITS = {"kbps": "KBPS", "pktps": "PKTPS"}
+
+
+def source_drop_refusal(network: str, detection: dict) -> str:
+    """Why the protected set would refuse a drop of *detection*'s source on its switch, or
+    "": `protected.flow_refusal` over the drop's own add (the source's match, the response's
+    writer), the controller's control channel included. A response matches one source's
+    address with every destination, so on a network whose untouchable classes (management,
+    the control channel) it meets and does not own, a drop is refused (the Lab 9 hardware,
+    2026-11-20). Read when a response is proposed, kept with it, never on a page load."""
+    from modules import protected
+    from modules.sdn import connections
+
+    source = detection.get("source")
+    if not source:
+        return ""
+    try:
+        match = _source_match(source)
+    except ResponseRefused as exc:
+        return str(exc)
+    conn = next((c for c in connections.connections(network).get("connections") or []
+                 if c.get("name") == detection.get("connection")), {})
+    change = {"do": "add_flow", "flow": {"table_id": 0, "priority": 0xFFFF, "match": match,
+                                         "actions": [], "idle_timeout": 0, "hard_timeout": 1}}
+    return protected.flow_refusal(protected.for_network(network), [change],
+                                  detection.get("dpid"), conn,
+                                  writer=protected.RESPONSE_WRITER)
+
+
+def response_choices(network: str, detection: dict, proposed: str) -> dict:
+    """The other catalogue actions a person may preview for *detection*'s response beside
+    *proposed*: the network's response policy's for the rule it is answered as
+    (`answered_rule`), each ``{"action", "label"}``, a source drop only where the protected
+    set allows it (`source_drop_refusal`); the ones not offered under ``withheld``, each with
+    its ``why``. ``{"choices", "withheld"}``. Read when the response is proposed."""
+    pol = policy(network)
+    rule = answered_rule(detection)
+    allowed = ((pol.get("rules") or {}).get(rule) or {}).get("allowed") or [] \
+        if pol.get("ok") else []
+    out = {"choices": [], "withheld": []}
+    for action in [a for a in allowed if a != proposed and a in CATALOGUE]:
+        entry = {"action": action, "label": CATALOGUE[action]["label"]}
+        why = source_drop_refusal(network, detection) if action == "drop_source" else ""
+        if why:
+            out["withheld"].append(dict(entry, why=why))
+        else:
+            out["choices"].append(entry)
+    return out
 
 
 class ResponseRefused(ValueError):

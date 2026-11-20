@@ -520,6 +520,7 @@ def scan(collected: dict, values: dict, seen: dict = None, topo: dict = None) ->
     at = _epoch(collected.get("collected_at"))
     need, window = values["sdn_scan_ports"], values["sdn_scan_window_seconds"]
     pps = values["sdn_scan_fallback_pps"]
+    max_mean = values.get("sdn_flood_max_mean_bytes", THRESHOLDS["sdn_flood_max_mean_bytes"])
     seen = copy.deepcopy(seen or {})
     detections, judged, notes = [], set(), []
     by_ports = {}
@@ -558,6 +559,19 @@ def scan(collected: dict, values: dict, seen: dict = None, topo: dict = None) ->
                 continue
             judged.add(p["id"])
             if p["rx_pps"] < pps:
+                continue
+            # A scan's packets are small (C4167, measured on the Lab 9 hardware 2026-11-20:
+            # nmap's SYNs 58 B a packet at 251 pps; iperf3 at 5 Mbit/s about 1,500 B at about
+            # 430 pps on the physical link): a port whose packets average over the flood's
+            # size (`sdn_flood_max_mean_bytes`, 200 B) is not a High packet rate, said; a large
+            # stream held 30 s is the flood rule's to watch (C2313). A port whose bytes were
+            # not read is judged by its rate alone, as before.
+            mean = _port_mean(p)
+            if mean is not None and mean > max_mean:
+                notes.append(f"port {p['port_no']} of switch {dh} ({conn}) received "
+                             f"{p['rx_pps']:g} packets a second averaging {mean:,.0f} B, over "
+                             f"{max_mean:g} B (sdn_flood_max_mean_bytes): large packets are no "
+                             "scan's, so it is not a High packet rate")
                 continue
             entering = _entering(sw, p["port_no"])
             source, _sources, named = _port_detection_source(entering, topo, conn, sw["dpid"],
@@ -1034,6 +1048,22 @@ def mark_replies(detections: list, collected: dict) -> list:
                            f"({where}): what its port sends is its replies")) +
                 ". Mercury proposes no response against a flood's destination"}
             break
+    # A scan Mercury's tripwires confirmed names no destination host (only the subnet it
+    # watched), so its target's replies pair with nothing above (the Lab 9 hardware,
+    # 2026-11-20: the scan target's RSTs to the scanner, 250 pps at 54 B, opened its own Flood
+    # incident): `scan_replied` marks them.
+    scans = [s for s in detections
+             if s.get("rule") == "scan" and s.get("basis") == "tripwire" and s.get("source")]
+    for d in [x for x in rate if id(x) not in marks] if scans else []:
+        s = scan_replied(d, scans, _mean_packet(collected, d))
+        if s is not None:
+            marks[id(d)] = {
+                "source": s["source"], "rule": "scan", "port": s.get("port"),
+                "dpid_hex": s.get("dpid_hex"), "neither": False,
+                "words": (f"{d['source']} is in the subnet {s['source']}'s scan was watched in "
+                          f"by Mercury's tripwires, its packets small, so what its port sends "
+                          f"is its replies to the scan's probes. Mercury proposes no response "
+                          "against a scan's target")}
     out = []
     for d in detections:
         m = marks.get(id(d))
@@ -1043,6 +1073,37 @@ def mark_replies(detections: list, collected: dict) -> list:
         out.append(dict(d, source=None, sources=[], replying_hosts=_sources_of(d),
                         replying_to=m, words=f"{d.get('words', '')}; {m['words']}"))
     return out
+
+
+def scan_replied(d: dict, scans: list, mean, max_mean: float = None):
+    """The scan among *scans* (Mercury's tripwires confirmed each) that rate detection *d* is
+    the replies to, or None: *d*'s source is not the scanner, lies in a subnet the scan's
+    tripwires watched (its ``measurement.watched``), sends small packets (*mean*, its port's
+    mean received packet, at most the flood's size, `sdn_flood_max_mean_bytes`; unread: None,
+    never taken as replies), and its destinations, where its flows or the topology name any,
+    include the scanner. A flood from that subnet to another host is no reply."""
+    max_mean = THRESHOLDS["sdn_flood_max_mean_bytes"] if max_mean is None else max_mean
+    src = _canon_addr(d.get("source"))
+    if not src or mean is None or mean > max_mean:
+        return None
+    try:
+        addr = ipaddress.ip_address(src)
+    except ValueError:
+        return None
+    dests = _destinations(d) - {""}
+    for s in scans:
+        scanner = _canon_addr(s.get("source"))
+        if not scanner or scanner == src or (dests and scanner not in dests):
+            continue
+        nets = []
+        for n in (s.get("measurement") or {}).get("watched") or []:
+            try:
+                nets.append(ipaddress.ip_network(str(n), strict=False))
+            except ValueError:
+                continue
+        if any(addr.version == n.version and addr in n for n in nets):
+            return s
+    return None
 
 
 def _canon_addr(value) -> str:

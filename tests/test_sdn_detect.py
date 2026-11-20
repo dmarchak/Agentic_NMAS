@@ -200,6 +200,29 @@ class TestTheFallback:
     def test_an_l4_switch_never_falls_back(self):
         assert D.scan(collect(T0, second=rx(10000)), VALUES)["detections"] == []
 
+    @staticmethod
+    def _port1(packets, size):
+        """The second sample with port 1 receiving *packets* more over its 5 s, *size* bytes
+        each."""
+        def edit(ports):
+            ports[1]["rx_packets"] += packets - 500
+            ports[1]["rx_bytes"] += packets * size - 40000
+        return second_ports(edit)
+
+    @pytest.mark.parametrize("pps,size,watched", [
+        (251, 58, True), (430, 1500, False), (430, 200, True)],
+        ids=["nmap-syn-58B", "iperf3-1500B", "at-the-line-200B"])
+    def test_a_port_of_large_packets_is_no_high_packet_rate(self, pps, size, watched):
+        """C4167, the operator's measurement on the Lab 9 hardware (2026-11-20): nmap's SYN
+        scan, 251 pps at 58 B a packet, is a High packet rate; iperf3 at 5 Mbit/s on the
+        physical link, about 430 pps at about 1,500 B, is not, the rule's note naming its
+        mean; a port at the flood's own 200 B line is still one (over it, not at it)."""
+        out = D.scan(collect(T0, flows=self._l2(), second=self._port1(pps * 5, size)), VALUES)
+        assert bool(out["detections"]) == watched, out
+        if not watched:
+            assert any("averaging 1,500 B, over 200 B (sdn_flood_max_mean_bytes)" in n
+                       for n in out["notes"]), out["notes"]
+
 
 # ───────────────────────────────────────────────────────────────────────────── flood
 

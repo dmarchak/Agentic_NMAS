@@ -2889,6 +2889,10 @@ def _sdn_operations(client, mp, session):
     # and the other switch seen also, so the incident's detail draws its seen-also list.
     from modules.sdn import incidents
     flood = dict(d, key="k-ctx-2", rule="flood")
+    # The source drop beside its rate limit withheld (the protected set refusing it, planted
+    # here as the Lab 9 hardware's management class did, 2026-11-20): the card says why.
+    mp.setattr("modules.sdn.closed_loop.source_drop_refusal", lambda network, det: (
+        "it meets the untouchable management class, which no response owns (planted)"))
     other = LP.propose("Lab", flood, "rate_limit_source", "low", why="HITL", incident={
         "key": incidents.group_key(flood), "rule": "flood", "source": "192.0.2.1",
         "window_s": 30, "window_setting": "sdn_flood_window_seconds",

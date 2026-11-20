@@ -298,6 +298,10 @@ def incident_rows(awaiting: dict, network: str = "") -> list:
                      # A flood of small packets from one source may be a scan (it meets the
                      # flood rule after 30 s at the High packet rate's 100 pps): its tripwire.
                      "tripwire": _tripwire_offer(d),
+                     # The policy's other actions a person may preview, and those withheld
+                     # with why (`closed_loop.response_choices`, kept when it was proposed).
+                     "choices": list(r.get("choices") or []),
+                     "withheld": list(r.get("withheld") or []),
                      "severity": sev, "severity_words": SEVERITY_WORDS[sev],
                      "severity_tone": SEVERITY_TONE[sev], "verdict": _verdict(r, ai),
                      "switches": 1 + len(also), "seen_also": also,

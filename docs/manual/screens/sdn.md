@@ -425,7 +425,14 @@ mode and whether the loop is running.
   [Classify a detection with AI](sdn-flows#classify).
   Its preview button, named for the action ("Preview the drop traffic from the source…"), builds its card as Flows' changes are (the action's parameters checked
   against the evidence: the source is the detection's, the hard timeout within the network's
-  ceiling); **Send** applies it as you. Where the loop has logged the threat as no longer active,
+  ceiling); **Send** applies it as you. Each other action the network's response policy allows
+  for the rule has its own **Preview the <action> instead…** beside it (a rate limit's fields
+  at the rule's default). A drop of the source is offered only where the protected set allows
+  it, checked when the response was proposed; where it meets a class no response owns (on the
+  Lab 9 fabric, the management and control-channel classes), the card says **Not offered**
+  and why. A scan Mercury's tripwires confirmed is proposed as a rate limit in packets a second
+  (20 a second, a burst of 10); its target's replies to the probes (from the watched subnet,
+  small packets, beginning with the scan) join its incident, never a flood of their own. Where the loop has logged the threat as no longer active,
   the preview says **No longer active**, when, and that no switch has shown it since, above
   **Send**: sending is still your choice. **Dismiss with this reason** closes it, sending nothing
   (on an incident seen on several switches, **Dismiss the incident (N switches) with this
