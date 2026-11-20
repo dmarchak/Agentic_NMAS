@@ -432,6 +432,75 @@ def test_the_press_draws_the_answer_its_tool_calls_and_the_comparison(tw, monkey
     assert len(tw.sent) == 3
 
 
+def test_candidate_v6_is_v5_with_each_argument_its_own_field_and_its_traces_as_reads(tw):
+    """C4155 (the Lab 9 hardware, 2026-11-20, snap-e6cc984fed776eaf): v5's model wrote every
+    trace it asked for as one string in src (``"10.200.0.62','dst':'10.200.0.254','proto':
+    'icmp"``), each refused, so no trace ever reached an answer. v6 is v5 with the rule that
+    each argument is its own field, and its traces list ends each line with the read itself:
+    copied, that read is allowed; the packed form is still refused (never parsed back)."""
+    from modules.ai import prompts
+
+    v5, v6 = prompts.load("sdn_analyse_tools", 5), prompts.load("sdn_analyse_tools", 6)
+    assert v6["text"].startswith(prompts.load("sdn_analyse", 1)["text"])
+    assert "Never put two arguments in one field" in v6["text"]
+    assert "Never put two arguments in one field" not in v5["text"]
+    assert AT.TOOLS_CANDIDATES[6] == (("sdn_analyse_tools", 6), ("sdn_analyse_tools", 2), 1)
+    assert AT.TRACES_AS_READS == {6}
+    # A drop from a listed host (198.51.100.10) to an address, beside the recorded flows: its
+    # traces line names the trace that settles it, and v6's ends with that read.
+    from tests.test_sdn_analyst import OVS3_FLOWS
+    drop = {"priority": 600, "cookie": 0xBAD1, "packet_count": 0, "byte_count": 0,
+            "match": {"eth_type": 2048, "ip_proto": 1, "ipv4_src": "198.51.100.10",
+                      "ipv4_dst": "198.51.100.77"}, "actions": []}
+    snap, _s = collected_snapshot(HostsRyu(flows={3: OVS3_FLOWS + [drop]}))
+    plain, shown = AT.traces_text(snap), AT.traces_text(snap, as_reads=True)
+    assert " read: " not in plain, "v5's input is as it was measured"
+    reads = [json.loads(line.split(" read: ", 1)[1].split(" read: ")[0])
+             for line in shown.splitlines() if " read: " in line]
+    assert reads, shown
+    assert all(r["op"] == "trace" and set(r["args"]) >= {"src", "dst", "proto"}
+                         for r in reads)
+    first = dict(reads[0], why="to check", hypothesis="it is delivered")
+    (allowed,) = RL.check(AT.SEALED, [first], network=NET, scope={"snapshot": snap})
+    assert allowed["verdict"] == "allowed", allowed
+    a = reads[0]["args"]
+    packed = ask("trace", src=f"{a['src']}','dst':'{a['dst']}','proto':'icmp")
+    (refused,) = RL.check(AT.SEALED, [packed], network=NET, scope={"snapshot": snap})
+    assert refused["verdict"] == "refused"
+
+
+def test_a_press_may_ask_a_candidate_chosen_on_the_card_and_names_it(tw, monkeypatch):
+    """The operator, 2026-11-20 (Lab 9 B4): a live run on the hardware asks a candidate. The
+    card offers the pair in use and each candidate; the press asks the chosen one, the kept
+    answer and its card name it; a candidate there is not is refused before any call."""
+    import app as APP
+
+    monkeypatch.setattr(gateway, "anthropic_adapter",
+                        types.SimpleNamespace(**{**vars(gateway.anthropic_adapter),
+                                                 "send": tw.send}))
+    snap, _s = collected_snapshot()
+    port = f"port:ctl-1:{OVS3}:3"
+    c = APP.app.test_client()
+    h = {"HX-Request": "true"}
+    page = unescape(c.get(f"/v2/sdn/flows?list={NET}").get_data(as_text=True))
+    assert '<select name="prompts"><option value="">the prompts in use (' in page
+    assert ('<option value="6">candidate v6 (sdn_analyse_tools.v6 and v2, with the traces '
+            "list, each with its read), not adopted</option>") in page
+    tw.script = [{"findings": [finding([port])], "reads": []}]
+    r = c.post("/v2/sdn/analyse/ask-tools",
+               data={"list": NET, "snapshot": snap["id"], "prompts": "6"}, headers=h)
+    html = unescape(r.get_data(as_text=True))
+    assert r.status_code == 200 and "asked candidate v6 (sdn_analyse_tools.v6" in html
+    assert "Never put two arguments in one field" in json.dumps(tw.sent[-1]), "v6 was sent"
+    assert AN.view(NET)["tools"]["result"]["prompts"].startswith("candidate v6")
+    sent = len(tw.sent)
+    r = c.post("/v2/sdn/analyse/ask-tools",
+               data={"list": NET, "snapshot": snap["id"], "prompts": "9"}, headers=h)
+    html = unescape(r.get_data(as_text=True))
+    assert "no trace-tool candidate v9; the candidates are v5, v6; nothing was sent" in html
+    assert len(tw.sent) == sent, "no call for a candidate there is not"
+
+
 def test_the_trace_tool_is_an_ai_control_and_the_rest_stay_usable(tw, monkeypatch):
     """PHASE8_PLAN 15.13 through the page's real route: Analyse with the trace tool carries the AI
     mark with its task, model and cap; while hosted AI cannot answer it is disabled with the

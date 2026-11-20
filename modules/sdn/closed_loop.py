@@ -1639,17 +1639,24 @@ def _destinations(flows: list, source: str) -> list:
 
 def rate_limit_gap(source: str, params: dict, same_host: dict = None) -> str:
     """What a rate limit leaves unmetered, in words, for its preview's will-not list: the hosts
-    it meters and where their ports came from, what it does not meter and why, no NORMAL, and
-    that the source's other family is not metered (C1997), the host's other addresses the
-    controller's topology lists named (`family_gap`, C2148)."""
+    it meters and where they were found, how its traffic goes on (the switch's own flows below
+    it, `flow_ops.onward`: never a fixed port or NORMAL, C4153), what it does not meter and
+    why, and that the source's other family is not metered (C1997), the host's other addresses
+    the controller's topology lists named (`family_gap`, C2148)."""
     metered = ", ".join(params.get("targets") or [])
     ports_from = params.get("ports_from") or "the switch's flows"
     later = ("a host the controller's topology does not list yet" if
              ports_from == "the controller's topology" else
              "a destination the controller sets up after this response")
+    onward = "; ".join(params.get("onward") or []) or "on as the switch's own flows send it"
+    pinned = any("GOTO_TABLE" not in w for w in params.get("onward") or [])
     words = (f"Traffic from {source} to {later} is not metered: the meter caps {source}'s "
-             f"traffic to {metered}, each out of the port {ports_from} gives for it, and no "
-             "flow here forwards with NORMAL.")
+             f"traffic to {metered} (the hosts {ports_from} gives), each {onward}"
+             + (": where a port is named it is fixed until the response ends, so a reroute "
+                "around a failed link does not move that traffic" if pinned else
+                ": the network's own forwarding table chooses the port, so a reroute around a "
+                "failed link moves it")
+             + "; never NORMAL.")
     if params.get("not_metered"):
         words += f" Not metered now: {'; '.join(params['not_metered'])}."
     return words + family_gap(source, FAMILY_GAP_VERB["rate_limit_source"], same_host)
@@ -1715,6 +1722,18 @@ def family_gap(source: str, verb: str, same_host: dict = None) -> str:
                   f"({same.get('why') or 'no answer'}), so the host's other addresses are not "
                   "known here.")
     return words
+
+
+def _host_macs(drv) -> dict:
+    """``{address: mac}`` of every host the controller's topology lists, read now: the
+    destination MAC `flow_ops.onward` follows a pair's packet with where the switch's own
+    forwarding is by destination MAC. ``{}`` when the topology cannot be read (onward then
+    follows by the match alone)."""
+    got = drv.hosts()
+    if not got.get("ok"):
+        return {}
+    return {_canon(a): str(h.get("mac") or "").lower() for h in got.get("hosts") or []
+            for a in list(h.get("ipv4") or []) + list(h.get("ipv6") or []) if h.get("mac")}
 
 
 def _same_host(drv, source: str) -> dict:
@@ -2007,15 +2026,36 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                         f"no forwarding port for {source}'s traffic is known on switch "
                         f"{dpid}: {ports_from} give none, so there is nothing to meter: drop "
                         "it instead")
+                # Each pair through the meter, then on as the switch's own flows below it send
+                # it (C4153, the Lab 9 hardware, 2026-11-20: a pair flow's OUTPUT to the port
+                # the topology gave at the preview held a host's traffic on a dead link while
+                # forwarding.py rerouted everyone else's). On a pipeline that is a goto to the
+                # forwarding table, which decides the port each time; the port above only says
+                # the host is reached from here.
+                # A single table (a reactive fabric's learning flows by port and MAC, Lab 8)
+                # has no instruction that defers the port: there the port above, the
+                # forwarding as read now, is sent, and the preview says it is fixed.
+                macs = _host_macs(drv)
+                onward_words = []
                 for target, port in found.items():
+                    m = _pair_match(source, target)
+                    mac = macs.get(_canon(target))
+                    on = flow_ops.onward(read["flows"], 0, priority, m,
+                                         {"eth_dst": mac} if mac else {})
+                    goto = (on["ok"] and len(on["actions"]) == 1
+                            and on["actions"][0].get("type") == "GOTO_TABLE")
+                    then = on["actions"] if goto else [{"type": "OUTPUT", "port": port}]
+                    said = on["words"] if goto else (
+                        f"out port {port}, the port {ports_from} gives: this switch's own flows "
+                        "below it hand it to no later table")
+                    if said not in onward_words:
+                        onward_words.append(said)
                     changes.append({"do": "add_flow", "flow": {
                         "table_id": 0, "priority": priority, "cookie": flow_intent.new_cookie(),
-                        "idle_timeout": 0, "hard_timeout": hard,
-                        "match": _pair_match(source, target),
-                        "actions": [{"type": "METER", "meter_id": meter_id},
-                                    {"type": "OUTPUT", "port": port}]}})
+                        "idle_timeout": 0, "hard_timeout": hard, "match": m,
+                        "actions": [{"type": "METER", "meter_id": meter_id}] + then}})
                 out["params"].update(targets=list(found), not_metered=not_metered,
-                                     ports_from=ports_from)
+                                     ports_from=ports_from, onward=onward_words)
         else:
             ref = (detection.get("subject") or {}).get("value")
             found = _flow_by_ref(read["flows"], conn, dpid, ref)
@@ -2087,7 +2127,8 @@ def response_shape_refusal(ask: dict, action_id: str) -> str:
     - ``drop_source``: one add in table 0 matching the EtherType and one source address alone,
       with no actions, a hard timeout and Mercury's cookie;
     - ``rate_limit_source``: one meter, then adds in table 0, each matching the EtherType, that
-      source and one destination, through that meter to one port, each with a hard timeout and
+      source and one destination, through that meter, then a goto to a later table or one
+      numbered port (`flow_ops.onward`, C4153), each with a hard timeout and
       Mercury's cookie;
     - ``remove_flow``: one delete-strict, and Mercury's own flows put back (``reinstall``)."""
     from modules import protected
@@ -2134,14 +2175,24 @@ def response_shape_refusal(ask: dict, action_id: str) -> str:
             m = f.get("match") or {}
             src_key = "ipv4_src" if "ipv4_src" in m else "ipv6_src"
             acts = f.get("actions") or []
+            # Through the meter, then on as the switch's own flows send it (C4153,
+            # `flow_ops.onward`): a goto to a later table (a pipeline's forwarding table), or,
+            # on a single table, its forwarding flow's one numbered port. Never NORMAL, a
+            # reserved port or anything else a carried ask could add.
+            then = acts[1] if len(acts) == 2 else {}
+            onward_ok = (
+                (then.get("type") == "GOTO_TABLE" and isinstance(then.get("table_id"), int)
+                 and not isinstance(then.get("table_id"), bool) and then["table_id"] > 0)
+                or (then.get("type") == "OUTPUT" and isinstance(then.get("port"), int)
+                    and not isinstance(then.get("port"), bool)))
             ok = (c.get("do") == "add_flow" and not c.get("reinstall") and f.get("table_id") == 0
                   and timed(f) and mercury(f) and source_of(m, extra=(src_key,)) is not None
                   and len(acts) == 2 and acts[0].get("type") == "METER"
-                  and acts[0].get("meter_id") == meter_id and acts[1].get("type") == "OUTPUT"
-                  and isinstance(acts[1].get("port"), int))
+                  and acts[0].get("meter_id") == meter_id and onward_ok)
             if not ok:
                 return (f"{words}: each flow in table 0 from the source to one destination, "
-                        "through the meter to one port, with a hard timeout")
+                        "through the meter, then a goto to a later table or one numbered "
+                        "port, with a hard timeout")
             sources.add(m.get(src_key))
         if len(sources) != 1 or not ask.get("response"):
             return f"{words}: one source"
@@ -2328,7 +2379,7 @@ def response_words(done: dict, *, action: str, who: str, switch: str) -> str:
 
 
 def log_response(network: str, done: dict, *, action: str, who: str, ask: dict = None,
-                 now: float = None, response_id: str = "") -> dict:
+                 now: float = None, response_id: str = "", basis: str = "") -> dict:
     """Write a response's line to the loop's log (`loop.say`, step ``respond``): the one
     writer, for AUTO's apply in a pass and a person's confirm on SDN › Responses
     (`response_words` says what it holds). Never raises: a line that could not be written is
@@ -2348,6 +2399,9 @@ def log_response(network: str, done: dict, *, action: str, who: str, ask: dict =
     name = _switch_name(network, conn, dpid) if dpid is not None else ""
     shown = f"{switch} ({name})" if name else switch
     words = response_words(done, action=action, who=who, switch=shown)
+    if basis:
+        # AUTO's basis for the source it acted on (C4154): NetBox's declaration, or the flows.
+        words += f"; its source: {basis}"
     extra = {"operation": done.get("id") or "", "action": action, "actor": who,
              "dpid": switch, "outcome": done.get("outcome") or "refused",
              "read_back": (done.get("verify") or {}).get("read_back") or []}

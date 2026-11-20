@@ -409,9 +409,11 @@ def response_dismiss(rid):
 
 @bp.route("/link/<lid>/verify", methods=["POST"])
 def link_verify(lid):
-    """Verify the reroute on a link-failure card (board F; `link_failure.verify`): the trace
-    over the controller's stored flow tables, every host pair; its outcome kept on the card
-    as the person's. Reads the stored read only: nothing is sent to a controller or switch."""
+    """Verify the reroute on a link-failure card (board F; `link_failure.verify_now`): the
+    trace over the controller's flow tables, every host pair; its outcome kept on the card as
+    the person's. The stored read, or, when that read is from before the failure, the SDN
+    reader's own read again now, bounded (a person's press, never a page load). Reads only:
+    nothing is sent to a controller or switch but the reader's reads."""
     from modules import identity
     from modules.sdn import link_failure
 
@@ -419,7 +421,8 @@ def link_verify(lid):
     row = next((r for r in link_failure.open_rows(network)["rows"] if r.get("id") == lid), None)
     if row is None:
         return _refused_beside(f"no link-failure card {lid!r} is open on {network}")
-    got = link_failure.verify(network, row.get("detection") or {})
+    got = link_failure.verify_now(network, row.get("detection") or {},
+                                  by=identity.request_actor())
     link_failure.record_verify(network, lid, got, actor=identity.request_actor())
     return _strict(render_template("v2/_sdn_view.html", **_ctx("responses")))
 

@@ -196,7 +196,9 @@
     <dl class="kv small">
       <dt>Seen</dt><dd>{{ stamp(c.at) }}: {{ c.words }} <span class="faint">(confidence {{ c.confidence }})</span></dd>
       <dt>Hosts behind it</dt><dd>{% if c.affected %}{% for h in c.affected %}<span class="mono">{{ h.address or h.mac }}</span> <span class="faint">on {{ h.dpid_hex }} port {{ h.port_no }}</span>{% if not loop.last %}, {% endif %}{% endfor %}{% else %}<span class="faint">none the controller lists on either switch</span>{% endif %}</dd>
-      <dt>Reroute</dt><dd>{% if c.verify %}{{ c.verify.words }} <span class="faint">({{ c.verify.actor }}, {{ stamp(c.verify.at) }}; {{ c.verifies }} check{{ 's' if c.verifies != 1 }})</span>{% if c.verify.pairs %}
+      <dt>Reroute</dt><dd>{% if c.verify %}{{ c.verify.words }} <span class="faint">({{ c.verify.actor }}, {{ stamp(c.verify.at) }}; {{ c.verifies }} check{{ 's' if c.verifies != 1 }})</span>{% if c.verify.read_error %}
+        <p class="small notice notice-warn" role="alert">{{ c.verify.read_error }}.</p>{% endif %}{% if c.verify.judged_on %}
+        <p class="faint small">{{ c.verify.judged_on }}</p>{% endif %}{% if c.verify.pairs %}
         <details class="sdn-also" data-keep="link-{{ c.id }}-pairs"><summary class="small">Each host pair traced ({{ c.verify.checked }} of {{ c.verify.total }})</summary>
           <ul class="sdn-also-list small">{% for p in c.verify.pairs %}<li><span class="mono">{{ p.source }}</span> to <span class="mono">{{ p.destination }}</span>: {{ p.state | replace('_', ' ') }}: {{ p.words }}</li>{% endfor %}</ul>
         </details>{% endif %}{% else %}not verified yet: the forwarding app reroutes by itself on a port down, and Mercury sends nothing{% endif %}</dd>
@@ -205,7 +207,7 @@
     <div class="sdn-acts">
       <form class="op-act" hx-post="{{ url_for('sdn_v2.link_verify', lid=c.id) }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
         <input type="hidden" name="list" value="{{ g.network }}">
-        <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }} title="Traces every pair of hosts over the controller's stored flow tables; sends nothing"><span class="op-idle">Verify the reroute</span><span class="op-busy">Tracing…</span></button>{{ how('sdn', 'link-failure', compact=True, op='Verify the reroute') }}
+        <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }} title="Traces every pair of hosts over the controller's flow tables, read again now when the stored read is from before the failure; sends nothing"><span class="op-idle">Verify the reroute</span><span class="op-busy">Tracing…</span></button>{{ how('sdn', 'link-failure', compact=True, op='Verify the reroute') }}
       </form>
       <form class="op-act sdn-dismiss" hx-post="{{ url_for('sdn_v2.link_dismiss', lid=c.id) }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
         <input type="hidden" name="list" value="{{ g.network }}">

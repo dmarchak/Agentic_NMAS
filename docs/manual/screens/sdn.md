@@ -139,8 +139,11 @@ Each switch's flow table, Mercury's expected flows beside what is installed.
   checked and answered from the snapshot alone, then answering. Under its findings, **Tool
   calls** lists each read with what it returned; when both have answered the same snapshot, a
   table compares their findings, found, missed, false positives, calls and cost. Its own
-  **Check this answer again** does the same for its answer, with no AI call. How it works:
-  [Analyse with the trace tool](sdn-analyse-tools).
+  **Check this answer again** does the same for its answer, with no AI call. **Prompts**,
+  beside the button, is the prompts in use or a candidate (for example candidate v6, whose
+  traces list carries each read ready to ask), asked for that press only, so a candidate can be
+  measured live before it is adopted; the answer names the prompts it was asked with. How it
+  works: [Analyse with the trace tool](sdn-analyse-tools).
 - **Trace a packet…**, beside the filter, opens Topology › Path… on this network with the Flow
   tables layer chosen and its form open: the trace has one home ([A flow-table
   trace](sdn-trace)).
@@ -530,11 +533,20 @@ the response is to **verify** that reroute:
    - **cannot tell**, naming what the trace could not follow;
    - **verifying**, while the stored read is from before the failure or still lists the link.
      Mercury never judges the old tables as the new.
+4. Under it, the card names the read it judged on and its age: the stored read, or the flow
+   tables read again on your press, each against the time the failure was detected.
 
 **Each host pair traced** opens to every pair's outcome. In **AUTO**, on a network marked lab,
 Mercury verifies at every pass until the link is rerouted. If it has not seen a reroute after
 75 seconds, the card says so and leaves it to you. In **HITL**, press **Verify the reroute**.
 Nothing was written, so nothing is rolled back.
+
+**Your press answers at once.** The SDN reader reads the flow tables every 30 seconds. If its
+stored read is from before the failure, **Verify the reroute** has the reader read them again
+now and judges on that read. The button stays busy until the answer arrives, for at most 2.5
+times the reader's slowest recent read. If that read fails or does not answer in time, the card
+says **Couldn't read the flow tables now** and why. Its state reads **couldn't read now**, and
+the stored read's answer is labelled as older than the failure. Nothing is sent to a switch.
 
 The card closes by itself once the controller lists the link again and both its ports report
 up. **Dismiss with this reason** closes it sooner; the link stays on the Alerts tab until it

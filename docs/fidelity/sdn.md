@@ -135,7 +135,25 @@ before: `bc6d23f0a8f1a92c62843ec4a978f71a42b797f6080a1c74e758aa9754ffe2c2`.
 | I (C2913): states the board does not draw | not drawn | Couldn't save or Couldn't remove with the reason in place, an all-removed sheet, the corrected-by hover | **deviation** (log: Board lab9-sdn I built for C2913 and C2956, 3) |
 
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html, templates/v2/_sdn_analyse_tools.html, templates/v2/_sdn_snapshots.html
-Templates sha256: `b836ec2534ca648a6154d153c019dd71359026d44de31565844117efb05c350f`
+Templates sha256: `649b65de2275c883966604da2d9c2f0c56630b1b31f42cdde8fc53b3d2c69150`
+Hashed again 2026-11-20 for C4155 (the operator's B4 live run): `_sdn_analyse_tools.html`'s bar
+gains **Prompts**, a select of the prompts in use and each trace-tool candidate, inside the
+press's form, and the answer's head names the prompts it was asked with ("asked candidate v6
+…"). No other region moves; a deviation only in those (log: "C4155, the trace tool's prompts
+chosen on the card"); compared by reading the template, no new shot (the templates before it
+hashed `45565be79d7722b3901824e6802205ff69b705f584eba7d604a51bd9cc035a84`).
+Hashed again 2026-11-20 for the link card's Verify the reroute answering on the first press (the
+operator's report from the Lab 9 hardware: it sat on "verifying" until pressed again):
+`_sdn_responses.html`'s link card's Reroute line gains, under the verify's words, the read it was
+judged on and its age ("judged on the flow tables read again on this press at <time> …", "judged
+on the SDN reader's stored read at <time> …", or "the SDN reader's stored read at <time> … is N s
+older than the failure detected at <time>, so it was not judged"), and, where the press's read
+again failed, "Couldn't read the flow tables now: <why>." in place (warn), the card's chip then
+"couldn't read now"; Verify the reroute's title names the read again. No other region moves; a
+deviation only in those (log: "Board lab9-sdn F built on for the reroute's read again"); compared
+by reading the template, no new shot; the states are drawn by tests/test_sdn_link_failure.py
+through the real route (the templates before it hashed
+`b836ec2534ca648a6154d153c019dd71359026d44de31565844117efb05c350f`).
 Hashed again 2026-11-20 for C4150 (the operator's report from the Lab 9 hardware: a policy's
 meter outlived its flows, listed with no way to remove it): `_sdn_view.html`'s Meters table gains
 an unlabelled actions column, with Remove… only on a meter that reads "Mercury's, no flow uses
@@ -706,7 +724,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Region | Board | Built | Verdict |
 |---|---|---|---|
 | Link failures' place | F: the link card in the left column, the loop card beside it | its own card, "Link failures", under the incidents, full width; drawn only while a card is open (or the store cannot be read) | **deviation** (log: Board lab9-sdn F built, 7) |
-| The card's head | "Link down: of-eos-1 port 3 to of-eos-2 port 3" and "awaiting approval" | "Link down: <dpid> port 3 (<name>) to <dpid> port 3 (<name>)" and its state chip (awaiting a person, verifying, rerouted, verified, not rerouted, cannot tell) | **deviation** (log: Board lab9-sdn F built, 1) |
+| The card's head | "Link down: of-eos-1 port 3 to of-eos-2 port 3" and "awaiting approval" | "Link down: <dpid> port 3 (<name>) to <dpid> port 3 (<name>)" and its state chip (awaiting a person, verifying, rerouted, verified, not rerouted, cannot tell, couldn't read now) | **deviation** (log: Board lab9-sdn F built, 1) |
 | Seen | the time, the port reported down and the link no longer listed, the reads | the time and the detection's words (the end that reported it and how, the controller listing it or not, the reads gone), its confidence | **same** |
 | Traffic on it before, Backup | the rate and host pairs before; the backup path and no fast-failover group | Hosts behind it (each end switch's hosts by address, IPv4 and IPv6) and Reroute (the verify's words, who and when, Each host pair traced opening to every pair) | **deviation** (log: Board lab9-sdn F built, 2) |
 | Proposed, Mode | a reroute of 6 flows; HITL with AUTO's network and expiry | no Proposed line (Mercury installs no reroute); Mode: HITL and its words, or AUTO verifying at each pass for at most 75 s | **deviation** (log: Board lab9-sdn F built, 1) |

@@ -1428,8 +1428,10 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                                  "switches": 1 + len(rec["seen_also"])})
         # The one writer of a response's line (`closed_loop.log_response`): the switch, the
         # operation and the entries as Verify read them back, as a person's confirm logs.
+        # With the basis AUTO acted on for its source (C4154), in the response's one line.
         out["lines"].append(closed_loop.log_response(
-            network, done, action=action, who=AUTO_ACTOR, ask=preview["ask"], now=now()))
+            network, done, action=action, who=AUTO_ACTOR, ask=preview["ask"], now=now(),
+            basis=(decision["autonomous"] or {}).get("source") or ""))
 
     try:
         if modes.record_expiry(network, now())["recorded"]:

@@ -38,8 +38,18 @@ on a path that does not leave by either end of the failed link. The outcome is o
 - ``not_rerouted``: a pair is not delivered (the trace's words name where it ended);
 - ``cannot_tell``: none failed, and the trace cannot follow at least one (a group, NORMAL);
 - ``pending``: the stored read is from before the failure, or still lists the link: Mercury
-  waits for the next read (every 30 s), never judging the old tables as the new;
+  waits for the next read (every 30 s), never judging the old tables as the new. A person's
+  press does not wait (`verify_now`, the operator's report from the Lab 9 hardware, 2026-11-20:
+  the card sat on "verifying" until it was pressed again): when the stored read is from before
+  the failure, the press has the SDN reader read the flow tables again now (its own run,
+  `read_flows_again`, bounded) and judges on that read; a read again that fails or does not
+  answer in its bound is said in place ("Couldn't read the flow tables now: <why>"), the answer
+  from the older read kept and labelled as older than the failure;
 - ``no_pairs``: fewer than two hosts are listed, so there is no path to check.
+Every answer says which read it was judged on and its age (``judged_on``): the SDN reader's
+stored read, or the flow tables read again on this press, each with its time against the
+failure's detection time (`read_words`), so an answer from a read older than the failure never
+looks current.
 **Nothing is written by the response, so nothing is rolled back:** a verify that fails, or is
 not answered within `VERIFY_WINDOW_S`, is the person's (the card says what the trace found),
 never retried as a write.
@@ -89,6 +99,12 @@ DOWN_STATES = {"link_down": "reports its link down (LINK_DOWN)",
                "port_gone": "is no longer listed by its switch",
                "switch_gone": "is on a switch no longer connected to the controller"}
 CLOSED = ("restored", "dismissed")
+#: How long a press waits for the SDN reader's read again when the reader has no timed run to
+#: take 2.5x of (`reader_job.answer_bound`, which answers every other case): the reader's own
+#: interval (`readers/sdn_controllers.INTERVAL_SECONDS`), within which its schedule reads anyway.
+READ_AGAIN_FALLBACK_S = 30
+#: The spacing of the press's checks on its read again (`reader_job.request_in_flight`).
+READ_AGAIN_POLL_S = 0.2
 
 
 # ───────────────────────────────────────────────────────────────────────────── the rule
@@ -345,7 +361,9 @@ def record_verify(network: str, rid: str, got: dict, *, actor: str, now: float =
     now = time.time() if now is None else now
     return _append(network, {"kind": "verified", "id": rid, "at": _iso(now), "actor": actor,
                              **{k: got.get(k) for k in ("outcome", "words", "pairs", "checked",
-                                                       "total", "read_at", "final")}})
+                                                       "total", "read_at", "final",
+                                                       "failure_at", "judged_on", "fresh",
+                                                       "read_error")}})
 
 
 def close(network: str, rid: str, how: str, *, actor: str, why: str = "",
@@ -388,7 +406,7 @@ def verify(network: str, d: dict, *, cached=None, now: float = None) -> dict:
     link = d.get("link") or {}
     ends = [(e.get("dpid"), e.get("port_no")) for e in link.get("ends") or []]
     out = {"outcome": "pending", "words": "", "pairs": [], "checked": 0, "total": 0,
-           "read_at": "", "final": False}
+           "read_at": "", "final": False, "failure_at": d.get("at") or ""}
     fab = trace.fabric(network, cached=got, now=now)
     ctl = next((c for c in fab.get("controllers") or [] if c.get("name") == d.get("connection")),
                None)
@@ -397,11 +415,14 @@ def verify(network: str, d: dict, *, cached=None, now: float = None) -> dict:
                         f"({fab.get('why') or 'its connection is not in it'})")
         return out
     out["read_at"] = ctl.get("read_at") or ""
+    out["judged_on"] = read_words(out["read_at"], out["failure_at"], now)
     read = _epoch(out["read_at"])
     detected = _epoch(d.get("at"))
     if read is None or (detected is not None and read < detected):
-        out["words"] = (f"not yet: the stored read ({out['read_at'] or 'no time'}) is from before "
-                        f"the failure ({d.get('at')}); the next read is within 30 s")
+        # `stale`: what a person's press reads again for (`verify_now`); never kept.
+        out.update(stale=True, words=(
+            f"not yet: the stored read ({out['read_at'] or 'no time'}) is from before "
+            f"the failure ({d.get('at')}); the next read is within 30 s"))
         return out
     if any(e in ctl["links"] for e in ends):
         out["words"] = (f"not yet: the stored read ({out['read_at']}) still lists the link "
@@ -464,6 +485,111 @@ def verify(network: str, d: dict, *, cached=None, now: float = None) -> dict:
     return out
 
 
+def read_words(read_at: str, failure_at: str, now: float, fresh: bool = False) -> str:
+    """Which read an answer was judged on and its age, against the failure's detection time:
+    the flow tables read again on this press (*fresh*), the SDN reader's stored read, or a
+    stored read older than the failure, which is not judged."""
+    read, failed = _epoch(read_at), _epoch(failure_at)
+    if read is None:
+        return (f"the SDN reader's stored read has no time ({read_at or 'none'}), so it was not "
+                "judged")
+    age = f"{max(0, int(now - read))} s old"
+    if failed is not None and read < failed and not fresh:
+        return (f"the SDN reader's stored read at {read_at} ({age}) is {int(failed - read)} s "
+                f"older than the failure detected at {failure_at}, so it was not judged")
+    after = (f", {int(read - failed)} s after the failure detected at {failure_at}"
+             if failed is not None and read >= failed else "")
+    which = ("the flow tables read again on this press" if fresh else
+             "the SDN reader's stored read")
+    return f"judged on {which} at {read_at} ({age}){after}"
+
+
+def read_flows_again(network: str, by: str, *, sleep=time.sleep, clock=time.monotonic) -> dict:
+    """The SDN reader reads *network*'s controllers again now, for a person's press (*by*):
+    its own run of the network's configuration (`reader_job.request_run`, the run Switches'
+    Verify now asks for; one at a time per reader, its value stored for every screen), waited
+    for until it is stored or its bound passes: 2.5x the reader's slowest recorded run
+    (`reader_job.answer_bound`), else `READ_AGAIN_FALLBACK_S`. ``{"ok", "why", "run"}``; *why*
+    names the bound and the run waited on when it fires, or the read's own error."""
+    from modules import integration_groups as IG
+    from modules import reader_job
+    from modules.readers import sdn_controllers as R
+
+    reader = R.READER
+    try:
+        gid = IG.combined_id(tuple(reader.per_group), network)
+    except Exception as exc:                          # noqa: BLE001 (said, never a raise)
+        return {"ok": False, "run": "", "why": (
+            f"{network}'s settings could not be read to find its SDN reader "
+            f"({type(exc).__name__}: {exc})")}
+    if gid is None:
+        return {"ok": False, "run": "", "why": (
+            f"{network} declared its SDN controllers not applicable, so nothing reads them")}
+    store = IG.store_name(reader.name, gid)
+    cfg = next((c for c in reader_job.configuration_readers(reader) if c.name == store), None)
+    if cfg is None:
+        return {"ok": False, "run": "", "why": f"no SDN reader reads {network} ({store})"}
+    b = reader_job.answer_bound(cfg.name)
+    bound, basis = ((b["seconds"], b["basis"]) if b.get("seconds") else
+                    (READ_AGAIN_FALLBACK_S, f"{b.get('basis')}: the reader's own interval"))
+    run = reader_job.request_run(cfg, by, announce=reader_job.announce_via_page)
+    deadline = clock() + bound
+    while reader_job.request_in_flight(cfg.name) is not None:
+        if clock() >= deadline:
+            return {"ok": False, "run": run["run"], "why": (
+                f"the SDN reader's read of {network}'s controllers (run {run['run']}) did not "
+                f"answer within {bound} s ({basis}); it is stored when it lands")}
+        sleep(READ_AGAIN_POLL_S)
+    att = (reader_job.read_cached(cfg.name).get("doc") or {}).get("last_attempt") or {}
+    if (att.get("trigger") or {}).get("run") == run["run"] and not att.get("ok"):
+        return {"ok": False, "run": run["run"],
+                "why": att.get("error") or "the read failed, its error not recorded"}
+    return {"ok": True, "run": run["run"], "why": ""}
+
+
+def _not_current(network: str, d: dict, again: dict) -> str:
+    """Why the read again still cannot be judged: the connection's own error in it (it did not
+    answer, or its topology could not be read), else its time against the failure's."""
+    from modules import reader_job
+    from modules.readers import sdn_controllers as R
+
+    got = reader_job.read_cached_for(R.READER_NAME, network)
+    value = ((got.get("doc") or {}).get("last_good") or {}).get("value") or {}
+    ctl = next((c for c in value.get("controllers") or []
+                if c.get("name") == d.get("connection")), None) or {}
+    topo = ctl.get("topology") or {}
+    if ctl.get("state") in ("not_answering", "not_built"):
+        return f"{d.get('connection')} did not answer: {ctl.get('error') or 'no answer'}"
+    if topo and topo.get("state") != "read":
+        return (f"{d.get('connection')}'s topology could not be read: "
+                f"{topo.get('error') or 'no answer'}")
+    return (f"the read again ({again.get('read_at') or 'no time'}) is still from before the "
+            f"failure detected at {d.get('at')}")
+
+
+def verify_now(network: str, d: dict, *, by: str = "", read_again=None,
+               clock=time.time) -> dict:
+    """A person's Verify the reroute (`sdn_v2.link_verify`): `verify` over the stored read;
+    when that read is from before the failure, the flow tables read again now
+    (`read_flows_again`, or *read_again*, a test's) and judged on that read, which the answer
+    names (``fresh``, ``judged_on``). A read again that fails, or still predates the failure,
+    keeps the older read's answer, labelled as older than the failure, with ``read_error``:
+    "Couldn't read the flow tables now: <why>"."""
+    got = verify(network, d, now=clock())
+    if not got.pop("stale", False):
+        return got
+    fresh = (read_again or read_flows_again)(network, by)
+    if fresh["ok"]:
+        now = clock()
+        again = verify(network, d, now=now)
+        if not again.pop("stale", False):
+            return dict(again, fresh=True, judged_on=read_words(
+                again.get("read_at"), again.get("failure_at"), now, fresh=True))
+        return dict(again, read_error=("Couldn't read the flow tables now: "
+                                       + _not_current(network, d, again)))
+    return dict(got, read_error=f"Couldn't read the flow tables now: {fresh['why']}")
+
+
 # ───────────────────────────────────────────────────────────────────────────── the loop's step
 
 def step(network: str, fired: list, resolved: list, *, now: float, line, decide=None,
@@ -524,9 +650,13 @@ def card(row: dict) -> dict:
               "cannot_tell": "cannot tell", "pending": "verifying",
               "no_pairs": "nothing to verify"}.get(v.get("outcome"))
              or ("verifying" if row.get("mode") == "auto" else "awaiting a person"))
+    if v.get("read_error"):
+        # A press whose read again failed answered nothing current: never "verifying".
+        state, tone = "couldn't read now", "warn"
     shown = None
     if v:
         shown = {"words": v.get("words"), "actor": v.get("actor"), "at": v.get("at"),
+                 "judged_on": v.get("judged_on") or "", "read_error": v.get("read_error") or "",
                  "checked": v.get("checked") or 0, "total": v.get("total") or 0,
                  "pairs": [{k: p.get(k) for k in ("source", "destination", "state", "words")}
                            for p in v.get("pairs") or []]}

@@ -49,7 +49,7 @@ resolved names only. The model may only answer a policy, one question back, or w
 **Compile** (STEP ``compile``): on the source's ingress switch, one flow per source and
 destination address of one family, at `flow_ops.response_priority` (above every flow not
 Mercury's that could match it): ``block`` drops (no action); ``allow`` sends the traffic on as
-the switch's own flows below it would (`_onward`: an Open vSwitch pipeline's goto to its
+the switch's own flows below it would (`flow_ops.onward`: an Open vSwitch pipeline's goto to its
 forwarding table, a single table's forwarding flow for the destination), never to ``NORMAL``,
 the forwarding outside the flow tables, which on a proactive fabric floods or drops (C4126);
 ``rate_limit`` adds one meter (a DROP band at the rate, kbit/s) and each flow goes through it,
@@ -802,7 +802,7 @@ def _overlap(a: dict, b: dict) -> tuple:
 
 
 def _hint(w: dict, dpid: int, match: dict) -> dict:
-    """What is known of a policy flow's packets beyond its match, for `_onward`'s packet step:
+    """What is known of a policy flow's packets beyond its match, for `flow_ops.onward`'s packet step:
     the destination's MAC where the controller has learned the destination address, and the
     source's MAC and ingress port where it has learned the source on *dpid* (else the port
     NetBox cables the source's host to there)."""
@@ -823,68 +823,6 @@ def _hint(w: dict, dpid: int, match: dict) -> dict:
                 if len(ports) == 1:
                     out.update(in_port=ports[0], in_phy_port=ports[0])
     return out
-
-
-def _onward(flows: list, table_id: int, priority: int, match: dict, hint: dict) -> dict:
-    """Where a policy flow's traffic goes after its meter, or for an allow (C4126): on as the
-    switch's own flows would send it, never to OpenFlow's NORMAL port, which on a proactive
-    fabric is forwarding outside the flow tables (the Lab 9 hardware, 2026-11-20: Open
-    vSwitch's NORMAL had learned no MAC for the destination and flooded the source's frames to
-    the bridge's internal port alone, so a rate limit black-holed its traffic).
-
-    The flows of *table_id* under *priority* decide (a flow there is matched before any later
-    table's): the first priority at which a flow meets *match* (`_overlap`), where every such
-    flow covers it with the same instructions, gives them (an Open vSwitch pipeline's table-0
-    miss to its forwarding table: GOTO_TABLE). Where the flows there split the traffic (a
-    single table forwarding by destination MAC), the packet is followed (`trace.select`) with
-    *match*'s exact values and what *hint* knows (`_hint`), and the flow that takes it gives
-    its instructions. ``{"ok", "actions", "words", "error"}``: refused, naming the flows
-    compared, when no flow takes the traffic, the one that does drops or meters it, or the
-    packet cannot be followed."""
-    from modules.sdn import flow_intent, trace
-
-    below = [f for f in flows or [] if int(f.get("table_id") or 0) == int(table_id)
-             and int(f.get("priority") or 0) < int(priority)]
-
-    def given(f, how):
-        acts = [dict(a) for a in f.get("actions") or []]
-        said = f"{trace._ref(f)}: {flow_intent.action_words(acts)}"
-        if not acts:
-            return {"ok": False, "actions": [], "words": "", "error": (
-                f"its traffic is taken below it by {said}, which drops it, so there is "
-                "nothing to send on")}
-        if any(a.get("type") == "METER" for a in acts):
-            return {"ok": False, "actions": [], "words": "", "error": (
-                f"its traffic is taken below it by {said}, which meters it already")}
-        return {"ok": True, "actions": acts, "error": "",
-                "words": f"then on as {said} ({how})"}
-
-    for p in sorted({int(f.get("priority") or 0) for f in below}, reverse=True):
-        meets = [(f, got) for f in below if int(f.get("priority") or 0) == p
-                 for got in [_overlap(match, f.get("match") or {})] if got[0]]
-        if not meets:
-            continue
-        acts = {json.dumps(f.get("actions") or [], sort_keys=True) for f, _g in meets}
-        if all(got[2] for _f, got in meets) and len(acts) == 1:
-            return given(meets[0][0], "every packet it matches would be taken there")
-        break
-    exact = all("/" not in str(v) for v in match.values())
-    packet = dict(match, **hint) if exact else {}
-    if packet:
-        packet.setdefault("vlan_vid", trace.OFPVID_NONE)
-        packet.setdefault("metadata", 0)
-        flow, why = trace.select(below, int(table_id), packet)
-        if flow is not None:
-            return given(flow, "followed for "
-                         + (f"the destination's learned MAC {hint['eth_dst']}"
-                            if hint.get("eth_dst") else "its own match"))
-        if why is None:
-            why = (f"no flow under priority {priority} in table {table_id} takes it, so the "
-                   "switch would drop it")
-    else:
-        why = "its match is not one packet's (a subnet), so it cannot be followed"
-    return {"ok": False, "actions": [], "words": "", "error": (
-        f"the switch's flows below it split its traffic and {why}")}
 
 
 def committed(network: str, now: float = None) -> dict:
@@ -1187,14 +1125,15 @@ def check(network: str, policy: dict, *, w: dict = None, driver=None, draws: dic
             metered = ([{"type": "METER", "meter_id": meter_id}] if r.kind is Kind.rate_limit
                        else [])
             # On as the switch's own flows send it, never NORMAL (C4126).
-            on = (_onward(flows, 0, priority, m, _hint(w, dpid, m)) if r.kind is not Kind.block
+            on = (flow_ops.onward(flows, 0, priority, m, _hint(w, dpid, m))
+                  if r.kind is not Kind.block
                   else {"ok": True, "actions": [], "words": ""})
             flow = {"table_id": 0, "priority": priority, "cookie": cookie, "idle_timeout": 0,
                     "hard_timeout": r.duration_s, "match": m,
                     "actions": metered + on["actions"] if r.kind is not Kind.block else []}
             # Whether it lifts or shadows a flow of Mercury's is judged with it forwarding, as
             # an allow or a meter does: `effect` judges nothing past a goto, and the onward
-            # path is the switch's own, read by `_onward`.
+            # path is the switch's own, read by `flow_ops.onward`.
             judged = flow if r.kind is Kind.block else dict(
                 flow, actions=metered + [{"type": "OUTPUT", "port": "NORMAL"}])
             eff = flow_intent.effect(dict(judged, owner="mercury"), classified)

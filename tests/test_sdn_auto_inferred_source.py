@@ -107,7 +107,7 @@ def test_a_flow_named_source_and_an_action_on_no_source_stay_auto_s(networks):  
 
 # ───────────────────────────────────────────────────────────────────────────── the loop
 
-def _pass(monkeypatch, d, action="drop_source", params=None):
+def _pass(monkeypatch, d, action="drop_source", params=None, logged=None):
     """One loop pass over *d* with AUTO on, its classification passed proposing *action* on
     *params* (as the AI may: the detection's own source), the response core recorded."""
     seen = []
@@ -119,7 +119,8 @@ def _pass(monkeypatch, d, action="drop_source", params=None):
         return {"id": "sdnop-1", "outcome": "verified"}
 
     monkeypatch.setattr(CL, "respond_to_threat", respond)
-    monkeypatch.setattr(CL, "log_response", lambda *a, **k: {"step": "respond", "words": "x"})
+    monkeypatch.setattr(CL, "log_response", lambda *a, **k: (
+        (logged.append(k) if logged is not None else None), {"step": "respond", "words": "x"})[1])
     monkeypatch.setattr(LP, "classify", lambda network, det, job, **kw: {
         "action": action, "risk": CL.CATALOGUE[action]["risk"],
         "params": dict(params or {}), "classification": {"threat_type": "flood"},
@@ -217,6 +218,37 @@ def test_a_source_netbox_declares_on_its_port_is_auto_s(networks, monkeypatch): 
     assert got["words"].endswith(
         "; its source: NetBox declares it: h2's eth0 (192.0.2.2, 00:00:00:00:00:02) is cabled "
         "to s1 eth2 (port 2), where the controller lists that host alone")
+
+
+def test_auto_s_record_and_its_log_keep_the_basis_it_acted_on_for_the_source(networks,  # noqa: F811,E501
+                                                                             monkeypatch):
+    """C4154 (the Lab 9 hardware, 2026-11-20): AUTO's rate limit on a source NetBox declared
+    (sdnop-20261120T064649Z-60fbeceb) was recorded "By Mercury (AUTO) (autonomous: AUTO by
+    …)" alone, so whether C4133's check ran could be told only from the code. The autonomous
+    record keeps the basis, the pass logs it beside the response, and a flow-named source
+    says that instead."""
+    from modules import history_sources as HS
+    auto_on()
+    d = flood()
+    _netbox(monkeypatch, d)
+    got = MD.decide(NET, "low", detection=d, action="rate_limit_source")
+    assert got["autonomous"]["source"].startswith("NetBox declares it: h2's eth0 (192.0.2.2")
+    named = flood("walk-flood-2-s1", stored(edit=plus(H5)))
+    assert MD.decide(NET, "low", detection=named, action="drop_source")["autonomous"][
+        "source"] == "the flows name it"
+    assert "source" not in MD.decide(NET, "low", detection=d, action="remove_flow")[
+        "autonomous"], "an action on no source names none"
+    logged, real_log = [], CL.log_response
+    _out, seen = _pass(monkeypatch, d, action="rate_limit_source", logged=logged)
+    assert [s["mode"] for s in seen if s["confirm"]] == ["auto"]
+    (kept,) = logged
+    assert kept["basis"].startswith("NetBox declares it: h2's eth0"), "in the response's line"
+    line = real_log(NET, {"id": "sdnop-1", "outcome": "verified"},
+                           action="rate_limit_source", who="Mercury (AUTO)",
+                           ask={"connection": "lab", "dpid": 1}, basis=kept["basis"])
+    assert line["words"].endswith("; its source: " + kept["basis"])
+    row = {"mode": "auto", "actor": "Mercury (AUTO)", "autonomous": got["autonomous"]}
+    assert "; its source: NetBox declares it: h2's eth0" in HS._sdn_auto_who(row)
 
 
 @pytest.mark.parametrize("edit,why", [

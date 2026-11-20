@@ -220,6 +220,39 @@ def test_a_confirm_whose_carried_ask_is_not_a_drop_s_shape_is_refused(owned, tam
     assert owned["fake"].writes == writes
 
 
+def _rate_ask(then):
+    from modules.sdn import flow_intent as FI
+    return {"connection": "lab9", "dpid": 4, "response": True, "changes": [
+        {"do": "add_meter", "meter": {"meter_id": 3, "flags": ["KBPS"],
+                                      "bands": [{"type": "DROP", "rate": 1000}]}},
+        {"do": "add_flow", "flow": {
+            "table_id": 0, "priority": 300, "cookie": FI.new_cookie(), "idle_timeout": 0,
+            "hard_timeout": 600, "match": {"eth_type": 0x0800, "ipv4_src": "192.0.2.62",
+                                           "ipv4_dst": "192.0.2.61"},
+            "actions": [{"type": "METER", "meter_id": 3}] + then}}]}
+
+
+@pytest.mark.parametrize("then,ok", [
+    ([{"type": "GOTO_TABLE", "table_id": 2}], True),     # on through the pipeline (C4153)
+    ([{"type": "OUTPUT", "port": 3}], True),             # a single table's one port
+    ([{"type": "OUTPUT", "port": "NORMAL"}], False),
+    ([{"type": "OUTPUT", "port": "CONTROLLER"}], False),
+    ([{"type": "GOTO_TABLE", "table_id": 0}], False),    # never back to its own table
+    ([{"type": "GOTO_TABLE", "table_id": True}], False),
+    ([{"type": "GOTO_TABLE", "table_id": 2}, {"type": "OUTPUT", "port": 3}], False),
+    ([], False),
+])
+def test_a_rate_limit_s_carried_ask_goes_on_by_a_goto_or_one_port_and_nothing_else(then, ok):
+    """C4153: a rate limit's pair flow is the meter, then the switch's own onward instruction
+    (`flow_ops.onward`: a goto to a later table, or a single table's one numbered port). A
+    carried ask with NORMAL, a reserved port, a goto back to table 0 or one more action is not
+    the closed loop's shape, so it never takes the response writer's ownership."""
+    got = CL.response_shape_refusal(_rate_ask(then), "rate_limit_source")
+    assert (got == "") is ok, got
+    if not ok:
+        assert "through the meter, then a goto to a later table or one numbered port" in got
+
+
 def test_a_person_s_plan_carrying_a_response_s_fields_is_the_person_s(owned):
     _with(owned, ARISTA)
     ask = {"connection": "lab-controller", "dpid": 1, "response": True, "action": "drop_source",

@@ -273,6 +273,84 @@ def response_place(flows: list, own_cookies=(), intent_cookies=(), *, match: dic
                   own_cookies, intent_cookies, match, ceiling)
 
 
+def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = None) -> dict:
+    """Where a flow Mercury writes sends its traffic after its meter, or for an allow: on as
+    the switch's own flows would send it, never to OpenFlow's NORMAL port and never out a port
+    fixed when it was written (C4126, B2's policies; C4153, B3's rate limit). On a proactive
+    fabric NORMAL is forwarding outside the flow tables (the Lab 9 hardware, 2026-11-20: Open
+    vSwitch's NORMAL had learned no MAC and flooded the source's frames to the bridge's
+    internal port alone), and a port fixed at the preview does not move when the network's own
+    forwarding reroutes around a failed link (the same night: a rate limit's OUTPUT:2 held a host's
+    traffic on a dead link while forwarding.py had moved everyone else's).
+
+    The flows of *table_id* under *priority* decide (a flow there is matched before any later
+    table's): the first priority at which a flow meets *match*, where every such flow covers it
+    with the same instructions, gives them (an Open vSwitch pipeline's table-0 miss to its
+    forwarding table: GOTO_TABLE, so the forwarding table decides the port each time). Where
+    the flows there split the traffic (a single table forwarding by destination MAC), the
+    packet is followed (`trace.select`) with *match*'s exact values and what *hint* knows (the
+    destination's learned MAC, the source's port), and the flow that takes it gives its
+    instructions. ``{"ok", "actions", "words", "error"}``: refused, naming the flows compared,
+    when no flow takes the traffic, the one that does drops or meters it, or the packet cannot
+    be followed."""
+    from modules.sdn import flow_intent, trace
+
+    hint = dict(hint or {})
+    # The network's own flows: Mercury's own (a response, a policy) end at their timeouts, and
+    # the traffic then goes on as the network's forwarding sends it.
+    below = [f for f in flows or [] if int(f.get("table_id") or 0) == int(table_id)
+             and int(f.get("priority") or 0) < int(priority)
+             and not flow_intent.is_mercury(f.get("cookie"))]
+
+    def meets_covers(other):
+        try:
+            mine, theirs = flow_intent._fields(match), flow_intent._fields(other)
+        except flow_intent._CannotTell:
+            return True, False
+        return (flow_intent._match_meet(mine, theirs) is not None,
+                flow_intent._match_covers(theirs, mine))
+
+    def given(f, how):
+        acts = [dict(a) for a in f.get("actions") or []]
+        said = f"{trace._ref(f)}: {flow_intent.action_words(acts)}"
+        if not acts:
+            return {"ok": False, "actions": [], "words": "", "error": (
+                f"its traffic is taken below it by {said}, which drops it, so there is "
+                "nothing to send on")}
+        if any(a.get("type") == "METER" for a in acts):
+            return {"ok": False, "actions": [], "words": "", "error": (
+                f"its traffic is taken below it by {said}, which meters it already")}
+        return {"ok": True, "actions": acts, "error": "",
+                "words": f"then on as {said} ({how})"}
+
+    for p in sorted({int(f.get("priority") or 0) for f in below}, reverse=True):
+        meets = [(f, got) for f in below if int(f.get("priority") or 0) == p
+                 for got in [meets_covers(f.get("match") or {})] if got[0]]
+        if not meets:
+            continue
+        acts = {json.dumps(f.get("actions") or [], sort_keys=True) for f, _g in meets}
+        if all(got[1] for _f, got in meets) and len(acts) == 1:
+            return given(meets[0][0], "every packet it matches would be taken there")
+        break
+    exact = all("/" not in str(v) for v in match.values())
+    packet = dict(match, **hint) if exact else {}
+    if packet:
+        packet.setdefault("vlan_vid", trace.OFPVID_NONE)
+        packet.setdefault("metadata", 0)
+        flow, why = trace.select(below, int(table_id), packet)
+        if flow is not None:
+            return given(flow, "followed for "
+                         + (f"the destination's learned MAC {hint['eth_dst']}"
+                            if hint.get("eth_dst") else "its own match"))
+        if why is None:
+            why = (f"no flow under priority {priority} in table {table_id} takes it, so the "
+                   "switch would drop it")
+    else:
+        why = "its match is not one packet's (a subnet), so it cannot be followed"
+    return {"ok": False, "actions": [], "words": "", "error": (
+        f"the switch's flows below it split its traffic and {why}")}
+
+
 def free_meter_id(meters: list, features: dict = None, taken=(), flows=()) -> int:
     """The lowest meter id not on the switch, not pointed at by any of its *flows* (a meter
     there would limit that flow too), nor *taken* by an earlier step, within its

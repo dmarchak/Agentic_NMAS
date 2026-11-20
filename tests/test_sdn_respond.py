@@ -115,6 +115,63 @@ def test_a_flood_is_answered_by_one_meter_and_the_source_s_flows_through_it():
     assert m["meter_id"] == 2 and m["expires_at"] is not None
 
 
+@pytest.mark.usefixtures("lab")
+def test_a_rate_limit_follows_the_pipeline_s_forwarding_through_a_reroute_and_back(monkeypatch):
+    """C4153 (the Lab 9 hardware, 2026-11-20): a rate limit's pair flow sent its traffic out
+    the port the topology gave at the preview (OUTPUT:2, L3), so when forwarding.py rerouted
+    around L3 down, the rate-limited host's traffic stayed on the dead port. On a pipeline whose
+    table 0 misses to its forwarding table, each pair flow is the meter then that goto: moving
+    the forwarding table's flow (the reroute) moves the rate-limited traffic, and putting it
+    back puts it back."""
+    from modules.sdn import trace
+    kw = {"flows": without("v6")}
+    baseline_runs(5, **kw)
+    observe(T0 + 50, second=rx(10000), **kw)
+    observe(T0 + 70, second=rx(10000), **kw)
+    out = observe(T0 + 80, second=rx(10000), **kw)
+    (d,) = [x for x in out["detections"] if x["rule"] == "flood"]
+    dst, mac = "192.0.2.99", "02:00:00:00:00:99"
+    monkeypatch.setattr(CL, "_topology_ports", lambda drv, dpid, source: {
+        "ok": True, "error": "", "ports": {dst: 2}, "unplaced": []})
+    monkeypatch.setattr(CL, "_host_macs", lambda drv: {dst: mac})
+    team = 0x9A00000000000001
+    table = [
+        {"dpid": 1, "table_id": 0, "priority": 0, "cookie": team, "match": {},
+         "actions": [{"type": "GOTO_TABLE", "table_id": 2}], "idle_timeout": 0,
+         "hard_timeout": 0},
+        {"dpid": 1, "table_id": 2, "priority": 1000, "cookie": team + 1,
+         "match": {"eth_dst": mac}, "actions": [{"type": "OUTPUT", "port": 2}],
+         "idle_timeout": 0, "hard_timeout": 0}]
+    fake = FakeRyu(BASE, flows={1: table})
+    fake.driver = lambda network, name: C.driver_for(network, name, session=fake,
+                                                     sleep=lambda s: None)
+    preview = CL.respond_to_threat("Default", d, "rate_limit_source", driver=fake.driver)
+    assert preview["ok"], preview["error"]
+    _meter, *flows = preview["plan"]["steps"]
+    (body,) = [json.loads(s["request"]["body"]) for s in flows]
+    assert body["match"] == {"eth_type": 0x0800, "ipv4_src": d["source"], "ipv4_dst": dst}
+    assert [a["type"] for a in body["actions"]] == ["METER", "GOTO_TABLE"]
+    assert body["actions"][1]["table_id"] == 2 and "NORMAL" not in json.dumps(body)
+    assert confirm(fake, preview)["outcome"] == "verified"
+
+    def leaves():
+        flows = fake.driver("Default", preview["ask"]["connection"])["driver"].flows(1)["flows"]
+        packet = {"eth_src": "02:00:00:00:00:01", "eth_dst": mac, "vlan_vid": 0,
+                  "eth_type": 0x0800, "ip_dscp": 0, "ip_ecn": 0, "ipv4_src": d["source"],
+                  "ipv4_dst": dst, "ip_proto": 17, "udp_src": 40000, "udp_dst": 9}
+        went = trace.through_switch({"flows": flows, "ports": None}, 1, packet)
+        assert went["end"] is None, went["end"]
+        assert any("meter" in n for n in went["notes"]), "it is still metered"
+        return [p for p, *_rest in went["emits"]]
+
+    assert leaves() == [2]
+    forward = next(f for f in fake.table[1] if f.get("table_id") == 2)
+    forward["actions"] = [{"type": "OUTPUT", "port": 1}]            # the reroute around port 2
+    assert leaves() == [1]
+    forward["actions"] = [{"type": "OUTPUT", "port": 2}]            # the link back: restored
+    assert leaves() == [2]
+
+
 def _to(flow, dst, port):
     """*flow* (a captured L4 flow, Ryu's shape) copied to destination *dst* as an L3 flow (no
     transport port, so the scan rule does not count it), out of *port*."""
@@ -171,7 +228,8 @@ def test_a_scan_s_rate_limit_meters_all_the_source_s_forwarding_on_the_switch():
     (gap,) = [w for w in preview["plan"]["will_not"] if "not metered" in w]
     assert (f"Traffic from {d['source']} to a destination the controller sets up after this "
             "response is not metered") in gap
-    assert "no flow here forwards with NORMAL" in gap and "Not metered now: 192.0.2.10" in gap
+    assert "never NORMAL" in gap and "Not metered now: 192.0.2.10" in gap
+    assert "where a port is named it is fixed until the response ends" in gap, "a single table"
     assert f"Only {d['source']}'s IPv4 traffic is metered" in gap
     assert confirm(fake, preview)["outcome"] == "verified"
 

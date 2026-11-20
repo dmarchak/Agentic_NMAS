@@ -394,10 +394,17 @@ def decide(network: str, risk: str, now: float = None, *, detection: dict = None
         return {"auto": False, "autonomous": None,
                 "words": f"HITL for this one: its risk is {risk}, and AUTO allows "
                          f"{mode['allowed_risk']} and below"}
+    # The basis AUTO acted on for its source, kept with the action (C4154: the operation's
+    # record and History said only who turned AUTO on, so a source NetBox declared (C4133)
+    # could not be told from one the flows named).
+    basis = (declared if declared else
+             "the flows name it" if action in SOURCE_ACTIONS and (detection or {}).get("source")
+             else "")
     return {"auto": True, "words": mode["words"] + (f"; its source: {declared}" if declared else ""),
             "autonomous": {"setting": "sdn AUTO", "by": mode["by"], "reason": mode["reason"],
                            "since": mode["since"], "until": mode["until"],
-                           "allowed_risk": mode["allowed_risk"]}}
+                           "allowed_risk": mode["allowed_risk"],
+                           **({"source": basis} if basis else {})}}
 
 
 def history(network: str) -> dict:

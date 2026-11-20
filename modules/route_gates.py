@@ -273,7 +273,7 @@ GATES = {
     "notify_v2.webhook_edit": _g(K, "changes a webhook's name, URL or signing secret (a new URL is unverified and off again until its code is typed back)"),
     "sdn_v2.controller_test": _g(K, "tests a saved SDN controller connection with its stored credential from SDN › Controllers; changes nothing"),
     "sdn_v2.response_dismiss": _g(K, "dismisses an SDN response awaiting a person, with their reason; nothing is sent, recorded"),
-    "sdn_v2.link_verify": _g(K, "Verify the reroute on an SDN link-failure card (Lab 9 B3, board F): traces every host pair over the controller's stored flow tables and keeps the outcome on the card as the person's; reads the stored read only, sends nothing"),
+    "sdn_v2.link_verify": _g(K, "Verify the reroute on an SDN link-failure card (Lab 9 B3, board F): traces every host pair over the controller's flow tables and keeps the outcome on the card as the person's; the stored read, or the SDN reader's own read again now when that read is from before the failure; reads only, sends nothing"),
     "sdn_v2.link_dismiss": _g(K, "dismisses an SDN link-failure card with a person's reason; nothing is sent, recorded"),
     "sdn_v2.capabilities_read": _g(K, "reads again what each SDN switch can do (board F's capability matrix): each switch's description, meter features and table features through its controller, reads only, kept for the matrix and the responses' fallback"),
     "sdn_v2.mode_set": _g(K, "turns SDN responses' AUTO mode on (a verified person's reason, expiry and allowed risk) or off for one network (PHASE8_PLAN 17.4), recorded"),
