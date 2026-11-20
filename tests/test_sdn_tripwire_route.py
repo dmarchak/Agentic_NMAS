@@ -26,6 +26,7 @@ from modules.sdn import loop as LP
 from tests.test_openflow_golden import fake_netbox
 from tests.test_sdn_connections import networks  # noqa: F401 - the fixture
 from tests.test_sdn_high_rate import walk
+from tests.test_sdn_incidents import calls  # noqa: F401 - the fixture
 from tests.test_sdn_ops_v2 import form_fields, lab  # noqa: F401 - the fixture
 from tests.test_sdn_policy_intent import lab9_records
 from tests.test_sdn_watch_propose import watched
@@ -88,6 +89,10 @@ def test_watch_its_ports_previews_sixteen_tripwires_and_the_flow_confirm_sends_t
     assert sorted(f["match"]["tcp_dst"] for f in added) == sorted(CL.TRIPWIRE_PORTS)
     assert all(f["hard_timeout"] == 120 for f in added)
     assert all(f["actions"] == [{"type": "GOTO_TABLE", "table_id": 2}] for f in added)
+    # Recorded in the flow intent, so a response to the source leaves them out of what it must
+    # climb above and is placed over them (closed_loop.build_response's tripwire guard).
+    recorded = {r.get("cookie") for r in F.intent(NET, "lab-controller")["flows"]}
+    assert {f["cookie"] for f in added} <= recorded
 
 
 def test_a_row_naming_no_source_draws_it_disabled_saying_why(world):
@@ -106,7 +111,25 @@ def test_a_row_naming_no_source_draws_it_disabled_saying_why(world):
 def test_a_row_no_longer_open_is_refused_naming_it(world):
     r = world["client"].post("/v2/sdn/watch/watch-gone/tripwire", data={"list": NET})
     assert r.status_code == 409
-    assert "no watched row watch-gone is open" in unescape(r.get_data(as_text=True))
+    words = unescape(r.get_data(as_text=True))
+    assert "no watched row or flood incident watch-gone is open" in words
+    assert world["fake"].writes == []
+
+
+def test_a_flood_incident_of_one_source_offers_its_tripwire(world, calls):  # noqa: F811
+    """A scan over 50 packets a second meets the flood rule after its 30 s hold, so its
+    watching row has joined the flood by the time a person opens it: the flood incident's card
+    offers Watch its ports… too, previewed the same way, nothing sent."""
+    from tests.test_sdn_incidents import a_pass, det
+    f = dict(det(1, H1, "flood", conn="lab-controller"), basis="rate")
+    a_pass([f])
+    (row,) = LP.awaiting(NET)["rows"]
+    html = page(world)
+    assert f'hx-post="/v2/sdn/watch/{row["id"]}/tripwire' in html
+    card = world["client"].post(f"/v2/sdn/watch/{row['id']}/tripwire", data={"list": NET})
+    text = unescape(card.get_data(as_text=True))
+    assert card.status_code == 200, text
+    assert f"16 tripwires on switch 0000000000000001 for {H1}" in text
     assert world["fake"].writes == []
 
 

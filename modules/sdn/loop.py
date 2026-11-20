@@ -460,7 +460,8 @@ def closed_by(network: str, response_id: str, how: str, *, why: str, incident: s
     one response the system closes (the Lab 9 hardware, 2026-11-20; every other stays a
     person's, C1968): ``cleared`` once no switch shows it (nothing names whose traffic it was,
     so nothing is left to act on), or ``joined`` into the flood incident *incident* that names
-    its source. *why* its words."""
+    its source; and a flood incident ``joined`` into the scan incident Mercury's tripwires
+    confirmed for its source (`_scan_supersedes`). *why* its words."""
     if how not in ("cleared", "joined"):
         raise ValueError(f"the loop closes a transit incident cleared or joined, not {how!r}")
     now = time.time() if now is None else now
@@ -1123,6 +1124,41 @@ def _transit_joins(network: str, proposed: list, now: float, line) -> list:
     return out
 
 
+def _scan_supersedes(network: str, proposed: list, now: float, line) -> list:
+    """Each flood incident awaiting a person, and each watching row, of a source whose scan
+    Mercury's tripwires confirmed in this pass (one of *proposed*, `incidents.confirmed_scan`):
+    a scan over 50 packets a second meets the flood rule after its 30 s hold, so the same
+    traffic is both, and the scan wins (the operator, 2026-11-20): the flood's detection is
+    seen also on the scan's incident and its row closed ``joined`` (`closed_by`), a watching
+    row closed ``joined`` (`watched`), so its answer is the scan's, in packets a second. A
+    flood whose response was already sent is not touched. ``[{"id", "into"}]``."""
+    from modules.sdn import incidents
+
+    rows = awaiting(network)["rows"]
+    out = []
+    for scan in [r for r in rows if r["id"] in proposed and incidents.confirmed_scan(r)]:
+        src = incidents.key_of(scan).partition("|")[2]
+        floods = [r for r in rows if incidents.key_of(r) == f"flood|{src}"]
+        watches = [w for w in watching(network)["rows"]
+                   if canon_source((w.get("detection") or {}).get("source")) == src]
+        for r in floods:
+            seen_also(network, scan["id"], [r.get("detection") or {}], now=now)
+            closed_by(network, r["id"], "joined", incident=scan["id"], now=now,
+                      why=f"joined scan incident {scan['id']}: Mercury's tripwires confirmed "
+                          f"{src}'s traffic is a scan, so its flood is the scan's")
+        for w in watches:
+            watched(network, w["id"], "joined", incident=scan["id"], now=now,
+                    why=f"joined scan incident {scan['id']}")
+        for r in floods + watches:
+            out.append({"id": r["id"], "into": scan["id"]})
+            line("incident", (
+                f"{'incident' if r in floods else 'watching row'} {r['id']} ({src}) joins scan "
+                f"incident {scan['id']}: Mercury's tripwires confirmed the scan, so the same "
+                "traffic is answered once, as a scan; seen also there, and closed here"),
+                response=r["id"], incident=scan["id"])
+    return out
+
+
 def attacks(new: list) -> list:
     """The attacks among a pass's new incidents (C2279, PHASE8_PLAN 17.10): flood incidents
     whose detections send to one address (`detect._destinations`: the flows' destinations, and
@@ -1732,6 +1768,9 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
             # One flood, one incident, whichever switch fired first (the Lab 9 hardware,
             # 2026-11-20): a sourceless transit incident opened before its ingress's joins it.
             out["joined_into"] = _transit_joins(network, out["proposed"], now(), line)
+            # A scan the tripwires confirmed answers its source's flood (the operator,
+            # 2026-11-20): one incident, the scan's.
+            out["joined_into"] += _scan_supersedes(network, out["proposed"], now(), line)
         # High packet rate (board S-HR, C2238; PHASE8_PLAN 17.8), after the responses so a
         # flood answered in this pass is the incident it joins: each flood active now with the
         # response that answers it (awaiting a person, applied, or holding its source off).

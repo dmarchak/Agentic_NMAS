@@ -291,6 +291,13 @@ def incident_rows(awaiting: dict, network: str = "") -> list:
                      "refused_call": r.get("refused_call") or "",
                      "inactive_since": r.get("inactive_since") or "",
                      "ai": ai, "params": dict(r.get("params") or {}),
+                     # The rate limit's form starts at the answered rule's own default (the
+                     # review of 94fa79c8, 3): packets a second for a scan, kbit/s otherwise.
+                     "rate_default": closed_loop.rate_limit_default(
+                         closed_loop.answered_rule(d)),
+                     # A flood of small packets from one source may be a scan (it meets the
+                     # flood rule after 30 s at the High packet rate's 100 pps): its tripwire.
+                     "tripwire": _tripwire_offer(d),
                      "severity": sev, "severity_words": SEVERITY_WORDS[sev],
                      "severity_tone": SEVERITY_TONE[sev], "verdict": _verdict(r, ai),
                      "switches": 1 + len(also), "seen_also": also,
@@ -321,14 +328,16 @@ def _person_proposal(network: str, d: dict, pol: dict) -> dict:
 
 
 def _tripwire_offer(d: dict) -> dict:
-    """A watching row's "Watch its ports…" (Lab 9 A, the scan tripwire): ``{"offered",
+    """A row's "Watch its ports…" (Lab 9 A, the scan tripwire): ``{"offered",
     "refusal"}``. Offered on a High packet rate whose switch's flows name no transport ports
-    (the scan rule's fallback, basis ``rate``); *refusal* why it is drawn disabled (no one
+    (the scan rule's fallback, basis ``rate``), and on a flood of small packets (basis
+    ``rate``): a scan over 50 packets a second meets the flood rule after its 30 s hold, so
+    the watching row it opened has joined the flood by then; *refusal* why it is drawn disabled (no one
     source address to watch). Reads nothing: the subnet NetBox records and the switch's own
     goto are checked when it is pressed (`closed_loop.tripwire_ask`)."""
     import ipaddress
 
-    if (d.get("rule"), d.get("basis")) != ("high_rate", "rate"):
+    if (d.get("rule"), d.get("basis")) not in (("high_rate", "rate"), ("flood", "rate")):
         return {"offered": False, "refusal": ""}
     try:
         ipaddress.ip_address(str(d.get("source") or ""))

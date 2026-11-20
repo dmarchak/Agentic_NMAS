@@ -74,7 +74,9 @@ def test_a_tripwire_is_one_flow_a_port_to_the_source_s_subnet_going_on_by_the_go
         assert f["actions"] == [{"type": "GOTO_TABLE", "table_id": 2}]
         assert f["hard_timeout"] == CL.TRIPWIRE_SECONDS == 120 and f["idle_timeout"] == 0
         assert F.is_tripwire(f["cookie"]) and F.is_mercury(f["cookie"])
-        assert f["priority"] > 0
+        # One above the team's own table-0 flow it meets (the priority-0 goto), so every
+        # Mercury response (at least RESPONSE_PRIORITY_FLOOR) sits above it (review 1).
+        assert f["priority"] == 1
     assert len({c["flow"]["cookie"] for c in changes}) == len(changes), "a cookie each"
     assert subnet in got["words"] and "A scan beyond" in got["words"]
     assert lab.fake.writes == [], "an ask is only built, never sent"
@@ -216,6 +218,108 @@ def test_a_kbit_rate_limit_for_a_scan_is_refused_before_any_request():
     meter = json.loads(pps["plan"]["steps"][0]["request"]["body"])
     assert meter["bands"] == [{"burst_size": 10, "rate": 20, "type": "DROP"}]
     assert "PKTPS" in meter["flags"]
+
+
+def _sent(lab, got):  # noqa: F811 - the fixture's value
+    """The ask's flows as the switch would hold them (the confirm's result, without a run)."""
+    for c in got["ask"]["changes"]:
+        lab.fake.table[OVS1].append(dict(c["flow"], dpid=OVS1, packet_count=0, byte_count=0))
+
+
+def test_a_second_set_beside_a_live_one_is_refused(lab):  # noqa: F811 - the fixture
+    """The review of 94fa79c8 (2): a second set would count one host's ordinary ports twice."""
+    _pipeline(lab)
+    first = CL.tripwire_ask(NET, _watched(H1_V4), driver=lab.driver)
+    assert first["ok"], first["error"]
+    _sent(lab, first)
+    again = CL.tripwire_ask(NET, _watched(H1_V4), driver=lab.driver)
+    assert not again["ok"] and "already on switch" in again["error"], again
+    other = CL.tripwire_ask(NET, _watched(H1_V6), driver=lab.driver)
+    assert other["ok"], "another address of the host is its own set: " + other["error"]
+
+
+def test_a_tripwire_under_mercury_s_own_live_drop_of_the_source_is_refused(lab):  # noqa: F811
+    _pipeline(lab)
+    lab.fake.table[OVS1].append({
+        "dpid": OVS1, "table_id": 0, "priority": 300, "cookie": F.mercury_cookie(0x77),
+        "match": {"eth_type": 0x0800, "ipv4_src": H1_V4}, "actions": [], "idle_timeout": 0,
+        "hard_timeout": 600})
+    got = CL.tripwire_ask(NET, _watched(H1_V4), driver=lab.driver)
+    assert not got["ok"] and "already drops or meters TCP 21" in got["error"], got
+
+
+def test_a_tripwire_sits_under_any_response_to_its_source(lab):  # noqa: F811 - the fixture
+    """The review of 94fa79c8 (1): a response is placed at least RESPONSE_PRIORITY_STEP above
+    the team's flows it meets, so a tripwire one above them is always under it, and a drop of
+    the source takes the tripwire's ports too."""
+    from modules.sdn import flow_ops
+    _pipeline(lab)
+    lab.fake.table[OVS1].append({
+        "dpid": OVS1, "table_id": 0, "priority": 1200, "cookie": TEAM + 7,
+        "match": {"eth_type": 0x0800, "ip_proto": 6},
+        "actions": [{"type": "GOTO_TABLE", "table_id": 2}], "idle_timeout": 0,
+        "hard_timeout": 0})
+    got = CL.tripwire_ask(NET, _watched(H1_V4), driver=lab.driver)
+    assert got["ok"], got["error"]
+    wires = {c["flow"]["priority"] for c in got["ask"]["changes"]}
+    assert wires == {1201}, "one above the team's TCP flow it meets"
+    flows = lab.driver(NET, CONN)["driver"].flows(OVS1)["flows"]
+    drop_at = flow_ops.response_priority(flows, match={"eth_type": 0x0800, "ipv4_src": H1_V4})
+    assert drop_at > max(wires), (drop_at, wires)
+
+
+@pytest.mark.usefixtures("saved")
+def test_a_response_level_with_a_live_tripwire_of_its_source_is_refused():
+    """The review of 94fa79c8 (1): where a response would go at or under a live tripwire of its
+    source (one planted there), the tripwire would carry its port past it: refused, naming it."""
+    from tests.test_sdn_detect import scan_flows
+    from tests.test_sdn_respond import scan_detection, switch_with, without_live_drop
+    flows = scan_flows(25)
+    d = scan_detection(flows)
+    from modules.sdn.drivers.ryu import flow_from_ryu
+    (wire,) = _tripwires(0, ports=(80,))
+    wire["priority"] = 60000
+    # Recorded, as the flow editor's confirm records a tripwire it sent: a response leaves
+    # Mercury's recorded flows out of what it must climb above.
+    F.record_installed("Default", connection="ctl-1", flow=flow_from_ryu(1, wire).as_dict(),
+                       actor="op@example.com", response={"id": "tw-1", "action": "tripwire"})
+    fake = switch_with(without_live_drop(flows) + [wire])
+    got = CL.respond_to_threat("Default", d, "drop_source", driver=fake.driver)
+    assert not got["ok"], got
+    assert "Mercury's tripwire for 192.0.2.1" in got["error"] and "60000" in got["error"]
+    assert fake.writes == []
+
+
+@pytest.mark.usefixtures("saved")
+def test_the_tripwire_scan_s_rate_limit_is_metered_in_packets_a_second():
+    """End to end: the tripwire's own scan detection (no target, a subnet watched) answered by
+    a rate limit: the pps meter and the source's flows through it."""
+    from tests.test_sdn_respond import switch_with, without_live_drop
+    flows = captured_flows() + _tripwires(D.TRIPWIRE_NEED)
+    (d,) = [x for x in D.scan(collect(T0, flows=flows), VALUES)["detections"]
+            if x.get("basis") == "tripwire"]
+    fake = switch_with(without_live_drop(captured_flows()))
+    got = CL.respond_to_threat("Default", d, "rate_limit_source", driver=fake.driver)
+    assert got["ok"], got["error"]
+    meter, *pairs = got["plan"]["steps"]
+    assert json.loads(meter["request"]["body"])["bands"] == [
+        {"burst_size": 10, "rate": 20, "type": "DROP"}]
+    assert pairs, "the source's flows through the meter"
+
+
+@pytest.mark.usefixtures("saved")
+@pytest.mark.parametrize("case", ["unsupported-counter", "one-port-twice"])
+def test_hits_are_distinct_ports_with_a_counter(case):
+    """The review of 94fa79c8 (2 and 7): a switch's all-ones counter is unknown, never a hit;
+    six flows on three ports are three ports touched."""
+    if case == "unsupported-counter":
+        wires = _tripwires(len(CL.TRIPWIRE_PORTS))
+        for w in wires:
+            w["packet_count"] = (1 << 64) - 1
+    else:
+        wires = _tripwires(6, ports=(21, 21, 22, 22, 23, 23))
+    out = D.scan(collect(T0, flows=captured_flows() + wires), VALUES)
+    assert [x for x in out["detections"] if x.get("basis") == "tripwire"] == []
 
 
 def test_the_tripwire_ports_leave_out_dns_and_are_distinct():

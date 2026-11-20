@@ -451,6 +451,8 @@ def _detection(rule: str, collected: dict, ctl: dict, sw: dict, *, subject: tupl
 #: `closed_loop.TRIPWIRE_PORTS`) must have taken a packet for it to be called a scan: ordinary
 #: traffic touches one or two, a port scan most of them in seconds.
 TRIPWIRE_NEED = 6
+#: OpenFlow 1.3's counter value for "not supported" (all ones, 64 bits).
+UNSUPPORTED_COUNT = (1 << 64) - 1
 
 
 def _tripwire_scans(collected: dict, ctl: dict, sw: dict, conn: str, dh: str) -> list:
@@ -470,25 +472,31 @@ def _tripwire_scans(collected: dict, ctl: dict, sw: dict, conn: str, dh: str) ->
             continue
         entry = by_src.setdefault(src, {"set": [], "hit": []})
         entry["set"].append(f)
-        if int(f.get("packet_count") or 0) > 0:
+        # A switch that keeps no flow counters answers all ones (OpenFlow 1.3's "not
+        # supported"): unknown, never a hit (the review of 94fa79c8, 7).
+        count = int(f.get("packet_count") or 0)
+        if 0 < count < UNSUPPORTED_COUNT:
             entry["hit"].append((port, f))
     out = []
     for src, e in sorted(by_src.items()):
-        if len(e["hit"]) < TRIPWIRE_NEED:
-            continue
+        # Distinct ports, never flows (the review of 94fa79c8, 2): two flows of one port are
+        # one port touched.
         ports = sorted({p for p, _f in e["hit"]}, key=_port_order)
+        if len(ports) < TRIPWIRE_NEED:
+            continue
         # The tripwires' destination is a subnet, never one host: the detection names no
         # target (a response's targets are host addresses), the subnet watched said beside.
+        watched = len({_dst_port(f.get("match") or {}) for f in e["set"]})
         nets = sorted({str((f.get("match") or {}).get(k) or "") for f in e["set"]
                        for k in ("ipv4_dst", "ipv6_dst")} - {""})
         out.append(_detection(
             "scan", collected, ctl, sw, subject=("source", src),
             scope=flows_scope(conn, dh), source=src, targets=[],
-            words=(f"{src} touched {len(ports)} of the {len(e['set'])} ports Mercury's "
+            words=(f"{src} touched {len(ports)} of the {watched} ports Mercury's "
                    f"tripwires watch on switch {dh} ({conn}) toward {', '.join(nets)}, at or "
                    f"above {TRIPWIRE_NEED}: {', '.join(ports)}"),
             measurement={"what": "tripwire ports a source touched", "value": len(ports),
-                         "unit": "ports", "of": len(e["set"]), "ports": ports,
+                         "unit": "ports", "of": watched, "ports": ports,
                          "watched": nets},
             threshold={"what": "the tripwire ports a scan touches", "value": TRIPWIRE_NEED,
                        "unit": "ports"},

@@ -359,22 +359,34 @@ mode and whether the loop is running.
   it, and one is refused for it. A large-packet stream's rate limit stays in kbit/s.
 
   **Watch its ports…** on a High packet rate row (a switch whose flows name no transport
-  ports, so no scan can be counted) previews Mercury's **tripwire** for the row's source:
+  ports, so no scan can be counted), or on a flood incident of small packets from one source,
+  previews Mercury's **tripwire** for the source. A scan over 50 packets a second meets the
+  flood rule after its 30 s hold, so by the time you open it, its watching row has usually
+  joined a flood incident: the control is there too.
   - **What it writes:** one flow per TCP port a port scan touches (21, 22, 23, 25, 80, 110,
     135, 139, 143, 443, 445, 993, 995, 3306, 3389 and 8080; 53 is left out), each from the
     source to the subnet NetBox records it in, going on by the switch's own goto to its later
-    table, so where the traffic goes is unchanged. Each stays two minutes (its hard timeout).
-  - **What it tells:** a source whose traffic touches six or more of them is called a
+    table, so where the traffic goes is unchanged. Each sits one priority above the switch's
+    own flows it meets, so any response Mercury sends later is above it. Each stays two
+    minutes (its hard timeout). One set per source at a time.
+  - **What it tells:** a source whose traffic touches six or more of its ports is called a
     **scan**, of high confidence, and answered as any scan is; ordinary traffic touches one or
     two. A scan beyond that subnet is not watched.
+  - **The scan wins over the flood:** a flood incident awaiting you for the same source joins
+    the scan's incident (seen also there), and a flood seen afterwards joins it too, so the
+    traffic is answered once, as a scan, in packets a second. A flood whose response you
+    already sent is left as it is; with its meter in force, a tripwire for that source is
+    refused, since Mercury's own response already holds its traffic.
   - **From there:** it is SDN › Flows' preview of a flow change: the exact sixteen requests
     and their hash; **Send** applies them holding the switch, verifies them by reading the
     table back, and records them. The tripwires are left out of the switch's coverage and of
     the scan rule's own count.
   - **When it is refused:** NetBox records no subnet for the source, or the switch's own flow
     for that traffic does not go on by a goto (a single-table switch, or one sending to the
-    controller), named with the flow. It is drawn disabled where the row names no one source
-    address.
+    controller), named with the flow; a set for the source is already on the switch; or
+    Mercury's own flow already drops or meters that traffic. It is drawn disabled where the row
+    names no one source address. A response to the source that would sit level with a live
+    tripwire is refused, naming it, until the tripwire ends.
 
   Large packets from two or more sources to one host are one attack on that host, and are
   called a flood. How it works: [High packet rate](sdn-flows#high-rate).

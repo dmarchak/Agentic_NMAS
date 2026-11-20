@@ -405,11 +405,16 @@ def watch_tripwire(wid):
     from modules.sdn import closed_loop, flow_ops, loop
 
     network = _network_of_form()
-    row = next((r for r in loop.watching(network)["rows"] if r.get("id") == wid), None)
-    if row is None:
+    # A watching row, or a flood incident awaiting a person (a scan over 50 pps meets the
+    # flood rule after its 30 s hold, so its watching row has joined the flood by then).
+    row = next((r for r in loop.watching(network)["rows"] + loop.awaiting(network)["rows"]
+                if r.get("id") == wid), None)
+    if row is None or not sdn_ops_page._tripwire_offer(  # noqa: SLF001 (the page's own offer)
+            row.get("detection") or {})["offered"]:
         return _op_card(sdn_ops_page.refused(
-            network, "flow", f"no watched row {wid} is open on {network}: it ended, joined an "
-                             "incident or was dismissed"), 409)
+            network, "flow", f"no watched row or flood incident {wid} is open on {network}: "
+                             "it ended, joined an incident or was dismissed, or is not one a "
+                             "tripwire answers"), 409)
     got = closed_loop.tripwire_ask(network, row.get("detection") or {})
     if not got["ok"]:
         return _op_card(sdn_ops_page.refused(network, "flow", got["error"]), 409)

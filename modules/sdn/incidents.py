@@ -373,7 +373,27 @@ def joinable(rows: list, d: dict, now: float) -> dict:
     for r in rows:
         if key_of(r) == k and within(r):
             return r
-    return None
+    # A scan Mercury's tripwires confirmed wins over a flood from the same source (the
+    # operator, 2026-11-20: a scan over 50 packets a second meets the flood rule after its
+    # 30 s hold): the flood's sighting joins the scan's incident, seen also, never its own.
+    return scan_over_flood(d, rows)
+
+
+def scan_over_flood(d: dict, rows: list):
+    """The incident awaiting a person (among *rows*) that a flood detection *d* joins because
+    Mercury's tripwires confirmed a scan from the same source (`confirmed_scan`), or None. No
+    window: the scan's incident stays the source's while it awaits a person."""
+    src = _canon(d.get("source"))
+    if d.get("rule") != "flood" or not src:
+        return None
+    return next((r for r in rows if confirmed_scan(r) and key_of(r) == f"scan|{src}"), None)
+
+
+def confirmed_scan(row: dict) -> bool:
+    """Whether the incident *row* is a scan Mercury's tripwires confirmed (its detection's
+    basis ``tripwire``, `detect._tripwire_scans`)."""
+    d = row.get("detection") or {}
+    return d.get("rule") == "scan" and d.get("basis") == "tripwire"
 
 
 def severity(row: dict) -> str:

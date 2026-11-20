@@ -1594,20 +1594,51 @@ def tripwire_ask(network: str, detection: dict, *, driver=None) -> dict:
     if not read["ok"]:
         return dict(out, error=read["error"])
     fam = "ipv4" if addr.version == 4 else "ipv6"
-    own = (made.get("connection") or {}).get("own_cookies") or [0]
+    where = detection.get("dpid_hex") or dpid
+    table0 = [f for f in read["flows"] if int(f.get("table_id") or 0) == 0]
+    # One set at a time (the review of 94fa79c8, 2): a second set beside a live one would
+    # count one host's ordinary ports twice toward a scan.
+    if any(flow_intent.is_tripwire(f.get("cookie"))
+           and str((f.get("match") or {}).get(f"{fam}_src") or "") == addr.compressed
+           for f in table0):
+        return dict(out, error=(f"Mercury's tripwires for {source} are already on switch "
+                                f"{where}; they end by their {TRIPWIRE_SECONDS} s hard timeout, "
+                                "and a scan that touches them is called one meanwhile"))
     changes, onward = [], ""
     for port in TRIPWIRE_PORTS:
         match = {"eth_type": 0x0800 if addr.version == 4 else 0x86DD,
                  f"{fam}_src": addr.compressed, f"{fam}_dst": subnet.compressed,
                  "ip_proto": 6, "tcp_dst": port}
-        priority = flow_ops.response_priority(read["flows"], own, (), match=match)
+        # The lowest priority that still sees the source's traffic: one above the highest of
+        # table 0's flows that are not Mercury's and meet it (the review of 94fa79c8, 1), so
+        # every Mercury response (at least `RESPONSE_PRIORITY_STEP` above those flows, or
+        # placed under a serving flow and still above them) sits above it and is never
+        # shadowed by it; a tripwire takes only what the team's own flows would.
+        meeting = [int(f.get("priority") or 0) for f in table0
+                   if not flow_intent.is_mercury(f.get("cookie"))
+                   and not flow_ops.disjoint(f.get("match") or {}, match)]
+        priority = min(0xFFFF, (max(meeting) if meeting else 0) + 1)
+        held = next((f for f in table0
+                     if flow_intent.is_mercury(f.get("cookie"))
+                     and not flow_intent.is_tripwire(f.get("cookie"))
+                     and int(f.get("priority") or 0) > priority
+                     and not flow_ops.disjoint(f.get("match") or {}, match)
+                     and (not f.get("actions")
+                          or any(a.get("type") == "METER" for a in f.get("actions") or []))),
+                    None)
+        if held is not None:
+            return dict(out, error=(
+                f"Mercury's own flow at priority {held.get('priority')} on switch {where} "
+                f"(cookie {flow_intent.cookie_hex(held.get('cookie'))}) already drops or meters "
+                f"TCP {port} from {source}, above where a tripwire would sit, so a tripwire "
+                "there would see nothing; it is not written"))
         on = flow_ops.onward(read["flows"], 0, priority, match, {})
         goto = (on["ok"] and len(on["actions"]) == 1
                 and on["actions"][0].get("type") == "GOTO_TABLE")
         if not goto:
             return dict(out, error=(
                 f"a tripwire goes on only by the switch's own goto to a later table, so "
-                f"forwarding is unchanged, and on switch {detection.get('dpid_hex') or dpid} "
+                f"forwarding is unchanged, and on switch {where} "
                 f"TCP {port} from {source} does not: {on['error'] or on['words']}"))
         onward = on["words"]
         changes.append({"do": "add_flow", "flow": {
@@ -2090,6 +2121,22 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
             priority = flow_ops.response_place(read["flows"], own, recorded,
                                                match=_source_match(source), table_id=0,
                                                classes=met)
+            # Mercury's tripwires for the source sit one above the team's flows they meet
+            # (`tripwire_ask`), so a response is above them; where placing it under a serving
+            # flow left it level with or under one, the two would tie or the tripwire would
+            # carry its ports past the response (the review of 94fa79c8, 1): refused, naming it.
+            wire = next((f for f in read["flows"]
+                         if flow_intent.is_tripwire(f.get("cookie"))
+                         and int(f.get("table_id") or 0) == 0
+                         and int(f.get("priority") or 0) >= priority
+                         and not flow_ops.disjoint(f.get("match") or {}, _source_match(source))),
+                        None)
+            if wire is not None:
+                raise ResponseRefused(
+                    f"Mercury's tripwire for {source} on switch {dpid} sits at priority "
+                    f"{wire.get('priority')}, at or above where this response would go "
+                    f"({priority}), so it would carry TCP {(wire.get('match') or {}).get('tcp_dst')} "
+                    "past the response; it ends by its hard timeout, after which preview again")
             out["params"].update(source=source, hard_timeout=hard, priority=priority)
             # The host's other addresses, as the controller's topology lists them (C2148):
             # the flow matches the one address, and the preview names what it leaves.
@@ -2205,7 +2252,11 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                         if on.get("mercury_live"):
                             held = held.replace("below it by", "below it, until it ends, by "
                                                 "Mercury's own response,")
-                            live_only.append(target)
+                            # Only a pair Mercury's response holds whole needs nothing more
+                            # (the review of 94fa79c8, 5): one it may drop or meter in part
+                            # is said as such, never "nothing more is needed".
+                            if on["reason"] in ("drops", "meters"):
+                                live_only.append(target)
                         not_metered.append(f"{target} ({held} {on['taker']}; none of "
                                            f"{source}'s traffic to it is limited by this "
                                            "response)")
