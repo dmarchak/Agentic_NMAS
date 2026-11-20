@@ -877,6 +877,45 @@ def flow_refusal(pset: dict, changes: list, dpid, connection: dict, *, writer: s
     return flow_refusal_detail(pset, changes, dpid, connection, writer=writer)["words"]
 
 
+#: The one writer a protected class's serving flows may let past a class it meets
+#: (`served_above`): a closed-loop response, whose flow matches one source's address and so
+#: meets every class with a field it leaves unset (Lab 9 Part B, 2026-11-20).
+RESPONSE_WRITER = "response"
+
+
+def serving_flows(cls: dict, flows, match: dict) -> list:
+    """The switch's live *flows* that serve class *cls* (their match names the class's own
+    traffic, `names_class`) and could take a packet *match* takes (not disjoint from it)."""
+    from modules.sdn.flow_ops import disjoint
+    return [f for f in flows or [] if names_class(f.get("match") or {}, cls)
+            and not disjoint(f.get("match") or {}, match)]
+
+
+def served_above(flow: dict, cls: dict, flows) -> str:
+    """Why *flow* takes none of class *cls*'s packets on its switch, or ``""`` when that is not
+    shown: at least one of the switch's live *flows* serves the class against *flow*'s match,
+    and every one of them is in *flow*'s table at a higher priority, so the switch matches each
+    of the class's packets there first (OpenFlow takes the highest-priority match in a table).
+    One serving flow below it, or in another table (a later table is reached only past
+    *flow*'s), and nothing is shown. Measured on the switch's flows as read now; the confirm
+    plans again on a fresh read."""
+    match = flow.get("match") or {}
+    table, prio = int(flow.get("table_id") or 0), int(flow.get("priority") or 0)
+    serving = serving_flows(cls, flows, match)
+    if not serving:
+        return ""
+    if any(int(f.get("table_id") or 0) != table or int(f.get("priority") or 0) <= prio
+           for f in serving):
+        return ""
+    prios = sorted({int(f.get("priority") or 0) for f in serving})
+    at = (f"priority {prios[0]}" if len(prios) == 1
+          else f"priorities {prios[0]} to {prios[-1]}")
+    return (f"its match meets the protected class {cls['name']} ({cls['invariant']}; "
+            f"{cls['source']}), and the {len(serving)} flow{'s' if len(serving) != 1 else ''} "
+            f"on this switch serving that class sit above it in table {table} ({at}, this flow "
+            f"{prio}): they take the class's packets first, so this flow takes none of them")
+
+
 #: What of the protected set refused a flow write, as its record names it (`refused_by`).
 GUARDS = {"control_channel": "the control channel", "class": "a protected flow class",
           "object": "a protected object", "unreadable": "the protected set, unreadable"}
@@ -895,11 +934,16 @@ def refused_by(guard: str, name: str, *, invariant: str = "", source: str = "", 
 
 
 def flow_refusal_detail(pset: dict, changes: list, dpid, connection: dict, *,
-                        writer: str) -> dict:
+                        writer: str, switch_flows=None) -> dict:
     """`flow_refusal` with what refused, for the record of a refused write (C2944):
-    ``{"words", "by": [`refused_by`]}``; *words* ``""`` and *by* empty when nothing refuses.
-    *by* names what the refusal's words name: the control channel, the one class or the
-    objects the first refused change met, or the set that could not be read."""
+    ``{"words", "by": [`refused_by`], "notes"}``; *words* ``""`` and *by* empty when nothing
+    refuses. *by* names what the refusal's words name: the control channel, the one class or
+    the objects the first refused change met, or the set that could not be read.
+
+    A response's added flow (*writer* `RESPONSE_WRITER`) that meets a class it does not own is
+    let past that class only when *switch_flows* (the switch's live flows, as the plan read
+    them) show it takes none of the class's packets (`served_above`); *notes* says so for each,
+    for the preview. Every other writer, change and class is refused as before."""
     from modules.sdn import control_plane
 
     channel = control_plane.refusal_detail(changes, connection, who=writer)
@@ -913,6 +957,7 @@ def flow_refusal_detail(pset: dict, changes: list, dpid, connection: dict, *,
                           "flow can be checked against it: nothing is sent"),
                 "by": [refused_by("unreadable", "the protected set",
                                   met=[str(pset.get("error") or "")])]}
+    notes = []
     for n, change in enumerate(changes or []):
         do = change.get("do")
         flows = []
@@ -936,6 +981,11 @@ def flow_refusal_detail(pset: dict, changes: list, dpid, connection: dict, *,
                     met = overlap(match, cls)
                     if not met:
                         continue
+                    if writer == RESPONSE_WRITER and do == "add_flow" and switch_flows:
+                        below = served_above(flow, cls, switch_flows)
+                        if below:
+                            notes.append(f"Change {n + 1}: {below}.")
+                            continue
                 owners = ", ".join(cls.get("owners") or []) or "none"
                 return {"words": (
                     f"change {n + 1} {verb} a flow whose match meets the protected class "
@@ -951,7 +1001,7 @@ def flow_refusal_detail(pset: dict, changes: list, dpid, connection: dict, *,
                         f"change {n + 1} {verb} a flow naming a protected object: "
                         f"{'; '.join(hits)}. No write may: nothing is sent ({CITATION})"),
                         "by": [refused_by("object", h, citation=CITATION) for h in hits]}
-    return {"words": "", "by": []}
+    return {"words": "", "by": [], "notes": notes}
 
 
 def switch_note(pset: dict, dpid) -> str:

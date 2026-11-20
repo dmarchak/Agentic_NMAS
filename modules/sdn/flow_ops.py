@@ -233,6 +233,26 @@ def response_priority(flows: list, own_cookies=(), intent_cookies=(), match=None
     return min(0xFFFF, max(RESPONSE_PRIORITY_FLOOR, top + RESPONSE_PRIORITY_STEP))
 
 
+def response_place(flows: list, own_cookies=(), intent_cookies=(), *, match: dict,
+                   table_id: int = 0, classes=()) -> int:
+    """The priority a closed-loop response's flow takes in table *table_id* of a switch whose
+    live *flows* these are, so it takes what it answers and none of the protected *classes* it
+    meets (those whose owners do not include the response).
+
+    Only that table's flows decide, since a flow in it is matched before any later table's.
+    Its flows serving one of *classes* (`protected.serving_flows`) are left out, and the
+    priority is `response_priority` over the rest: above the forwarding it must win against,
+    and so below the classes' own flows wherever there is room. Where there is none (the
+    priority reaches a serving flow's), the plan's guard refuses it naming the class
+    (`protected.served_above`)."""
+    from modules import protected
+
+    here = [f for f in flows or [] if int(f.get("table_id") or 0) == int(table_id)]
+    serving = {id(f) for c in classes or () for f in protected.serving_flows(c, here, match)}
+    return response_priority([f for f in here if id(f) not in serving], own_cookies,
+                             intent_cookies, match=match)
+
+
 def free_meter_id(meters: list, features: dict = None, taken=(), flows=()) -> int:
     """The lowest meter id not on the switch, not pointed at by any of its *flows* (a meter
     there would limit that flow too), nor *taken* by an earlier step, within its
@@ -426,7 +446,11 @@ def plan(network: str, ask: dict, *, driver=None, writer: str = None) -> dict:
         # write path they share; the controller connection's control channel first (C2022),
         # then NetBox's protected classes and objects. The set's hash is bound with the plan.
         who = writer or ("response" if ask.get("response") or ask.get("action") else "person")
-        refused = protected.flow_refusal_detail(pset, changes, dpid, conn, writer=who)
+        # A response is let past a class it meets only where this read of the switch shows the
+        # class's own flows above it in its table (`protected.served_above`), said here.
+        refused = protected.flow_refusal_detail(pset, changes, dpid, conn, writer=who,
+                                                switch_flows=flows)
+        out["warnings"] += refused.get("notes") or []
         if refused["words"]:
             # What of the protected set refused it, for the record a refused press keeps
             # (`keep_refusal`, C2944). The plan writes nothing: it is every preview's.

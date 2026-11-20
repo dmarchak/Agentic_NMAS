@@ -43,7 +43,15 @@ compared and where NetBox says it:
   the class's own addresses or ports;
 - a flow naming a protected port (by NetBox's `openflow_port`) or VLAN.
 
-A class's owners (named in it) may write it. The set comes from the network's committed NSOT
+A class's owners (named in it) may write it. **A response's added flow may meet a class only
+where the switch shows it takes none of the class's packets:** every flow on that switch that
+serves the class (its match names the class's own ports or addresses, such as a DNS punt on
+UDP 53) and could take the same packets sits above it in its own table, so the switch matches
+the class's packets there first. The preview says so for each class, naming those flows'
+priorities, and the confirm measures it again on a fresh read. One serving flow below it, or in
+another table (on an ArubaOS-Switch the DNS and DHCP flows sit in table 200, past table 0), and
+it is refused like any other write. A person's flow and a policy meet a class as before, served
+or not. The set comes from the network's committed NSOT
 export, or from NetBox read now; its hash is bound with the requests', so a NetBox change between
 the preview and the confirm sends nothing. A network whose devices are not NetBox's guards the
 controller's channel only, and the preview says so.
@@ -103,7 +111,12 @@ metered, and the preview names each under What will not happen, with the fact th
 source's IPv4 traffic is metered; risk low), or **remove the unauthorised flow**
 (delete-strict, and Mercury's own flow put back where it displaced one, for the time its hard
 timeout has left, never its whole timeout again, and not at all once it has expired; risk
-medium). Every flow a
+medium). A drop's or a rate limit's flows go in table 0 at a priority above every flow there
+that could take the same packets and serves no protected class the source's match meets, and
+so below those classes' own flows: on an Arista whose forwarding is at 1000 and whose DHCP
+flows start at 1100, at 1010; on an Open vSwitch server whose forwarding is in table 2, at 300.
+Where no priority fits under a class's flows, the protected set refuses it, naming the class.
+Every flow a
 response adds carries a hard timeout (600 seconds unless you set another in the preview, at most
 the network's ceiling), so a mistaken response expires by itself; its meter is removed by Mercury
 once those flows have expired. A drop or a rate limit acts on the detection's source; a
@@ -372,7 +385,8 @@ Mercury writer removes, changes or replaces it: a person's change, a response (p
 confirmed or automatic), a re-apply and a policy are each refused at the preview, naming the
 flow, the owner and where it is declared. To override one of its flows, Mercury adds its own
 flow at a higher priority, which is what a response does (it takes a priority above the highest
-flow, not Mercury's, that could match the same packets).
+flow in its table, not Mercury's, that could match the same packets and serves no protected
+class it meets).
 
 **An entry that is not of its shape refuses only itself.** SDN › Flows names it and why, and its
 flows are drawn as unauthorised until it is corrected and exported again; every other entry, and

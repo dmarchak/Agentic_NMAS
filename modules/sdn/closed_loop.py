@@ -8,8 +8,10 @@ from the response catalogue (`CATALOGUE`), deterministic, through the flow-opera
 flow Mercury changes. Without a confirm it is the preview, writing nothing; with one it is the
 apply. The actions:
 - ``drop_source`` (risk low): one flow on the detection's switch matching the source address
-  (IPv4 or IPv6) with no actions, above every flow not Mercury's (`flow_ops.
-  response_priority`), with the network's hard timeout; its preview says the same host's other
+  (IPv4 or IPv6) with no actions, in table 0 above every flow there not Mercury's that serves
+  no protected class the source's match meets, and so under those classes' own flows
+  (`flow_ops.response_place`; the guard lets it meet a class only so, `protected.served_above`),
+  with the network's hard timeout; its preview says the same host's other
   family is not matched, naming the other addresses the controller's topology lists for the
   host (`drop_gap`, C2148);
 - ``rate_limit_source`` (risk low): one meter with a single drop band (kbps or pktps, with a
@@ -1887,8 +1889,18 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
         if action_id in ("drop_source", "rate_limit_source"):
             source, _seen = _response_source(drv, conn, dpid, detection, out["params"])
             hard = _hard_timeout(network, out["params"])
-            priority = flow_ops.response_priority(read["flows"], own, recorded,
-                                                  match=_source_match(source))
+            # Below the flows serving each protected class the source's match meets, in table
+            # 0, and above the rest it meets there (Lab 9 Part B, 2026-11-20): DNS and DHCP
+            # stay served, the dropped host's included. Where no priority fits, the plan's
+            # guard refuses it naming the class, and the refusal is recorded (C2944).
+            from modules import protected
+            pset = protected.for_network(network)
+            met = [c for c in (pset.get("classes") or [])
+                   if protected.RESPONSE_WRITER not in (c.get("owners") or [])
+                   and protected.overlap(_source_match(source), c)]
+            priority = flow_ops.response_place(read["flows"], own, recorded,
+                                               match=_source_match(source), table_id=0,
+                                               classes=met)
             out["params"].update(source=source, hard_timeout=hard, priority=priority)
             # The host's other addresses, as the controller's topology lists them (C2148):
             # the flow matches the one address, and the preview names what it leaves.
