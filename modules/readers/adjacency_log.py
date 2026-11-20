@@ -250,6 +250,12 @@ def _ask(query: str, start: float, end: float) -> list:
     return [(ns, line) for s in streams for ns, line in s.get("values") or []]
 
 
+def _loki_configured() -> bool:
+    from modules.integrations.loki import LokiIntegration
+
+    return bool(LokiIntegration().is_configured())
+
+
 def key(list_name: str, device: str, protocol: str, neighbor: str) -> str:
     return f"{list_name}|{device}|{protocol}|{neighbor}"
 
@@ -270,6 +276,11 @@ def read(clock=time.time, ask=None, population=None, job=None) -> dict:
            "devices": len({d for _n, d in pop}), "window_days": WINDOW_DAYS,
            "duplicates": {}, "duplicate_lines": 0, "duplicate_window_seconds": DUP_WINDOW_SECONDS,
            "quiet_seconds": QUIET_SECONDS, "read_at": now}
+    if ask is None and job is None and not _loki_configured():
+        # No Loki on this installation (the Lab 9 kit, C4160): nothing to read, said as not
+        # configured, as every consumer of this value draws it, never a reader failing every
+        # run (it raised NoSyslogJob asking Loki for the syslog job: a CRITICAL row 10 days).
+        return dict(out, configured=False, why="Loki is not configured: set it in Settings")
     if not pop:
         return out
     selector = job if job is not None else job_matcher()

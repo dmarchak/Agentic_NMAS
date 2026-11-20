@@ -268,3 +268,17 @@ class TestAcknowledgedWithinItsBand:
             got = A.acknowledge(f"adjacency_log:{self.K}", self.K, "the R3 walk, done on purpose",
                                 by="op@example.invalid", verified="access", hours=bad)
             assert got["ok"] is False and "1 to 24 whole hours" in got["error"], (bad, got)
+
+
+def test_an_installation_without_loki_reads_as_not_configured_never_failing(monkeypatch):
+    """C4160 (the Lab 9 kit, 2026-11-20): with no Loki the reader asked for the syslog job,
+    raised NoSyslogJob every run, and stood as a CRITICAL failing reader for ten days. With no
+    Loki it reads as not configured, as its consumers draw it, and asks nothing."""
+    from modules.integrations.loki import LokiIntegration
+
+    monkeypatch.setattr(LokiIntegration, "is_configured", lambda self: False)
+    monkeypatch.setattr("modules.device_logs.job_matcher",
+                        lambda: pytest.fail("the syslog job was asked with no Loki"))
+    got = AL.read(clock=lambda: 1_800_000_000.0, population=[("Lab", "r1")])
+    assert got["configured"] is False and "Loki is not configured" in got["why"]
+    assert got["adjacencies"] == {} and got["lines"] == 0

@@ -101,6 +101,21 @@ class TestTheStore:
         assert "ConnectionError: grafana refused" in doc["last_attempt"]["error"]
         assert doc["failing_since"] == R._iso(clock.t)
 
+    def test_a_read_that_raises_logs_its_traceback(self, caplog):
+        """C4161 (the Lab 9 kit, 2026-11-20): the endpoints reader failed for 16 hours with
+        "KeyError: 'subnet'" and nothing said where: the stored error is the exception's
+        words alone, so its traceback goes to the log."""
+        import logging
+        caplog.set_level(logging.WARNING, logger="modules.reader_job")
+
+        def keyed():
+            return {}["subnet"]
+        R.run_once(make(keyed), clock=Clock())
+        (rec,) = [r for r in caplog.records if "the read raised" in r.getMessage()]
+        assert "t-reader" in rec.getMessage() and "KeyError" in rec.getMessage()
+        # Masked on its way to the log (modules/redact.py moves it to exc_text): kept as text.
+        assert "Traceback" in (rec.exc_text or "") and "KeyError: 'subnet'" in rec.exc_text
+
     def test_the_failing_streak_keeps_its_start_and_a_success_ends_it(self):
         clock = Clock()
 
