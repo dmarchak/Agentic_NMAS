@@ -521,6 +521,29 @@ def loop_for(version: int = None):
     return LOOPS[version]
 
 
+#: The trace tool's own candidates, measured apart from B1's prompt (the evaluation's
+#: ``--tools-prompt``; Lab 9 B4, 2026-11-20: on the hardware the model asked for no read in 6 of
+#: 6 runs, pass 1 telling it reads were optional and only learnt hosts could be traced): each
+#: ``(pass 1, pass 2, the B1 version both are built on)``. v5 is B1's v1 whole, then a reads
+#: part naming every end a trace takes and when a finding rests on a trace; its input adds
+#: `traces_text`. Pass 2 is v2 as it is. Asked only when named, never by a press, until a
+#: measurement adopts it.
+TOOLS_CANDIDATES = {5: (("sdn_analyse_tools", 5), ("sdn_analyse_tools", 2), 1)}
+TOOLS_LOOPS = {k: RL.LoopFeature(task=FEATURE, first=(p1, READS_SCHEMA_OF[b1]),
+                                 second=(p2, AN.SCHEMA_OF[b1]), check=_no_whole_refusal,
+                                 cites=_cites)
+               for k, (p1, p2, b1) in TOOLS_CANDIDATES.items()}
+
+
+def tools_loop(candidate: int):
+    """The trace tool's candidate loop *candidate* (`TOOLS_CANDIDATES`); ValueError names the
+    candidates there are."""
+    if candidate not in TOOLS_LOOPS:
+        raise ValueError(f"no trace-tool candidate v{candidate}; the candidates are "
+                         f"{', '.join(f'v{v}' for v in sorted(TOOLS_LOOPS)) or 'none'}")
+    return TOOLS_LOOPS[candidate]
+
+
 # ───────────────────────────────────────────────────────────────────────────── the call
 
 def hosts_text(snap: dict) -> str:
@@ -550,6 +573,84 @@ def hosts_text(snap: dict) -> str:
                          + (f", IPv6 {' '.join(r['ipv6'])}" if r.get("ipv6") else "")
                          + ", placed by NetBox's cable (the controller has not learnt it)")
     return "\n".join(lines or ["none listed"]) + "\n"
+
+
+#: The traces `traces_text` lists at most: host pairs, then a down link's, then a drop's.
+TRACES_LISTED = 12
+_PROTO_WORDS = {1: "icmp", 6: "tcp", 17: "udp", 58: "icmp"}
+
+
+def _ends(fab: dict) -> list:
+    """The ends a trace can start at, as `hosts_text` lists them: ``[{"addr", "addrs",
+    "dpid"}]``, the controller's hosts on an edge port, then NetBox's cabled ones it has not
+    learnt."""
+    ends = []
+    for c in fab["controllers"]:
+        for h in c["hosts"]:
+            ends.append({"addr": (h["ipv4"] or h["ipv6"] or [h["mac"]])[0],
+                         "addrs": set(h["ipv4"] + h["ipv6"]), "dpid": h["dpid_hex"]})
+    for r in (fab.get("netbox") or {}).get("rows") or []:
+        if not (r.get("mac") and r.get("dpid") is not None and r.get("port_no") is not None):
+            continue
+        addrs = set((r.get("ipv4") or []) + (r.get("ipv6") or []))
+        if any(addrs & e["addrs"] or r["mac"] == e["addr"] for e in ends):
+            continue
+        ends.append({"addr": sorted(addrs)[0] if addrs else r["mac"], "addrs": addrs,
+                     "dpid": f"{r['dpid']:016x}"})
+    return ends
+
+
+def _bare(addr) -> str:
+    return str(addr or "").split("/")[0]
+
+
+def traces_text(snap: dict) -> str:
+    """The traces this collection can answer, one a line, from the seal alone (never an
+    evidence id): a candidate's input (`TOOLS_CANDIDATES`), so the model sees what a trace would
+    settle. Host pairs on different switches; for each link between switches not up, the pairs
+    whose switches it joins, to see where their traffic goes now; for each drop flow naming an
+    address, the trace from the listed host holding its source to its destination, or why none
+    can start. At most `TRACES_LISTED`."""
+    fab = sealed_fabric(snap)
+    if fab.get("state") != "read":
+        return f"none: {fab.get('why') or 'no trace can start'}\n"
+    ends = _ends(fab)
+    pairs = [(a, b) for a in ends for b in ends if a is not b and a["dpid"] != b["dpid"]]
+    lines = [f"trace {a['addr']} to {b['addr']}, icmp (switch {a['dpid']} to switch {b['dpid']})"
+             for a, b in pairs[:6]]
+    for ln in snap.get("links") or []:
+        if ln.get("state") == "up" or len(ln.get("ends") or []) != 2:
+            continue
+        (sa, pa), (sb, pb) = ln["ends"]
+        touched = [(a, b) for a, b in pairs if {a["dpid"], b["dpid"]} & {sa, sb}][:2]
+        said = "; ".join(f"{a['addr']} to {b['addr']}" for a, b in touched) or "no listed pair"
+        lines.append(f"link {sa} port {pa} to {sb} port {pb} is {ln.get('state')}: trace "
+                     f"{said} to see where their traffic goes now")
+    for s in snap.get("switches") or []:
+        for f in s.get("drops") or []:
+            m = f.get("match") or {}
+            src = _bare(m.get("ipv4_src") or m.get("ipv6_src"))
+            dst = _bare(m.get("ipv4_dst") or m.get("ipv6_dst"))
+            if not (src or dst):
+                continue
+            proto = _PROTO_WORDS.get(m.get("ip_proto"), "icmp")
+            where = (f"drop on switch {s.get('dpid_hex')} at priority {f.get('priority')} "
+                     f"matches {src or 'any'} to {dst or 'any'}")
+            holder = next((e for e in ends if src and src in e["addrs"]), None)
+            if src and holder is None:
+                lines.append(f"{where}: its source is no listed host, so no trace can start "
+                             "there")
+            elif dst:
+                start = holder["addr"] if holder else "a listed host"
+                lines.append(f"{where}: trace {start} to {dst}, {proto}, to see whether it "
+                             "takes real traffic")
+            else:
+                lines.append(f"{where}: trace {holder['addr']} to a listed host on another "
+                             f"switch, {proto}")
+    if not lines:
+        lines = ["none: fewer than two ends on different switches, no link down, and no drop "
+                 "naming an address"]
+    return "\n".join(lines[:TRACES_LISTED]) + "\n"
 
 
 def _chars(prompt: tuple, parts: dict, context: dict) -> int:
@@ -596,7 +697,7 @@ def _reads_shown(records: list, said: dict) -> list:
 
 def ask_snapshot(network: str, snap: dict, *, actor: str, trigger: dict, send=None,
                  today: str = None, now: float = None, cap: int = None,
-                 prompt: int = None) -> dict:
+                 prompt: int = None, tools: int = None) -> dict:
     """The tool-calling analysis of *snap* (sealed, in hand), reading and writing no analyst
     store: the loop's two passes at most (`read_loop.run` over `SEALED`), then B1's check of the
     final answer. B4's technique arm (scripts/nmas-sdn-b4-eval) and the press's core. Refused
@@ -605,10 +706,14 @@ def ask_snapshot(network: str, snap: dict, *, actor: str, trigger: dict, send=No
     "call_id", "calls", "cost_usd", "model", "technique", "passes", "state", "words", "loop",
     "reads", "findings", "dropped", "dropped_words", "removed_ids", "capped"}``. *prompt* is a
     version of B1's prompt whose loop is asked in place of the one in use (`loop_for`: a
-    candidate measured before it is adopted; the evaluation's ``--prompt``), never a press's."""
+    candidate measured before it is adopted; the evaluation's ``--prompt``), never a press's.
+    *tools* is a trace-tool candidate (`TOOLS_CANDIDATES`, the evaluation's ``--tools-prompt``)
+    asked in place of both, its input with `traces_text` added; never a press's either."""
     from modules.ai import egress_classes, profiles
 
-    loop = loop_for(prompt)
+    if tools is not None and prompt is not None:
+        raise ValueError("a run asks a trace-tool candidate or a B1 version's pair, not both")
+    loop = tools_loop(tools) if tools is not None else loop_for(prompt)
     now = time.time() if now is None else now
     snap_id = snap.get("id", "")
     base = {"ok": False, "error": "", "detail": "", "network": network, "snapshot_id": snap_id,
@@ -628,8 +733,10 @@ def ask_snapshot(network: str, snap: dict, *, actor: str, trigger: dict, send=No
                     detail=("the snapshot's flows and port rates, and every read of it, are "
                             f"the topology class, and {gate['why']}; nothing was sent"))
     scope = {"snapshot": snap, "said": {}}
-    got = RL.run(SEALED, loop, ask=_total_capped(cap), network=network,
-                 data={"snapshot": AN.facts(snap), "hosts": hosts_text(snap)}, actor=actor,
+    data = {"snapshot": AN.facts(snap), "hosts": hosts_text(snap)}
+    if tools is not None:
+        data["traces"] = traces_text(snap)
+    got = RL.run(SEALED, loop, ask=_total_capped(cap), network=network, data=data, actor=actor,
                  trigger=trigger, subject={"kind": "sdn_snapshot", "id": snap_id, "devices": []},
                  scope=scope, send=send, today=today)
     calls_made = [c for c in got.get("call_ids") or [] if c]
@@ -683,15 +790,18 @@ def analyse(network: str, snap_id: str, *, actor: str, trigger: dict, send=None,
     return out
 
 
-def estimate(snap: dict) -> dict:
+def estimate(snap: dict, tools: int = None) -> dict:
     """``{"tokens", "usd", "calls"}``: the loop's two calls at most, by the gateway's fallback
-    over-estimate: pass 1 B1's facts, the hosts and the prompt; pass 2 the same and three
-    reads at their 4 KiB cut; each with `OUTPUT_TOKENS_ESTIMATE` of answer."""
+    over-estimate: pass 1 B1's facts, the hosts and the prompt (a candidate's, with its
+    `traces_text`, for *tools*); pass 2 the same and three reads at their 4 KiB cut; each with
+    `OUTPUT_TOKENS_ESTIMATE` of answer."""
     from modules.ai import gateway, profiles, prompts
 
     model = profiles.task(FEATURE)["model"]
-    first = gateway.tokens_of_chars(len(AN.facts(snap)) + len(hosts_text(snap))
-                                    + len(prompts.load(*PROMPT_FIRST)["text"]) + 1500)
+    first_prompt = TOOLS_CANDIDATES[tools][0] if tools is not None else PROMPT_FIRST
+    extra = len(traces_text(snap)) if tools is not None else 0
+    first = gateway.tokens_of_chars(len(AN.facts(snap)) + len(hosts_text(snap)) + extra
+                                    + len(prompts.load(*first_prompt)["text"]) + 1500)
     second = first + gateway.tokens_of_chars(SEALED.limit * RL.AI_READ_CAP
                                              + len(RL.READS_FORMAT))
     usd = (profiles.cost_usd(model, first, OUTPUT_TOKENS_ESTIMATE)

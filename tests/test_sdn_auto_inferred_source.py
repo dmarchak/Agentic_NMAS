@@ -189,3 +189,80 @@ def test_an_unattended_confirm_of_a_topology_source_is_refused_and_nothing_is_se
     person = CL.respond_to_threat(NET, d if handed else None, "drop_source", confirm=confirm,
                                   actor="op@example.com", actor_verified="access")
     assert person == {"outcome": "planted"} and applied == ["hitl"]
+
+
+# ───────────────────────────────────────────────── a source NetBox declares on its port (D)
+
+def _netbox(monkeypatch, d, rows=None, state="read"):
+    """NetBox's view (`known.read`) with one end host, h2, cabled to *d*'s switch port 2, its
+    address and MAC the walk's (or *rows* instead)."""
+    if rows is None:
+        rows = [{"name": "h2", "kind": "end host", "interface": "eth0", "mac": "00:00:00:00:00:02",
+                 "ipv4": [H2], "ipv6": [], "switch": "s1", "switch_interface": "eth2",
+                 "dpid": int(d["dpid"]), "port_no": 2}]
+    monkeypatch.setattr("modules.sdn.known.read",
+                        lambda network: {"state": state, "why": "", "rows": rows})
+
+
+def test_a_source_netbox_declares_on_its_port_is_auto_s(networks, monkeypatch):  # noqa: F811
+    """Lab 9 Part B, D (2026-11-20): a fabric whose flows match MAC addresses names no source;
+    where NetBox cables exactly one end host to the port, with the source's address and the MAC
+    the topology lists, the source is declared, not inferred, and AUTO acts on it."""
+    auto_on()
+    d = flood()
+    assert d["source"] == H2 and d["source_from"]["state"] == "named", "premise"
+    _netbox(monkeypatch, d)
+    got = MD.decide(NET, "low", detection=d, action="drop_source")
+    assert got["auto"] is True
+    assert got["words"].endswith(
+        "; its source: NetBox declares it: h2's eth0 (192.0.2.2, 00:00:00:00:00:02) is cabled "
+        "to s1 eth2 (port 2), where the controller lists that host")
+
+
+@pytest.mark.parametrize("edit,why", [
+    (lambda r: [dict(r[0], ipv4=["192.0.2.9"])], "another address"),
+    (lambda r: [dict(r[0], mac="00:00:00:00:00:99")], "another MAC"),
+    (lambda r: r + [dict(r[0], name="h9", ipv4=["192.0.2.9"])], "two end hosts on the port"),
+    (lambda r: [dict(r[0], port_no=3)], "cabled to another port"),
+    (lambda r: [dict(r[0], kind="device")], "a device, not an end host"),
+], ids=["address", "mac", "two", "port", "device"])
+def test_a_source_netbox_does_not_declare_stays_a_person_s(networks, monkeypatch, edit, why):  # noqa: F811,E501
+    auto_on()
+    d = flood()
+    base = [{"name": "h2", "kind": "end host", "interface": "eth0", "mac": "00:00:00:00:00:02",
+             "ipv4": [H2], "ipv6": [], "switch": "s1", "switch_interface": "eth2",
+             "dpid": int(d["dpid"]), "port_no": 2}]
+    _netbox(monkeypatch, d, rows=edit(base))
+    got = MD.decide(NET, "low", detection=d, action="drop_source")
+    assert got == {"auto": False, "autonomous": None, "words": INFERRED.format(addr=H2)}, why
+
+
+def test_an_unreadable_netbox_view_fails_closed(networks, monkeypatch):  # noqa: F811
+    auto_on()
+    d = flood()
+    _netbox(monkeypatch, d, state="unreadable")
+    assert MD.decide(NET, "low", detection=d, action="drop_source")["auto"] is False
+
+
+@pytest.mark.usefixtures("lab")
+def test_an_unattended_confirm_of_a_declared_source_is_applied(lab, monkeypatch):  # noqa: F811
+    d, _c, _s = walk_flood("walk-flood-1-s1", stored(name=CONN), small=True)
+    d = dict(d, connection="lab-controller", network=NET)
+    _netbox(monkeypatch, d)
+    preview = CL.respond_to_threat(NET, d, "drop_source")
+    assert preview["ok"], preview["error"]
+    applied = []
+    monkeypatch.setattr("modules.sdn.flow_ops.apply",
+                        lambda *a, **k: applied.append(k.get("mode")) or {"outcome": "planted"})
+    confirm = {"ask": preview["ask"], "hash": preview["plan"]["hash"]}
+    done = CL.respond_to_threat(NET, d, "drop_source", confirm=confirm, actor=LP.AUTO_ACTOR,
+                                actor_verified="system", mode="auto",
+                                autonomous={"reason": "lab 9 run"})
+    assert done == {"outcome": "planted"} and applied == ["auto"]
+    # The ask's source moved from the declared one: refused, nothing applied.
+    moved = dict(confirm, ask=dict(confirm["ask"], detection=dict(
+        confirm["ask"]["detection"], source="192.0.2.9")))
+    done = CL.respond_to_threat(NET, d, "drop_source", confirm=moved, actor=LP.AUTO_ACTOR,
+                                actor_verified="system", mode="auto",
+                                autonomous={"reason": "lab 9 run"})
+    assert done["outcome"] == "refused" and applied == ["auto"]

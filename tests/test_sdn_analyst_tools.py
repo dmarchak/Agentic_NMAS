@@ -748,3 +748,70 @@ def test_a_name_netbox_gives_no_mac_for_is_refused_naming_each_host_on_its_port(
     for mac in ("0a:00:00:00:00:10", "0a:00:00:00:00:20", "0a:00:00:00:00:fa"):
         assert mac in got["refused"]
     assert got["refused"].endswith(": give the one to trace")
+
+
+# ── the trace tool's own candidate (Lab 9 B4, 2026-11-20) ────────────────────────────────────
+
+def test_the_trace_tool_s_candidate_v5_is_b1_s_v1_with_a_reads_part_saying_when_to_trace():
+    """On the hardware the model asked for no read in 6 of 6 runs: pass 1 said reads were
+    optional and only learnt hosts could be traced. v5 is B1's v1 whole, then a reads part
+    naming every end and when a finding rests on a trace; pass 2 is v2 as it is; the press
+    still asks the pair in use."""
+    from modules.ai import prompts
+
+    v5 = prompts.load("sdn_analyse_tools", 5)
+    assert v5["sha256"] == "046a7e125c0848d945baf630e5497a48ec85e7fd7b778082a9bb814534850df3"
+    assert v5["text"].startswith(prompts.load("sdn_analyse", 1)["text"])
+    assert "Leave reads empty only when no finding says where traffic goes." in v5["text"]
+    assert "`traces` is Mercury's list of the traces this collection can answer" in v5["text"]
+    assert "the only hosts a trace can start or end at" not in v5["text"]
+    assert AT.TOOLS_CANDIDATES[5] == (("sdn_analyse_tools", 5), ("sdn_analyse_tools", 2), 1)
+    assert AT.LOOP is AT.LOOPS[AN.PROMPT[1]], "a press asks the pair in use"
+    with pytest.raises(ValueError, match="no trace-tool candidate v9; the candidates are v5"):
+        AT.tools_loop(9)
+    with pytest.raises(ValueError, match="not both"):
+        AT.ask_snapshot(NET, {}, actor=PERSON, trigger={}, prompt=1, tools=5)
+
+
+def _traces_snapshot(v6=False):
+    """A sealed snapshot's shape with two hosts on two switches, the link between them down,
+    and a drop naming the first host's address to an address nobody learnt."""
+    a, b, far = (("2001:db8:8::1", "2001:db8:8::2", "2001:db8:8::fe") if v6 else
+                 ("192.0.2.1", "192.0.2.2", "192.0.2.254"))
+    fam = "ipv6" if v6 else "ipv4"
+    host = (lambda addr, mac, dpid: {"mac": mac, "ipv4": [] if v6 else [addr],
+                                     "ipv6": [addr] if v6 else [], "dpid_hex": dpid,
+                                     "port_no": 3, "connection": "c"})
+    sw = (lambda dpid, drops: {"dpid_hex": dpid, "connection": "c", "flows": [], "drops": drops,
+                               "ports": [{"port_no": 1, "name": "up"}, {"port_no": 3,
+                                                                      "name": "edge"}]})
+    s1, s2 = "0000000000000001", "0000000000000002"
+    drop = {"table_id": 0, "priority": 1500, "match": {
+        "eth_type": 0x86DD if v6 else 0x0800, f"{fam}_src": a, f"{fam}_dst": far,
+        "ip_proto": 58 if v6 else 1}, "actions": []}
+    return {"hosts": [host(a, "02:00:00:00:00:01", s1), host(b, "02:00:00:00:00:02", s2)],
+            "switches": [sw(s1, [drop]), sw(s2, [])],
+            "links": [{"connection": "c", "state": "down", "ends": [[s1, 1], [s2, 1]]}]}
+
+
+@pytest.mark.parametrize("v6", [False, True], ids=["ipv4", "ipv6"])
+def test_the_traces_list_names_the_pairs_a_down_link_and_a_drop_s_trace(v6):
+    a, b, far = (("2001:db8:8::1", "2001:db8:8::2", "2001:db8:8::fe") if v6 else
+                 ("192.0.2.1", "192.0.2.2", "192.0.2.254"))
+    got = AT.traces_text(_traces_snapshot(v6)).splitlines()
+    assert got[0] == (f"trace {a} to {b}, icmp (switch 0000000000000001 to switch "
+                      "0000000000000002)")
+    assert (f"link 0000000000000001 port 1 to 0000000000000002 port 1 is down: trace {a} to "
+            f"{b}; {b} to {a} to see where their traffic goes now") in got
+    assert (f"drop on switch 0000000000000001 at priority 1500 matches {a} to {far}: trace "
+            f"{a} to {far}, icmp, to see whether it takes real traffic") in got
+    assert all("drop:" not in line and "flow:" not in line for line in got), "no evidence ids"
+
+
+def test_a_drop_whose_source_no_host_holds_says_no_trace_can_start_there():
+    snap = _traces_snapshot()
+    snap["switches"][0]["drops"][0]["match"]["ipv4_src"] = "192.0.2.62"
+    got = AT.traces_text(snap)
+    assert ("matches 192.0.2.62 to 192.0.2.254: its source is no listed host, so no trace can "
+            "start there") in got
+    assert AT.traces_text({"switches": []}).startswith("none: this snapshot holds no host table")

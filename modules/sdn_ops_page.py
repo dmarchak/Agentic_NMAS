@@ -298,8 +298,8 @@ def _person_proposal(network: str, d: dict, pol: dict) -> dict:
     from modules.sdn import closed_loop
 
     if (d.get("rule"), d.get("basis")) not in closed_loop.PERSON_ANSWERED:
-        return {"offered": False, "refusal": ""}
-    return {"offered": True,
+        return {"offered": False, "refusal": "", "rule": ""}
+    return {"offered": True, "rule": closed_loop.answered_rule(d),
             "refusal": closed_loop.person_proposal_refusal(network, d, pol=pol)}
 
 

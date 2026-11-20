@@ -52,7 +52,7 @@
   {%- elif w.large_words %}
   <p class="small"><strong>Why it is not called a flood:</strong> {{ w.large_words }} (C2313). A large-packet flood is left to you: it is watched, and nothing is proposed unless you press Rate-limit this source… below. If another source sends to the same host, it is called one attack.</p>
   {%- else %}
-  <p class="small"><strong>Why it is not called a scan or a flood:</strong> its switch's flows name no transport ports, so no destination ports can be counted (a scan), and the flood rule has not fired for this port or source (its {{ fw }} s hold). It may be either, or a burst that ends.</p>
+  <p class="small"><strong>Why it is not called a scan or a flood:</strong> its switch's flows name no transport ports, so no destination ports can be counted (a scan), and the flood rule has not fired for this port or source (its {{ fw }} s hold). It may be either, or a burst that ends.{% if w.propose.offered %} It is left to you: nothing is proposed unless you press Rate-limit this source… below, answered as the {{ w.propose.rule }} rule's; AUTO never acts on it (C4124).{% endif %}</p>
   {%- endif %}
   <p class="small"><strong>What happens next:</strong> if the flood rule fires for the same port or source, this incident joins it ("began as High packet rate") and its response is proposed there; if the rate falls below {{ w.threshold }} a second, it ends as "ended, never more than a rate".</p>
   {%- if w.seen_also %}
@@ -69,7 +69,7 @@
     {%- if w.propose.offered %}
     <form class="op-act sdn-propose" hx-post="{{ url_for('sdn_v2.watch_propose', wid=w.id) }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="list" value="{{ g.network }}">
-      <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{% if w.propose.refusal %} disabled aria-disabled="true" data-refused="Not available: {{ w.propose.refusal }}"{% else %}{{ gate('approve') }}{% endif %} title="Makes this stream a response awaiting a person: the flood rule's rate limit at the catalogue's defaults, which you preview and confirm by hash. Nothing is sent by this, and no AI is asked"><span class="op-idle">Rate-limit this source…</span><span class="op-busy">Proposing…</span></button>{{ how('sdn', 'responses', compact=True, op='Rate-limit this source') }}
+      <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{% if w.propose.refusal %} disabled aria-disabled="true" data-refused="Not available: {{ w.propose.refusal }}"{% else %}{{ gate('approve') }}{% endif %} title="Makes this a response awaiting a person: the {{ w.propose.rule }} rule's rate limit at the catalogue's defaults, which you preview and confirm by hash. Nothing is sent by this, and no AI is asked"><span class="op-idle">Rate-limit this source…</span><span class="op-busy">Proposing…</span></button>{{ how('sdn', 'responses', compact=True, op='Rate-limit this source') }}
     </form>
     {%- endif %}
     <form class="op-act sdn-dismiss" hx-post="{{ url_for('sdn_v2.response_dismiss', rid=w.id) }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">

@@ -2616,9 +2616,10 @@
           "L4": 1,
           "none": 1
          },
-         "granularity": "L4",
-         "scan_by_ports": true,
-         "words": "flows match transport ports, so a scan shows as distinct destination ports per source"
+         "granularity": "L3",
+         "l4_unsourced": 1,
+         "scan_by_ports": false,
+         "words": "flows match IP addresses and no transport port: they cannot show a per-port scan; a scan shows only as packet rates, at lower confidence; its 1 L4 flow names no source address (a punt by its port, say), so none shows one source's destination ports"
         },
         "dpid": 3,
         "dpid_hex": "0000000000000003",
@@ -2886,9 +2887,10 @@
           "L4": 1,
           "none": 1
          },
-         "granularity": "L4",
-         "scan_by_ports": true,
-         "words": "flows match transport ports, so a scan shows as distinct destination ports per source"
+         "granularity": "L3",
+         "l4_unsourced": 1,
+         "scan_by_ports": false,
+         "words": "flows match IP addresses and no transport port: they cannot show a per-port scan; a scan shows only as packet rates, at lower confidence; its 1 L4 flow names no source address (a punt by its port, say), so none shows one source's destination ports"
         },
         "dpid": 4,
         "dpid_hex": "0000000000000004",
@@ -3259,9 +3261,10 @@
           "L4": 2,
           "none": 1
          },
-         "granularity": "L4",
-         "scan_by_ports": true,
-         "words": "flows match transport ports, so a scan shows as distinct destination ports per source"
+         "granularity": "L3",
+         "l4_unsourced": 2,
+         "scan_by_ports": false,
+         "words": "flows match IP addresses and no transport port: they cannot show a per-port scan; a scan shows only as packet rates, at lower confidence; its 2 L4 flows name no source address (a punt by its port, say), so none shows one source's destination ports"
         },
         "dpid": 2843895626628,
         "dpid_hex": "0000029625637b84",
@@ -3658,7 +3661,7 @@
      "drop_flows": 1,
      "flows": 21,
      "partial": 0,
-     "scan_by_ports": 3,
+     "scan_by_ports": 0,
      "switches": 5,
      "unreadable": 0
     }
@@ -3914,9 +3917,10 @@
           "L4": 1,
           "none": 1
          },
-         "granularity": "L4",
-         "scan_by_ports": true,
-         "words": "flows match transport ports, so a scan shows as distinct destination ports per source"
+         "granularity": "L3",
+         "l4_unsourced": 1,
+         "scan_by_ports": false,
+         "words": "flows match IP addresses and no transport port: they cannot show a per-port scan; a scan shows only as packet rates, at lower confidence; its 1 L4 flow names no source address (a punt by its port, say), so none shows one source's destination ports"
         },
         "dpid": 3,
         "dpid_hex": "0000000000000003",
@@ -4183,9 +4187,10 @@
           "L4": 1,
           "none": 1
          },
-         "granularity": "L4",
-         "scan_by_ports": true,
-         "words": "flows match transport ports, so a scan shows as distinct destination ports per source"
+         "granularity": "L3",
+         "l4_unsourced": 1,
+         "scan_by_ports": false,
+         "words": "flows match IP addresses and no transport port: they cannot show a per-port scan; a scan shows only as packet rates, at lower confidence; its 1 L4 flow names no source address (a punt by its port, say), so none shows one source's destination ports"
         },
         "dpid": 4,
         "dpid_hex": "0000000000000004",
@@ -4555,9 +4560,10 @@
           "L4": 2,
           "none": 1
          },
-         "granularity": "L4",
-         "scan_by_ports": true,
-         "words": "flows match transport ports, so a scan shows as distinct destination ports per source"
+         "granularity": "L3",
+         "l4_unsourced": 2,
+         "scan_by_ports": false,
+         "words": "flows match IP addresses and no transport port: they cannot show a per-port scan; a scan shows only as packet rates, at lower confidence; its 2 L4 flows name no source address (a punt by its port, say), so none shows one source's destination ports"
         },
         "dpid": 2843895626628,
         "dpid_hex": "0000029625637b84",
@@ -4946,7 +4952,7 @@
      "drop_flows": 1,
      "flows": 21,
      "partial": 0,
-     "scan_by_ports": 3,
+     "scan_by_ports": 0,
      "switches": 5,
      "unreadable": 0
     }

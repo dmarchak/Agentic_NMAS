@@ -285,6 +285,36 @@ def test_prompt_asks_both_arms_with_a_candidate_and_the_report_names_what_was_as
     assert data["meta"]["prompt_in_use"] is True
 
 
+def test_tools_prompt_asks_the_trace_tool_s_candidate_and_the_baseline_as_it_is(world, tmp_path):  # noqa: F811,E501
+    """``--tools-prompt N`` (Lab 9 B4, 2026-11-20): the trace tool asks its own candidate
+    (`sdn_analyst_tools.TOOLS_CANDIDATES`, pass 1 v5 with the traces list, pass 2 v2), the
+    baseline B1's prompt in use; the report names the prompts asked; an unknown candidate, and
+    one beside ``--prompt``, are refused with nothing asked."""
+    from modules.sdn import analyst
+
+    said = []
+    send = Scripted()
+    arms = {"baseline": analyst.ask_snapshot, "tools": AT.ask_snapshot}
+    argv = ["--list", NET, "--runs", "1", "--roles", "recorded", "--cases", "unauthorised-s2",
+            "--out", str(tmp_path / "out")]
+    assert EV.main(argv + ["--tools-prompt", "9"], arms=arms, root=ROOT, send=send,
+                   out=said.append) == 2
+    assert "--tools-prompt 9: no trace-tool candidate v9; the candidates are v5" in said[-1]
+    assert EV.main(argv + ["--tools-prompt", "5", "--prompt", "2"], arms=arms, root=ROOT,
+                   send=send, out=said.append) == 2
+    assert "give one; nothing was asked" in said[-1] and send.bodies == []
+    assert EV.main(argv + ["--tools-prompt", "5", "--yes-spend", "--actor", "evaluation:b4-t5"],
+                   arms=arms, root=ROOT, send=send, out=said.append) == 0
+    rows = [r for r in calls.read()["rows"] if r.get("actor") == "evaluation:b4-t5"]
+    assert "sdn_analyse_tools.v5" in {r["prompt"] for r in rows}
+    assert "{}.v{}".format(*AN.PROMPT) in {r["prompt"] for r in rows}, "the baseline in use"
+    tool_bodies = [b for b in send.bodies if "Reads you may ask Mercury for" in json.dumps(b)]
+    assert tool_bodies and "`traces` is Mercury's list" in json.dumps(tool_bodies[0])
+    data = json.load(open(tmp_path / "out" / "b4-eval-b4-t5.json", encoding="utf-8"))
+    assert data["meta"]["tools_prompts"] == "sdn_analyse_tools.v5 and v2 (with the traces list)"
+    assert data["meta"]["prompt_in_use"] is False
+
+
 @pytest.mark.parametrize("extra, words", [
     (["--out", ROOT + "/tmp-b4"], "is inside the checkout"),
     (["--out", "/tmp/elsewhere", "--actor", "op@example.com"], "reads as a person's address"),

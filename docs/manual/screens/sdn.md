@@ -318,7 +318,9 @@ mode and whether the loop is running.
   it itself: when the flood rule fires for the same port or source, it joins that incident,
   whose row then reads **Flood · began as High packet rate** and says since when; when the
   rate falls below the threshold, it ends as "ended, never more than a rate". The same source
-  on several switches is one row. You may dismiss it with a reason. It also watches what the
+  on several switches is one row. You may dismiss it with a reason, or press **Rate-limit this
+  source…** to make it an incident awaiting you, answered as the scan rule's; AUTO never acts
+  on it (C4124). It also watches what the
   flood rule holds but does not call a flood:
   - **a TCP transfer**, its data with its ACKs returning;
   - **one large-packet stream**, whose packets average more than the flood's size (200 B by

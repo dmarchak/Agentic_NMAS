@@ -698,17 +698,18 @@ def report_markdown(results: dict, meta: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def estimate(cases: list, network: str, runs: int) -> dict:
+def estimate(cases: list, network: str, runs: int, tools: int = None) -> dict:
     """What a run would spend, before it does, by each arm's own estimate of each case's
     snapshot: ``{"calls", "usd", "cases", "hardware"}`` (the trace tool counted at its two
-    calls; *hardware* how many of the cases are the lab hardware's snapshots)."""
+    calls, its candidate *tools*' prompt and input where one is asked; *hardware* how many of
+    the cases are the lab hardware's snapshots)."""
     from modules.ai import sdn_analyst_tools as AT
     from modules.sdn import analyst as AN
 
     usd, calls = 0.0, 0
     for case in cases:
         snap = case_snapshot(case, network)
-        usd += runs * (AN.estimate(snap)["usd"] + AT.estimate(snap)["usd"])
+        usd += runs * (AN.estimate(snap)["usd"] + AT.estimate(snap, tools=tools)["usd"])
         calls += runs * (1 + 2)
     return {"calls": calls, "usd": round(usd, 4), "cases": len(cases),
             "hardware": sum(1 for c in cases if c.get("role") == HARDWARE)}
@@ -771,6 +772,10 @@ def main(argv, *, arms: dict, root: str, send=None, now=None, clock=time.monoton
                     help="ask both arms with this version of the analyst's prompt (and the "
                          "trace tool's two built on it) in place of the ones in use: a "
                          "candidate measured before it is adopted")
+    ap.add_argument("--tools-prompt", type=int, default=0,
+                    help="ask the trace tool's own candidate (sdn_analyst_tools."
+                         "TOOLS_CANDIDATES) in place of its pair in use, the baseline as it "
+                         "is: a candidate measured before it is adopted")
     ap.add_argument("--actor", default="")
     ap.add_argument("--yes-spend", action="store_true",
                     help="spend: without it, the run says what it would spend and stops")
@@ -804,9 +809,25 @@ def main(argv, *, arms: dict, root: str, send=None, now=None, clock=time.monoton
     if why_not:
         out(f"nmas-sdn-b4-eval: --prompt {args.prompt}: {why_not}; nothing was asked")
         return 2
+    if args.prompt and args.tools_prompt:
+        out("nmas-sdn-b4-eval: --prompt and --tools-prompt each name what the trace tool asks; "
+            "give one; nothing was asked")
+        return 2
     if args.prompt:
         # Each arm handed the candidate's version; an arm asked without it asks the one in use.
         arms = {t: functools.partial(fn, prompt=args.prompt) for t, fn in arms.items()}
+    if args.tools_prompt:
+        from modules.ai import sdn_analyst_tools as AT
+        try:
+            AT.tools_loop(args.tools_prompt)
+        except ValueError as exc:
+            out(f"nmas-sdn-b4-eval: --tools-prompt {args.tools_prompt}: {exc}; nothing was "
+                "asked")
+            return 2
+        p1, p2, _b1 = AT.TOOLS_CANDIDATES[args.tools_prompt]
+        asked = dict(asked, in_use=False,
+                     tools_prompts=f"{p1[0]}.v{p1[1]} and v{p2[1]} (with the traces list)")
+        arms = dict(arms, tools=functools.partial(arms["tools"], tools=args.tools_prompt))
     actor, refusal = AIC.evaluation_actor(args.actor, "sdn-b4-eval", now)
     network, why = AIC.run_network(args.list) if not refusal else ("", "")
     if refusal or why:
@@ -832,7 +853,7 @@ def main(argv, *, arms: dict, root: str, send=None, now=None, clock=time.monoton
     if not picked:
         out("nmas-sdn-b4-eval: no case matches --roles and --cases")
         return 2
-    est = estimate(picked, network, args.runs)
+    est = estimate(picked, network, args.runs, tools=args.tools_prompt or None)
     out(f"nmas-sdn-b4-eval: {est['cases']} cases ({est['hardware']} of them the lab hardware's "
         f"snapshots) x {args.runs} runs x 2 techniques: at most "
         f"{est['calls']} calls, about ${est['usd']:.4f} by the over-estimate (the tool arm at "

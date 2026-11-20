@@ -144,7 +144,13 @@ always waits for you, whatever the allowed risk, saying "the source was inferred
 topology: a person confirms it" with the comparison it made: AUTO applies only a source the flows
 themselves name, the flows entering that port name none, and where the source came from. It is a
 row of Needs attention like any response awaiting you, and Mercury refuses an unattended confirm
-of such a source too, sending nothing. **When AUTO cannot preview its response** (the switch
+of such a source too, sending nothing. **A source NetBox declares is not inferred:** where the
+topology names one host on the port, and the network's committed NSOT export records exactly
+one end host interface cabled to that switch's port (its datapath id and OpenFlow number),
+holding the source's address and, where both know it, the same MAC, AUTO acts on it, its record
+saying "NetBox declares it" with the host, the interface and the port. Two records made apart
+agree, so a fabric whose flows match MAC addresses only can still respond unattended. Anything
+else, or an export that cannot be read, waits for you as above. **When AUTO cannot preview its response** (the switch
 is no longer on the controller, the connection is gone, the plan refused), nothing is sent and
 the response waits for you as in HITL, its card saying "AUTO could not preview <action>: <why>"
 and its Needs attention row naming that failure and that AUTO sent nothing; it clears when you
@@ -298,7 +304,9 @@ not compared.
 ### High packet rate {#high-rate}
 
 On a switch whose flows name no transport ports (they match MAC addresses only, or IP addresses
-and no port), no scan can be counted by destination port. There, a port receiving at least the
+and no port), or whose flows that name one name no source address (a DNS punt matched by its
+port, which shows no one source's destination ports), no scan can be counted by destination
+port. There, a port receiving at least the
 **High packet rate** threshold (`sdn_scan_fallback_pps`, 100 packets a second by default) is
 its own rule, at lower confidence. A rate alone cannot tell a scan from a flood's first seconds
 (the flood rule fires only after its 30-second hold) or from other heavy traffic, so Mercury
@@ -316,6 +324,11 @@ does not call it either:
 4. **Or you dismiss it**, with a reason. It cannot be confirmed: there is nothing to confirm.
 5. **Or, on a large-packet stream, you rate-limit it** (below): the row closes as "proposed
    by a person", and the stream is an incident awaiting you.
+6. **Or, on a High packet rate itself, you rate-limit it** with the same **Rate-limit this
+   source…**: it is answered and checked as the scan rule's, under the scan rule's response
+   policy, and becomes an incident awaiting you. On a fabric that forwards by MAC address, this
+   is how a scan is answered at all. Only a person makes it a response: AUTO never acts on a
+   High packet rate, whatever its mode.
 
 **A transfer is High packet rate too, not a flood.** When the flood rule's candidate port
 receives a transfer's shape, it is watched the same way, never proposed:

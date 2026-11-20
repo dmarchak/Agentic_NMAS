@@ -525,7 +525,9 @@ class ProposalRefused(ValueError):
 def propose_from_watch(network: str, watch_id: str, *, actor: str, actor_verified: str,
                        actor_kind: str, now: float = None, stored: dict = None) -> dict:
     """A person's "Rate-limit this source…" on a watched large-packet stream (C2313's
-    condition, the operator's decision of 2026-11-03, option (i)): the watching row *watch_id*
+    condition, the operator's decision of 2026-11-03, option (i)) or a watched High packet rate
+    (C4124, the operator's decision of 2026-11-20, answered as the scan rule; HITL only, since
+    only a person makes a watched row a response): the watching row *watch_id*
     made a response awaiting a person, and the row closed ``proposed_by_person``. Its action
     `closed_loop.PERSON_ACTION`, its parameters the catalogue's defaults, its detection the
     watched one with its evidence, its incident the watching row's (its switches seen also),
@@ -562,13 +564,15 @@ def propose_from_watch(network: str, watch_id: str, *, actor: str, actor_verifie
     rec = dict(inc, ingress_known=bool(chosen["known"]), ingress_words=chosen["words"],
                ingress_port=chosen["port"], seen_also=list(row.get("seen_also") or []))
     action = closed_loop.PERSON_ACTION
+    what = closed_loop.PERSON_WORDS.get(d.get("basis"), "a watched row")
+    rule = closed_loop.answered_rule(d)
     now = time.time() if now is None else now
     response = propose(
         network, d, action, closed_loop.CATALOGUE[action]["risk"], now=now,
-        why=f"proposed by {actor} from a watched large-packet stream",
+        why=f"proposed by {actor} from {what.replace('a ', 'a watched ', 1)}",
         params=dict(closed_loop.RATE_LIMIT_DEFAULT),
         classified=(f"no AI classification: {actor} proposed the rate limit from watching row "
-                    f"{watch_id}, checked as the flood rule's under the network's response "
+                    f"{watch_id}, checked as the {rule} rule's under the network's response "
                     "policy"), incident=rec)
     closed = {"kind": "proposed_by_person", "id": watch_id, "at": _iso(now), "actor": actor,
               "actor_verified": actor_verified, "why": "proposed by a person",

@@ -296,18 +296,61 @@ def record_expiry(network: str, now: float = None) -> dict:
     return {"recorded": True}
 
 
-def source_refusal(detection: dict, action: str) -> str:
+def declared_source(network: str, detection: dict) -> str:
+    """Words saying NetBox declares *detection*'s source on its port, or "" (the Lab 9 Part B
+    request D, 2026-11-20: a fabric whose flows match MAC addresses names no source, so a
+    flood's source is the host the controller's topology lists on the port, C2002). Declared
+    means all of: the topology named exactly one host on the port (``source_from`` state
+    ``named``); *network*'s committed NSOT export records exactly one end host interface cabled
+    to that switch's port (by its datapath id and OpenFlow port number, `known.rows_of`); that
+    interface holds the source's address; and where both NetBox and the topology know the
+    host's MAC, they are the same. Two records made apart agree, so the source is not inferred.
+    Anything else, or an export that cannot be read, is "" and fails closed."""
+    from modules.sdn import known
+    from modules.sdn.drivers.base import SpecError, parse_dpid
+
+    d = detection or {}
+    found = d.get("source_from") or {}
+    source = str(d.get("source") or "")
+    if not source or found.get("state") != "named":
+        return ""
+    try:
+        dpid = parse_dpid(d.get("dpid") if d.get("dpid") is not None else d.get("dpid_hex"))
+        port = int(found.get("port", d.get("port")))
+    except (SpecError, TypeError, ValueError):
+        return ""
+    view = known.read(network)
+    if view.get("state") != "read":
+        return ""
+    rows = [r for r in view.get("rows") or [] if r.get("kind") == "end host"
+            and r.get("dpid") == dpid and r.get("port_no") == port]
+    if len(rows) != 1 or source not in (rows[0].get("ipv4") or []) + (rows[0].get("ipv6") or []):
+        return ""
+    r = rows[0]
+    macs = {str(h.get("mac") or "").lower() for h in found.get("hosts") or []
+            if h.get("address") == source and h.get("mac")}
+    if r.get("mac") and macs and r["mac"] not in macs:
+        return ""
+    return (f"NetBox declares it: {r['name']}'s {r['interface']} ({source}"
+            f"{', ' + r['mac'] if r.get('mac') else ''}) is cabled to {r['switch']} "
+            f"{r['switch_interface']} (port {port}), where the controller lists that host")
+
+
+def source_refusal(detection: dict, action: str, declared: str = "") -> str:
     """Why *action* on *detection* may not run unattended because its source was not seen in
     the flows (C2147), naming what AUTO requires and what this detection has; "" when the
     action acts on no source (`SOURCE_ACTIONS`) or the flows name its source. Flow-named means
     the detection names a source and carries no ``source_from`` (`detect` sets one only where
-    the flows name none and the topology was asked): anything else fails closed."""
+    the flows name none and the topology was asked): anything else fails closed, but for a
+    source NetBox *declared* on its port (`declared_source`'s words), which is not inferred."""
     if action not in SOURCE_ACTIONS:
         return ""
     d = detection or {}
     found = d.get("source_from") or {}
     source = d.get("source")
     if source and not found:
+        return ""
+    if source and declared:
         return ""
     port = found.get("port", d.get("port"))
     entering = f"the flows entering port {port}" if port is not None else "the flows"
@@ -329,7 +372,8 @@ def decide(network: str, risk: str, now: float = None, *, detection: dict = None
     unattended while the network is not marked lab (C2009): marked otherwise since it was
     turned on, or a stage that cannot be read, answers HITL naming the stage and the gate.
     *action* on *detection* whose source the flows do not name (`source_refusal`, C2147) is a
-    person's, whatever the action's risk."""
+    person's, whatever the action's risk, unless NetBox declares that source on its port
+    (`declared_source`); the decision's words then say so."""
     mode = current(network, now)
     if mode["mode"] != "auto":
         return {"auto": False, "words": mode["words"], "autonomous": None}
@@ -337,7 +381,9 @@ def decide(network: str, risk: str, now: float = None, *, detection: dict = None
     if refused:
         return {"auto": False, "autonomous": None,
                 "words": f"HITL: AUTO is on and suspended, since {refused}"}
-    inferred = source_refusal(detection, action)
+    declared = (declared_source(network, detection)
+                if action in SOURCE_ACTIONS and (detection or {}).get("source_from") else "")
+    inferred = source_refusal(detection, action, declared)
     if inferred:
         return {"auto": False, "autonomous": None, "words": f"HITL for this one: {inferred}"}
     allowed = RISKS[: RISKS.index(mode["allowed_risk"]) + 1] if mode["allowed_risk"] in RISKS \
@@ -346,7 +392,7 @@ def decide(network: str, risk: str, now: float = None, *, detection: dict = None
         return {"auto": False, "autonomous": None,
                 "words": f"HITL for this one: its risk is {risk}, and AUTO allows "
                          f"{mode['allowed_risk']} and below"}
-    return {"auto": True, "words": mode["words"],
+    return {"auto": True, "words": mode["words"] + (f"; its source: {declared}" if declared else ""),
             "autonomous": {"setting": "sdn AUTO", "by": mode["by"], "reason": mode["reason"],
                            "since": mode["since"], "until": mode["until"],
                            "allowed_risk": mode["allowed_risk"]}}

@@ -148,15 +148,37 @@ def granularity(match: dict) -> str:
     return "L2"
 
 
+#: The source fields an L4 flow names to show one source's destination ports (the scan rule
+#: counts a sighting per source address: `detect.scan`).
+SOURCE_FIELDS = frozenset({"ipv4_src", "ipv6_src"})
+
+
 def coverage(flows: list) -> dict:
-    """What *flows* can show: ``{"granularity", "by_granularity", "scan_by_ports", "words"}``,
-    the finest granularity found among them."""
+    """What *flows* can show: ``{"granularity", "by_granularity", "scan_by_ports", "words"}``
+    (and ``l4_unsourced`` where it explains L3), the finest granularity found. L4 only where an
+    L4 flow names a source address: a switch whose L4 flows name none (a DNS punt by its port,
+    as the Lab 9 team's on every switch, 2026-11-20) cannot show one source's destination
+    ports, so it is L3, saying how many such flows it has, and its ports' rates are judged as
+    High packet rate (`detect.scan`'s fallback)."""
     counts = {g: 0 for g in GRANULARITIES}
+    sourced = unsourced = 0
     for f in flows:
-        counts[granularity(f.get("match"))] += 1
+        g = granularity(f.get("match"))
+        counts[g] += 1
+        if g == "L4":
+            if set(f.get("match") or {}) & SOURCE_FIELDS:
+                sourced += 1
+            else:
+                unsourced += 1
     found = next((g for g in GRANULARITIES if counts[g]), "none")
-    return {"granularity": found, "by_granularity": counts, "scan_by_ports": found == "L4",
-            "words": COVERAGE_WORDS[found]}
+    out = {"granularity": found, "by_granularity": counts, "scan_by_ports": found == "L4",
+           "words": COVERAGE_WORDS[found]}
+    if found == "L4" and not sourced:
+        out.update(granularity="L3", scan_by_ports=False, l4_unsourced=unsourced,
+                   words=(f"{COVERAGE_WORDS['L3']}; its {unsourced} L4 flow"
+                          f"{'s name' if unsourced != 1 else ' names'} no source address (a punt by "
+                          "its port, say), so none shows one source's destination ports"))
+    return out
 
 
 def flow_ref(connection: str, dpid: int, flow: dict) -> str:
@@ -1253,16 +1275,22 @@ def answering(rule: str) -> list:
 #: candidate (`detect.flood` held it over the flood's threshold and window, then judged its
 #: packets too large to call a flood), so a person's response to it is the flood rule's, under
 #: the flood rule's response policy. A policy that forbids rate-limiting floods forbids it here.
-PERSON_ANSWERED = {("high_rate", "large_packets"): "flood"}
-#: The one action a person proposes from a watched large-packet stream: a rate limit, its
-#: parameters the catalogue's defaults (`RATE_LIMIT_DEFAULT`), changed in the preview.
+#: A High packet rate itself (basis ``rate``: a port's rate on a switch whose flows name no
+#: transport ports, so no destination ports can be counted) is the scan rule's, under the scan
+#: rule's policy (C4124, the operator's decision of 2026-11-20: proposed by a person in HITL
+#: only; AUTO never acts on it, since only a person makes a watched row a response).
+PERSON_ANSWERED = {("high_rate", "large_packets"): "flood", ("high_rate", "rate"): "scan"}
+#: The one action a person proposes from a watched row: a rate limit, its parameters the
+#: catalogue's defaults (`RATE_LIMIT_DEFAULT`), changed in the preview.
 PERSON_ACTION = "rate_limit_source"
+#: What each watched basis is, in a refusal's and a proposal's words.
+PERSON_WORDS = {"large_packets": "a large-packet stream", "rate": "a High packet rate"}
 
 
 def answered_rule(detection: dict) -> str:
     """The rule a response to *detection* answers, and is checked against the network's response
-    policy as: a watched large-packet stream's is the flood rule (`PERSON_ANSWERED`); every
-    other detection's is its own rule."""
+    policy as: a watched large-packet stream's is the flood rule, a watched High packet rate's
+    the scan rule (`PERSON_ANSWERED`); every other detection's is its own rule."""
     d = detection or {}
     return PERSON_ANSWERED.get((d.get("rule"), d.get("basis")), d.get("rule") or "")
 
@@ -1270,24 +1298,27 @@ def answered_rule(detection: dict) -> str:
 def person_proposal_refusal(network: str, detection: dict, action: str = PERSON_ACTION,
                             pol: dict = None) -> str:
     """Why a person may not propose *action* from the watched *detection* on *network*, or "":
-    it must be a large-packet stream (`PERSON_ANSWERED`), naming a source to act on (or hosts to
-    choose among, or a port whose host the preview looks up), and the network's response policy
-    (*pol*, read when not given) must allow *action* for the flood rule (`policy_refusal`, the
-    one check, naming the action, the rule and the actions the policy allows). Reads nothing
-    but the policy: drawn on the watching row, and checked again by its route."""
+    it must be a large-packet stream or a High packet rate (`PERSON_ANSWERED`), naming a source
+    to act on (or hosts to choose among, or a port whose host the preview looks up), and the
+    network's response policy (*pol*, read when not given) must allow *action* for the rule it
+    is answered as, the flood rule's or the scan rule's (`policy_refusal`, the one check, naming
+    the action, the rule and the actions the policy allows). Reads nothing but the policy:
+    drawn on the watching row, and checked again by its route."""
     d = detection or {}
     rule = PERSON_ANSWERED.get((d.get("rule"), d.get("basis")))
     if rule is None:
-        return (f"only a watched large-packet stream (High packet rate, basis large_packets) is "
-                f"proposed by a person; this one is {d.get('rule') or 'no rule'}, basis "
-                f"{d.get('basis') or 'none'}")
+        return (f"only a watched large-packet stream or High packet rate (High packet rate, "
+                f"basis large_packets or rate) is proposed by a person; this one is "
+                f"{d.get('rule') or 'no rule'}, basis {d.get('basis') or 'none'}")
     choice = source_choice(d)
     if choice["state"] in NOTHING_TO_CHOOSE:
         return (f"the watched stream names no source to rate-limit: "
                 f"{choice['words'] or 'its port has no host to act on'}")
     refusal = policy_refusal(network, rule, action, pol)
     if refusal:
-        return f"a large-packet stream is checked as the flood rule's held candidate: {refusal}"
+        what = PERSON_WORDS.get(d.get("basis"), "a watched row")
+        held = " held candidate" if rule == "flood" else ""
+        return f"{what} is checked as the {rule} rule's{held}: {refusal}"
     return ""
 
 
@@ -1814,22 +1845,29 @@ def confirm_source_refusal(ask: dict, detection: dict) -> str:
     return ""
 
 
-def auto_source_refusal(ask: dict, detection, action_id: str) -> str:
+def auto_source_refusal(ask: dict, detection, action_id: str, network: str = "") -> str:
     """Why an unattended (AUTO) confirm of *ask* may not act on its source (C2147), naming the
     comparison and both operands; "" otherwise. Refused when the ask's source was found in the
     controller's topology or chosen (`_response_source` keeps how in the ask's detection's
     ``source_from``), or when *detection* (when handed in) names no source the flows name
-    (`modes.source_refusal`)."""
+    (`modes.source_refusal`): unless *network*'s NetBox declares that source on its port
+    (`modes.declared_source`, read again here on *detection*, the loop's own, and the ask's
+    source the same)."""
     from modules.sdn import modes
 
     if action_id not in modes.SOURCE_ACTIONS:
         return ""
-    how = ((ask or {}).get("detection") or {}).get("source_from")
-    if how:
+    asked = (ask or {}).get("detection") or {}
+    how = asked.get("source_from")
+    declared = ""
+    if isinstance(detection, dict) and network and detection.get("source_from") \
+            and asked.get("source") == detection.get("source"):
+        declared = modes.declared_source(network, detection)
+    if how and not declared:
         return (f"AUTO refused: {modes.INFERRED_WORDS} ({modes.FLOWS_RULE}, and this one's "
                 f"source was not: {how})")
     if isinstance(detection, dict):
-        why = modes.source_refusal(detection, action_id)
+        why = modes.source_refusal(detection, action_id, declared)
         if why:
             return f"AUTO refused: {why}"
     return ""
@@ -2184,7 +2222,7 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
     # was found in the topology or chosen (its ``source_from``), or whose detection's source
     # the flows do not name, sends nothing; the loop's `modes.decide` hands it to a person first.
     if mode == "auto":
-        refusal = auto_source_refusal(ask, detection, action_id)
+        refusal = auto_source_refusal(ask, detection, action_id, network)
         if refusal:
             return {"ok": False, "outcome": "refused", "error": f"{refusal}: nothing was sent"}
     # The control-plane guard and B again at the confirm, on the ask carried back (C2022,
