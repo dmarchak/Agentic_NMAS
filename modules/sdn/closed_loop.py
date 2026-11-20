@@ -2039,6 +2039,86 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
     return out
 
 
+def response_shape_refusal(ask: dict, action_id: str) -> str:
+    """Why a confirm's carried *ask* is not in the shape `build_response` makes for
+    *action_id*, or ``""``. The confirm plans it as the closed loop's writer
+    (`protected.RESPONSE_WRITER`), whom a network may name among a protected class's owners, and
+    a person's confirm carries its ask back from the page: so only a response's own shape may
+    take that writer (Lab 9 Part B, 2026-11-20; the independent review of b3bb6079, A).
+
+    - ``drop_source``: one add in table 0 matching the EtherType and one source address alone,
+      with no actions, a hard timeout and Mercury's cookie;
+    - ``rate_limit_source``: one meter, then adds in table 0, each matching the EtherType, that
+      source and one destination, through that meter to one port, each with a hard timeout and
+      Mercury's cookie;
+    - ``remove_flow``: one delete-strict, and Mercury's own flows put back (``reinstall``)."""
+    from modules import protected
+    from modules.sdn import flow_intent
+    from modules.sdn.match_rules import ETH_IPV4, ETH_IPV6
+
+    changes = ask.get("changes") if isinstance(ask.get("changes"), list) else None
+    if not changes or not all(isinstance(c, dict) for c in changes):
+        return "the confirm's ask carries no changes"
+    words = f"the confirm's ask is not in the shape {action_id} makes"
+
+    def mercury(flow):
+        return flow_intent.is_mercury(protected.cookie_number(flow.get("cookie")))
+
+    def timed(flow):
+        hard = flow.get("hard_timeout")
+        return isinstance(hard, int) and not isinstance(hard, bool) and hard > 0
+
+    def source_of(match, extra=()):
+        fam = {"ipv4_src": ETH_IPV4, "ipv6_src": ETH_IPV6}
+        keys = set(match)
+        for src, eth in fam.items():
+            want = {"eth_type", src} | {k.replace("_src", "_dst") for k in extra if k == src}
+            if keys == want and match.get("eth_type") == eth:
+                return match[src]
+        return None
+
+    if action_id == "drop_source":
+        if len(changes) != 1 or changes[0].get("do") != "add_flow" or changes[0].get("reinstall"):
+            return f"{words}: one flow added, not {len(changes)} change(s)"
+        f = changes[0].get("flow") or {}
+        if (f.get("table_id") != 0 or f.get("actions") or not timed(f) or not mercury(f)
+                or source_of(f.get("match") or {}) is None or not ask.get("response")):
+            return f"{words}: a drop of one source address in table 0, with a hard timeout"
+        return ""
+    if action_id == "rate_limit_source":
+        meter, flows = changes[0], changes[1:]
+        if meter.get("do") != "add_meter" or not flows:
+            return f"{words}: one meter, then its flows"
+        meter_id = (meter.get("meter") or {}).get("meter_id")
+        sources = set()
+        for c in flows:
+            f = c.get("flow") or {}
+            m = f.get("match") or {}
+            src_key = "ipv4_src" if "ipv4_src" in m else "ipv6_src"
+            acts = f.get("actions") or []
+            ok = (c.get("do") == "add_flow" and not c.get("reinstall") and f.get("table_id") == 0
+                  and timed(f) and mercury(f) and source_of(m, extra=(src_key,)) is not None
+                  and len(acts) == 2 and acts[0].get("type") == "METER"
+                  and acts[0].get("meter_id") == meter_id and acts[1].get("type") == "OUTPUT"
+                  and isinstance(acts[1].get("port"), int))
+            if not ok:
+                return (f"{words}: each flow in table 0 from the source to one destination, "
+                        "through the meter to one port, with a hard timeout")
+            sources.add(m.get(src_key))
+        if len(sources) != 1 or not ask.get("response"):
+            return f"{words}: one source"
+        return ""
+    if action_id == "remove_flow":
+        removes = [c for c in changes if c.get("do") == "remove_flow"]
+        rest = [c for c in changes if c.get("do") != "remove_flow"]
+        if len(removes) != 1 or changes[0] is not removes[0] or not all(
+                c.get("do") == "add_flow" and c.get("reinstall") and mercury(c.get("flow") or {})
+                for c in rest):
+            return f"{words}: one flow removed, and only Mercury's own put back"
+        return ""
+    return f"{action_id!r} is not in the response catalogue ({', '.join(CATALOGUE)})"
+
+
 def respond_to_threat(network: str, detection: dict, action_id: str = None,
                       params: dict = None, *, confirm: dict = None, actor: str = "",
                       actor_verified: str = "", mode: str = "hitl", autonomous: dict = None,
@@ -2088,6 +2168,10 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
             f"the confirm names {action_id} and its preview {previewed}: nothing was sent; "
             "preview again")}
     action_id = previewed
+    # Only a response's own shape is planned as the closed loop's writer (C4130).
+    refusal = response_shape_refusal(ask, action_id)
+    if refusal:
+        return {"ok": False, "outcome": "refused", "error": f"{refusal}: nothing was sent"}
     refusal = policy_refusal(network, answered_rule(ask.get("detection") or {}), action_id)
     if refusal:
         return {"ok": False, "outcome": "refused", "error": f"{refusal}: nothing was sent"}

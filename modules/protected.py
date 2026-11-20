@@ -917,8 +917,9 @@ def owned_class_words(flow: dict, cls: dict, flows, writer: str) -> str:
 
 def taken_first(flow: dict, flows, classes) -> list:
     """The switch's live *flows* in *flow*'s table, above it, that could take a packet it takes
-    and serve none of *classes*: each takes what it matches first, so *flow* never acts on
-    those packets (said in a response's preview, never refused: it leaves them as they were)."""
+    and serve none of *classes* (the network's every class, so "serving no protected class" is
+    true of each): each takes what it matches first, so *flow* never acts on those packets
+    (said in a response's preview, never refused: it leaves them as they were)."""
     from modules.sdn.flow_ops import disjoint
     match = flow.get("match") or {}
     table, prio = int(flow.get("table_id") or 0), int(flow.get("priority") or 0)
@@ -983,11 +984,9 @@ def flow_refusal_detail(pset: dict, changes: list, dpid, connection: dict, *,
         for verb, flow, removal in flows:
             match = flow.get("match") or {}
             said = writer == RESPONSE_WRITER and do == "add_flow" and bool(switch_flows)
-            owned = []
             for cls in pset.get("classes") or []:
                 if writer in (cls.get("owners") or []):
                     if said and overlap(match, cls):
-                        owned.append(cls)
                         notes.append(f"Change {n + 1}: "
                                      f"{owned_class_words(flow, cls, switch_flows, writer)}.")
                     continue
@@ -1008,7 +1007,7 @@ def flow_refusal_detail(pset: dict, changes: list, dpid, connection: dict, *,
                     "by": [refused_by("class", cls["name"], invariant=cls["invariant"],
                                       source=cls["source"], met=met, citation=CITATION)]}
             if said:
-                first = taken_first(flow, switch_flows, owned)
+                first = taken_first(flow, switch_flows, pset.get("classes") or [])
                 if first:
                     from modules.sdn.flow_ops import flow_words
                     notes.append(

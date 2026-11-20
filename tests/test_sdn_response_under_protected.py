@@ -18,11 +18,13 @@ with documentation addresses:
 - **An Open vSwitch server's table 0:** the drop at the floor, 300, under DHCP's 1100.
 - **The ProCurve** (DNS and DHCP in table 200): written at 300 over the goto, its preview saying
   no flow of the class sits above it.
-- **No room** (forwarding at 1095 under DHCP's 1100): the drop at 1105, its preview saying
+- **No room** (forwarding at 1099 under DHCP's 1100): the drop at 1109, its preview saying
   DHCP's flows are not above it.
 - **The writer is the code's, never the ask's:** a person's plan whose ask carries a response's
   fields is the person's, and refused.
 """
+import json
+
 import pytest
 
 from modules import protected as P
@@ -178,15 +180,44 @@ def test_on_the_procurve_a_class_served_in_a_later_table_is_said_taken(owned):
 
 
 def test_with_no_room_the_drop_sits_over_dhcp_and_says_so(owned):
-    _with(owned, [LLDP] + served(0) + forwarding(0, top=1095))
+    _with(owned, [LLDP] + served(0) + forwarding(0, top=1099))
     preview = _drop()
     assert preview["ok"], preview["error"]
-    assert preview["params"]["priority"] == 1105
+    assert preview["params"]["priority"] == 1109
     said = _said(preview)
-    assert "(priority 1200, this flow 1105) take the packets they match first" in said
+    assert "(priority 1200, this flow 1109) take the packets they match first" in said
     assert ("meets the protected class dhcp (must_reach dhcp; NetBox: planted[1]), which names "
             "response among its owners, so it is written; no flow on this switch serving that "
             "class sits above it in table 0") in said
+
+
+def test_one_under_the_ceiling_where_ten_above_would_tie_it(owned):
+    _with(owned, [LLDP] + served(0) + forwarding(0, top=1090))
+    preview = _drop()
+    assert preview["ok"], preview["error"]
+    assert preview["params"]["priority"] == 1099
+    assert "(priority 1100, this flow 1099) take the packets they match first" in _said(preview)
+
+
+@pytest.mark.parametrize("tamper,what", [
+    (lambda c: c[0]["flow"].update(match={"eth_type": 0x0800}), "the match widened"),
+    (lambda c: c[0]["flow"].update(actions=[{"type": "OUTPUT", "port": 1}]), "an output"),
+    (lambda c: c[0]["flow"].update(hard_timeout=0), "no hard timeout"),
+    (lambda c: c.append(dict(c[0], flow=dict(c[0]["flow"], priority=1300))), "a second flow"),
+])
+def test_a_confirm_whose_carried_ask_is_not_a_drop_s_shape_is_refused(owned, tamper, what):
+    _with(owned, ARISTA)
+    preview = _drop()
+    assert preview["ok"], preview["error"]
+    ask = json.loads(json.dumps(preview["ask"]))
+    tamper(ask["changes"])
+    writes = list(owned["fake"].writes)
+    done = CL.respond_to_threat("Default", None, "drop_source", confirm={
+        "ask": ask, "hash": preview["plan"]["hash"]}, actor="op@example.com",
+        actor_verified="access", sleep=lambda s: None)
+    assert done["outcome"] == "refused", what
+    assert "the confirm's ask is not in the shape drop_source makes" in done["error"], what
+    assert owned["fake"].writes == writes
 
 
 def test_a_person_s_plan_carrying_a_response_s_fields_is_the_person_s(owned):

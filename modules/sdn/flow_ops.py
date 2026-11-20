@@ -233,6 +233,19 @@ def response_priority(flows: list, own_cookies=(), intent_cookies=(), match=None
     return min(0xFFFF, max(RESPONSE_PRIORITY_FLOOR, top + RESPONSE_PRIORITY_STEP))
 
 
+def _under(priority: int, flows, own_cookies, intent_cookies, match, ceiling) -> int:
+    """*priority* (`response_priority`'s over *flows*) kept under *ceiling* where a whole number
+    fits between the highest of *flows* it must win against and the ceiling: so it never ties a
+    serving flow's priority (OpenFlow leaves which of two overlapping flows at one priority wins
+    undefined). Unchanged where none fits."""
+    if ceiling is None or priority < ceiling:
+        return priority
+    top = response_priority(flows, own_cookies, intent_cookies, match=match) \
+        - RESPONSE_PRIORITY_STEP
+    return ceiling - 1 if top < ceiling - 1 and ceiling - 1 >= RESPONSE_PRIORITY_FLOOR \
+        else priority
+
+
 def response_place(flows: list, own_cookies=(), intent_cookies=(), *, match: dict,
                    table_id: int = 0, classes=()) -> int:
     """The priority a closed-loop response's flow takes in table *table_id* of a switch whose
@@ -256,7 +269,8 @@ def response_place(flows: list, own_cookies=(), intent_cookies=(), *, match: dic
     ceiling = min((int(f.get("priority") or 0) for f in serving), default=None)
     rest = [f for f in here if id(f) not in ids
             and (ceiling is None or int(f.get("priority") or 0) < ceiling)]
-    return response_priority(rest, own_cookies, intent_cookies, match=match)
+    return _under(response_priority(rest, own_cookies, intent_cookies, match=match), rest,
+                  own_cookies, intent_cookies, match, ceiling)
 
 
 def free_meter_id(meters: list, features: dict = None, taken=(), flows=()) -> int:
