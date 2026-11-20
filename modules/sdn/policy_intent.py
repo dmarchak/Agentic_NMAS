@@ -30,7 +30,8 @@ resolved names only. The model may only answer a policy, one question back, or w
 - **malformed**: a rule naming a name the sentence did not resolve to, a rate on a rule that is
   not a rate limit, a rate limit with no rate, a negative number;
 - **impossible**: a source of ``any`` (a policy is placed where its source enters the fabric),
-  a source on no OpenFlow port (NetBox records none and the controller has not learned it), a
+  a source on no OpenFlow port (NetBox records none for the end host, or for the device
+  interface holding the address, and the controller has not learned it), a
   source whose hosts enter at more than one switch, the same host at both ends, a port without
   tcp or udp, a duration past `DURATION_MAX`, a rate past `RATE_MAX_KBPS`, no address family
   both ends share, and a rate limit where the ingress switch reports no meters (offering Drop
@@ -238,6 +239,16 @@ def world(network: str) -> dict:
                                    "addresses": addrs,
                                    "ports": [r for r in rows if r["host"] == h["name"]]}
     out["devices"] = sorted(d["name"] for d in (doc.get("body") or {}).get("devices") or [])
+    # An address an interface of a device that is not a switch holds, where NetBox cables that
+    # interface to a switch's OpenFlow port (the router's on its access switch; Lab 9 Part B,
+    # 2026-11-20): where its traffic enters the fabric, by the trace's own reading of NetBox.
+    from modules.sdn import known
+    out["cabled"] = [{"address": a, "name": r["name"], "interface": r["interface"],
+                      "dpid": r["dpid"], "port_no": r["port_no"], "switch": r["switch"],
+                      "switch_interface": r["switch_interface"]}
+                     for r in known.rows_of(doc) if r["kind"] == "device"
+                     and r["dpid"] is not None and r["port_no"] is not None
+                     for a in r["ipv4"] + r["ipv6"]]
     for d in (doc.get("body") or {}).get("devices") or []:
         raw = str((d.get("custom_fields") or {}).get("openflow_datapath_id") or "")
         if not raw:
@@ -344,6 +355,12 @@ def resolve(w: dict, key: str) -> dict:
         if seen:
             return {"key": key, "kind": "learned", "hosts": [], "addresses": [addr],
                     "learned": seen, "label": f"{addr} (the controller has learned it)"}
+        cabled = [r for r in w.get("cabled") or [] if r["address"] == addr]
+        if cabled:
+            return {"key": key, "kind": "cabled", "hosts": [], "addresses": [addr],
+                    "learned": [], "cabled": cabled,
+                    "label": f"{addr} = {cabled[0]['name']}'s {cabled[0]['interface']} (NetBox, "
+                             "a device that is not an end host)"}
         return {"key": key, "kind": "address", "hosts": [], "addresses": [addr], "learned": [],
                 "label": f"{addr} (an address no host of NetBox's or the controller's holds)"}
     names = sorted(h["name"] for h in w["hosts"].values()
@@ -705,6 +722,11 @@ def _place(w: dict, src: dict) -> tuple:
         places.setdefault(r["dpid"], []).append(
             f"{r['address']} on {switch_words(w, r['dpid'])} port {r['port_no']} (the "
             "controller learned it)")
+    for r in src.get("cabled") or []:
+        places.setdefault(r["dpid"], []).append(
+            f"{r['address']} on {switch_words(w, r['dpid'])} port {r['port_no']} (NetBox: "
+            f"{r['name']}'s {r['interface']} is cabled to {r['switch']} "
+            f"{r['switch_interface']})")
     if missing and not places:
         raise Refused("; ".join(missing))
     if src["kind"] == "address" and not places:
