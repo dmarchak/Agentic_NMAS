@@ -1925,8 +1925,9 @@ class TestSdnOperationCards(_Cards):
     networks, lab = hosted(_sc.networks), hosted(_so.lab)
 
     CASES = {
-        "form": ("_sdn_flow_form.html", "Preview the {{ 'removal' if f.do == 'remove' else "
-                 "('change' if f.do == 'edit' else 'flow') }}", r"Preview the flow", "viewer"),
+        "form": ("_sdn_flow_form.html", "Preview the {{ 'removal' if f.do in ('remove', "
+                 "'remove_meter') else ('change' if f.do == 'edit' else 'flow') }}",
+                 r"Preview the flow", "viewer"),
         "send": ("_sdn_op.html", "Send {{ d.count }} request{{ 's' if d.count != 1 }} to "
                  "{{ d.connection }}", r"Send 1 request to lab-controller",
                  "data: the match lacks the field its prerequisite needs (tcp_dst without "
