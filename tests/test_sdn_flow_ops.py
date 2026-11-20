@@ -456,19 +456,23 @@ def test_onward_takes_the_network_s_forwarding_never_a_mercury_flow_that_ends(fa
 
 @pytest.mark.parametrize("family", [4, 6], ids=["ipv4", "ipv6"])
 def test_onward_follows_the_source_s_port_where_table_0_splits_by_in_port(family):
-    """The review of ce2318df: a table 0 that hands each ingress port to the forwarding table
-    by its own flow splits the pair's traffic; with the source's port in the hint the packet is
-    followed to its port's goto, and without it the refusal says why."""
+    """The review of ce2318df, then C4159 (the review of f7441016): a table 0 that hands each
+    ingress port to the forwarding table by its own flow splits the pair's traffic by port.
+    Where every flow that may take it goes to the same table as the miss, the pair goes on
+    there; where they go to different places (a port's goto beside a miss to the controller),
+    the pair's packets from another port (spoofed ones) would be sent where the network does
+    not send them, so it is refused (``split_tables``), whatever the source's own port."""
     pair = ONWARD_PAIRS[family]
-    flows = [_f(100, {"in_port": 10}, [{"type": "GOTO_TABLE", "table_id": 2}]),
-             _f(100, {"in_port": 3}, [{"type": "GOTO_TABLE", "table_id": 2}]),
-             _f(0, {}, [{"type": "OUTPUT", "port": "CONTROLLER"}])]
-    got = O.onward(flows, 0, 300, pair, {"in_port": 10, "in_phy_port": 10})
+    same = [_f(100, {"in_port": 10}, [{"type": "GOTO_TABLE", "table_id": 2}]),
+            _f(100, {"in_port": 3}, [{"type": "GOTO_TABLE", "table_id": 2}]),
+            _f(0, {}, [{"type": "GOTO_TABLE", "table_id": 2}])]
+    got = O.onward(same, 0, 300, pair, {"in_port": 10, "in_phy_port": 10})
     assert got["ok"] and got["actions"] == [{"type": "GOTO_TABLE", "table_id": 2}], got
-    refused = O.onward(flows, 0, 300, pair)
-    assert not refused["ok"] and "split its traffic" in refused["error"]
-    assert "in_port" in refused["error"], "it names the field it could not follow"
-    assert refused["reason"] == "split", "no flow below drops or meters it"
+    assert O.onward(same, 0, 300, pair)["ok"], "the same with no hint at all"
+    apart = same[:2] + [_f(0, {}, [{"type": "OUTPUT", "port": "CONTROLLER"}])]
+    refused = O.onward(apart, 0, 300, pair, {"in_port": 10, "in_phy_port": 10})
+    assert not refused["ok"] and refused["reason"] == "split_tables", refused
+    assert "sends some of it on to a later table" in refused["error"]
 
 
 @pytest.mark.parametrize("family", [4, 6], ids=["ipv4", "ipv6"])

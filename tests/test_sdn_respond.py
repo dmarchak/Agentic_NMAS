@@ -172,6 +172,12 @@ def test_a_table_0_split_by_ingress_port_is_followed_through_the_detection_s_por
         {"dpid": 1, "table_id": 2, "priority": 1000, "cookie": team + 2,
          "match": {"eth_dst": "02:00:00:00:00:99"}, "actions": [{"type": "OUTPUT", "port": 2}],
          "idle_timeout": 0, "hard_timeout": 0}, miss]
+    # C4159: the port's own flow out port 7 beside the gotos sends some of the pair's packets
+    # (from that port) elsewhere than table 2: refused, never a fixed port. With every per-port
+    # flow going to table 2, as the miss does, the pair goes on by the goto.
+    _d, _fake, preview = _flood_on(monkeypatch, table)
+    assert not preview["ok"] and "go on to different tables" in preview["error"], preview
+    table[1]["actions"] = [{"type": "GOTO_TABLE", "table_id": 2}]
     _d, _fake, preview = _flood_on(monkeypatch, table)
     assert preview["ok"], preview["error"]
     _meter, *flows = preview["plan"]["steps"]
@@ -193,6 +199,62 @@ def test_a_pair_whose_flow_below_does_more_than_a_goto_is_not_metered(monkeypatc
     assert not preview["ok"], preview
     assert "does more than go on to a later table" in preview["error"]
     assert fake.writes == []
+
+
+def _row(priority, match, actions, cookie=0x9A00000000000005, hard=0, table=0):
+    return {"dpid": 1, "table_id": table, "priority": priority, "cookie": cookie,
+            "match": match, "actions": actions, "idle_timeout": 0, "hard_timeout": hard}
+
+
+@pytest.mark.usefixtures("lab")
+def test_c4159_a_pipeline_split_between_tables_is_not_metered(monkeypatch):
+    """C4159 (the review of f7441016): a priority-0 goto to table 2 beside a team flow sending
+    TCP to table 1 (a firewall table): the pair's packets go to two tables, which no one flow of
+    Mercury's follows, so the pair is not metered, never sent out a fixed port past both."""
+    table = [_row(0, {}, [{"type": "GOTO_TABLE", "table_id": 2}]),
+             _row(10, {"eth_type": 0x0800, "ip_proto": 6},
+                  [{"type": "GOTO_TABLE", "table_id": 1}])]
+    _d, fake, preview = _flood_on(monkeypatch, table)
+    assert not preview["ok"] and "go on to different tables" in preview["error"], preview
+    assert fake.writes == []
+
+
+@pytest.mark.usefixtures("lab")
+@pytest.mark.parametrize("actions,port,metered", [
+    ([{"type": "OUTPUT", "port": 5}], 5, True),
+    ([{"type": "SET_FIELD", "field": "eth_dst", "value": "02:00:00:00:00:05"},
+      {"type": "OUTPUT", "port": 3}], None, False),
+    ([{"type": "OUTPUT", "port": "IN_PORT"}], None, False),
+], ids=["its-own-port", "a-rewrite", "in-port"])
+def test_c4159_a_single_table_s_own_flow_is_used_only_as_one_numbered_port(monkeypatch, actions,
+                                                                           port, metered):
+    """C4159: a single table's covering flow decides: one OUTPUT to a numbered port is sent with
+    that port, not the topology's (2); a rewrite or a reserved port is not carried, so the pair
+    is not metered, said."""
+    _d, _fake, preview = _flood_on(monkeypatch, [_row(5, {}, actions)])
+    if metered:
+        assert preview["ok"], preview["error"]
+        _meter, *flows = preview["plan"]["steps"]
+        (body,) = [json.loads(st["request"]["body"]) for st in flows]
+        assert body["actions"][1:] == [{"type": "OUTPUT", "port": port}], body
+    else:
+        assert not preview["ok"]
+        assert "does more than send it out one port" in preview["error"], preview["error"]
+
+
+@pytest.mark.usefixtures("lab")
+def test_c4159_mercury_s_own_live_drop_is_named_as_mercury_s(monkeypatch):
+    """C4159: where every pair is held by Mercury's own response still in force, the refusal
+    names it as Mercury's and asks nothing more, never "the network's own flows" and never
+    "drop the source instead" (a drop already in force)."""
+    from modules.sdn import flow_intent as FI
+    table = [_row(0, {}, [{"type": "GOTO_TABLE", "table_id": 2}]),
+             _row(100, {"eth_type": 0x0800}, [], cookie=FI.new_cookie(), hard=600)]
+    _d, _fake, preview = _flood_on(monkeypatch, table)
+    assert not preview["ok"]
+    assert "until it ends, by Mercury's own response" in preview["error"], preview["error"]
+    assert "Mercury's own response already holds it" in preview["error"]
+    assert "drop the source instead" not in preview["error"]
 
 
 @pytest.mark.usefixtures("lab")

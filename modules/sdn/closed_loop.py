@@ -2044,7 +2044,7 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                 # forwarding as read now, is sent, and the preview says it is fixed.
                 macs = _host_macs(hosts)
                 ingress = detection.get("port")
-                onward_words, pairs = [], []
+                onward_words, pairs, live_only = [], [], []
                 for target, port in found.items():
                     m = _pair_match(source, target)
                     mac = macs.get(_canon(target))
@@ -2059,7 +2059,7 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                                    if isinstance(ingress, int) else {}))
                     on = flow_ops.onward(read["flows"], 0, priority, m, hint)
                     if on.get("reason") in ("drops", "meters", "may_drop", "may_meter",
-                                            "cannot_follow"):
+                                            "cannot_follow", "split_tables"):
                         # The network's own flows below drop or meter it, all of it or some
                         # (a person's flow, a permanent policy, the table's default), or do
                         # what Mercury cannot follow: a rate limit above would undo that, so
@@ -2070,7 +2070,13 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                                 "may_drop": "some of it may be dropped below it by",
                                 "may_meter": "some of it may be metered below it by",
                                 "cannot_follow": "some of it is sent below it where Mercury "
-                                                 "cannot follow, by"}[on["reason"]]
+                                                 "cannot follow, by",
+                                "split_tables": "its packets go on to different tables below "
+                                                "it, one by"}[on["reason"]]
+                        if on.get("mercury_live"):
+                            held = held.replace("below it by", "below it, until it ends, by "
+                                                "Mercury's own response,")
+                            live_only.append(target)
                         not_metered.append(f"{target} ({held} {on['taker']}; none of "
                                            f"{source}'s traffic to it is limited by this "
                                            "response)")
@@ -2089,15 +2095,39 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                                            f"{source}'s traffic to it is limited by this "
                                            "response)")
                         continue
+                    # A single table's own forwarding flow is used only when it is one OUTPUT to a
+                    # numbered port, and with that port (C4159: its rewrite, IN_PORT or another
+                    # port than the topology's were replaced by the topology's); anything else
+                    # it does is not carried, so the pair is not metered.
+                    own = [a for a in on["actions"]] if on["ok"] and not goto else []
+                    if own == [{"type": "OUTPUT", "port": "CONTROLLER"}]:
+                        # A reactive table's miss to its controller (Lab 8): the controller
+                        # decides each packet, its learned flows expiring in seconds, so the
+                        # topology's port stands, its preview saying what is not followed.
+                        own = []
+                    if own and not (len(own) == 1 and own[0].get("type") == "OUTPUT"
+                                    and isinstance(own[0].get("port"), int)
+                                    and not isinstance(own[0].get("port"), bool)
+                                    and 1 <= own[0]["port"] <= 0xFFFFFF00):
+                        not_metered.append(f"{target} (the flow its traffic takes below it, "
+                                           f"{on['taker']}, does more than send it out one "
+                                           "port, which a rate limit cannot carry; none of "
+                                           f"{source}'s traffic to it is limited by this "
+                                           "response)")
+                        continue
+                    if own:
+                        port = own[0]["port"]
                     then = on["actions"] if goto else [{"type": "OUTPUT", "port": port}]
                     # Why the port is fixed, and which: onward's own refusal (a split table it
                     # cannot follow), or a single table's flow, named with what it does (it may
                     # send it to the controller, or out another port than the topology's).
                     why = (on["error"] if not on["ok"] else
-                           f"the flow its traffic takes below it, {on['taker']}, hands it to no "
-                           "later table")
+                           f"the flow its traffic takes below it, {on['taker']}, sends it out "
+                           "that port itself")
                     said = on["words"] if goto else (
-                        f"out port {port}, the port {ports_from} gives, fixed: {why}")
+                        f"out port {port}, " + ("the switch's own" if own else
+                                                f"the port {ports_from} gives")
+                        + f", fixed: {why}")
                     if said not in onward_words:
                         onward_words.append(said)
                     pairs.append(target)
@@ -2105,6 +2135,12 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                         "table_id": 0, "priority": priority, "cookie": flow_intent.new_cookie(),
                         "idle_timeout": 0, "hard_timeout": hard, "match": m,
                         "actions": [{"type": "METER", "meter_id": meter_id}] + then}})
+                if not pairs and live_only and len(live_only) == len(found):
+                    # Every pair is held by Mercury's own response still in force (C4159).
+                    raise ResponseRefused(
+                        f"nothing of {source}'s traffic is left to meter on switch {dpid}: "
+                        f"{'; '.join(not_metered)}. Mercury's own response already holds it "
+                        "until its hard timeout: nothing more is needed now")
                 if not pairs:
                     raise ResponseRefused(
                         f"nothing of {source}'s traffic is left to meter on switch {dpid}: "

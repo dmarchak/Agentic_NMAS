@@ -339,21 +339,25 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
                       and int(f.get("hard_timeout") or 0) > 0
                       and not does(f.get("actions")))]
 
-    def refused(reason, taker, error):
+    def refused(reason, taker, error, flow=None):
+        # *mercury_live*: the taker is Mercury's own response, holding until its hard timeout
+        # (C4159: a refusal then names it as Mercury's, never "the network's own flows").
+        live = bool(flow) and flow_intent.is_mercury(flow.get("cookie")) and \
+            int(flow.get("hard_timeout") or 0) > 0
         return {"ok": False, "actions": [], "words": "", "reason": reason,
-                "taker": taker, "error": error}
+                "taker": taker, "error": error, "mercury_live": live}
 
     def given(f, how):
         said, kind = taken(f), does(f.get("actions"))
         if kind == "drops":
             return refused("drops", said, f"its traffic is taken below it by {said}, which "
-                                          "drops it, so there is nothing to send on")
+                                          "drops it, so there is nothing to send on", f)
         if kind == "meters":
             return refused("meters", said, f"its traffic is taken below it by {said}, which "
-                                           "meters it already")
+                                           "meters it already", f)
         if kind == "cannot":
             return refused("cannot_follow", said, f"its traffic is taken below it by {said}, "
-                                                  "which Mercury cannot follow")
+                                                  "which Mercury cannot follow", f)
         return {"ok": True, "actions": [dict(a) for a in f.get("actions") or []],
                 "error": "", "reason": "", "taker": said,
                 "words": f"then on as {said} ({how})"}
@@ -380,7 +384,7 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
     # covers it, the packets no flow takes are dropped by the table's default (OpenFlow 1.3.5
     # 5.4), which a hint must not hide (the review of bcea1999, 1: a port allow-list with no
     # table-miss).
-    covered = False
+    covered, meeting = False, []
     for p in sorted({int(f.get("priority") or 0) for f in below}, reverse=True):
         level = [f for f in below if int(f.get("priority") or 0) == p]
         for f in level:
@@ -394,7 +398,9 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
                     f"{trace._ref(f)}, which "
                     + {"drops": "drops", "meters": "meters",
                        "cannot": "Mercury cannot follow for"}[kind]
-                    + " what it matches, may take some of it"))
+                    + " what it matches, may take some of it"), f)
+            if got[0]:
+                meeting.append(f)
         if any(meets_covers(f.get("match") or {})[1] for f in level):
             covered = True
             break
@@ -411,6 +417,21 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
                        f"no flow under priority {priority} in table {table_id} takes every "
                        "packet of it, so the switch drops what none takes by the table's "
                        "default")
+    # 2b. Every flow that may take some of it, down to the covering one, does the same: that
+    # is where all of it goes (C4159: a priority-0 goto beside a per-port goto to the same
+    # table). Where they differ and any goes on to a later table, the pair's packets go to
+    # different tables, which no one flow of Mercury's can follow: refused, never a fixed port
+    # that would skip them all.
+    shared = {json.dumps(f.get("actions") or [], sort_keys=True) for f in meeting}
+    if len(shared) == 1:
+        return given(meeting[0], "every flow below that may take it does the same")
+    to_tables = [f for f in meeting if any(isinstance(a, dict) and a.get("type") == "GOTO_TABLE"
+                                           for a in f.get("actions") or [])]
+    if to_tables:
+        return refused("split_tables", taken(to_tables[0]), (
+            f"the switch's flows below it take its traffic several ways, and "
+            f"{trace._ref(to_tables[0])} sends some of it on to a later table: one flow of "
+            "Mercury's cannot follow the pair to each"))
     # 3. Every flow below that may take some of it forwards it: the hint (the destination's
     # MAC, the source's port) picks the one its packets take, among forwarding flows only.
     exact = all("/" not in str(v) for v in match.values())
