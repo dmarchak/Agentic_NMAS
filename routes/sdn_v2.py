@@ -174,7 +174,7 @@ def flow_form():
     return _strict(render_template("v2/_sdn_flow_form.html", f={
         "do": request.args.get("do", "add"), "connection": request.args.get("connection", ""),
         "dpid": request.args.get("dpid", ""), "target": request.args.get("target", ""),
-        "list": _list_name()}))
+        "meter_id": request.args.get("meter_id", ""), "list": _list_name()}))
 
 
 def _refusal_kept(network: str, plan: dict, what: str) -> dict:

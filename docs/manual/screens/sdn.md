@@ -183,7 +183,12 @@ Each switch's flow table, Mercury's expected flows beside what is installed.
   that response, and nothing is sent.
 - **Meters**: each switch's meters (its id, its rate and what happens above it, the packets
   counted in that band) and whose each is, by the flows that use it; and on how many switches
-  meters are supported, from each switch's meter features.
+  meters are supported, from each switch's meter features. A meter Mercury added (a policy's or
+  a response's) is removed by Mercury within about 30 seconds of its flows' expiry, whether or
+  not the loop is running. One still on a switch with no flow using it reads **Mercury's, no
+  flow uses it**, with **Remove…**: its preview reads the switch again and names the one meter
+  delete (refused if a flow points at the meter by then), you confirm it by its hash, and
+  verify reads the meter back gone.
 
 ## Add, edit and remove a flow {#flow-operations}
 

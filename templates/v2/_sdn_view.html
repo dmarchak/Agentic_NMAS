@@ -193,10 +193,11 @@
   <div class="sdn-ctl-hd"><h2 id="sdn-m-h">Meters</h2><span class="faint small">{% if g.meter_support.known %}meters supported on {{ g.meter_support.supported }} of {{ g.meter_support.switches }} switch{{ 'es' if g.meter_support.switches != 1 }} (each switch's meter features){% else %}this driver reads no meters{% endif %}</span></div>
   {%- if g.meters %}
   <div class="table-wrap"><table class="table">
-    <thead><tr><th scope="col">Switch</th><th scope="col">Meter</th><th scope="col">Rate</th><th scope="col">Packets in band</th><th scope="col">Owner</th></tr></thead>
+    <thead><tr><th scope="col">Switch</th><th scope="col">Meter</th><th scope="col">Rate</th><th scope="col">Packets in band</th><th scope="col">Owner</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
     <tbody>
     {%- for mt in g.meters %}
-    <tr><td class="mono">{{ mt.dpid_hex }}</td><td>{{ mt.meter_id }}</td><td>{{ mt.rate }}</td><td>{{ '{:,}'.format(mt.packets) if mt.packets is not none else '–' }}</td><td>{{ badge(mt.owner_words, mt.owner_kind) }}</td></tr>
+    <tr><td class="mono">{{ mt.dpid_hex }}</td><td>{{ mt.meter_id }}</td><td>{{ mt.rate }}</td><td>{{ '{:,}'.format(mt.packets) if mt.packets is not none else '–' }}</td><td>{{ badge(mt.owner_words, mt.owner_kind) }}</td><td class="sdn-acts">{%- if mt.removable %}<button class="btn btn-small" type="button" data-op="sdn-flows" hx-get="{{ url_for('sdn_v2.flow_form', do='remove_meter', connection=mt.connection, dpid=mt.dpid_hex, meter_id=mt.meter_id) }}" hx-target="#{{ mt.slot }}" hx-swap="innerHTML" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Remove…</span><span class="op-busy">Opening…</span></button>{{ how('sdn-flows', compact=True, op="Remove a meter") }}{% endif %}</td></tr>
+    {%- if mt.removable %}<tr class="sdn-op-row"><td colspan="6"><div class="sdn-op-slot" id="{{ mt.slot }}" role="region" aria-live="polite"></div></td></tr>{% endif %}
     {%- endfor %}
     </tbody>
   </table></div>

@@ -1317,3 +1317,61 @@ def expire_meters(network: str, *, driver=None, now=time.time, actor: str = "Mer
             m["meter_id"] if done["ok"] else done["error"])
     out["ok"] = not out["errors"]
     return out
+
+
+#: How often the meter keeper looks for a recorded meter past its expiry (the SDN reader's own
+#: cadence): a meter outlives its flows by at most this, plus the remove's own seconds.
+METER_KEEPER_S = 30.0
+
+_meter_keeper = {"thread": None}
+
+
+def keep_meters_once(networks=None, *, driver=None, now=time.time) -> dict:
+    """One keeper pass (C4150): `expire_meters` on every network, so a meter whose flows have
+    expired is removed whether or not the SDN loop is running (a policy's meter on SDN ›
+    Policies needs no loop, and a loop runs only while a person has started it, for a bounded
+    time). It reads each network's flow intent only, and asks a switch only for a meter past
+    its expiry. ``{network: expire_meters' answer}``, a network that raised said in its
+    ``errors``; announces ``sdn`` for a network where one was removed."""
+    from modules import invalidation
+    from modules.nsot import listref
+
+    out = {}
+    for network in (listref.names() if networks is None else networks):
+        try:
+            got = expire_meters(network, driver=driver, now=now)
+        except Exception as exc:                          # noqa: BLE001 (said, never raised)
+            log.error("meter keeper: %s raised %s", network, type(exc).__name__)
+            got = {"ok": False, "removed": [], "kept": [],
+                   "errors": [f"{type(exc).__name__}: {exc}"]}
+        out[network] = got
+        if got["removed"]:
+            log.info("meter keeper: removed expired meter(s) %s on %s", got["removed"], network)
+            try:
+                invalidation.announce(["sdn"], "job:meter-keeper")
+            except Exception as exc:                      # noqa: BLE001 (logged)
+                log.warning("meter keeper: announcing sdn failed (%s)", type(exc).__name__)
+        for e in got["errors"]:
+            log.warning("meter keeper: %s: %s", network, e)
+    return out
+
+
+def start_meter_keeper(sleep=time.sleep) -> None:
+    """Start the meter keeper in this process (the app's `_start_background_daemons`), every
+    `METER_KEEPER_S` seconds; importing this module starts nothing."""
+    import threading
+
+    if _meter_keeper["thread"] is not None:
+        return
+
+    def run():
+        while True:
+            try:
+                keep_meters_once()
+            except Exception as exc:                      # noqa: BLE001 (logged, kept going)
+                log.error("meter keeper: the pass raised %s", type(exc).__name__)
+            sleep(METER_KEEPER_S)
+
+    t = threading.Thread(target=run, daemon=True, name="sdn-meter-keeper")
+    _meter_keeper["thread"] = t
+    t.start()

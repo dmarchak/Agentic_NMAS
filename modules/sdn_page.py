@@ -418,12 +418,20 @@ def flows_view(network: str, values=None, now: float = None) -> dict:
                 counts["meters"] += 1
                 band = (m.get("bands") or [{}])[0]
                 owner = m.get("owner")
+                # Mercury's meter no flow uses (its flows expired, C4150): Remove… on it, the
+                # flow editor's preview and confirm with the one meter's delete.
                 out["meters"].append({
                     "dpid_hex": sw.get("dpid_hex"), "meter_id": m.get("meter_id"),
                     "rate": _meter_words(m), "packets": band.get("packet_band_count"),
-                    "owner_words": {**OWNER_WORDS, "unused": "no flow uses it"}.get(
+                    "owner_words": {**OWNER_WORDS, "unused": "no flow uses it",
+                                    "mercury_unused": "Mercury's, no flow uses it"}.get(
                         owner, "not known"),
-                    "owner_kind": {**OWNER_KIND, "unused": "muted"}.get(owner, "muted")})
+                    "owner_kind": {**OWNER_KIND, "unused": "muted",
+                                   "mercury_unused": "warn"}.get(owner, "muted"),
+                    "removable": owner == "mercury_unused", "connection": c["name"],
+                    "slot": "sdn-m-" + hashlib.sha256(
+                        f"{c['name']}|{sw.get('dpid_hex')}|{m.get('meter_id')}".encode()
+                    ).hexdigest()[:12]})
     out["counts"] = counts
     out["meter_support"] = {"supported": supported, "known": known,
                             "switches": counts["switches"]}

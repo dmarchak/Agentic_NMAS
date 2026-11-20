@@ -347,3 +347,76 @@ def test_an_ipv6_source_drop_renders_eth_type_86dd(ctl):
     assert json.loads(p["steps"][0]["request"]["body"])["match"] == {
         "eth_type": 34525, "ipv6_src": "2001:db8::7"}
     assert out["outcome"] == "verified"
+
+
+def _metered(ctl, response):
+    """Meter 2 and its flow (hard timeout 60) applied at 1000 s: ``(flow change, outcome)``."""
+    meter = {"do": "add_meter", "meter": {"meter_id": 2, "flags": ["KBPS", "STATS"],
+                                          "bands": [{"type": "DROP", "rate": 5000}]}}
+    flow = drop(hard=60)
+    flow["flow"]["actions"] = [{"type": "METER", "meter_id": 2},
+                               {"type": "GOTO_TABLE", "table_id": 2}]
+    _p, out = run(ctl, ask(meter, flow, response=response), now=lambda: 1000.0)
+    assert out["outcome"] == "verified", out["error"]
+    return flow, out
+
+
+def test_the_meter_keeper_removes_a_policy_s_expired_meter_with_no_sdn_loop(ctl, monkeypatch):
+    """C4150 (the Lab 9 hardware, 2026-11-20): a policy's meter outlived its flows, since the
+    one cleanup ran only inside the SDN loop, and a policy needs no loop. The keeper runs it
+    on every network: kept while a flow points at it, removed once the flows expired."""
+    from modules import invalidation
+    said = []
+    monkeypatch.setattr(invalidation, "announce", lambda keys, who: said.append((keys, who)))
+    flow, _out = _metered(ctl, response=False)
+    kept = O.keep_meters_once([NET], driver=ctl.driver, now=lambda: 2000.0)
+    assert kept[NET]["removed"] == [] and "still point at meter 2" in kept[NET]["kept"][0]["why"]
+    assert said == []
+    ctl.table[1] = [f for f in ctl.table[1] if f["cookie"] != flow["flow"]["cookie"]]
+    gone = O.keep_meters_once([NET], driver=ctl.driver, now=lambda: 2000.0)
+    assert gone[NET]["removed"] == [2] and ctl.meter[1] == {}, gone
+    assert F.meters(NET)["meters"] == []
+    assert said == [(["sdn"], "job:meter-keeper")]
+
+
+def test_the_meter_keeper_says_a_network_that_raised_and_goes_on(ctl, monkeypatch):
+    def boom(network, **kw):
+        if network == "Broken":
+            raise OSError("the store is locked")
+        return {"ok": True, "removed": [], "kept": [], "errors": []}
+    monkeypatch.setattr(O, "expire_meters", boom)
+    got = O.keep_meters_once(["Broken", NET])
+    assert got["Broken"]["errors"] == ["OSError: the store is locked"]
+    assert got[NET]["ok"] is True
+
+
+def test_the_meter_keeper_starts_with_the_app_and_not_on_import():
+    import ast
+    import os
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, "app.py"), encoding="utf-8").read()
+    fn = next(n for n in ast.walk(ast.parse(src))
+              if isinstance(n, ast.FunctionDef) and n.name == "_start_background_daemons")
+    assert "start_meter_keeper" in ast.unparse(fn)
+    assert O._meter_keeper["thread"] is None             # importing app started nothing
+
+
+def test_a_mercury_meter_no_flow_uses_is_removed_from_its_form(ctl):
+    """C4150: SDN › Flows' Remove… on Mercury's meter no flow uses: the form's ask, previewed,
+    confirmed, verified gone, and its record closed; one a flow still uses is refused."""
+    from modules.sdn import flow_form
+    flow, _out = _metered(ctl, response=False)
+    form = {"do": "remove_meter", "connection": "lab", "dpid": "0000000000000001",
+            "meter_id": "2"}
+    a = flow_form.ask_from_form(form)
+    assert a["changes"] == [{"do": "remove_meter", "meter_id": 2}]
+    p = O.plan(NET, a, driver=ctl.driver)
+    assert not p["ok"] and "still point at meter 2" in p["error"]
+    ctl.table[1] = [f for f in ctl.table[1] if f["cookie"] != flow["flow"]["cookie"]]
+    p, out = run(ctl, flow_form.ask_from_form(form))
+    assert out["outcome"] == "verified", out["error"]
+    assert ctl.meter[1] == {} and F.meters(NET)["meters"] == []
+    assert "meter 2 read back gone" in " ".join(p["checks"])
+    with pytest.raises(flow_form.FormRefused, match="names no meter"):
+        flow_form.ask_from_form(dict(form, meter_id="two"))

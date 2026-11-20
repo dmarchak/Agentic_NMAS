@@ -21,11 +21,19 @@ them, and **Add flow…** on SDN › Flows stays as usable as ever (see
 ## What a policy can say
 
 - **block** (block, deny, drop, isolate): the traffic is dropped;
-- **allow** (allow, permit): the traffic is sent to the switch's own forwarding (OpenFlow's
-  NORMAL port), above every flow that could match it;
+- **allow** (allow, permit): the traffic is taken above every flow that could match it and sent
+  on as the switch's own flows below it would send it: on a switch whose first table hands
+  traffic to a forwarding table (an Open vSwitch pipeline's goto), to that table; on a single
+  table that forwards by destination, as that destination's forwarding flow does (followed for
+  the MAC the controller learned for it). It is never sent to OpenFlow's NORMAL port, the
+  switch's forwarding outside its flow tables, which on a fabric the controller programs ahead
+  of traffic has learned nothing and floods or drops. Where the flows below cannot be read as
+  one path (they split the traffic and the destination's MAC is not known, or they drop it),
+  the request is refused, naming the flows compared;
 - **rate-limit** (limit, throttle, cap): one meter on the switch, a drop band at the rate in
-  kbit/s, and the traffic sent through it to the switch's own forwarding. Only a switch that
-  reports meters can hold one.
+  kbit/s, and the traffic sent through it, then on the same way as an allow. Only a switch that
+  reports meters can hold one. **Where it applies** in the preview names the flow the traffic
+  goes on as.
 
 Each part names a **source** (a host, a NetBox tag such as `web`, an address or a subnet), a
 **destination** (the same, or any), a **protocol** (tcp, udp, icmp or any), a destination

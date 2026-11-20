@@ -306,10 +306,102 @@ class TestTheFourIntents:
         adds = _added(lab, OVS1)
         assert sorted(a["match"].get("ipv4_dst") or a["match"]["ipv6_dst"] for a in adds) == [
             "198.51.100.21", "2001:db8:c8::21"]
-        assert all(a["actions"] == [{"type": "OUTPUT", "port": "NORMAL"}] and
+        # On as the table's own flow below would send it (here Ryu's table-miss to the
+        # controller), never NORMAL (C4126).
+        assert all(a["actions"] == [{"type": "OUTPUT", "port": "CONTROLLER"}] and
                    a["hard_timeout"] == 0 for a in adds)
         rows = [r for r in F.intent(NET)["flows"] if r["dpid"] == OVS1]
         assert {r["response"]["kind"] for r in rows} == {"policy"}
+
+    def test_a_rate_limit_on_an_ovs_pipeline_goes_on_to_its_forwarding_table_and_is_forwarded(
+            self, lab):
+        """The Lab 9 hardware, 2026-11-20 (C4126): a rate limit sent its traffic to NORMAL,
+        which on the team's proactive Open vSwitch had learned no MAC and flooded h2's frames
+        to the bridge's internal port alone, so iperf3 could not connect. On a pipeline whose
+        table 0 misses to its forwarding table, the meter's flow goes there too, and the
+        packet is delivered out the destination's port, not only metered."""
+        from modules.sdn import trace
+        web2 = "02:00:00:00:00:05"
+        lab.fake.table[OVS1] = [
+            {"dpid": OVS1, "table_id": 0, "priority": 0, "cookie": 0x9A00000000000001,
+             "match": {}, "actions": [{"type": "GOTO_TABLE", "table_id": 2}],
+             "idle_timeout": 0, "hard_timeout": 0},
+            {"dpid": OVS1, "table_id": 0, "priority": 1200, "cookie": 0x9A00000000000002,
+             "match": {"eth_type": 0x0800, "ip_proto": 17, "udp_dst": 53},
+             "actions": [{"type": "OUTPUT", "port": "CONTROLLER"}],
+             "idle_timeout": 0, "hard_timeout": 0},
+            {"dpid": OVS1, "table_id": 2, "priority": 1000, "cookie": 0x9A00000000000003,
+             "match": {"eth_dst": web2}, "actions": [{"type": "OUTPUT", "port": 7}],
+             "idle_timeout": 0, "hard_timeout": 0}]
+        lab.answer = answer(rule("rate_limit", "h1", "web-2", "tcp", 5201, rate=5000,
+                                 duration=600))
+        got = draft(lab, "Rate-limit TCP 5201 from h1 to web-2 to 5 Mbit/s for 10 minutes")
+        assert got["state"] == "checked", got["words"]
+        assert ("then on as the flow at priority 0 in table 0 (cookie 0x9a00000000000001): "
+                "GOTO_TABLE:2") in got["rows"][1]["words"], got["rows"][1]["words"]
+        _pv, done = applied(lab, got["policy"])
+        assert done["outcome"] == "verified", done["error"]
+        (add,) = _added(lab, OVS1)
+        meter = add["actions"][0]["meter_id"]
+        assert add["actions"] == [{"type": "METER", "meter_id": meter},
+                                  {"type": "GOTO_TABLE", "table_id": 2}]
+        assert "NORMAL" not in json.dumps(add)
+        flows = lab.driver(NET, CONN)["driver"].flows(OVS1)["flows"]
+        packet = {"eth_src": "02:00:00:00:00:01", "eth_dst": web2, "vlan_vid": 0,
+                  "eth_type": 0x0800, "ip_dscp": 0, "ip_ecn": 0, "ipv4_src": "198.51.100.11",
+                  "ipv4_dst": "198.51.100.22", "ip_proto": 6, "tcp_src": 40000,
+                  "tcp_dst": 5201}
+        went = trace.through_switch({"flows": flows, "ports": None}, 4, packet)
+        assert went["end"] is None, went["end"]
+        assert [p for p, *_rest in went["emits"]] == [7]
+        assert [f["table_id"] for f in went["flows"]] == [0, 2]
+        assert any(f"meter {meter}" in n for n in went["notes"])
+
+    def test_a_single_table_forwarding_by_destination_mac_is_followed_for_the_learned_host(
+            self, lab):
+        """C4126: where the table's own forwarding splits the traffic by destination MAC, the
+        flow is sent on as the forwarding flow for the destination's learned MAC sends it."""
+        lab.fake.table[OVS1] = [
+            {"dpid": OVS1, "table_id": 0, "priority": 1000, "cookie": 0x9A00000000000004,
+             "match": {"eth_dst": "02:00:00:00:00:40"},
+             "actions": [{"type": "OUTPUT", "port": 3}], "idle_timeout": 0, "hard_timeout": 0},
+            {"dpid": OVS1, "table_id": 0, "priority": 1000, "cookie": 0x9A00000000000005,
+             "match": {"eth_dst": "02:00:00:00:00:05"},
+             "actions": [{"type": "OUTPUT", "port": 7}], "idle_timeout": 0, "hard_timeout": 0}]
+        lab.answer = answer(rule("allow", "h1", "198.51.100.40", "tcp", 80))
+        got = draft(lab, "Allow h1 to reach 198.51.100.40 on tcp 80")
+        assert got["state"] == "checked", got["words"]
+        assert "followed for the destination's learned MAC 02:00:00:00:00:40" in \
+            got["rows"][1]["words"]
+        _pv, done = applied(lab, got["policy"])
+        assert done["outcome"] == "verified", done["error"]
+        (add,) = _added(lab, OVS1)
+        assert add["actions"] == [{"type": "OUTPUT", "port": 3}]
+
+    def test_an_onward_path_that_cannot_be_read_as_one_flow_is_refused_never_normal(self, lab):
+        """C4126: the destination's MAC unknown where the forwarding splits by MAC, or the
+        flow below dropping the traffic: refused naming what was compared; nothing sent."""
+        split = [
+            {"dpid": OVS1, "table_id": 0, "priority": 1000, "cookie": 0x9A00000000000004,
+             "match": {"eth_dst": "02:00:00:00:00:40"},
+             "actions": [{"type": "OUTPUT", "port": 3}], "idle_timeout": 0, "hard_timeout": 0},
+            {"dpid": OVS1, "table_id": 0, "priority": 1000, "cookie": 0x9A00000000000005,
+             "match": {"eth_dst": "02:00:00:00:00:05"},
+             "actions": [{"type": "OUTPUT", "port": 7}], "idle_timeout": 0, "hard_timeout": 0}]
+        lab.fake.table[OVS1] = split
+        lab.answer = answer(rule("rate_limit", "h1", "web-2", "tcp", 5201, rate=5000))
+        got = draft(lab, "Rate-limit TCP 5201 from h1 to web-2 to 5 Mbit/s")
+        assert got["state"] == "refused" and got["kind"] == "impossible", got["words"]
+        assert "the switch's flows below it split its traffic" in got["words"]
+        assert "never to NORMAL" in got["words"]
+        lab.fake.table[OVS1] = [
+            {"dpid": OVS1, "table_id": 0, "priority": 0, "cookie": 0x9A00000000000006,
+             "match": {}, "actions": [], "idle_timeout": 0, "hard_timeout": 0}]
+        lab.answer = answer(rule("allow", "h1", "web-1", "tcp", 80))
+        got = draft(lab, "Allow h1 to reach web-1 on tcp 80")
+        assert got["state"] == "refused" and got["kind"] == "impossible", got["words"]
+        assert "which drops it, so there is nothing to send on" in got["words"]
+        assert lab.fake.writes == []
 
     def test_a_block_with_a_duration(self, lab):
         lab.answer = answer(rule("block", "h1", "web-2", "udp", 5001, duration=600))

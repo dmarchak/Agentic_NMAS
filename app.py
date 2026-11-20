@@ -634,6 +634,14 @@ def _start_background_daemons():
     except Exception as _e:
         app.logger.error("Heal detect pass did not start: %s", _e)
 
+    # Mercury's SDN meters removed once their flows have expired, a policy's or a response's,
+    # whether or not the SDN loop is running (C4150).
+    try:
+        from modules.sdn import flow_ops as _sdn_flow_ops
+        _sdn_flow_ops.start_meter_keeper()
+    except Exception as _e:
+        app.logger.error("SDN meter keeper did not start: %s", _e)
+
     # Prometheus's generated SNMP targets, kept current with the inventory
     # (C232): regenerated when it changes, and a backstop for other processes.
     try:

@@ -64,17 +64,19 @@ def _previous(network: str) -> dict:
     return (((got.get("doc") or {}).get("last_good") or {}).get("value")) or {}
 
 
-def _meter_owner(meter_id, flows) -> dict:
+def _meter_owner(meter_id, flows, recorded: bool = False) -> dict:
     """Whose a meter is, by the flows that use it (`METER` among their actions): Mercury's when
     one of Mercury's flows does, the controller's own when one of its own does, else no flow
-    read uses it."""
+    read uses it: ``mercury_unused`` where Mercury's flow intent records it as Mercury's and not
+    withdrawn (*recorded*: a policy's or a response's meter its flows' expiry left behind,
+    C4150, which SDN › Flows offers to remove), ``unused`` otherwise."""
     users = [f for f in flows if any(a.get("type") == "METER" and a.get("meter_id") == meter_id
                                      for a in f.get("actions") or [])]
     owners = {f.get("owner") for f in users}
     for owner in ("mercury", "mercury_differs", "unauthorised", "external", "controller_own"):
         if owner in owners:
             return {"owner": owner, "flows": len(users)}
-    return {"owner": "unused", "flows": 0}
+    return {"owner": "mercury_unused" if recorded else "unused", "flows": 0}
 
 
 def _switch_extras(drv, dpid: int, reads_meters: bool) -> dict:
@@ -242,7 +244,10 @@ def read(list_name: str = "", clock=time.time, previous=None, driver=None,
                      "features_error": ""}
             sflows = by_dpid.get(s["dpid"], []) if classed.get("state") == "ok" else \
                 s.get("flows") or []
-            meters = [dict(m, **_meter_owner(m.get("meter_id"), sflows))
+            ours = {r.get("meter_id") for r in meter_rows
+                    if r.get("connection") == conn["name"] and r.get("dpid") == s["dpid"]}
+            meters = [dict(m, **_meter_owner(m.get("meter_id"), sflows,
+                                             m.get("meter_id") in ours))
                       for m in x["meters"] or []]
             rows.append({"dpid": s["dpid"], "dpid_hex": s["dpid_hex"], "name": x["name"],
                          "state": s["state"], "error": s["error"],

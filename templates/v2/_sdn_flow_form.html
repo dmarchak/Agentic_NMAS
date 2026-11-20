@@ -11,8 +11,11 @@
   <input type="hidden" name="connection" value="{{ f.connection }}">
   <input type="hidden" name="dpid" value="{{ f.dpid }}">
   {%- if f.target %}<input type="hidden" name="target" value="{{ f.target }}">{% endif %}
-  <div class="sdn-op-hd"><h3>{{ {'add': 'Add a flow', 'edit': "Edit Mercury's flow", 'remove': 'Remove a flow'}.get(f.do, f.do) }} · <span class="mono">{{ f.dpid }}</span> ({{ f.connection }})</h3> {{ how('sdn-flows', compact=True, op='Edit flows') }}</div>
-  {%- if f.do == 'remove' %}
+  {%- if f.meter_id %}<input type="hidden" name="meter_id" value="{{ f.meter_id }}">{% endif %}
+  <div class="sdn-op-hd"><h3>{{ {'add': 'Add a flow', 'edit': "Edit Mercury's flow", 'remove': 'Remove a flow', 'remove_meter': "Remove Mercury's meter"}.get(f.do, f.do) }} · <span class="mono">{{ f.dpid }}</span> ({{ f.connection }})</h3> {{ how('sdn-flows', compact=True, op='Edit flows') }}</div>
+  {%- if f.do == 'remove_meter' %}
+  <p class="small">Meter {{ f.meter_id }} is Mercury's and no flow uses it: its flows expired. Removed by its meter delete; the preview reads the switch again and refuses if a flow points at it now. Verify reads it back gone.</p>
+  {%- elif f.do == 'remove' %}
   <p class="small">Removed by <span class="mono">delete_strict</span>, matching its table, priority, match and cookie exactly: never a wildcard delete. The preview names the flow, and warns if it is the table-miss flow or the controller's own.</p>
   <p class="mono small sdn-op-target">{{ f.target }}</p>
   {%- else %}
@@ -32,5 +35,5 @@
     <input type="text" name="actions" class="mono" value="drop"></label>
   <p class="faint small">Mercury sets the cookie. Verify checks installation and counters; testing traffic from the hosts is yours (a probe feature is registered for later).</p>
   {%- endif %}
-  <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="sdn-flows"{{ gate('confirm') }}><span class="op-idle">Preview the {{ 'removal' if f.do == 'remove' else ('change' if f.do == 'edit' else 'flow') }}</span><span class="op-busy">Reading the switch…</span></button>{{ how('sdn-flows', compact=True, op='Preview') }}
+  <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="sdn-flows"{{ gate('confirm') }}><span class="op-idle">Preview the {{ 'removal' if f.do in ('remove', 'remove_meter') else ('change' if f.do == 'edit' else 'flow') }}</span><span class="op-busy">Reading the switch…</span></button>{{ how('sdn-flows', compact=True, op='Preview') }}
 </form>

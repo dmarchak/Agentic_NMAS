@@ -135,7 +135,15 @@ before: `bc6d23f0a8f1a92c62843ec4a978f71a42b797f6080a1c74e758aa9754ffe2c2`.
 | I (C2913): states the board does not draw | not drawn | Couldn't save or Couldn't remove with the reason in place, an all-removed sheet, the corrected-by hover | **deviation** (log: Board lab9-sdn I built for C2913 and C2956, 3) |
 
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html, templates/v2/_sdn_analyse_tools.html, templates/v2/_sdn_snapshots.html
-Templates sha256: `4e5ccbef173b2b2a9798eb88d0f9e21d4b0a1a9281e566c3711694b28d4dbc54`
+Templates sha256: `b836ec2534ca648a6154d153c019dd71359026d44de31565844117efb05c350f`
+Hashed again 2026-11-20 for C4150 (the operator's report from the Lab 9 hardware: a policy's
+meter outlived its flows, listed with no way to remove it): `_sdn_view.html`'s Meters table gains
+an unlabelled actions column, with Remove… only on a meter that reads "Mercury's, no flow uses
+it" (warn), opening its editor in a row beneath as the Flows rows do; `_sdn_flow_form.html` gains
+the `remove_meter` kind ("Remove Mercury's meter", one sentence, "Preview the removal"). No other
+region moves; a deviation only in those (log: "C4150, Mercury's meter no flow uses"); compared
+by reading the templates, no new shot (the templates before it hashed
+`4e5ccbef173b2b2a9798eb88d0f9e21d4b0a1a9281e566c3711694b28d4dbc54`).
 Hashed again 2026-11-20 for the hardware smoke test's follow-ups (C4124 and C4138, the operator's
 reports from the Lab 9 hardware): `_sdn_responses.html`'s closed watching row says "nothing yet:
 yours to rate-limit (open it)" where Rate-limit this source… is offered inside it, and "nothing:
