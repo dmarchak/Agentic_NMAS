@@ -1724,26 +1724,26 @@ def family_gap(source: str, verb: str, same_host: dict = None) -> str:
     return words
 
 
-def _host_macs(drv) -> dict:
-    """``{address: mac}`` of every host the controller's topology lists, read now: the
-    destination MAC `flow_ops.onward` follows a pair's packet with where the switch's own
-    forwarding is by destination MAC. ``{}`` when the topology cannot be read (onward then
-    follows by the match alone)."""
-    got = drv.hosts()
+def _host_macs(got: dict) -> dict:
+    """``{address: mac}`` of every host in *got*, the controller's hosts as one build read
+    them (`_same_host`'s same read): the destination MAC `flow_ops.onward` follows a pair's
+    packet with where the switch's own forwarding is by destination MAC. ``{}`` when the
+    topology could not be read (onward then follows by the match alone)."""
     if not got.get("ok"):
         return {}
     return {_canon(a): str(h.get("mac") or "").lower() for h in got.get("hosts") or []
             for a in list(h.get("ipv4") or []) + list(h.get("ipv6") or []) if h.get("mac")}
 
 
-def _same_host(drv, source: str) -> dict:
+def _same_host(drv, source: str, got: dict = None) -> dict:
     """The host the controller's topology lists with *source* among its addresses, read from
     the controller now (C2148): ``{"state", "mac", "addresses", "why"}``. *state* ``listed``
     (*addresses* its other addresses, IPv4 then IPv6, as the controller learned them, less the
     unspecified ones `base.topo_host` leaves out), ``none`` (listed with no other address),
     ``unlisted`` (no host carries *source*) or ``unread`` (*why* the read's error). Never a
-    refusal: a drop is built whether or not the host's other addresses are known."""
-    got = drv.hosts()
+    refusal: a drop is built whether or not the host's other addresses are known. *got* is
+    the controller's hosts already read by this build, else they are read here."""
+    got = drv.hosts() if got is None else got
     if not got.get("ok"):
         return {"state": "unread", "mac": "", "addresses": [],
                 "why": got.get("error") or "no answer"}
@@ -1963,7 +1963,8 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
             out["params"].update(source=source, hard_timeout=hard, priority=priority)
             # The host's other addresses, as the controller's topology lists them (C2148):
             # the flow matches the one address, and the preview names what it leaves.
-            out["same_host"] = _same_host(drv, source)
+            hosts = drv.hosts()                       # read once for this build
+            out["same_host"] = _same_host(drv, source, hosts)
             if action_id == "drop_source":
                 changes.append({"do": "add_flow", "flow": {
                     "table_id": 0, "priority": priority, "cookie": flow_intent.new_cookie(),
@@ -2035,19 +2036,29 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                 # A single table (a reactive fabric's learning flows by port and MAC, Lab 8)
                 # has no instruction that defers the port: there the port above, the
                 # forwarding as read now, is sent, and the preview says it is fixed.
-                macs = _host_macs(drv)
+                macs = _host_macs(hosts)
+                ingress = detection.get("port")
                 onward_words = []
                 for target, port in found.items():
                     m = _pair_match(source, target)
                     mac = macs.get(_canon(target))
-                    on = flow_ops.onward(read["flows"], 0, priority, m,
-                                         {"eth_dst": mac} if mac else {})
+                    # What is known of the pair's packets: the destination's MAC, and the port
+                    # the source's traffic enters by (the detection's), for a table that
+                    # forwards by MAC or by in_port.
+                    hint = dict({"eth_dst": mac} if mac else {},
+                                **({"in_port": ingress, "in_phy_port": ingress}
+                                   if isinstance(ingress, int) else {}))
+                    on = flow_ops.onward(read["flows"], 0, priority, m, hint)
                     goto = (on["ok"] and len(on["actions"]) == 1
                             and on["actions"][0].get("type") == "GOTO_TABLE")
                     then = on["actions"] if goto else [{"type": "OUTPUT", "port": port}]
+                    # Why the port is fixed, as the switch's own flows were read (the review of
+                    # ce2318df): onward's own refusal, or a single table's forwarding flow.
+                    why = (on["error"] if not on["ok"] else
+                           f"this switch's own flows below it send it out a port themselves "
+                           f"({on['words'][len('then on as '):]})")
                     said = on["words"] if goto else (
-                        f"out port {port}, the port {ports_from} gives: this switch's own flows "
-                        "below it hand it to no later table")
+                        f"out port {port}, the port {ports_from} gives: {why}")
                     if said not in onward_words:
                         onward_words.append(said)
                     changes.append({"do": "add_flow", "flow": {
@@ -2117,6 +2128,11 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
     return out
 
 
+def _whole(value) -> bool:
+    """An int, never a bool (a carried ask's JSON true is not table 1)."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def response_shape_refusal(ask: dict, action_id: str) -> str:
     """Why a confirm's carried *ask* is not in the shape `build_response` makes for
     *action_id*, or ``""``. The confirm plans it as the closed loop's writer
@@ -2180,11 +2196,14 @@ def response_shape_refusal(ask: dict, action_id: str) -> str:
             # on a single table, its forwarding flow's one numbered port. Never NORMAL, a
             # reserved port or anything else a carried ask could add.
             then = acts[1] if len(acts) == 2 else {}
+            # A real port only: OpenFlow's reserved ports are numbers too (NORMAL 0xfffffffa,
+            # CONTROLLER 0xfffffffd, …), above OFPP_MAX (0xffffff00), and 0 is no port; a
+            # table is 1 to 254 (OFPTT_MAX), never back to table 0 (the review of ce2318df).
             onward_ok = (
-                (then.get("type") == "GOTO_TABLE" and isinstance(then.get("table_id"), int)
-                 and not isinstance(then.get("table_id"), bool) and then["table_id"] > 0)
-                or (then.get("type") == "OUTPUT" and isinstance(then.get("port"), int)
-                    and not isinstance(then.get("port"), bool)))
+                (then.get("type") == "GOTO_TABLE" and _whole(then.get("table_id"))
+                 and 0 < then["table_id"] <= 0xFE)
+                or (then.get("type") == "OUTPUT" and _whole(then.get("port"))
+                    and 1 <= then["port"] <= 0xFFFFFF00))
             ok = (c.get("do") == "add_flow" and not c.get("reinstall") and f.get("table_id") == 0
                   and timed(f) and mercury(f) and source_of(m, extra=(src_key,)) is not None
                   and len(acts) == 2 and acts[0].get("type") == "METER"

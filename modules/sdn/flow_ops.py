@@ -296,11 +296,14 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
     from modules.sdn import flow_intent, trace
 
     hint = dict(hint or {})
-    # The network's own flows: Mercury's own (a response, a policy) end at their timeouts, and
-    # the traffic then goes on as the network's forwarding sends it.
+    # The network's forwarding, the flows that stay: a Mercury flow with a hard timeout (a
+    # response's, a policy's) ends, and the traffic then goes on as the network's own flows
+    # send it, so it is skipped; a permanent one (a person's flow from SDN › Flows' editor,
+    # hard timeout 0) is the network's forwarding as it stands, and decides like any other.
     below = [f for f in flows or [] if int(f.get("table_id") or 0) == int(table_id)
              and int(f.get("priority") or 0) < int(priority)
-             and not flow_intent.is_mercury(f.get("cookie"))]
+             and not (flow_intent.is_mercury(f.get("cookie"))
+                      and int(f.get("hard_timeout") or 0) > 0)]
 
     def meets_covers(other):
         try:

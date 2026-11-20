@@ -420,3 +420,48 @@ def test_a_mercury_meter_no_flow_uses_is_removed_from_its_form(ctl):
     assert "meter 2 read back gone" in " ".join(p["checks"])
     with pytest.raises(flow_form.FormRefused, match="names no meter"):
         flow_form.ask_from_form(dict(form, meter_id="two"))
+
+
+ONWARD_PAIRS = {4: {"eth_type": 0x0800, "ipv4_src": "192.0.2.62", "ipv4_dst": "192.0.2.61"},
+                6: {"eth_type": 0x86DD, "ipv6_src": "2001:db8::62", "ipv6_dst": "2001:db8::61"}}
+
+
+def _f(priority, match, actions, cookie=0x9A00000000000001, hard=0, table=0):
+    return {"table_id": table, "priority": priority, "cookie": cookie, "match": match,
+            "actions": actions, "hard_timeout": hard}
+
+
+@pytest.mark.parametrize("family", [4, 6], ids=["ipv4", "ipv6"])
+def test_onward_takes_the_network_s_forwarding_never_a_mercury_flow_that_ends(family):
+    """C4153 and the independent review of ce2318df: `onward` follows the flows that stay. A
+    response's or a policy's flow (Mercury's, with a hard timeout) ends, so it is skipped; a
+    person's permanent flow from SDN › Flows' editor (Mercury's cookie, hard timeout 0) is the
+    network's forwarding as it stands and decides; an other-family flow meets nothing."""
+    pair = ONWARD_PAIRS[family]
+    miss = _f(0, {}, [{"type": "GOTO_TABLE", "table_id": 1}])
+    other = _f(50, ({"eth_type": 0x86DD} if family == 4 else {"eth_type": 0x0800}),
+               [{"type": "OUTPUT", "port": 9}])
+    ending = _f(20, {"eth_type": pair["eth_type"]}, [], cookie=F.new_cookie(), hard=600)
+    got = O.onward([miss, other, ending], 0, 300, pair)
+    assert got["ok"] and got["actions"] == [{"type": "GOTO_TABLE", "table_id": 1}], got
+    editor = _f(10, {"eth_type": pair["eth_type"]}, [{"type": "OUTPUT", "port": 3}],
+                cookie=F.new_cookie(), hard=0)
+    got = O.onward([miss, other, ending, editor], 0, 300, pair)
+    assert got["ok"] and got["actions"] == [{"type": "OUTPUT", "port": 3}], \
+        "the person's permanent flow is the forwarding the pair's traffic takes"
+
+
+@pytest.mark.parametrize("family", [4, 6], ids=["ipv4", "ipv6"])
+def test_onward_follows_the_source_s_port_where_table_0_splits_by_in_port(family):
+    """The review of ce2318df: a table 0 that hands each ingress port to the forwarding table
+    by its own flow splits the pair's traffic; with the source's port in the hint the packet is
+    followed to its port's goto, and without it the refusal says why."""
+    pair = ONWARD_PAIRS[family]
+    flows = [_f(100, {"in_port": 10}, [{"type": "GOTO_TABLE", "table_id": 2}]),
+             _f(100, {"in_port": 3}, [{"type": "GOTO_TABLE", "table_id": 2}]),
+             _f(0, {}, [{"type": "OUTPUT", "port": "CONTROLLER"}])]
+    got = O.onward(flows, 0, 300, pair, {"in_port": 10, "in_phy_port": 10})
+    assert got["ok"] and got["actions"] == [{"type": "GOTO_TABLE", "table_id": 2}], got
+    refused = O.onward(flows, 0, 300, pair)
+    assert not refused["ok"] and "split its traffic" in refused["error"]
+    assert "in_port" in refused["error"], "it names the field it could not follow"
