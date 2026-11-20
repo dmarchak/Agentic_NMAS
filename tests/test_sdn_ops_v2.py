@@ -298,7 +298,9 @@ def _announce_sdn(b, times=1):
 
 def test_every_operation_card_holds_a_live_redraw(lab):
     """The marker the browser's hold reads (`data-holds-live`, static/js/nmas_v2.js
-    `holdReason`) is on the preview, its result and the flow editor, each drawn in place."""
+    `holdReason`) is on the preview and the flow editor, each drawn in place; a verified
+    result holds nothing (the operator, 2026-11-20: the person's own Send is done, and the list
+    redraws to show it), and a refused one still holds."""
     c = lab["client"]
     row = LP.propose("Default", {"key": "k-mark", "rule": "scan", "network": "Default",
                                  "connection": "lab-controller", "dpid": 1,
@@ -309,14 +311,18 @@ def test_every_operation_card_holds_a_live_redraw(lab):
     result = c.post("/v2/sdn/response/confirm", data=form_fields(preview)).get_data(as_text=True)
     editor = c.get("/v2/sdn/flow/form?do=add&connection=lab-controller&dpid=0000000000000001"
                    "&list=Default").get_data(as_text=True)
-    for name, html in (("preview", preview), ("result", result), ("editor", editor)):
+    for name, html in (("preview", preview), ("editor", editor)):
         assert re.search(r'class="card sdn-op[^"]*"[^>]* data-holds-live="review"', html), name
+    assert "Done, verified" in result and "data-holds-live" not in result
+    again = c.post("/v2/sdn/response/confirm", data=form_fields(preview)).get_data(as_text=True)
+    assert "Nothing was sent" in again and 'data-holds-live="review"' in again, "refused holds"
 
 
 def test_an_open_preview_survives_two_refreshes_and_its_send_works(lab):
     """The row's test (C2001): open a preview, let two refreshes pass, the preview and its hash
-    are still there and Send works; with no card open, a refresh redraws at once; after Send the
-    result stays until Show it now (busy on itself), which redraws."""
+    are still there and Send works; with no card open, a refresh redraws at once; after a
+    verified Send nothing holds (the operator, 2026-11-20), and the held redraws land by
+    themselves."""
     from tests import browser
     ok, why = browser.available()
     if not ok:
@@ -359,23 +365,16 @@ def test_an_open_preview_survives_two_refreshes_and_its_send_works(lab):
             # Send still works.
             b.js(f"document.querySelector('{slot} .sdn-op-confirm button[type=submit]').click();"
                  " return 1")
-            b.wait_for(f"var s = document.querySelector('{slot}');"
-                       "return !!s && s.textContent.indexOf('Done, verified') >= 0", 20)
-            b.wait_for(f"var n = document.querySelector('{slot} .held-note');"
-                       f"return !!n && n.textContent.indexOf('{REVIEW_WORDS}') >= 0", 10)
-            # Show it now: busy on itself at once, then the newer region, no card held.
-            pressed = b.js(f"var b = document.querySelector('{slot} .held-resume'); b.click();"
-                           "return {disabled: b.disabled, busy: b.getAttribute('aria-busy'),"
-                           " words: b.textContent}")
+            # A verified Send holds nothing (the operator, 2026-11-20): the redraws held while the
+            # preview was open land by themselves once it answers, and the list shows it done.
             b.wait_for("var r = document.getElementById('sdn');"
                        "return !!r && !r.getAttribute('data-held') && "
-                       "!r.querySelector('.sdn-op')", 15)
+                       "!r.querySelector('.sdn-op') && !r.querySelector('.held-note')", 20)
             after = b.js("return document.getElementById('sdn').textContent"
                          ".indexOf('No response is awaiting a person') >= 0")
         finally:
             b.go("about:blank")
             browser.close_socketio_sessions()
-    assert pressed == {"disabled": True, "busy": "true", "words": "Showing…"}, pressed
     assert after is True
     assert LP.awaiting("Default")["rows"] == []
     (op,) = F.operations("Default")["rows"]

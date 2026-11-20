@@ -444,6 +444,46 @@ def test_a_link_port_carrying_two_incidents_sources_stays_its_own():
     assert [i["key"] for i in incidents.group([s2], WINDOWS)] == [f"detection|{s2['key']}"]
 
 
+def _unnamed(s2):
+    """s2's link-port flood as on the Lab 9 hardware (2026-11-20): the team's flows match the
+    destination MAC only, so the link port's entering flows carry no source MAC."""
+    return {k: v for k, v in s2.items() if k != "link_sources"}
+
+
+@pytest.mark.parametrize("order", ["ingress first", "link first"])
+def test_a_link_port_whose_flows_name_no_source_joins_the_one_flood_incident(order):
+    """One flood seen at its ingress (s1, h2 named) and on its way (s2's link port, no source
+    MAC in its flows) is one incident, the link port seen also saying why."""
+    s1, s2, topo = _walk_floods()
+    s2 = _unnamed(s2)
+    assert incidents.link_keys(s2) == set(), "premise: nothing ties it to a host"
+    (inc,) = incidents.group([s1, s2] if order == "ingress first" else [s2, s1], WINDOWS)
+    assert inc["key"] == "flood|192.0.2.2" and len(inc["members"]) == 2
+    chosen = incidents.ingress(NET, inc, topo)
+    (also,) = incidents.record(inc, chosen)["seen_also"]
+    assert also["words"].endswith(
+        "port 3 is an inter-switch link whose flows name no source address or MAC, and "
+        "192.0.2.2's is the one flood incident open: taken as the same attack, seen on its way")
+
+
+def test_a_link_port_naming_no_source_beside_two_floods_or_none_stays_its_own():
+    s1, s2, _t = _walk_floods()
+    s2 = _unnamed(s2)
+    h1 = dict(det(1, "192.0.2.1", rule="flood", at=detect._epoch(s1["at"])), port=1)
+    got = incidents.group([s1, h1, s2], WINDOWS)
+    assert f"detection|{s2['key']}" in [i["key"] for i in got], "two floods: cannot tell"
+    assert [i["key"] for i in incidents.group([s2], WINDOWS)] == [f"detection|{s2['key']}"]
+
+
+def test_a_later_link_port_sighting_naming_no_source_joins_the_awaiting_incident():
+    """The same in the next pass: the one flood incident awaiting a person within its window."""
+    s1, s2, _t = _walk_floods()
+    row = {"incident": {"key": "flood|192.0.2.2", "window_s": 30}, "detection": s1,
+           "at": s1["at"], "last_seen": s1["at"]}
+    got = incidents.joinable([row], _unnamed(s2), detect._epoch(s1["at"]) + 5)
+    assert got is row
+
+
 def test_through_the_loop_one_classification_one_row_and_s2_seen_also(calls, monkeypatch):
     """The row's test: the loop's pass over the walk's two floods makes one incident, one
     classification call (on s1's detection, the ingress), one response awaiting a person and

@@ -15,7 +15,10 @@ result, the committed list), beside the board's HTML. A shot at 1440, 1280 and 3
 step of this record.
 
 Templates compared: templates/v2/sdn_policies.html, templates/v2/_sdn_policies.html, templates/v2/_sdn_policy_answer.html, templates/v2/_sdn_op.html, templates/v2/_sdn_tabs.html
-Templates sha256: `3eae1be550a87e4c038cb416c543f1aaf5f194a50789cea9c6386127b3b92d78`
+Templates sha256: `f38387ec38228e6b4dffce1eab5d3d2f8a82566f75aca79612dcd1301b1d1e30`
+Hashed again 2026-11-20 for C4138 (the shared operation card): `_sdn_op.html` no longer holds the
+live redraw once its result is verified; nothing drawn on Policies changes (the templates before
+it hashed `3eae1be550a87e4c038cb416c543f1aaf5f194a50789cea9c6386127b3b92d78`).
 Hashed again 2026-11-10: the answer card draws Was this right? under an AI-drafted policy (the
 shared control every AI answer carries; none under an answer Mercury gave in code).
 Hashed again 2026-11-11 ~07:5x UTC for C2944 (History › Export read 0 protected-flow refusals

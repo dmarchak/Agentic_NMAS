@@ -113,6 +113,7 @@ def result(network: str, kind: str, done: dict) -> dict:
                      "answer": (f"HTTP {answer.get('status')}, sent" if answer.get("ok") else
                                 f"refused: {answer.get('error')}")})
     return {"network": network, "kind": kind, "state": "result",
+            "outcome": done.get("outcome") or "",
             "outcome_words": words, "tone": tone, "error": done.get("error", ""),
             "id": done.get("id", ""),
             "checks": [{"state": c.get("state"), "words": c.get("words")}

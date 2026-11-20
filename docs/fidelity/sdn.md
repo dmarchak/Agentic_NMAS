@@ -135,7 +135,16 @@ before: `bc6d23f0a8f1a92c62843ec4a978f71a42b797f6080a1c74e758aa9754ffe2c2`.
 | I (C2913): states the board does not draw | not drawn | Couldn't save or Couldn't remove with the reason in place, an all-removed sheet, the corrected-by hover | **deviation** (log: Board lab9-sdn I built for C2913 and C2956, 3) |
 
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html, templates/v2/_sdn_apps.html, templates/v2/_sdn_app_deploy.html, templates/v2/_sdn_export.html, templates/v2/_sdn_app_publish.html, templates/v2/_sdn_app_draft.html, templates/v2/_sdn_tabs.html, templates/v2/_sdn_analyse.html, templates/v2/_sdn_dhcp.html, templates/v2/_sdn_analyse_tools.html, templates/v2/_sdn_snapshots.html
-Templates sha256: `1f109f105792d7dd9490cbee2a375b4901dc0c06a839862f30ba9507a313dc76`
+Templates sha256: `4e5ccbef173b2b2a9798eb88d0f9e21d4b0a1a9281e566c3711694b28d4dbc54`
+Hashed again 2026-11-20 for the hardware smoke test's follow-ups (C4124 and C4138, the operator's
+reports from the Lab 9 hardware): `_sdn_responses.html`'s closed watching row says "nothing yet:
+yours to rate-limit (open it)" where Rate-limit this source… is offered inside it, and "nothing:
+a rate alone names no threat" as before where it is not; `_sdn_op.html`'s card no longer holds the
+live redraw once its result is verified, so the region redraws by itself after a person's own
+Send (a preview, a refusal and a result not verified still hold). No other region moves; a
+deviation only in those words (log: "C4124 and C4138, the hardware follow-ups"); compared by
+reading the templates, no new shot (the templates before it hashed
+`1f109f105792d7dd9490cbee2a375b4901dc0c06a839862f30ba9507a313dc76`).
 Hashed again 2026-11-20 for C4124 (the operator's decision: a High packet rate proposed by a
 person): `_sdn_responses.html`'s watching row draws Rate-limit this source… on a High packet rate
 of basis `rate` too, the control as board S-HR's large-packet row already draws it (C2313); its

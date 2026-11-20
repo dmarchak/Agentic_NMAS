@@ -313,7 +313,8 @@ mode and whether the loop is running.
   packet rate threshold (100 packets a second by default) on a switch whose flows name no
   transport ports. A rate alone cannot tell a scan from a flood's first seconds or other heavy
   traffic, so it is not called either: nothing is proposed and no AI call is made. Its row
-  reads **Watching**, with **not asked** and **nothing: a rate alone names no threat**; opened,
+  reads **Watching**, with **not asked** and **nothing yet: yours to rate-limit (open it)** where
+  you may (**nothing: a rate alone names no threat** where you may not); opened,
   it says **Why it is not called a scan or a flood** and **What happens next**. Mercury closes
   it itself: when the flood rule fires for the same port or source, it joins that incident,
   whose row then reads **Flood · began as High packet rate** and says since when; when the

@@ -138,10 +138,24 @@ def link_keys(d: dict) -> set:
     return out
 
 
+def _unnamed_link(d: dict) -> bool:
+    """Whether *d* is a grouped rule's detection on an inter-switch link port whose flows name
+    no source at all: no address, and no source MAC to tie it to a host (`link_sources` empty;
+    a fabric that forwards by destination MAC only, as the Lab 9 team's, 2026-11-20)."""
+    return (d.get("rule") in GROUPED_RULES and not _canon(d.get("source"))
+            and (d.get("source_from") or {}).get("state") == "link"
+            and not d.get("link_sources"))
+
+
 def via_link(d: dict, inc_key: str) -> dict:
     """Link-port detection *d* as a member of incident *inc_key* (C2106): its words saying why
     it is the same attack, as its incident's seen also draws them."""
     source = inc_key.partition("|")[2]
+    if _unnamed_link(d):
+        return dict(d, words=(
+            f"{d.get('words')}; port {d.get('port')} is an inter-switch link whose flows name "
+            f"no source address or MAC, and {source}'s is the one {d.get('rule')} incident "
+            "open: taken as the same attack, seen on its way"))
     macs = [s["mac"] for s in d.get("link_sources") or []]
     mine = next((s["mac"] for s in d.get("link_sources") or []
                  if source in {_canon(x) for x in [s["mac"]] + list(s.get("addresses") or [])}),
@@ -157,8 +171,16 @@ def via_link(d: dict, inc_key: str) -> dict:
 def link_incident(d: dict, candidates: list, key_of_c):
     """The one of *candidates* (each keyed by *key_of_c*) link-port detection *d* joins: the
     one whose key is among `link_keys`; None when none is, or more than one (several attacks
-    behind one link cannot be told apart by it, so it stays its own)."""
+    behind one link cannot be told apart by it, so it stays its own). A link-port detection
+    whose flows name no source at all (`_unnamed_link`) joins the one candidate of its own rule
+    that names a source, so one flood seen at its ingress and on its way is one incident (the
+    Lab 9 hardware, 2026-11-20); with none or several it stays its own."""
     keys = link_keys(d)
+    if not keys and _unnamed_link(d):
+        same = [c for c in candidates
+                if key_of_c(c).partition("|")[0] == d.get("rule")
+                and not key_of_c(c).startswith(SINGLE + "|")]
+        return same[0] if len(same) == 1 else None
     hits = [c for c in candidates if key_of_c(c) in keys] if keys else []
     return hits[0] if len(hits) == 1 else None
 

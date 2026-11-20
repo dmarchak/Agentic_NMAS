@@ -172,7 +172,8 @@ def test_responses_draws_the_watching_row_and_the_flood_that_began_as_one(lab):
     page = unescape(lab["client"].get("/v2/sdn/responses?list=Default").get_data(as_text=True))
     assert "<strong>1 awaiting approval</strong> · 1 watching · 1 incident seen on 1 switch" in page
     assert f'id="sdn-i-{watching["id"]}"' in page and "1 watching</span>" in page
-    for words in ("not asked", "nothing: a rate alone names no threat",
+    # C4124 (the operator, 2026-11-20): a rate a person may rate-limit says so in its summary.
+    for words in ("not asked", "nothing yet: yours to rate-limit (open it)",
                   "Why it is not called a scan or a flood:",
                   "the flood rule has not fired for this port or source (its 30 s hold)",
                   "What happens next:", '"ended, never more than a rate"',

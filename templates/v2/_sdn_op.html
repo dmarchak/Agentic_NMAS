@@ -19,7 +19,9 @@
 <p class="small notice notice-warn sdn-op-refusal" role="alert">This refusal could not be recorded: {{ r.error }}.</p>
 {%- endif %}
 {%- endmacro %}
-<div class="card sdn-op sdn-op-{{ d.state }}" data-holds-live="review">
+{#- A result verified holds nothing (the operator, 2026-11-20): the person's own Send is done
+    and the list redraws to show it; a preview, a refusal and a result not verified hold. -#}
+<div class="card sdn-op sdn-op-{{ d.state }}"{% if not (d.state == 'result' and d.outcome == 'verified') %} data-holds-live="review"{% endif %}>
 {%- if d.state == 'refused' %}
 <p class="sdn-ans sdn-ans-bad" role="alert">{{ icon('warn', 15) }}<span><strong>Nothing was sent:</strong> {{ d.error }}.</span></p>
 {%- if d.refusal %}{{ refusal_kept(d.refusal, d.network) }}{% endif %}
