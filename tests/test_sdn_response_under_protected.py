@@ -274,7 +274,10 @@ def test_a_rate_limit_s_carried_ask_goes_on_by_a_goto_or_one_port_and_nothing_el
     lambda a: a["changes"][-1].update(flow=["not", "a", "flow"]),
     lambda a: a["changes"][-1]["flow"].update(match=["eth_type", 2048]),
     lambda a: a["changes"][0].update(meter=["a list"]),
-], ids=["actions", "flow", "match", "meter"])
+    # The review of 3bb37445: an address that is not one string raised TypeError (unhashable).
+    lambda a: a["changes"][-1]["flow"]["match"].update(ipv4_src=["192.0.2.62"]),
+    lambda a: a["changes"][-1]["flow"]["match"].update(ipv4_dst={"a": 1}),
+], ids=["actions", "flow", "match", "meter", "source-a-list", "destination-an-object"])
 def test_a_carried_ask_whose_parts_are_not_objects_is_refused_never_raised(action_id, tamper):
     """The review of 5d7799f0 (E): a confirm's carried ask is a page's, so a part may be the
     wrong type; the shape check refuses it in words, where it raised AttributeError."""

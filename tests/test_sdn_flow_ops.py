@@ -465,3 +465,28 @@ def test_onward_follows_the_source_s_port_where_table_0_splits_by_in_port(family
     refused = O.onward(flows, 0, 300, pair)
     assert not refused["ok"] and "split its traffic" in refused["error"]
     assert "in_port" in refused["error"], "it names the field it could not follow"
+    assert refused["reason"] == "split", "no flow below drops or meters it"
+
+
+@pytest.mark.parametrize("family", [4, 6], ids=["ipv4", "ipv6"])
+def test_onward_says_a_pair_the_flows_below_drop_in_part_or_by_the_table_s_default(family):
+    """The review of 3bb37445: where the pair cannot be followed as one flow and a flow below
+    that meets it drops (or meters) what it takes, part of the pair's traffic is dropped there
+    already (``may_drop``), so sending the pair on would undo it; and a pair no flow takes, in
+    a table with no miss entry, is dropped by the table's default (``drops``)."""
+    pair = ONWARD_PAIRS[family]
+    v = "ipv4" if family == 4 else "ipv6"
+    proto = {"eth_type": pair["eth_type"], f"{v}_src": pair[f"{v}_src"], "ip_proto": 6,
+             "tcp_dst": 22}
+    whole = _f(100, {"eth_type": pair["eth_type"], f"{v}_src": pair[f"{v}_src"]}, [],
+               cookie=F.new_cookie(), hard=0)
+    part = _f(150, proto, [], cookie=F.new_cookie(), hard=0)
+    got = O.onward([part, whole, _f(0, {}, [{"type": "GOTO_TABLE", "table_id": 2}])], 0, 300,
+                   pair)
+    assert not got["ok"] and got["reason"] == "may_drop", got
+    assert "the flow at priority 150" in got["taker"] and "drops what it matches" in got["error"]
+    alone = O.onward([part], 0, 300, pair)
+    assert alone["reason"] == "may_drop", "a partial drop alone is still a drop of part of it"
+    nothing = O.onward([_f(10, {"eth_type": 0x0806}, [{"type": "OUTPUT", "port": 1}])], 0, 300,
+                       pair)
+    assert nothing["reason"] == "drops" and "table 0's default" in nothing["taker"], nothing

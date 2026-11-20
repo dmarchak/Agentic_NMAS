@@ -2056,13 +2056,16 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                                 **({"in_port": ingress, "in_phy_port": ingress}
                                    if isinstance(ingress, int) else {}))
                     on = flow_ops.onward(read["flows"], 0, priority, m, hint)
-                    if on.get("reason") in ("drops", "meters"):
-                        # The network's own flow below already drops it, or meters it (a
-                        # person's flow, a permanent policy): a rate limit above would undo
-                        # that, so this pair is not metered, and said (the review of 5d7799f0).
-                        not_metered.append(f"{target} (already "
-                                           f"{'dropped' if on['reason'] == 'drops' else 'metered'}"
-                                           f" below it by {on['taker']})")
+                    if on.get("reason") in ("drops", "meters", "may_drop", "may_meter"):
+                        # The network's own flows below already drop or meter it, all of it or
+                        # part (a person's flow, a permanent policy, the table's default): a
+                        # rate limit above would undo that, so this pair is not metered, and
+                        # said (the reviews of 5d7799f0 and 3bb37445).
+                        done_by = {"drops": "dropped", "meters": "metered",
+                                   "may_drop": "partly dropped",
+                                   "may_meter": "partly metered"}[on["reason"]]
+                        not_metered.append(f"{target} (already {done_by} below it by "
+                                           f"{on['taker']})")
                         continue
                     goto = (on["ok"] and len(on["actions"]) == 1
                             and on["actions"][0].get("type") == "GOTO_TABLE")
@@ -2085,7 +2088,9 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                 if not pairs:
                     raise ResponseRefused(
                         f"nothing of {source}'s traffic is left to meter on switch {dpid}: "
-                        f"{'; '.join(not_metered)}")
+                        f"{'; '.join(not_metered)}. The network's own flows already take it: "
+                        "drop the source instead to hold the rest of its traffic, or change "
+                        "those flows on SDN › Flows")
                 out["params"].update(targets=pairs, not_metered=not_metered,
                                      ports_from=ports_from, onward=onward_words)
         else:
@@ -2197,11 +2202,14 @@ def response_shape_refusal(ask: dict, action_id: str) -> str:
         return isinstance(hard, int) and not isinstance(hard, bool) and hard > 0
 
     def source_of(match, extra=()):
+        # Each address one string (a carried list was unhashable and raised, the review of
+        # 3bb37445): anything else is not the shape.
         fam = {"ipv4_src": ETH_IPV4, "ipv6_src": ETH_IPV6}
         keys = set(match)
         for src, eth in fam.items():
             want = {"eth_type", src} | {k.replace("_src", "_dst") for k in extra if k == src}
-            if keys == want and match.get("eth_type") == eth:
+            if (keys == want and match.get("eth_type") == eth
+                    and all(isinstance(match[k], str) for k in want - {"eth_type"})):
                 return match[src]
         return None
 

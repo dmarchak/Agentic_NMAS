@@ -292,8 +292,10 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
     destination's learned MAC, the source's port), and the flow that takes it gives its
     instructions. ``{"ok", "actions", "words", "error", "reason", "taker"}``: refused, naming
     the flows compared, when no flow takes the traffic, the one that does drops or meters it,
-    or the packet cannot be followed; *reason* says which (``drops``, ``meters``, ``split``),
-    *taker* the flow that takes it and what it does, where one does."""
+    or the packet cannot be followed; *reason* says which (``drops``, a flow or the table's
+    default; ``meters``; ``may_drop`` or ``may_meter``, where it cannot be followed and a
+    flow below that meets it drops or meters part of it; ``split``), *taker* the flow that
+    takes it and what it does, where one does."""
     from modules.sdn import flow_intent, trace
 
     hint = dict(hint or {})
@@ -349,10 +351,29 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
                          + (f"the destination's learned MAC {hint['eth_dst']}"
                             if hint.get("eth_dst") else "its own match"))
         if why is None:
-            why = (f"no flow under priority {priority} in table {table_id} takes it, so the "
-                   "switch would drop it")
+            # Nothing takes it, and no table-miss: OpenFlow drops it by the table's default.
+            return {"ok": False, "actions": [], "words": "", "reason": "drops",
+                    "taker": f"table {table_id}'s default (no flow under priority {priority} "
+                             "takes it, and no table-miss entry)",
+                    "error": (f"no flow under priority {priority} in table {table_id} takes "
+                              "it, so the switch drops it by the table's default")}
     else:
         why = "its match is not one packet's (a subnet), so it cannot be followed"
+    # It cannot be followed as one flow: where any flow below that meets it drops or meters
+    # what it takes, some of the pair's traffic may be dropped or metered there already, and
+    # sending the pair on would undo that (the review of 3bb37445).
+    for f in sorted(below, key=lambda f: -int(f.get("priority") or 0)):
+        acts = f.get("actions") or []
+        kind = ("may_drop" if not acts else
+                "may_meter" if any(isinstance(a, dict) and a.get("type") == "METER"
+                                    for a in acts) else "")
+        if kind and meets_covers(f.get("match") or {})[0]:
+            return {"ok": False, "actions": [], "words": "", "reason": kind,
+                    "taker": f"{trace._ref(f)}: {flow_intent.action_words(acts)}",
+                    "error": (f"the switch's flows below it split its traffic and {why}; "
+                              f"{trace._ref(f)}, which "
+                              f"{'drops' if kind == 'may_drop' else 'meters'} what it "
+                              "matches, takes part of it")}
     return {"ok": False, "actions": [], "words": "", "reason": "split", "taker": "",
             "error": f"the switch's flows below it split its traffic and {why}"}
 
