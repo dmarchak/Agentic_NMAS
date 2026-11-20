@@ -199,19 +199,26 @@ class TestCoverage:
     def test_l4_flows_naming_no_source_leave_a_switch_l3(self, v6):
         """The Lab 9 team's switches (2026-11-20): DNS punts by port (udp_dst 53, no source)
         beside forwarding by MAC. They cannot show one source's destination ports, so the
-        switch is L3 and says why; a source-naming L4 flow makes it L4 again."""
+        switch is the finest of its other flows (L2 here) and says why; a source-naming L4 flow
+        makes it L4 again, and a prefix source does not."""
         eth = 0x86DD if v6 else 0x0800
         punt = {"match": {"eth_type": eth, "in_port": 10, "ip_proto": 17, "udp_dst": 53}}
         fwd = {"match": {"eth_dst": "02:00:00:00:00:02"}}
         cov = CL.coverage([punt, dict(punt), fwd])
-        assert (cov["granularity"], cov["scan_by_ports"], cov["l4_unsourced"]) == ("L3", False, 2)
+        # The finest of its other flows: the forwarding by MAC, L2, and its words.
+        assert (cov["granularity"], cov["scan_by_ports"], cov["l4_unsourced"]) == ("L2", False, 2)
         assert cov["by_granularity"]["L4"] == 2, "each flow's own granularity as before"
+        assert cov["words"].startswith(CL.COVERAGE_WORDS["L2"])
         assert cov["words"].endswith("its 2 L4 flows name no source address (a punt by its port, "
                                      "say), so none shows one source's destination ports")
+        assert CL.coverage([punt])["granularity"] == "L3", "nothing else: L3"
         src = {"ipv6_src": "2001:db8::1"} if v6 else {"ipv4_src": "192.0.2.1"}
         sourced = {"match": dict(punt["match"], **src)}
         assert CL.coverage([punt, sourced, fwd])["scan_by_ports"] is True
         assert "l4_unsourced" not in CL.coverage([sourced, fwd])
+        # A prefix is no one source, as the scan rule reads it (`detect._address`).
+        prefix = {"ipv6_src": "2001:db8::/64"} if v6 else {"ipv4_src": "192.0.2.0/24"}
+        assert CL.coverage([{"match": dict(punt["match"], **prefix)}, fwd])["scan_by_ports"] is False
 
 
 @pytest.mark.usefixtures("networks")

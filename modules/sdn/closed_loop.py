@@ -148,25 +148,24 @@ def granularity(match: dict) -> str:
     return "L2"
 
 
-#: The source fields an L4 flow names to show one source's destination ports (the scan rule
-#: counts a sighting per source address: `detect.scan`).
-SOURCE_FIELDS = frozenset({"ipv4_src", "ipv6_src"})
-
-
 def coverage(flows: list) -> dict:
     """What *flows* can show: ``{"granularity", "by_granularity", "scan_by_ports", "words"}``
-    (and ``l4_unsourced`` where it explains L3), the finest granularity found. L4 only where an
-    L4 flow names a source address: a switch whose L4 flows name none (a DNS punt by its port,
-    as the Lab 9 team's on every switch, 2026-11-20) cannot show one source's destination
-    ports, so it is L3, saying how many such flows it has, and its ports' rates are judged as
-    High packet rate (`detect.scan`'s fallback)."""
+    (and ``l4_unsourced`` where it explains the fallback), the finest granularity found. L4
+    only where an L4 flow names one source address (as the scan rule reads it,
+    `detect._address`: a prefix is none): a switch whose L4 flows name none (a DNS punt by its
+    port, as the Lab 9 team's on every switch, 2026-11-20) cannot show one source's
+    destination ports, so it is the finest of its other flows (L3, else L2, else none; L3 when
+    it has none), saying how many such flows it has, and its ports' rates are judged as High
+    packet rate (`detect.scan`'s fallback)."""
+    from modules.sdn.detect import _address
+
     counts = {g: 0 for g in GRANULARITIES}
     sourced = unsourced = 0
     for f in flows:
         g = granularity(f.get("match"))
         counts[g] += 1
         if g == "L4":
-            if set(f.get("match") or {}) & SOURCE_FIELDS:
+            if _address(f.get("match") or {}, "src") is not None:
                 sourced += 1
             else:
                 unsourced += 1
@@ -174,10 +173,11 @@ def coverage(flows: list) -> dict:
     out = {"granularity": found, "by_granularity": counts, "scan_by_ports": found == "L4",
            "words": COVERAGE_WORDS[found]}
     if found == "L4" and not sourced:
-        out.update(granularity="L3", scan_by_ports=False, l4_unsourced=unsourced,
-                   words=(f"{COVERAGE_WORDS['L3']}; its {unsourced} L4 flow"
-                          f"{'s name' if unsourced != 1 else ' names'} no source address (a punt by "
-                          "its port, say), so none shows one source's destination ports"))
+        fell = next((g for g in ("L3", "L2") if counts[g]), "L3")
+        out.update(granularity=fell, scan_by_ports=False, l4_unsourced=unsourced,
+                   words=(f"{COVERAGE_WORDS[fell]}; its {unsourced} L4 flow"
+                          f"{'s name' if unsourced != 1 else ' names'} no source address (a "
+                          "punt by its port, say), so none shows one source's destination ports"))
     return out
 
 

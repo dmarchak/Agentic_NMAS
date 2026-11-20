@@ -216,7 +216,37 @@ def test_a_source_netbox_declares_on_its_port_is_auto_s(networks, monkeypatch): 
     assert got["auto"] is True
     assert got["words"].endswith(
         "; its source: NetBox declares it: h2's eth0 (192.0.2.2, 00:00:00:00:00:02) is cabled "
-        "to s1 eth2 (port 2), where the controller lists that host")
+        "to s1 eth2 (port 2), where the controller lists that host alone")
+
+
+@pytest.mark.parametrize("edit,why", [
+    (lambda d: d["source_from"].update(other_macs=["00:00:00:00:00:99"]),
+     "another MAC on the port (no address, or claiming the same one)"),
+    (lambda d: d["source_from"].update(hosts=[dict(h, mac="") for h in d["source_from"]["hosts"]]),
+     "the topology's MAC not known"),
+], ids=["other-mac", "no-topology-mac"])
+def test_a_port_another_device_shares_or_an_unknown_mac_stays_a_person_s(networks, monkeypatch,  # noqa: F811,E501
+                                                                       edit, why):
+    """The re-review of 60eff5ea, 1: a rogue MAC behind the declared host's port, or a MAC the
+    topology does not know, leaves the declaration unproven."""
+    auto_on()
+    d = flood()
+    _netbox(monkeypatch, d)
+    edit(d)
+    got = MD.decide(NET, "low", detection=d, action="drop_source")
+    assert got["auto"] is False, why
+
+
+def test_a_second_mac_on_the_port_is_kept_with_the_named_source(networks):  # noqa: F811
+    """`port_source` keeps every other MAC the topology lists on a named port, an address or
+    none, and only where there is one."""
+    from modules.sdn import detect as DT
+
+    alone = flood()
+    assert "other_macs" not in alone["source_from"]
+    topo = stored(edit=plus({"mac": "00:00:00:00:00:99", "ipv4": [], "ipv6": []}))
+    found = DT.port_source(topo, CONN, alone["dpid"], 2)
+    assert found["state"] == "named" and found["other_macs"] == ["00:00:00:00:00:99"]
 
 
 @pytest.mark.parametrize("edit,why", [
@@ -225,7 +255,8 @@ def test_a_source_netbox_declares_on_its_port_is_auto_s(networks, monkeypatch): 
     (lambda r: r + [dict(r[0], name="h9", ipv4=["192.0.2.9"])], "two end hosts on the port"),
     (lambda r: [dict(r[0], port_no=3)], "cabled to another port"),
     (lambda r: [dict(r[0], kind="device")], "a device, not an end host"),
-], ids=["address", "mac", "two", "port", "device"])
+    (lambda r: [dict(r[0], mac="")], "NetBox records no MAC"),
+], ids=["address", "mac", "two", "port", "device", "no-netbox-mac"])
 def test_a_source_netbox_does_not_declare_stays_a_person_s(networks, monkeypatch, edit, why):  # noqa: F811,E501
     auto_on()
     d = flood()

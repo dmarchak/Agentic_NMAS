@@ -303,16 +303,18 @@ def declared_source(network: str, detection: dict) -> str:
     means all of: the topology named exactly one host on the port (``source_from`` state
     ``named``); *network*'s committed NSOT export records exactly one end host interface cabled
     to that switch's port (by its datapath id and OpenFlow port number, `known.rows_of`); that
-    interface holds the source's address; and where both NetBox and the topology know the
-    host's MAC, they are the same. Two records made apart agree, so the source is not inferred.
-    Anything else, or an export that cannot be read, is "" and fails closed."""
+    interface holds the source's address; NetBox and the topology both know the host's MAC, and
+    it is the same; and the topology lists no other MAC on the port (``other_macs``: a device
+    with no address, or a second MAC claiming the address, behind the same port). Two records
+    made apart agree, so the source is not inferred. Anything else, or an export that cannot be
+    read, is "" and fails closed."""
     from modules.sdn import known
     from modules.sdn.drivers.base import SpecError, parse_dpid
 
     d = detection or {}
     found = d.get("source_from") or {}
     source = str(d.get("source") or "")
-    if not source or found.get("state") != "named":
+    if not source or found.get("state") != "named" or found.get("other_macs"):
         return ""
     try:
         dpid = parse_dpid(d.get("dpid") if d.get("dpid") is not None else d.get("dpid_hex"))
@@ -329,11 +331,11 @@ def declared_source(network: str, detection: dict) -> str:
     r = rows[0]
     macs = {str(h.get("mac") or "").lower() for h in found.get("hosts") or []
             if h.get("address") == source and h.get("mac")}
-    if r.get("mac") and macs and r["mac"] not in macs:
+    if not r.get("mac") or macs != {r["mac"]}:
         return ""
-    return (f"NetBox declares it: {r['name']}'s {r['interface']} ({source}"
-            f"{', ' + r['mac'] if r.get('mac') else ''}) is cabled to {r['switch']} "
-            f"{r['switch_interface']} (port {port}), where the controller lists that host")
+    return (f"NetBox declares it: {r['name']}'s {r['interface']} ({source}, {r['mac']}) is "
+            f"cabled to {r['switch']} {r['switch_interface']} (port {port}), where the controller "
+            "lists that host alone")
 
 
 def source_refusal(detection: dict, action: str, declared: str = "") -> str:

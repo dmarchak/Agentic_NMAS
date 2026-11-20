@@ -359,6 +359,13 @@ def port_source(topo, connection: str, dpid, port) -> dict:
         out.update(state="named", source=hosts[0]["address"], words=(
             f"from the controller's topology: the one host on port {port}, "
             f"{_host_words(hosts[0])}{also}"))
+        # Every other MAC the topology lists on the port, an address or none (a second MAC
+        # claiming the same address is kept here too): kept only where there is one, so AUTO's
+        # NetBox declaration cannot pass a port another device shares (`modes.declared_source`;
+        # the re-review of 60eff5ea, 1).
+        others = sorted({str(h.get("mac") or "").lower() for h in on} - {hosts[0]["mac"]})
+        if others:
+            out["other_macs"] = others
     else:
         out.update(state="several", words=(
             f"not named: the controller's topology lists {len(hosts)} hosts on port {port} ("
@@ -386,7 +393,8 @@ def _port_detection_source(entering: list, topo, connection: str, dpid, port) ->
         return None, sources, {}
     found = port_source(topo, connection, dpid, port)
     extra = {"source_from": {
-        k: found[k] for k in ("how", "state", "port", "hosts", "read_at", "words")}}
+        k: found[k] for k in ("how", "state", "port", "hosts", "read_at", "words", "other_macs")
+        if k in found}}
     if found["state"] == "link":
         # C2106: a link port names no source, but its flows say whose traffic arrives on it;
         # what `incidents` joins the incident of that host's own port by (never sent: the

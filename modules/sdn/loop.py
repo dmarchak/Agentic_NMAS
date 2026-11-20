@@ -537,10 +537,11 @@ def propose_from_watch(network: str, watch_id: str, *, actor: str, actor_verifie
     Verify and record. Refused (`ProposalRefused`, naming why) unless *actor* is a verified
     person (*actor_verified* neither empty nor ``none``, *actor_kind* ``person``: a verified
     service is not one, whatever the gate's settings), the row is open, and
-    `closed_loop.person_proposal_refusal` passes: a large-packet stream, a source to act on,
-    and the network's response policy allowing the rate limit for the flood rule, the rule a
-    large-packet stream is checked as (the flood rule's held candidate). ``{"response",
-    "closed"}``, the rows appended."""
+    `closed_loop.person_proposal_refusal` passes: a large-packet stream or a High packet rate,
+    a source to act on, and the network's response policy allowing the rate limit for the rule
+    it is checked as (the flood rule's held candidate for a large-packet stream, the scan rule
+    for a High packet rate: `closed_loop.answered_rule`). ``{"response", "closed"}``, the rows
+    appended."""
     from modules import identity
     from modules.sdn import closed_loop, incidents
 
