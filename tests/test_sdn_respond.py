@@ -51,6 +51,17 @@ def switch_with(ryu_flows):
     return fake
 
 
+#: The capture's own Mercury response: a drop of 192.0.2.0/24 at priority 100, hard timeout 300
+#: (Lab 8's run). It is live, so a rate limit above it would undo it for its sources, which
+#: Mercury now refuses (the review of bcea1999, 2); a test about the rate limit's own path
+#: builds over the switch without it.
+LIVE_DROP = 0x4D45524300000001
+
+
+def without_live_drop(flows):
+    return [f for f in flows if f.get("cookie") != LIVE_DROP]
+
+
 def scan_detection(flows):
     (d,) = D.scan(collect(T0, flows=flows), VALUES)["detections"]
     return d
@@ -95,7 +106,7 @@ def test_a_flood_is_answered_by_one_meter_and_the_source_s_flows_through_it():
     observe(T0 + 70, second=rx(10000), **kw)
     out = observe(T0 + 80, second=rx(10000), **kw)
     (d,) = [x for x in out["detections"] if x["rule"] == "flood"]
-    fake = switch_with(without("v6"))
+    fake = switch_with(without_live_drop(without("v6")))
     preview = CL.respond_to_threat("Default", d, driver=fake.driver)
     assert preview["ok"], preview["error"]
     meter, *flows = preview["plan"]["steps"]
@@ -140,6 +151,11 @@ def test_a_table_0_split_by_ingress_port_is_followed_through_the_detection_s_por
     the port the threat entered by (the detection's), so the pair goes on by the goto."""
     team = 0x9A00000000000001
     kw = {"flows": without("v6")}
+    # The pipeline's own table-miss to its forwarding table, under the per-port flows (a table
+    # with none drops what no flow takes, which Mercury now refuses: the review of bcea1999, 1).
+    miss = {"dpid": 1, "table_id": 0, "priority": 0, "cookie": team + 3, "match": {},
+            "actions": [{"type": "GOTO_TABLE", "table_id": 2}], "idle_timeout": 0,
+            "hard_timeout": 0}
     baseline_runs(5, **kw)
     observe(T0 + 50, second=rx(10000), **kw)
     observe(T0 + 70, second=rx(10000), **kw)
@@ -155,12 +171,28 @@ def test_a_table_0_split_by_ingress_port_is_followed_through_the_detection_s_por
          "idle_timeout": 0, "hard_timeout": 0},
         {"dpid": 1, "table_id": 2, "priority": 1000, "cookie": team + 2,
          "match": {"eth_dst": "02:00:00:00:00:99"}, "actions": [{"type": "OUTPUT", "port": 2}],
-         "idle_timeout": 0, "hard_timeout": 0}]
+         "idle_timeout": 0, "hard_timeout": 0}, miss]
     _d, _fake, preview = _flood_on(monkeypatch, table)
     assert preview["ok"], preview["error"]
     _meter, *flows = preview["plan"]["steps"]
     (body,) = [json.loads(s["request"]["body"]) for s in flows]
     assert body["actions"][1:] == [{"type": "GOTO_TABLE", "table_id": 2}], body
+
+
+@pytest.mark.usefixtures("lab")
+def test_a_pair_whose_flow_below_does_more_than_a_goto_is_not_metered(monkeypatch):
+    """The review of bcea1999 (3): a covering flow that sets a field and goes on to table 2
+    can be carried by no rate limit (the meter's flow takes only a goto), and a fixed port would
+    skip table 2: the pair is not metered, said, and with none left nothing is sent."""
+    table = [{"dpid": 1, "table_id": 0, "priority": 0, "cookie": 0x9A00000000000001,
+              "match": {}, "actions": [{"type": "SET_FIELD", "field": "vlan_vid",
+                                         "value": 4196},
+                                        {"type": "GOTO_TABLE", "table_id": 2}],
+              "idle_timeout": 0, "hard_timeout": 0}]
+    _d, fake, preview = _flood_on(monkeypatch, table)
+    assert not preview["ok"], preview
+    assert "does more than go on to a later table" in preview["error"]
+    assert fake.writes == []
 
 
 @pytest.mark.usefixtures("lab")
@@ -273,7 +305,7 @@ def test_a_scan_s_rate_limit_meters_all_the_source_s_forwarding_on_the_switch():
     d = scan_detection(flows)
     # The premise: the evidence names only the scan's target, not the other destinations.
     assert not {"192.0.2.9", "192.0.2.10"} & set(d["targets"])
-    fake = switch_with(flows)
+    fake = switch_with(without_live_drop(flows))
     preview = CL.respond_to_threat("Default", d, "rate_limit_source", driver=fake.driver)
     assert preview["ok"], preview["error"]
     meter, *metered = preview["plan"]["steps"]
@@ -302,6 +334,7 @@ def test_a_scan_s_rate_limit_meters_all_the_source_s_forwarding_on_the_switch():
             "response is not metered") in gap
     assert "never NORMAL" in gap and "Not metered now: 192.0.2.10" in gap
     assert "where a port is named it is fixed until the response ends" in gap, "a single table"
+    assert "taken as forwarding, so what the controller then does with it is not followed" in gap
     assert f"Only {d['source']}'s IPv4 traffic is metered" in gap
     assert confirm(fake, preview)["outcome"] == "verified"
 

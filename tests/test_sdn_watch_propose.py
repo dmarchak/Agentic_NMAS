@@ -207,6 +207,7 @@ def test_the_response_it_makes_previews_and_confirms_through_the_normal_routes(l
     import tests.test_sdn_lab8 as L8
 
     lab["fake"].topology = L8.captured_topology()
+    _without_live_drop(lab)
     w = watched(stream())
     assert press(lab, w["id"]).status_code == 200
     (row,) = LP.awaiting(NET)["rows"]
@@ -238,6 +239,7 @@ def test_the_confirm_checks_the_flood_rule_s_policy_again(lab, no_ai):  # noqa: 
     """`answered_rule` at the confirm: the policy saved between the preview and the confirm
     forbidding the flood rule's rate limit refuses it, nothing sent."""
     import tests.test_sdn_lab8 as L8
+    _without_live_drop(lab)
 
     lab["fake"].topology = L8.captured_topology()
     w = watched(stream())
@@ -330,6 +332,15 @@ def test_a_stream_naming_no_source_draws_the_control_disabled_saying_why(lab, no
 
 
 # ───────────────────────────────────────────────────────────────────────────── not watched again
+
+def _without_live_drop(lab):
+    """The captured table less its own Mercury response, a drop of 192.0.2.0/24 at priority
+    100 with hard timeout 300 (Lab 8's run): live, it would leave every pair of a 192.0.2.x
+    source unmetered (the review of bcea1999, 2), and these tests are about the rate limit's
+    own path."""
+    lab["fake"].table[1] = [f for f in lab["fake"].table[1]
+                            if f.get("cookie") != 0x4D45524300000001]
+
 
 def _pass(d, fired=True):
     """One loop pass in which *d* fires again (*fired*), or resolves."""

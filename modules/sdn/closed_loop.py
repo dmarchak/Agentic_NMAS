@@ -1654,7 +1654,9 @@ def rate_limit_gap(source: str, params: dict, same_host: dict = None) -> str:
     words = (f"Traffic from {source} to {later} is not metered: the meter caps {source}'s "
              f"traffic to {metered} (the hosts {ports_from} gives), each {onward}"
              + (": where a port is named it is fixed until the response ends, so a reroute "
-                "around a failed link does not move that traffic" if pinned else
+                "around a failed link does not move that traffic; and a flow below that sends "
+                "traffic to the controller is taken as forwarding, so what the controller "
+                "then does with it is not followed" if pinned else
                 ": the network's own forwarding table chooses the port, so a reroute around a "
                 "failed link moves it")
              + "; never NORMAL.")
@@ -2075,6 +2077,18 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                         continue
                     goto = (on["ok"] and len(on["actions"]) == 1
                             and on["actions"][0].get("type") == "GOTO_TABLE")
+                    if on["ok"] and not goto and any(a.get("type") == "GOTO_TABLE"
+                                                       for a in on["actions"]):
+                        # The flow below goes on to a later table with more than the goto (it
+                        # writes metadata, sets a field): a fixed port would skip that table and
+                        # what it does, and the meter's flow may carry only the goto (the shape
+                        # check), so the pair is not metered (the review of bcea1999, 3).
+                        not_metered.append(f"{target} (the flow its traffic takes below it, "
+                                           f"{on['taker']}, does more than go on to a later "
+                                           "table, which a rate limit cannot carry; none of "
+                                           f"{source}'s traffic to it is limited by this "
+                                           "response)")
+                        continue
                     then = on["actions"] if goto else [{"type": "OUTPUT", "port": port}]
                     # Why the port is fixed, and which: onward's own refusal (a split table it
                     # cannot follow), or a single table's flow, named with what it does (it may

@@ -304,11 +304,6 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
     # response's, a policy's) ends, and the traffic then goes on as the network's own flows
     # send it, so it is skipped; a permanent one (a person's flow from SDN › Flows' editor,
     # hard timeout 0) is the network's forwarding as it stands, and decides like any other.
-    below = [f for f in flows or [] if int(f.get("table_id") or 0) == int(table_id)
-             and int(f.get("priority") or 0) < int(priority)
-             and not (flow_intent.is_mercury(f.get("cookie"))
-                      and int(f.get("hard_timeout") or 0) > 0)]
-
     def meets_covers(other):
         try:
             mine, theirs = flow_intent._fields(match), flow_intent._fields(other)
@@ -332,6 +327,17 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
 
     def taken(f):
         return f"{trace._ref(f)}: {flow_intent.action_words(f.get('actions') or [])}"
+
+    # The flows that decide: a Mercury flow with a hard timeout that forwards (a policy's
+    # allow) ends, and the traffic then goes on as the network's own flows send it, so it is
+    # skipped; one that drops or meters (a response's drop, a rate limit) holds until it ends,
+    # so it counts (the review of bcea1999: a rate limit above a live drop of the same source
+    # undid it); a permanent one is the network's forwarding as it stands.
+    below = [f for f in flows or [] if int(f.get("table_id") or 0) == int(table_id)
+             and int(f.get("priority") or 0) < int(priority)
+             and not (flow_intent.is_mercury(f.get("cookie"))
+                      and int(f.get("hard_timeout") or 0) > 0
+                      and not does(f.get("actions")))]
 
     def refused(reason, taker, error):
         return {"ok": False, "actions": [], "words": "", "reason": reason,
@@ -369,17 +375,42 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
     # one the arithmetic cannot read counts as meeting) drops, meters or sends to something
     # Mercury cannot follow, sending the pair on would undo that for those packets: refused,
     # naming the flow (the reviews of 3bb37445 and 69e36e6c: the shape, not its members).
-    for f in sorted(below, key=lambda f: -int(f.get("priority") or 0)):
-        kind = does(f.get("actions"))
-        if kind and meets_covers(f.get("match") or {})[0]:
-            reason = {"drops": "may_drop", "meters": "may_meter",
-                      "cannot": "cannot_follow"}[kind]
-            return refused(reason, taken(f), (
-                f"the switch's flows below it take its traffic several ways, and "
-                f"{trace._ref(f)}, which "
-                + {"drops": "drops", "meters": "meters",
-                   "cannot": "Mercury cannot follow for"}[kind]
-                + " what it matches, may take some of it"))
+    # The scan stops at the first priority where a flow covers the pair: everything below it
+    # is shadowed and takes none of it (the review of bcea1999, 4). Where no flow below
+    # covers it, the packets no flow takes are dropped by the table's default (OpenFlow 1.3.5
+    # 5.4), which a hint must not hide (the review of bcea1999, 1: a port allow-list with no
+    # table-miss).
+    covered = False
+    for p in sorted({int(f.get("priority") or 0) for f in below}, reverse=True):
+        level = [f for f in below if int(f.get("priority") or 0) == p]
+        for f in level:
+            got = meets_covers(f.get("match") or {})
+            kind = does(f.get("actions"))
+            if kind and got[0]:
+                reason = {"drops": "may_drop", "meters": "may_meter",
+                          "cannot": "cannot_follow"}[kind]
+                return refused(reason, taken(f), (
+                    f"the switch's flows below it take its traffic several ways, and "
+                    f"{trace._ref(f)}, which "
+                    + {"drops": "drops", "meters": "meters",
+                       "cannot": "Mercury cannot follow for"}[kind]
+                    + " what it matches, may take some of it"))
+        if any(meets_covers(f.get("match") or {})[1] for f in level):
+            covered = True
+            break
+    if not covered and not any(meets_covers(f.get("match") or {})[0] for f in below):
+        # No flow below takes any of it: all of it is dropped by the table's default.
+        return refused("drops", f"table {table_id}'s default (no flow under priority "
+                                f"{priority} takes it, and no table-miss entry)",
+                       f"no flow under priority {priority} in table {table_id} takes it, so "
+                       "the switch drops it by the table's default")
+    if not covered:
+        return refused("may_drop", f"table {table_id}'s default (no flow under priority "
+                                   f"{priority} takes every packet of it, and no table-miss "
+                                   "entry: what none takes is dropped)",
+                       f"no flow under priority {priority} in table {table_id} takes every "
+                       "packet of it, so the switch drops what none takes by the table's "
+                       "default")
     # 3. Every flow below that may take some of it forwards it: the hint (the destination's
     # MAC, the source's port) picks the one its packets take, among forwarding flows only.
     exact = all("/" not in str(v) for v in match.values())

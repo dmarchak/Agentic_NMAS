@@ -441,7 +441,10 @@ def test_onward_takes_the_network_s_forwarding_never_a_mercury_flow_that_ends(fa
     miss = _f(0, {}, [{"type": "GOTO_TABLE", "table_id": 1}])
     other = _f(50, ({"eth_type": 0x86DD} if family == 4 else {"eth_type": 0x0800}),
                [{"type": "OUTPUT", "port": 9}])
-    ending = _f(20, {"eth_type": pair["eth_type"]}, [], cookie=F.new_cookie(), hard=600)
+    # A Mercury flow that ends and forwards (a policy's allow) is skipped; one that ends and
+    # drops is a live drop, and counts (the review of bcea1999: below).
+    ending = _f(20, {"eth_type": pair["eth_type"]}, [{"type": "OUTPUT", "port": 5}],
+                cookie=F.new_cookie(), hard=600)
     got = O.onward([miss, other, ending], 0, 300, pair)
     assert got["ok"] and got["actions"] == [{"type": "GOTO_TABLE", "table_id": 1}], got
     editor = _f(10, {"eth_type": pair["eth_type"]}, [{"type": "OUTPUT", "port": 3}],
@@ -536,3 +539,26 @@ def test_what_a_flow_below_does_is_read_by_its_actions_never_by_an_empty_list(fa
                        "ip_proto": 6, "tcp_dst": 22}, actions, cookie=F.new_cookie(), hard=0)
     got = O.onward([partial, _f(0, {}, [{"type": "GOTO_TABLE", "table_id": 2}])], 0, 300, pair)
     assert got["reason"] == part and not got["ok"], got
+
+
+@pytest.mark.parametrize("family", [4, 6], ids=["ipv4", "ipv6"])
+def test_the_review_of_bcea1999_s_cases(family):
+    """The review of bcea1999: (1) a table with no table-miss drops what no flow takes, which
+    a hint on a port allow-list must not hide; (2) Mercury's own live drop of the source (a
+    response with a hard timeout) holds until it ends, so a rate limit above it may not send
+    its traffic on; (4) a flow shadowed by a covering flow above it takes none of the pair."""
+    pair = ONWARD_PAIRS[family]
+    v = "ipv4" if family == 4 else "ipv6"
+    allow = _f(10, {"in_port": 1}, [{"type": "GOTO_TABLE", "table_id": 2}])
+    got = O.onward([allow], 0, 300, pair, {"in_port": 1, "in_phy_port": 1})
+    assert not got["ok"] and got["reason"] == "may_drop", got
+    assert "table 0's default" in got["taker"]
+    miss = _f(0, {}, [{"type": "GOTO_TABLE", "table_id": 2}])
+    live = _f(100, {"eth_type": pair["eth_type"], f"{v}_src": pair[f"{v}_src"]}, [],
+              cookie=F.new_cookie(), hard=600)
+    assert O.onward([live, miss], 0, 300, pair)["reason"] == "drops", "the live drop holds"
+    partial = _f(150, {"eth_dst": "02:00:00:00:00:77"}, [{"type": "OUTPUT", "port": 4}])
+    covering = _f(100, {"eth_type": pair["eth_type"]}, [{"type": "GOTO_TABLE", "table_id": 2}])
+    shadowed = _f(50, {"eth_type": pair["eth_type"]}, [])
+    got = O.onward([partial, covering, shadowed, miss], 0, 300, pair)
+    assert got["reason"] not in ("may_drop", "drops"), "the flow at 50 takes none of it"

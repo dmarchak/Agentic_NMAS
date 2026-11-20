@@ -361,7 +361,12 @@ class TestTheFourIntents:
             self, lab):
         """C4126: where the table's own forwarding splits the traffic by destination MAC, the
         flow is sent on as the forwarding flow for the destination's learned MAC sends it."""
+        # A single table forwarding by destination MAC, its table-miss to the controller (a table
+        # with no miss drops what no flow takes, which Mercury refuses: the review of bcea1999).
         lab.fake.table[OVS1] = [
+            {"dpid": OVS1, "table_id": 0, "priority": 0, "cookie": 0x9A00000000000007,
+             "match": {}, "actions": [{"type": "OUTPUT", "port": "CONTROLLER"}],
+             "idle_timeout": 0, "hard_timeout": 0},
             {"dpid": OVS1, "table_id": 0, "priority": 1000, "cookie": 0x9A00000000000004,
              "match": {"eth_dst": "02:00:00:00:00:40"},
              "actions": [{"type": "OUTPUT", "port": 3}], "idle_timeout": 0, "hard_timeout": 0},
@@ -382,6 +387,9 @@ class TestTheFourIntents:
         """C4126: the destination's MAC unknown where the forwarding splits by MAC, or the
         flow below dropping the traffic: refused naming what was compared; nothing sent."""
         split = [
+            {"dpid": OVS1, "table_id": 0, "priority": 0, "cookie": 0x9A00000000000007,
+             "match": {}, "actions": [{"type": "OUTPUT", "port": "CONTROLLER"}],
+             "idle_timeout": 0, "hard_timeout": 0},
             {"dpid": OVS1, "table_id": 0, "priority": 1000, "cookie": 0x9A00000000000004,
              "match": {"eth_dst": "02:00:00:00:00:40"},
              "actions": [{"type": "OUTPUT", "port": 3}], "idle_timeout": 0, "hard_timeout": 0},
