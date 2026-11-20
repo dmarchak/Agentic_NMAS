@@ -115,6 +115,75 @@ def test_a_flood_is_answered_by_one_meter_and_the_source_s_flows_through_it():
     assert m["meter_id"] == 2 and m["expires_at"] is not None
 
 
+def _flood_on(monkeypatch, table, dst="192.0.2.99", mac="02:00:00:00:00:99"):
+    """The flood detection, its rate limit's one destination *dst* placed by the topology out
+    port 2, over a switch holding *table*: ``(detection, fake, preview)``."""
+    kw = {"flows": without("v6")}
+    baseline_runs(5, **kw)
+    observe(T0 + 50, second=rx(10000), **kw)
+    observe(T0 + 70, second=rx(10000), **kw)
+    out = observe(T0 + 80, second=rx(10000), **kw)
+    (d,) = [x for x in out["detections"] if x["rule"] == "flood"]
+    monkeypatch.setattr(CL, "_topology_ports", lambda drv, dpid, source, hosts=None: {
+        "ok": True, "error": "", "ports": {dst: 2}, "unplaced": []})
+    monkeypatch.setattr(CL, "_host_macs", lambda hosts: {dst: mac})
+    fake = FakeRyu(BASE, flows={1: table})
+    fake.driver = lambda network, name: C.driver_for(network, name, session=fake,
+                                                     sleep=lambda s: None)
+    return d, fake, CL.respond_to_threat("Default", d, "rate_limit_source", driver=fake.driver)
+
+
+@pytest.mark.usefixtures("lab")
+def test_a_table_0_split_by_ingress_port_is_followed_through_the_detection_s_port(monkeypatch):
+    """The review of 5d7799f0 (F): a pipeline whose table 0 hands each ingress port to the
+    forwarding table by its own flow splits the pair's traffic; the build follows it through
+    the port the threat entered by (the detection's), so the pair goes on by the goto."""
+    team = 0x9A00000000000001
+    kw = {"flows": without("v6")}
+    baseline_runs(5, **kw)
+    observe(T0 + 50, second=rx(10000), **kw)
+    observe(T0 + 70, second=rx(10000), **kw)
+    flood = [x for x in observe(T0 + 80, second=rx(10000), **kw)["detections"]
+             if x["rule"] == "flood"][0]
+    assert isinstance(flood["port"], int), "premise: the detection names its port"
+    table = [
+        {"dpid": 1, "table_id": 0, "priority": 100, "cookie": team,
+         "match": {"in_port": flood["port"]}, "actions": [{"type": "GOTO_TABLE", "table_id": 2}],
+         "idle_timeout": 0, "hard_timeout": 0},
+        {"dpid": 1, "table_id": 0, "priority": 100, "cookie": team + 1,
+         "match": {"in_port": flood["port"] + 1}, "actions": [{"type": "OUTPUT", "port": 7}],
+         "idle_timeout": 0, "hard_timeout": 0},
+        {"dpid": 1, "table_id": 2, "priority": 1000, "cookie": team + 2,
+         "match": {"eth_dst": "02:00:00:00:00:99"}, "actions": [{"type": "OUTPUT", "port": 2}],
+         "idle_timeout": 0, "hard_timeout": 0}]
+    _d, _fake, preview = _flood_on(monkeypatch, table)
+    assert preview["ok"], preview["error"]
+    _meter, *flows = preview["plan"]["steps"]
+    (body,) = [json.loads(s["request"]["body"]) for s in flows]
+    assert body["actions"][1:] == [{"type": "GOTO_TABLE", "table_id": 2}], body
+
+
+@pytest.mark.usefixtures("lab")
+def test_a_pair_the_network_drops_below_is_not_metered_and_never_forwarded(monkeypatch):
+    """The review of 5d7799f0 (A): a permanent drop below the response (a person's flow from
+    SDN › Flows, a duration-0 block policy) takes the pair's traffic; a rate limit above it
+    would send that traffic on. The pair is left unmetered, named with the flow that drops it,
+    and with nothing left to meter the response is refused before any request."""
+    from modules.sdn import flow_intent as FI
+    table = [
+        {"dpid": 1, "table_id": 0, "priority": 0, "cookie": 0x9A00000000000001, "match": {},
+         "actions": [{"type": "GOTO_TABLE", "table_id": 2}], "idle_timeout": 0,
+         "hard_timeout": 0},
+        {"dpid": 1, "table_id": 0, "priority": 120, "cookie": FI.new_cookie(),
+         "match": {"eth_type": 0x0800, "ipv4_dst": "192.0.2.99"}, "actions": [],
+         "idle_timeout": 0, "hard_timeout": 0}]
+    _d, fake, preview = _flood_on(monkeypatch, table)
+    assert not preview["ok"]
+    assert "nothing of" in preview["error"] and "left to meter" in preview["error"]
+    assert "192.0.2.99 (already dropped below it by the flow at priority 120" in preview["error"]
+    assert fake.writes == []
+
+
 @pytest.mark.usefixtures("lab")
 def test_a_rate_limit_follows_the_pipeline_s_forwarding_through_a_reroute_and_back(monkeypatch):
     """C4153 (the Lab 9 hardware, 2026-11-20): a rate limit's pair flow sent its traffic out
@@ -131,9 +200,9 @@ def test_a_rate_limit_follows_the_pipeline_s_forwarding_through_a_reroute_and_ba
     out = observe(T0 + 80, second=rx(10000), **kw)
     (d,) = [x for x in out["detections"] if x["rule"] == "flood"]
     dst, mac = "192.0.2.99", "02:00:00:00:00:99"
-    monkeypatch.setattr(CL, "_topology_ports", lambda drv, dpid, source: {
+    monkeypatch.setattr(CL, "_topology_ports", lambda drv, dpid, source, hosts=None: {
         "ok": True, "error": "", "ports": {dst: 2}, "unplaced": []})
-    monkeypatch.setattr(CL, "_host_macs", lambda drv: {dst: mac})
+    monkeypatch.setattr(CL, "_host_macs", lambda hosts: {dst: mac})
     team = 0x9A00000000000001
     table = [
         {"dpid": 1, "table_id": 0, "priority": 0, "cookie": team, "match": {},

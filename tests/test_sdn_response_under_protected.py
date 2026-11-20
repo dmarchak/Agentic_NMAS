@@ -268,6 +268,22 @@ def test_a_rate_limit_s_carried_ask_goes_on_by_a_goto_or_one_port_and_nothing_el
         assert "through the meter, then a goto to a later table or one numbered port" in got
 
 
+@pytest.mark.parametrize("action_id", ["rate_limit_source", "drop_source"])
+@pytest.mark.parametrize("tamper", [
+    lambda a: a["changes"][-1]["flow"].update(actions=["x", "y"]),
+    lambda a: a["changes"][-1].update(flow=["not", "a", "flow"]),
+    lambda a: a["changes"][-1]["flow"].update(match=["eth_type", 2048]),
+    lambda a: a["changes"][0].update(meter=["a list"]),
+], ids=["actions", "flow", "match", "meter"])
+def test_a_carried_ask_whose_parts_are_not_objects_is_refused_never_raised(action_id, tamper):
+    """The review of 5d7799f0 (E): a confirm's carried ask is a page's, so a part may be the
+    wrong type; the shape check refuses it in words, where it raised AttributeError."""
+    ask = _rate_ask([{"type": "GOTO_TABLE", "table_id": 2}])
+    tamper(ask)
+    got = CL.response_shape_refusal(ask, action_id)
+    assert got.startswith(f"the confirm's ask is not in the shape {action_id} makes")
+
+
 def test_a_person_s_plan_carrying_a_response_s_fields_is_the_person_s(owned):
     _with(owned, ARISTA)
     ask = {"connection": "lab-controller", "dpid": 1, "response": True, "action": "drop_source",

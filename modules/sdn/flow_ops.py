@@ -290,9 +290,10 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
     the flows there split the traffic (a single table forwarding by destination MAC), the
     packet is followed (`trace.select`) with *match*'s exact values and what *hint* knows (the
     destination's learned MAC, the source's port), and the flow that takes it gives its
-    instructions. ``{"ok", "actions", "words", "error"}``: refused, naming the flows compared,
-    when no flow takes the traffic, the one that does drops or meters it, or the packet cannot
-    be followed."""
+    instructions. ``{"ok", "actions", "words", "error", "reason", "taker"}``: refused, naming
+    the flows compared, when no flow takes the traffic, the one that does drops or meters it,
+    or the packet cannot be followed; *reason* says which (``drops``, ``meters``, ``split``),
+    *taker* the flow that takes it and what it does, where one does."""
     from modules.sdn import flow_intent, trace
 
     hint = dict(hint or {})
@@ -317,13 +318,15 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
         acts = [dict(a) for a in f.get("actions") or []]
         said = f"{trace._ref(f)}: {flow_intent.action_words(acts)}"
         if not acts:
-            return {"ok": False, "actions": [], "words": "", "error": (
-                f"its traffic is taken below it by {said}, which drops it, so there is "
-                "nothing to send on")}
+            return {"ok": False, "actions": [], "words": "", "reason": "drops",
+                    "taker": said, "error": (
+                        f"its traffic is taken below it by {said}, which drops it, so there is "
+                        "nothing to send on")}
         if any(a.get("type") == "METER" for a in acts):
-            return {"ok": False, "actions": [], "words": "", "error": (
-                f"its traffic is taken below it by {said}, which meters it already")}
-        return {"ok": True, "actions": acts, "error": "",
+            return {"ok": False, "actions": [], "words": "", "reason": "meters",
+                    "taker": said, "error": (
+                        f"its traffic is taken below it by {said}, which meters it already")}
+        return {"ok": True, "actions": acts, "error": "", "reason": "", "taker": said,
                 "words": f"then on as {said} ({how})"}
 
     for p in sorted({int(f.get("priority") or 0) for f in below}, reverse=True):
@@ -350,8 +353,8 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
                    "switch would drop it")
     else:
         why = "its match is not one packet's (a subnet), so it cannot be followed"
-    return {"ok": False, "actions": [], "words": "", "error": (
-        f"the switch's flows below it split its traffic and {why}")}
+    return {"ok": False, "actions": [], "words": "", "reason": "split", "taker": "",
+            "error": f"the switch's flows below it split its traffic and {why}"}
 
 
 def free_meter_id(meters: list, features: dict = None, taken=(), flows=()) -> int:

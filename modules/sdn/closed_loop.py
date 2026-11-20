@@ -1523,14 +1523,15 @@ def _forwarding(flows: list, source: str, target: str) -> list:
     return sorted(ports, key=str)
 
 
-def _port_hosts(drv, connection: str, dpid: int, port) -> dict:
+def _port_hosts(drv, connection: str, dpid: int, port, hosts: dict = None) -> dict:
     """The host the controller's topology lists on switch *dpid*'s *port*, read from the
     controller now (C2002): `detect.port_source`'s answer over the driver's hosts and links,
     the one resolver a detection uses on the stored read. For a detection kept before the
-    detection named its source, or one whose topology could not be read when it fired."""
+    detection named its source, or one whose topology could not be read when it fired. *hosts*
+    is the controller's hosts already read by this build (`build_response`), else read here."""
     from modules.sdn import detect
 
-    hosts, links = drv.hosts(), drv.links()
+    hosts, links = (drv.hosts() if hosts is None else hosts), drv.links()
     bad = next((g for g in (hosts, links) if not g.get("ok")), None)
     if bad is not None:
         topo = {"state": "could not read", "controllers": [],
@@ -1573,7 +1574,7 @@ def source_choice(detection: dict) -> dict:
     return {"how": "", "state": "", "port": d.get("port"), "hosts": [], "words": ""}
 
 
-def _topology_ports(drv, dpid: int, source: str) -> dict:
+def _topology_ports(drv, dpid: int, source: str, hosts: dict = None) -> dict:
     """Where switch *dpid* sends each host's traffic, from the controller's topology (the
     operator's order for Lab 8's objective 3.1: a scan's L4 flows expire in seconds and leave
     only the controller's L2 pair, so a person's preview cannot read the forwarding from the
@@ -1582,8 +1583,8 @@ def _topology_ports(drv, dpid: int, source: str) -> dict:
     hangs on *dpid*, else out of the first link of the shortest path of links toward its
     switch; a host with no IPv4 address, one listed on an inter-switch link port, or one no
     link reaches is named in *unplaced*. ``ok`` False, with the read's error, when the
-    topology cannot be read."""
-    hosts, links = drv.hosts(), drv.links()
+    topology cannot be read. *hosts* is this build's own read of them, else read here."""
+    hosts, links = (drv.hosts() if hosts is None else hosts), drv.links()
     for got in (hosts, links):
         if not got.get("ok"):
             return {"ok": False, "ports": {}, "unplaced": [],
@@ -1781,7 +1782,8 @@ def _flow_by_ref(flows: list, connection: str, dpid: int, ref: str):
     return None
 
 
-def _response_source(drv, connection: str, dpid: int, detection: dict, params: dict) -> tuple:
+def _response_source(drv, connection: str, dpid: int, detection: dict, params: dict,
+                     hosts: dict = None) -> tuple:
     """``(source, sources)``: the address a drop or rate limit of *detection* acts on, and
     every one it could (C2002). The detection's own (its source, or the sources its flows
     name); else, for a port's detection, the hosts on its port (`source_choice`: as kept with
@@ -1808,7 +1810,8 @@ def _response_source(drv, connection: str, dpid: int, detection: dict, params: d
         found = source_choice(detection)
         if found["state"] not in NOTHING_TO_CHOOSE + ("several",):
             # Not read when it fired, or kept before the detection named its source.
-            found, live = _port_hosts(drv, connection, dpid, detection.get("port")), True
+            found, live = _port_hosts(drv, connection, dpid, detection.get("port"),
+                                      hosts=hosts), True
         sources = [h["address"] for h in found.get("hosts") or []]
         if found.get("words"):
             params["source_from"] = found["words"]
@@ -1946,7 +1949,9 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
         recorded = [r.get("cookie") for r in intent["flows"]]
         changes = []
         if action_id in ("drop_source", "rate_limit_source"):
-            source, _seen = _response_source(drv, conn, dpid, detection, out["params"])
+            hosts = drv.hosts()               # the controller's hosts, read once for this build
+            source, _seen = _response_source(drv, conn, dpid, detection, out["params"],
+                                             hosts=hosts)
             hard = _hard_timeout(network, out["params"])
             # Below the flows serving each protected class the source's match meets, in table
             # 0, and above the rest it meets under them (Lab 9 Part B, 2026-11-20), so the
@@ -1963,7 +1968,6 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
             out["params"].update(source=source, hard_timeout=hard, priority=priority)
             # The host's other addresses, as the controller's topology lists them (C2148):
             # the flow matches the one address, and the preview names what it leaves.
-            hosts = drv.hosts()                       # read once for this build
             out["same_host"] = _same_host(drv, source, hosts)
             if action_id == "drop_source":
                 changes.append({"do": "add_flow", "flow": {
@@ -1999,7 +2003,7 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                 # seconds, and a person's preview comes later). An IPv6 source takes the
                 # flows: the topology's ports are used for an IPv4 source (C1997).
                 v4 = ipaddress.ip_address(source).version == 4
-                topo = (_topology_ports(drv, dpid, source) if v4 else
+                topo = (_topology_ports(drv, dpid, source, hosts=hosts) if v4 else
                         {"ok": False, "ports": {}, "unplaced": [],
                          "error": "the source is IPv6, and the topology's ports are used for "
                                   "an IPv4 source only"})
@@ -2038,34 +2042,51 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                 # forwarding as read now, is sent, and the preview says it is fixed.
                 macs = _host_macs(hosts)
                 ingress = detection.get("port")
-                onward_words = []
+                onward_words, pairs = [], []
                 for target, port in found.items():
                     m = _pair_match(source, target)
                     mac = macs.get(_canon(target))
                     # What is known of the pair's packets: the destination's MAC, and the port
                     # the source's traffic enters by (the detection's), for a table that
-                    # forwards by MAC or by in_port.
+                    # forwards by MAC or by in_port. Built here, apart from B2's
+                    # `policy_intent._hint`, since a response has the controller's live hosts
+                    # and the port the threat entered by, and a policy has NetBox's hosts and
+                    # where NetBox cables its source (the review of 5d7799f0, D).
                     hint = dict({"eth_dst": mac} if mac else {},
                                 **({"in_port": ingress, "in_phy_port": ingress}
                                    if isinstance(ingress, int) else {}))
                     on = flow_ops.onward(read["flows"], 0, priority, m, hint)
+                    if on.get("reason") in ("drops", "meters"):
+                        # The network's own flow below already drops it, or meters it (a
+                        # person's flow, a permanent policy): a rate limit above would undo
+                        # that, so this pair is not metered, and said (the review of 5d7799f0).
+                        not_metered.append(f"{target} (already "
+                                           f"{'dropped' if on['reason'] == 'drops' else 'metered'}"
+                                           f" below it by {on['taker']})")
+                        continue
                     goto = (on["ok"] and len(on["actions"]) == 1
                             and on["actions"][0].get("type") == "GOTO_TABLE")
                     then = on["actions"] if goto else [{"type": "OUTPUT", "port": port}]
-                    # Why the port is fixed, as the switch's own flows were read (the review of
-                    # ce2318df): onward's own refusal, or a single table's forwarding flow.
+                    # Why the port is fixed, and which: onward's own refusal (a split table it
+                    # cannot follow), or a single table's flow, named with what it does (it may
+                    # send it to the controller, or out another port than the topology's).
                     why = (on["error"] if not on["ok"] else
-                           f"this switch's own flows below it send it out a port themselves "
-                           f"({on['words'][len('then on as '):]})")
+                           f"the flow its traffic takes below it, {on['taker']}, hands it to no "
+                           "later table")
                     said = on["words"] if goto else (
-                        f"out port {port}, the port {ports_from} gives: {why}")
+                        f"out port {port}, the port {ports_from} gives, fixed: {why}")
                     if said not in onward_words:
                         onward_words.append(said)
+                    pairs.append(target)
                     changes.append({"do": "add_flow", "flow": {
                         "table_id": 0, "priority": priority, "cookie": flow_intent.new_cookie(),
                         "idle_timeout": 0, "hard_timeout": hard, "match": m,
                         "actions": [{"type": "METER", "meter_id": meter_id}] + then}})
-                out["params"].update(targets=list(found), not_metered=not_metered,
+                if not pairs:
+                    raise ResponseRefused(
+                        f"nothing of {source}'s traffic is left to meter on switch {dpid}: "
+                        f"{'; '.join(not_metered)}")
+                out["params"].update(targets=pairs, not_metered=not_metered,
                                      ports_from=ports_from, onward=onward_words)
         else:
             ref = (detection.get("subject") or {}).get("value")
@@ -2155,6 +2176,18 @@ def response_shape_refusal(ask: dict, action_id: str) -> str:
     if not changes or not all(isinstance(c, dict) for c in changes):
         return "the confirm's ask carries no changes"
     words = f"the confirm's ask is not in the shape {action_id} makes"
+
+    def objects(c):
+        # A carried ask is a page's, so any part may be the wrong type: refused, never raised
+        # (the review of 5d7799f0, E).
+        f, meter = c.get("flow", {}), c.get("meter", {})
+        return (isinstance(f, dict) and isinstance(meter, dict)
+                and isinstance(f.get("match", {}), dict)
+                and isinstance(f.get("actions", []), list)
+                and all(isinstance(a, dict) for a in f.get("actions") or []))
+
+    if not all(objects(c) for c in changes):
+        return f"{words}: a flow, its match, its actions or a meter is not an object"
 
     def mercury(flow):
         return flow_intent.is_mercury(protected.cookie_number(flow.get("cookie")))
