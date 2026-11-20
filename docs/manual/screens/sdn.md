@@ -432,7 +432,9 @@ mode and whether the loop is running.
   Lab 9 fabric, the management and control-channel classes), the card says **Not offered**
   and why. A scan Mercury's tripwires confirmed is proposed as a rate limit in packets a second
   (20 a second, a burst of 10); its target's replies to the probes (from the watched subnet,
-  small packets, beginning with the scan) join its incident, never a flood of their own. Where the loop has logged the threat as no longer active,
+  small packets, sent to the scanner, or where nothing names their destination at a rate
+  within twice the scanner's own and beginning with it) join its incident, never a flood of
+  their own. Where the loop has logged the threat as no longer active,
   the preview says **No longer active**, when, and that no switch has shown it since, above
   **Send**: sending is still your choice. **Dismiss with this reason** closes it, sending nothing
   (on an incident seen on several switches, **Dismiss the incident (N switches) with this

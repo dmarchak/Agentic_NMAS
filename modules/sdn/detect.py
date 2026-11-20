@@ -1055,7 +1055,7 @@ def mark_replies(detections: list, collected: dict) -> list:
     scans = [s for s in detections
              if s.get("rule") == "scan" and s.get("basis") == "tripwire" and s.get("source")]
     for d in [x for x in rate if id(x) not in marks] if scans else []:
-        s = scan_replied(d, scans, _mean_packet(collected, d))
+        s = scan_replied(d, scans, _mean_packet(collected, d), peers=rate)
         if s is not None:
             marks[id(d)] = {
                 "source": s["source"], "rule": "scan", "port": s.get("port"),
@@ -1075,13 +1075,33 @@ def mark_replies(detections: list, collected: dict) -> list:
     return out
 
 
-def scan_replied(d: dict, scans: list, mean, max_mean: float = None):
+#: How far a target's reply rate may be from its scanner's own before they are not called
+#: one exchange (a target answers each probe once, an RST or a SYN-ACK).
+REPLY_RATE_RATIO = 2.0
+
+
+def _rate_of(d: dict):
+    v = (d.get("measurement") or {}).get("value")
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0         else None
+
+
+def mirrors(reply_pps, scanner_pps) -> bool:
+    """Whether a reply rate mirrors its scanner's: each within `REPLY_RATE_RATIO` of the other."""
+    if not reply_pps or not scanner_pps:
+        return False
+    return 1 / REPLY_RATE_RATIO <= reply_pps / scanner_pps <= REPLY_RATE_RATIO
+
+
+def scan_replied(d: dict, scans: list, mean, max_mean: float = None, peers=()):
     """The scan among *scans* (Mercury's tripwires confirmed each) that rate detection *d* is
     the replies to, or None: *d*'s source is not the scanner, lies in a subnet the scan's
     tripwires watched (its ``measurement.watched``), sends small packets (*mean*, its port's
     mean received packet, at most the flood's size, `sdn_flood_max_mean_bytes`; unread: None,
-    never taken as replies), and its destinations, where its flows or the topology name any,
-    include the scanner. A flood from that subnet to another host is no reply."""
+    never taken as replies), and its destinations include the scanner, where its flows or the
+    topology name any. Where they name none, the scanner's own rate detection among *peers*
+    (the same pass's) must be there, its rate mirroring *d*'s (`mirrors`): a target answers
+    each probe once, and a second host of the subnet flooding at its own rate is its own (the
+    review of 37e377db, 1). A flood from that subnet to another host is no reply."""
     max_mean = THRESHOLDS["sdn_flood_max_mean_bytes"] if max_mean is None else max_mean
     src = _canon_addr(d.get("source"))
     if not src or mean is None or mean > max_mean:
@@ -1094,6 +1114,9 @@ def scan_replied(d: dict, scans: list, mean, max_mean: float = None):
     for s in scans:
         scanner = _canon_addr(s.get("source"))
         if not scanner or scanner == src or (dests and scanner not in dests):
+            continue
+        if not dests and not any(_canon_addr(p.get("source")) == scanner
+                                 and mirrors(_rate_of(d), _rate_of(p)) for p in peers):
             continue
         nets = []
         for n in (s.get("measurement") or {}).get("watched") or []:

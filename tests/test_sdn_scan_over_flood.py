@@ -38,10 +38,11 @@ def scan(source=SRC, at=T0 + 60, basis="tripwire"):
                              "unit": "ports", "of": 16, "watched": [WATCHED]})
 
 
-def flood(source=SRC, at=T0, since=None):
-    """A flood in `detect.flood`'s shape, its measurement's ``since`` *since* (default *at*)."""
+def flood(source=SRC, at=T0, since=None, pps=250):
+    """A flood in `detect.flood`'s shape at *pps*, its measurement's ``since`` *since*
+    (default *at*)."""
     return dict(det(3, source, "flood", at=at), basis="rate", targets=[], port=3,
-                measurement={"what": "packets received a second", "value": 250, "unit": "pps",
+                measurement={"what": "packets received a second", "value": pps, "unit": "pps",
                              "since": LP._iso(at if since is None else since)})
 
 
@@ -184,17 +185,25 @@ def _collected(port_bytes):
             {"port_no": 3, "rx_pps": 250.0, "rx_bytes_per_s": 250.0 * port_bytes}]}]}]}
 
 
-@pytest.mark.parametrize("target,size,dests,replies", [
-    ("192.0.2.62", 54, [], True),
-    ("192.0.2.62", 1500, [], False),
-    ("198.51.100.62", 54, [], False),
-    ("192.0.2.62", 54, ["192.0.2.99"], False),
-    ("192.0.2.62", 54, [SRC], True),
-], ids=["rsts", "large", "another-subnet", "to-another-host", "to-the-scanner"])
-def test_the_scan_s_target_s_small_packets_are_its_replies(target, size, dests, replies):
+@pytest.mark.parametrize("target,size,dests,peer,replies", [
+    ("192.0.2.62", 54, [], 250, True),
+    ("192.0.2.62", 54, [], None, False),
+    ("192.0.2.62", 54, [], 4000, False),
+    ("192.0.2.62", 1500, [], 250, False),
+    ("198.51.100.62", 54, [], 250, False),
+    ("192.0.2.62", 54, ["192.0.2.99"], 250, False),
+    ("192.0.2.62", 54, [SRC], None, True),
+], ids=["rsts-mirroring-the-scanner", "unnamed-with-no-scanner-rate",
+        "unnamed-at-another-rate", "large", "another-subnet", "to-another-host",
+        "named-to-the-scanner"])
+def test_the_scan_s_target_s_small_packets_are_its_replies(target, size, dests, peer, replies):
+    """Where a reply's destinations are unnamed (the Lab 9 fabric's table 0 names none), the
+    scanner's own rate in the pass must mirror it (the review of 37e377db, 1): a second host of
+    the subnet flooding at its own rate, or with no scanner traffic beside it, is its own."""
     from modules.sdn import detect as D
     reply = dict(flood(source=target), dst_hosts=dests)
-    marked = D.mark_replies([scan(), reply], _collected(size))
+    peers = [flood(pps=peer)] if peer else []
+    marked = D.mark_replies([scan(), reply] + peers, _collected(size))
     (got,) = [m for m in marked if m["key"] == reply["key"]]
     if replies:
         assert got["source"] is None and got["replying_to"]["rule"] == "scan"
@@ -206,7 +215,7 @@ def test_the_scan_s_target_s_small_packets_are_its_replies(target, size, dests, 
 def test_the_replies_in_the_scan_s_pass_join_its_incident():
     from modules.sdn import detect as D
     reply = flood(source="192.0.2.62")
-    (marked,) = [m for m in D.mark_replies([scan(), reply], _collected(54))
+    (marked,) = [m for m in D.mark_replies([scan(), reply, flood()], _collected(54))
                  if m["key"] == reply["key"]]
     a_pass([scan(), marked], at=T0 + 60)
     assert list(waiting()) == [f"scan|{SRC}"], waiting()
@@ -214,15 +223,16 @@ def test_the_replies_in_the_scan_s_pass_join_its_incident():
     assert marked["key"] in row["members"]
 
 
-@pytest.mark.parametrize("began,joins", [(T0 + 2, True), (T0 - 200, False)],
-                         ids=["with-the-scan", "long-before"])
-def test_a_reply_flood_already_waiting_joins_the_scan_that_began_with_it(began, joins):
+@pytest.mark.parametrize("began,pps,joins", [(T0 + 2, 250, True), (T0 - 200, 250, False),
+                                              (T0 + 2, 5000, False)],
+                         ids=["with-the-scan", "long-before", "at-its-own-rate"])
+def test_a_reply_flood_already_waiting_joins_the_scan_that_began_with_it(began, pps, joins):
     """The hardware's order: scan A's 250 pps made the scanner's flood and its target's RSTs a
     flood of their own, both waiting; the tripwire scan then opens and takes both. A flood from
     the subnet that did not begin with the scanner's own is its own."""
     a_pass([flood(at=T0)])
-    a_pass([flood(source="192.0.2.62", at=began, since=began)], at=max(T0, began),
-           still=[flood(at=T0), flood(source="192.0.2.62", at=began, since=began)])
+    a_pass([flood(source="192.0.2.62", at=began, since=began, pps=pps)], at=max(T0, began),
+           still=[flood(at=T0), flood(source="192.0.2.62", at=began, since=began, pps=pps)])
     a_pass([scan(at=T0 + 60)], at=T0 + 60)
     want = {f"scan|{SRC}"} | (set() if joins else {"flood|192.0.2.62"})
     assert set(waiting()) == want, waiting()

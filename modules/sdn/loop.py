@@ -1186,9 +1186,10 @@ def _scan_supersedes(network: str, proposed: list, now: float, line) -> list:
 def _replies_to(rows: list, scan: dict, src: str, floods: list) -> list:
     """The flood incidents awaiting a person (among *rows*) that are the replies to the
     confirmed *scan* from *src*: from a host in a subnet its tripwires watched, other than
-    *src*, whose destinations (where named) include *src*, and whose flood began within its
-    window of one of *src*'s own *floods* (the scanner's traffic and its target's replies
-    begin together; a flood that did not is its own)."""
+    *src*, whose destinations include *src* where named (where unnamed, its rate mirroring
+    one of *src*'s own *floods*, `detect.mirrors`), and whose flood began within its window
+    of one of *src*'s own *floods* (the scanner's traffic and its target's replies begin
+    together; a flood that did not is its own)."""
     import ipaddress
 
     from modules.sdn import detect, incidents
@@ -1217,6 +1218,12 @@ def _replies_to(rows: list, scan: dict, src: str, floods: list) -> list:
             continue
         dests = detect._destinations(d) - {""}           # noqa: SLF001 (its own reading)
         if dests and src not in dests:
+            continue
+        # Destinations unnamed: its rate must mirror one of the scanner's own floods (the
+        # review of 37e377db, 1), so a second host of the subnet flooding is its own.
+        if not dests and not any(detect.mirrors(detect._rate_of(d),  # noqa: SLF001
+                                                detect._rate_of(f.get("detection") or {}))
+                                 for f in floods):
             continue
         since = incidents._epoch((d.get("measurement") or {}).get("since"))  # noqa: SLF001
         window = int((r.get("incident") or {}).get("window_s") or 0)
