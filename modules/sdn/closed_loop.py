@@ -158,10 +158,13 @@ def coverage(flows: list) -> dict:
     it has none), saying how many such flows it has, and its ports' rates are judged as High
     packet rate (`detect.scan`'s fallback)."""
     from modules.sdn.detect import _address
+    from modules.sdn.flow_intent import is_tripwire
 
     counts = {g: 0 for g in GRANULARITIES}
     sourced = unsourced = 0
-    for f in flows:
+    # Mercury's tripwires (the scan probe) are L4 flows naming a source, written to watch one;
+    # they say nothing of what the network's own flows can show, so they are left out.
+    for f in [f for f in flows if not is_tripwire(f.get("cookie"))]:
         g = granularity(f.get("match"))
         counts[g] += 1
         if g == "L4":
@@ -1462,6 +1465,17 @@ def save_policy(network: str, value: dict, *, actor: str, actor_verified: str = 
             "unchanged": False, "recorded": entry.get("recorded", False)}
 #: The rate-limit's defaults: NOT measured, a starting point the person changes in the preview.
 RATE_LIMIT_DEFAULT = {"unit": "kbps", "rate": 1000, "burst": 100}
+#: A scan's rate limit is in packets a second (the operator, 2026-11-20: a 1 Mbit/s cap does not
+#: slow a 250 pps SYN scan, whose packets are about 60 bytes): the default for the scan rule and
+#: for a High packet rate answered as the scan rule's (C4124, `answered_rule`), a kbit/s one
+#: refused for it. A large-packet stream is answered as the flood rule's, in kbit/s. NOT
+#: measured either: a starting point the person changes in the preview.
+SCAN_RATE_LIMIT_DEFAULT = {"unit": "pktps", "rate": 20, "burst": 10}
+
+
+def rate_limit_default(rule: str) -> dict:
+    """The rate limit's default parameters for a response answering *rule* (`answered_rule`)."""
+    return dict(SCAN_RATE_LIMIT_DEFAULT if rule == "scan" else RATE_LIMIT_DEFAULT)
 RATE_UNITS = {"kbps": "KBPS", "pktps": "PKTPS"}
 
 
@@ -1500,6 +1514,115 @@ def _pair_match(source: str, target: str) -> dict:
 def _sources(detection: dict) -> list:
     out = [s for s in [detection.get("source")] + list(detection.get("sources") or []) if s]
     return list(dict.fromkeys(out))
+
+
+# ───────────────────────────────────────────────────────────────────────── the tripwire (A)
+
+#: The TCP ports a port scan always touches (Lab 9 A, the follow-ups of 2026-11-20, section 3):
+#: one tripwire flow each. 53 is left out (the network's own DNS-over-TCP flows, and the dns-tcp
+#: protected class).
+TRIPWIRE_PORTS = (21, 22, 23, 25, 80, 110, 135, 139, 143, 443, 445, 993, 995, 3306, 3389, 8080)
+#: How long a tripwire stays (its hard timeout): long enough for a scan at 250 pps to touch
+#: most of its ports many times over, short enough that it never stays as configuration.
+TRIPWIRE_SECONDS = 120
+
+
+def recorded_subnet(network: str, source: str):
+    """The subnet NetBox records *source* in (its interface address's prefix, as the committed
+    NSOT export holds it: an interface at ``a.b.c.d/24`` gives ``a.b.c.0/24``), or None
+    where NetBox holds no host with that address and a prefix, or the export cannot be read."""
+    import ipaddress
+
+    from modules.nsot import export as X
+
+    got = X.read(network)
+    if not got.get("ok"):
+        return None
+    try:
+        want = ipaddress.ip_address(str(source).strip())
+    except ValueError:
+        return None
+    for h in X.hosts_of(got["export"]) or []:
+        for i in h.get("interfaces") or []:
+            for a in i.get("ip_addresses") or []:
+                try:
+                    iface = ipaddress.ip_interface(str(a).strip())
+                except ValueError:
+                    continue
+                if iface.ip == want and iface.network.prefixlen < iface.max_prefixlen:
+                    return iface.network
+    return None
+
+
+def tripwire_ask(network: str, detection: dict, *, driver=None) -> dict:
+    """The tripwire for a watched High packet rate (Lab 9 A, the operator's go of 2026-11-20 on
+    the step-4 measurement): on the switch the source enters by, one Mercury flow per
+    `TRIPWIRE_PORTS` port, each ``{eth_type, <family>_src: the source, <family>_dst: the subnet
+    NetBox records the source in, ip_proto 6, tcp_dst: the port}``, going on by the switch's own
+    goto to a later table (`flow_ops.onward`, so forwarding is unchanged), for
+    `TRIPWIRE_SECONDS`, its cookie a tripwire's (`flow_intent.tripwire_cookie`), which coverage
+    and the scan rule's sightings leave out and `detect._tripwire_scans` counts. The destination
+    is the source's own subnet so the flows meet no management class (an untouchable class that
+    matches every destination in the management network): a scan beyond that subnet is not
+    watched, said. A person's flow operation (the flow editor's preview, confirm by hash and
+    Verify), never a response. ``{"ok", "error", "ask", "words"}``."""
+    import ipaddress
+
+    from modules.sdn import flow_intent, flow_ops
+    from modules.sdn.drivers.base import parse_dpid
+
+    out = {"ok": False, "error": "", "ask": None, "words": ""}
+    source = str(detection.get("source") or "")
+    conn = detection.get("connection") or ""
+    try:
+        dpid = parse_dpid(detection.get("dpid") if detection.get("dpid") is not None
+                          else detection.get("dpid_hex"))
+        addr = ipaddress.ip_address(source)
+    except Exception:                                 # noqa: BLE001 (said)
+        return dict(out, error="the watched row names no one source address and switch, so "
+                               "there is nothing to watch")
+    subnet = recorded_subnet(network, source)
+    if subnet is None or subnet.version != addr.version:
+        return dict(out, error=(f"NetBox records no subnet for {source} (no host's interface "
+                                "holds it with a prefix in the committed NSOT export): the "
+                                "tripwire's destinations are that subnet, so nothing is "
+                                "written; export from NetBox on SDN › Apps"))
+    made = flow_ops._driver(network, conn, driver)    # noqa: SLF001 (the core's own reader)
+    if not made.get("ok"):
+        return dict(out, error=made.get("error") or f"no driver for {conn!r}")
+    read = flow_ops._read_switch(made["driver"], dpid, False)  # noqa: SLF001
+    if not read["ok"]:
+        return dict(out, error=read["error"])
+    fam = "ipv4" if addr.version == 4 else "ipv6"
+    own = (made.get("connection") or {}).get("own_cookies") or [0]
+    changes, onward = [], ""
+    for port in TRIPWIRE_PORTS:
+        match = {"eth_type": 0x0800 if addr.version == 4 else 0x86DD,
+                 f"{fam}_src": addr.compressed, f"{fam}_dst": subnet.compressed,
+                 "ip_proto": 6, "tcp_dst": port}
+        priority = flow_ops.response_priority(read["flows"], own, (), match=match)
+        on = flow_ops.onward(read["flows"], 0, priority, match, {})
+        goto = (on["ok"] and len(on["actions"]) == 1
+                and on["actions"][0].get("type") == "GOTO_TABLE")
+        if not goto:
+            return dict(out, error=(
+                f"a tripwire goes on only by the switch's own goto to a later table, so "
+                f"forwarding is unchanged, and on switch {detection.get('dpid_hex') or dpid} "
+                f"TCP {port} from {source} does not: {on['error'] or on['words']}"))
+        onward = on["words"]
+        changes.append({"do": "add_flow", "flow": {
+            "table_id": 0, "priority": priority, "cookie": flow_intent.tripwire_cookie(),
+            "idle_timeout": 0, "hard_timeout": TRIPWIRE_SECONDS, "match": match,
+            "actions": [dict(a) for a in on["actions"]]}})
+    from modules.sdn.detect import TRIPWIRE_NEED
+    return dict(out, ok=True, ask={"connection": conn, "dpid": dpid, "changes": changes},
+                words=(f"{len(changes)} tripwires on switch {detection.get('dpid_hex') or dpid}"
+                       f" for {source}: TCP {', '.join(map(str, TRIPWIRE_PORTS))} to "
+                       f"{subnet.compressed}, the subnet NetBox records it in, each {onward}, "
+                       f"for {TRIPWIRE_SECONDS} s. A source that touches {TRIPWIRE_NEED} or "
+                       "more of them is called a scan, of high confidence; ordinary traffic "
+                       f"touches one or two. A scan beyond {subnet.compressed} is not "
+                       "watched."))
 
 
 def _forwarding(flows: list, source: str, target: str) -> list:
@@ -1977,12 +2100,18 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                     "idle_timeout": 0, "hard_timeout": hard, "match": _source_match(source),
                     "actions": []}})
             else:
-                unit = str(out["params"].get("unit") or RATE_LIMIT_DEFAULT["unit"]).lower()
+                answers = answered_rule(detection)
+                base = rate_limit_default(answers)
+                unit = str(out["params"].get("unit") or base["unit"]).lower()
                 if unit not in RATE_UNITS:
                     raise ResponseRefused(f"a rate is in {' or '.join(RATE_UNITS)}, not {unit!r}")
+                if answers == "scan" and unit != "pktps":
+                    raise ResponseRefused(
+                        f"a scan's rate limit is in packets a second (pktps), not {unit}: a "
+                        "scan's packets are small, so a bit-rate cap does not slow it")
                 try:
-                    rate = int(out["params"].get("rate", RATE_LIMIT_DEFAULT["rate"]))
-                    burst = int(out["params"].get("burst", RATE_LIMIT_DEFAULT["burst"]))
+                    rate = int(out["params"].get("rate", base["rate"]))
+                    burst = int(out["params"].get("burst", base["burst"]))
                 except (TypeError, ValueError):
                     raise ResponseRefused("a rate and a burst are whole numbers") from None
                 if rate < 1 or burst < 0:
@@ -2512,7 +2641,10 @@ def log_response(network: str, done: dict, *, action: str, who: str, ask: dict =
         switch = dpid_hex(parse_dpid(dpid))
     except Exception:                                 # noqa: BLE001 (said as given)
         switch = str(dpid or "unknown")
-    name = _switch_name(network, conn, dpid) if dpid is not None else ""
+    from modules.sdn import known
+
+    # NetBox's name, else the switch's own description, never Open vSwitch's "None" (queue 16).
+    name = known.name_of(network, conn, dpid)
     shown = f"{switch} ({name})" if name else switch
     words = response_words(done, action=action, who=who, switch=shown)
     if basis:

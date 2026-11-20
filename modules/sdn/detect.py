@@ -447,6 +447,59 @@ def _detection(rule: str, collected: dict, ctl: dict, sw: dict, *, subject: tupl
 
 # ───────────────────────────────────────────────────────────────────────────── scan
 
+#: How many of a source's tripwires (Lab 9 A: Mercury's flows, one a TCP port a scan touches,
+#: `closed_loop.TRIPWIRE_PORTS`) must have taken a packet for it to be called a scan: ordinary
+#: traffic touches one or two, a port scan most of them in seconds.
+TRIPWIRE_NEED = 6
+
+
+def _tripwire_scans(collected: dict, ctl: dict, sw: dict, conn: str, dh: str) -> list:
+    """The scans Mercury's tripwires on switch *sw* show (Lab 9 A, the operator's go of
+    2026-11-20 after the step-4 measurement): per source, the tripwires (`is_tripwire`) that
+    have taken a packet since they were written; `TRIPWIRE_NEED` or more is a scan, of high
+    confidence, its source the flows' own (never inferred)."""
+    from modules.sdn.flow_intent import is_tripwire
+
+    by_src = {}
+    for f in sw.get("flows") or []:
+        if not is_tripwire(f.get("cookie")):
+            continue
+        match = f.get("match") or {}
+        src, port = _address(match, "src"), _dst_port(match)
+        if src is None or port is None:
+            continue
+        entry = by_src.setdefault(src, {"set": [], "hit": []})
+        entry["set"].append(f)
+        if int(f.get("packet_count") or 0) > 0:
+            entry["hit"].append((port, f))
+    out = []
+    for src, e in sorted(by_src.items()):
+        if len(e["hit"]) < TRIPWIRE_NEED:
+            continue
+        ports = sorted({p for p, _f in e["hit"]}, key=_port_order)
+        # The tripwires' destination is a subnet, never one host: the detection names no
+        # target (a response's targets are host addresses), the subnet watched said beside.
+        nets = sorted({str((f.get("match") or {}).get(k) or "") for f in e["set"]
+                       for k in ("ipv4_dst", "ipv6_dst")} - {""})
+        out.append(_detection(
+            "scan", collected, ctl, sw, subject=("source", src),
+            scope=flows_scope(conn, dh), source=src, targets=[],
+            words=(f"{src} touched {len(ports)} of the {len(e['set'])} ports Mercury's "
+                   f"tripwires watch on switch {dh} ({conn}) toward {', '.join(nets)}, at or "
+                   f"above {TRIPWIRE_NEED}: {', '.join(ports)}"),
+            measurement={"what": "tripwire ports a source touched", "value": len(ports),
+                         "unit": "ports", "of": len(e["set"]), "ports": ports,
+                         "watched": nets},
+            threshold={"what": "the tripwire ports a scan touches", "value": TRIPWIRE_NEED,
+                       "unit": "ports"},
+            confidence="high",
+            confidence_why=("Mercury's tripwires each watch one TCP port from this source; "
+                            "ordinary traffic touches one or two, a scan most of them"),
+            evidence=sorted(f.get("id") for _p, f in e["hit"] if f.get("id")),
+            basis="tripwire"))
+    return out
+
+
 def scan(collected: dict, values: dict, seen: dict = None, topo: dict = None) -> dict:
     """The scan rule over one collection: ``{"detections", "judged", "seen", "notes"}``.
     *values* the thresholds (`thresholds`' ``values``); *seen* the sightings kept from earlier
@@ -454,6 +507,8 @@ def scan(collected: dict, values: dict, seen: dict = None, topo: dict = None) ->
     "dst"}}}}``), answered updated and pruned to the window; *topo* the controllers' stored
     topology (`topology.stored`), where a fallback's port names its source when its flows name
     none (`port_source`); None names none from it."""
+    from modules.sdn.flow_intent import is_tripwire
+
     at = _epoch(collected.get("collected_at"))
     need, window = values["sdn_scan_ports"], values["sdn_scan_window_seconds"]
     pps = values["sdn_scan_fallback_pps"]
@@ -462,12 +517,15 @@ def scan(collected: dict, values: dict, seen: dict = None, topo: dict = None) ->
     by_ports = {}
     for ctl, sw in _switches(collected):
         conn, dh = ctl.get("connection") or "", sw["dpid_hex"]
+        detections += _tripwire_scans(collected, ctl, sw, conn, dh)
         cov = sw.get("coverage")
         if cov and cov.get("scan_by_ports"):
             judged.add(flows_scope(conn, dh))
             by_ports[(conn, dh)] = (ctl, sw)
             unsourced = 0
             for f in sw.get("flows") or []:
+                if is_tripwire(f.get("cookie")):
+                    continue                # Mercury's own probe, judged apart below
                 match = f.get("match") or {}
                 port = _dst_port(match)
                 if port is None:

@@ -238,6 +238,21 @@ def drawn_name(dpid, names: dict, reported="") -> str:
     return switch_name(dpid, names) or described(reported)
 
 
+def name_of(network: str, connection: str, dpid, names: dict = None) -> str:
+    """The name switch *dpid* of *connection* is said by, where a controller gave only its
+    datapath id (a response's Proposed column, its log line; the Lab 9 hardware, 2026-11-20:
+    "on switch 0000000000000003 (None)"): `drawn_name` over NetBox's names (*names*,
+    `names_for`'s, read here when None) and the description the switch gives of itself as the
+    SDN reader kept it (`closed_loop._switch_name`), so never Open vSwitch's "None"; "" when
+    neither names it (the caller then says its datapath id)."""
+    from modules.sdn import closed_loop
+
+    if dpid is None:
+        return ""
+    return drawn_name(dpid, names_for(network) if names is None else names,
+                      closed_loop._switch_name(network, connection, dpid))
+
+
 def host_names(rows: list) -> dict:
     """``{MAC: (name, interface)}`` for each MAC NetBox records on exactly one interface: the
     device a host a controller learnt is named by (C3010). A MAC on two interfaces names

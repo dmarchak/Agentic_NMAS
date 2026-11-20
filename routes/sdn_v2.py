@@ -390,6 +390,37 @@ def watch_propose(wid):
     return _strict(render_template("v2/_sdn_view.html", **ctx))
 
 
+@bp.route("/watch/<wid>/tripwire", methods=["POST"])
+def watch_tripwire(wid):
+    """Watch its ports… on a watched High packet rate (Lab 9 A, the operator's go of 2026-11-20
+    after the step-4 measurement): the preview of Mercury's tripwire for the row's source
+    (`closed_loop.tripwire_ask`: one flow per TCP port a scan touches, to the subnet NetBox
+    records the source in, going on by the switch's own goto, for 120 s), drawn as a person's
+    flow change on SDN › Flows' card: the exact requests and their hash, read from the switch
+    now; Send is the flow editor's confirm (`flow_confirm`), verified and recorded. A source
+    touching six or more of them is then called a scan of high confidence
+    (`detect._tripwire_scans`). Writes nothing but, for a verified person, the record of a
+    preview the protected set refused (`_refusal_kept`)."""
+    from modules import sdn_ops_page
+    from modules.sdn import closed_loop, flow_ops, loop
+
+    network = _network_of_form()
+    row = next((r for r in loop.watching(network)["rows"] if r.get("id") == wid), None)
+    if row is None:
+        return _op_card(sdn_ops_page.refused(
+            network, "flow", f"no watched row {wid} is open on {network}: it ended, joined an "
+                             "incident or was dismissed"), 409)
+    got = closed_loop.tripwire_ask(network, row.get("detection") or {})
+    if not got["ok"]:
+        return _op_card(sdn_ops_page.refused(network, "flow", got["error"]), 409)
+    p = flow_ops.plan(network, got["ask"])
+    if p["ok"]:
+        p = dict(p, words=[got["words"]] + list(p["words"]))
+    return _op_card(sdn_ops_page.preview(network, "flow", got["ask"], p,
+                                         refusal=_refusal_kept(network, p, "flow")),
+                    200 if p["ok"] else 409)
+
+
 @bp.route("/response/<rid>/dismiss", methods=["POST"])
 def response_dismiss(rid):
     """Dismiss a response awaiting a person, with their reason; nothing is sent."""

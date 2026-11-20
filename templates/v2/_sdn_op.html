@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_macros.html" import icon, badge, clock, how -%}
 {#- An SDN operation's card in place of its control (boards SdnResponse and SdnFlowEdit, signed
     off 2026-10-27 under the Phase 7 mode): the preview (what it does, exactly these requests,
     what will not happen, the checks, the confirm bound to the requests' hash), a refusal with
@@ -50,6 +50,9 @@
 {%- endif %}
 <h4 class="sdn-op-h">Verify</h4>
 <ul class="sdn-op-list">{% for c in d.checks %}<li>{{ c }}</li>{% endfor %}</ul>
+{%- if d.kind == 'response' and d.inactive_since %}
+<div class="notice notice-warn sdn-op-inactive" role="status">{{ icon('warn', 16) }}<p><strong>No longer active:</strong> the loop logged this threat as no longer active at {{ clock(d.inactive_since) }}: no switch has shown it since. Sending is still your choice; Dismiss on its row closes it without sending.</p></div>
+{%- endif %}
 <form class="sdn-op-confirm" {% if d.kind == 'response' %}hx-post="{{ url_for('sdn_v2.response_confirm') }}"{% elif d.kind == 'reapply' %}hx-post="{{ url_for('sdn_v2.reapply_confirm') }}"{% elif d.kind == 'policy' %}hx-post="{{ url_for('sdn_policies_v2.confirm') }}"{% else %}hx-post="{{ url_for('sdn_v2.flow_confirm') }}"{% endif %} hx-target="closest .sdn-op" hx-swap="outerHTML" hx-disabled-elt="find button">
   <input type="hidden" name="list" value="{{ d.network }}">
   <input type="hidden" name="ask" value="{{ d.ask }}">

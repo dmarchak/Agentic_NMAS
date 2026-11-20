@@ -1,0 +1,225 @@
+"""The scan tripwire (Lab 9 A, the operator's go of 2026-11-20 after the step-4 measurement) and
+a scan's rate limit in packets a second (the operator, 2026-11-20: a 1 Mbit/s cap does not slow
+a 250 pps SYN scan).
+
+**The data.** `closed_loop.tripwire_ask` runs over tests/test_sdn_policy_intent.py's Lab 9 world
+(the NSOT export built by the real `export.build` from the Lab 9 records, Ryu's captured
+switches, FakeRyu behind the real Ryu driver), with OVS server 1's table a team pipeline whose
+table 0 misses to its forwarding table 2. `detect._tripwire_scans` runs inside the real
+`detect.scan` over a collection the real `collect_threat_data` makes from Ryu's captured flows
+(tests/test_sdn_collect.py), with tripwire flows added as Ryu would answer them: the captured
+IPv4 L4 flow copied per port, its destination the source's subnet, its cookie a tripwire's and
+its packet count set.
+
+- a tripwire is 16 flows from the source to the subnet NetBox records it in, one TCP port each,
+  going on by the switch's own goto, for 120 s, each cookie a tripwire's (IPv4 and IPv6);
+- refused, naming why, where NetBox records no subnet for the source, or the switch's own flow
+  does not go on by a goto;
+- six or more tripwires hit by one source is a scan of high confidence, basis "tripwire"; five
+  is not; tripwires are left out of coverage and the scan rule's sightings;
+- a scan's rate limit defaults to 20 pps with a burst of 10, and a kbit/s one is refused for
+  it; a flood's keeps its kbit/s default;
+- a fresh ordinary Mercury cookie never carries the tripwire's tag.
+"""
+import copy
+import ipaddress
+import json
+
+import pytest
+
+from modules.sdn import closed_loop as CL
+from modules.sdn import detect as D
+from modules.sdn import flow_intent as F
+from tests.test_sdn_collect import captured_flows
+from tests.test_sdn_connections import networks  # noqa: F401 - the fixture
+from tests.test_sdn_detect import T0, V4_L4, VALUES, collect, save
+from tests.test_sdn_policy_intent import CONN, NET, OVS1, lab  # noqa: F401 - the fixture
+
+H1_V4, H1_V6 = "198.51.100.11", "2001:db8:c8::11"
+TEAM = 0x9A00000000000001
+
+
+def _pipeline(lab):  # noqa: F811 - the fixture's value
+    """OVS server 1 as the team's pipeline: table 0 misses to table 2, which forwards."""
+    lab.fake.table[OVS1] = [
+        {"dpid": OVS1, "table_id": 0, "priority": 0, "cookie": TEAM, "match": {},
+         "actions": [{"type": "GOTO_TABLE", "table_id": 2}], "idle_timeout": 0,
+         "hard_timeout": 0},
+        {"dpid": OVS1, "table_id": 2, "priority": 1000, "cookie": TEAM + 1,
+         "match": {"eth_dst": "02:00:00:00:00:05"}, "actions": [{"type": "OUTPUT", "port": 7}],
+         "idle_timeout": 0, "hard_timeout": 0}]
+
+
+def _watched(source, dpid=OVS1):
+    return {"rule": "high_rate", "source": source, "connection": CONN, "dpid": dpid,
+            "dpid_hex": f"{dpid:016x}"}
+
+
+@pytest.mark.parametrize("source,eth,fam,subnet", [
+    (H1_V4, 0x0800, "ipv4", "198.51.100.0/24"),
+    (H1_V6, 0x86DD, "ipv6", "2001:db8:c8::/64")], ids=["ipv4", "ipv6"])
+def test_a_tripwire_is_one_flow_a_port_to_the_source_s_subnet_going_on_by_the_goto(
+        lab, source, eth, fam, subnet):  # noqa: F811 - the fixture
+    _pipeline(lab)
+    got = CL.tripwire_ask(NET, _watched(source), driver=lab.driver)
+    assert got["ok"], got["error"]
+    changes = got["ask"]["changes"]
+    assert got["ask"]["dpid"] == OVS1 and got["ask"]["connection"] == CONN
+    assert [c["flow"]["match"]["tcp_dst"] for c in changes] == list(CL.TRIPWIRE_PORTS)
+    for c in changes:
+        f = c["flow"]
+        assert c["do"] == "add_flow" and f["table_id"] == 0
+        assert f["match"] == {"eth_type": eth, f"{fam}_src": source, f"{fam}_dst": subnet,
+                              "ip_proto": 6, "tcp_dst": f["match"]["tcp_dst"]}
+        assert f["actions"] == [{"type": "GOTO_TABLE", "table_id": 2}]
+        assert f["hard_timeout"] == CL.TRIPWIRE_SECONDS == 120 and f["idle_timeout"] == 0
+        assert F.is_tripwire(f["cookie"]) and F.is_mercury(f["cookie"])
+        assert f["priority"] > 0
+    assert len({c["flow"]["cookie"] for c in changes}) == len(changes), "a cookie each"
+    assert subnet in got["words"] and "A scan beyond" in got["words"]
+    assert lab.fake.writes == [], "an ask is only built, never sent"
+
+
+def test_a_source_netbox_records_no_subnet_for_is_refused(lab):  # noqa: F811 - the fixture
+    _pipeline(lab)
+    got = CL.tripwire_ask(NET, _watched("198.51.100.200"), driver=lab.driver)
+    assert not got["ok"] and got["ask"] is None
+    assert "NetBox records no subnet for 198.51.100.200" in got["error"], got["error"]
+
+
+def test_a_switch_whose_own_flow_does_not_go_on_by_a_goto_is_refused(lab):  # noqa: F811
+    """The world's table-miss sends to the controller: a tripwire there would change where the
+    source's traffic goes, so none is built, naming the port and the switch's own flow."""
+    got = CL.tripwire_ask(NET, _watched(H1_V4), driver=lab.driver)
+    assert not got["ok"] and got["ask"] is None
+    assert "goes on only by the switch's own goto" in got["error"], got["error"]
+    assert "TCP 21 from 198.51.100.11" in got["error"]
+
+
+def test_a_watched_row_with_no_source_is_refused(lab):  # noqa: F811 - the fixture
+    got = CL.tripwire_ask(NET, dict(_watched(H1_V4), source=""), driver=lab.driver)
+    assert not got["ok"] and "names no one source address" in got["error"]
+
+
+# ─────────────────────────────────────────────────────────────── the detection the tripwire makes
+
+SUBNET = "192.0.2.0/24"
+
+
+def _tripwires(hit, ports=None, src=V4_L4):
+    """Tripwire flows from *src* as Ryu answers them (one a port of *ports*, default
+    `TRIPWIRE_PORTS`), the first *hit* with packets."""
+    ports = CL.TRIPWIRE_PORTS if ports is None else ports
+    base = next(f for f in captured_flows()
+                if f["match"].get("nw_src") == src[0] and f["match"].get("tp_dst") == src[1])
+    out = []
+    for n, port in enumerate(ports):
+        f = copy.deepcopy(base)
+        f["match"]["tp_dst"] = port
+        f["match"]["nw_dst"] = SUBNET
+        f["cookie"] = F.tripwire_cookie()
+        f["packet_count"] = 3 if n < hit else 0
+        f["byte_count"] = 180 if n < hit else 0
+        out.append(f)
+    return out
+
+
+@pytest.fixture
+def saved(networks):  # noqa: F811 - the fixture, used
+    save()
+    return networks
+
+
+@pytest.mark.usefixtures("saved")
+def test_six_tripwires_hit_by_one_source_is_a_scan_of_high_confidence():
+    flows = captured_flows() + _tripwires(D.TRIPWIRE_NEED)
+    out = D.scan(collect(T0, flows=flows), VALUES)
+    (d,) = [x for x in out["detections"] if x.get("basis") == "tripwire"]
+    assert d["rule"] == "scan" and d["source"] == V4_L4[0]
+    assert d["confidence"] == "high"
+    assert d["measurement"]["value"] == D.TRIPWIRE_NEED
+    assert d["measurement"]["of"] == len(CL.TRIPWIRE_PORTS)
+    # The subnet watched is no one host, so it is said, never a response's target.
+    assert d["targets"] == [] and d["measurement"]["watched"] == [SUBNET]
+    assert SUBNET in d["words"]
+
+
+@pytest.mark.usefixtures("saved")
+def test_five_tripwires_hit_is_no_scan_and_tripwires_are_never_the_rule_s_sightings():
+    """Five hit is under the need; and the sixteen tripwires (sixteen destination ports from one
+    source) are never counted as the scan rule's own sightings."""
+    flows = captured_flows() + _tripwires(D.TRIPWIRE_NEED - 1)
+    # The rule's own need lowered under the sixteen, so counting them would make a scan.
+    values = dict(VALUES, sdn_scan_ports=len(CL.TRIPWIRE_PORTS) - 4)
+    out = D.scan(collect(T0, flows=flows), values)
+    assert [x for x in out["detections"] if x["rule"] == "scan"] == [], out["detections"]
+
+
+def test_coverage_leaves_tripwires_out():
+    from modules.sdn.drivers.ryu import flow_from_ryu
+    plain = [flow_from_ryu(1, e).as_dict() for e in captured_flows()]
+    wires = [flow_from_ryu(1, e).as_dict() for e in _tripwires(16)]
+    assert all(F.is_tripwire(w["cookie"]) for w in wires), "premise: the cookies survive"
+    assert CL.coverage(plain + wires) == CL.coverage(plain)
+
+
+# ─────────────────────────────────────────────────────────────── the cookie's tag
+
+def test_is_tripwire_only_for_a_tripwire_cookie():
+    assert F.is_tripwire(F.tripwire_cookie())
+    assert not F.is_tripwire(F.mercury_cookie(1))
+    assert not F.is_tripwire(TEAM)
+    assert not F.is_tripwire(str(F.tripwire_cookie()))
+    assert not F.is_tripwire(True)
+
+
+def test_an_ordinary_cookie_drawn_with_the_tag_is_drawn_again(monkeypatch):
+    drawn = iter([(F.TRIPWIRE_TAG << 32) | 7, 0x1234])
+    monkeypatch.setattr(F.secrets, "randbits", lambda bits: next(drawn))
+    got = F.new_cookie()
+    assert got == F.mercury_cookie(0x1234) and not F.is_tripwire(got)
+
+
+# ─────────────────────────────────────────────────────────────── a scan's rate limit
+
+def test_the_default_rate_limit_is_packets_a_second_for_a_scan_and_kbit_for_a_flood():
+    pps = {"unit": "pktps", "rate": 20, "burst": 10}
+    assert CL.rate_limit_default("scan") == pps
+    assert CL.rate_limit_default("flood") == CL.RATE_LIMIT_DEFAULT
+    # A watched High packet rate is answered as the scan rule's, in packets a second; a
+    # watched large-packet stream as the flood rule's, in kbit/s (`answered_rule`).
+    rate = CL.answered_rule({"rule": "high_rate", "basis": "rate"})
+    large = CL.answered_rule({"rule": "high_rate", "basis": "large_packets"})
+    assert (CL.rate_limit_default(rate), CL.rate_limit_default(large)) == (
+        pps, CL.RATE_LIMIT_DEFAULT)
+    assert CL.RATE_LIMIT_DEFAULT["unit"] == "kbps"
+    got = CL.rate_limit_default("scan")
+    got["rate"] = 1
+    assert CL.SCAN_RATE_LIMIT_DEFAULT["rate"] == 20, "a copy, never the table itself"
+
+
+@pytest.mark.usefixtures("saved")
+def test_a_kbit_rate_limit_for_a_scan_is_refused_before_any_request():
+    from tests.test_sdn_detect import scan_flows
+    from tests.test_sdn_respond import scan_detection, switch_with, without_live_drop
+    flows = scan_flows(25)
+    d = scan_detection(flows)
+    fake = switch_with(without_live_drop(flows))
+    got = CL.respond_to_threat("Default", d, "rate_limit_source",
+                               params={"unit": "kbps", "rate": 1000, "burst": 100},
+                               driver=fake.driver)
+    assert not got["ok"], got
+    assert "a scan's rate limit is in packets a second (pktps), not kbps" in got["error"]
+    assert fake.writes == []
+    pps = CL.respond_to_threat("Default", d, "rate_limit_source", driver=fake.driver)
+    assert pps["ok"], pps["error"]
+    meter = json.loads(pps["plan"]["steps"][0]["request"]["body"])
+    assert meter["bands"] == [{"burst_size": 10, "rate": 20, "type": "DROP"}]
+    assert "PKTPS" in meter["flags"]
+
+
+def test_the_tripwire_ports_leave_out_dns_and_are_distinct():
+    assert 53 not in CL.TRIPWIRE_PORTS
+    assert len(set(CL.TRIPWIRE_PORTS)) == len(CL.TRIPWIRE_PORTS) == 16
+    assert D.TRIPWIRE_NEED < len(CL.TRIPWIRE_PORTS)
+    assert ipaddress.ip_network(SUBNET)

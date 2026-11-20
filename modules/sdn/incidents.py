@@ -26,7 +26,11 @@ detection joins the one incident of the same rule, in the same pass (`group`) or
 person within the window (`joinable`), whose source is one of those hosts (`link_keys`), and
 is drawn among its seen also saying so (`via_link`). With no such incident it stays its own;
 with several (more than one attack behind one link) it stays its own too, since the link
-cannot tell them apart. It is never where a response is proposed while a member naming the
+cannot tell them apart. One whose flows name no source at all (`_unnamed_link`, C4137) joins
+the one incident of its rule naming a source; left its own, it is a sourceless transit
+incident (`sourceless_transit`), which the loop closes once no switch shows it and joins to
+its flood's incident when that opens after it (`loop._transit_joins`, the Lab 9 hardware,
+2026-11-20). It is never where a response is proposed while a member naming the
 source is in the incident.
 
 **The window** (`window`), derived, never a setting of its own: the rule's own window, the one
@@ -145,6 +149,15 @@ def _unnamed_link(d: dict) -> bool:
     return (d.get("rule") in GROUPED_RULES and not _canon(d.get("source"))
             and (d.get("source_from") or {}).get("state") == "link"
             and not d.get("link_sources"))
+
+
+def sourceless_transit(row: dict) -> bool:
+    """Whether the response awaiting a person *row* (`loop.awaiting`'s) is a sourceless transit
+    incident: its own (keyed by its detection, ``detection|<key>``), on an inter-switch link
+    port whose flows name no source (`_unnamed_link`). Nothing names whose traffic it is, so
+    the loop closes it once no switch shows it, and joins it to the one flood incident of its
+    rule naming a source when that opens after it (the Lab 9 hardware, 2026-11-20)."""
+    return key_of(row).startswith(SINGLE + "|") and _unnamed_link(row.get("detection") or {})
 
 
 def via_link(d: dict, inc_key: str) -> dict:

@@ -129,13 +129,32 @@ def flow_id(cookie: int) -> int:
     return cookie & ID_MASK
 
 
+#: The id's top 16 bits that mark a tripwire (Lab 9 A, the scan probe: "TW"): Mercury's own
+#: flow, which coverage and the scan rule's sightings leave out (`is_tripwire`).
+TRIPWIRE_TAG = 0x5457
+
+
 def new_cookie() -> int:
     """A fresh Mercury cookie, its id drawn at random from 2^48 (so a preview can carry it
-    before anything is recorded; `record_installed` refuses one already recorded)."""
+    before anything is recorded; `record_installed` refuses one already recorded), never one
+    carrying the tripwire's tag."""
     while True:
         drawn = secrets.randbits(SHIFT)
-        if drawn:
+        if drawn and drawn >> 32 != TRIPWIRE_TAG:
             return mercury_cookie(drawn)
+
+
+def tripwire_cookie() -> int:
+    """A fresh Mercury cookie marked a tripwire (`TRIPWIRE_TAG` in its id's top bits)."""
+    while True:
+        drawn = secrets.randbits(32)
+        if drawn:
+            return mercury_cookie((TRIPWIRE_TAG << 32) | drawn)
+
+
+def is_tripwire(cookie) -> bool:
+    """Whether *cookie* is one of Mercury's tripwires (`tripwire_cookie`)."""
+    return is_mercury(cookie) and (cookie & ID_MASK) >> 32 == TRIPWIRE_TAG
 
 
 def cookie_hex(cookie) -> str:

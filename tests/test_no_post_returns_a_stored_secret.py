@@ -74,6 +74,10 @@ def _bodies(v):
         "sdn_v2.response_preview": (404, ("form", {"list": LIST}),
                                     "no response by that id awaits a person: refused naming it, "
                                     "nothing read"),
+        # Lab 9 A: Watch its ports… on a watched High packet rate.
+        "sdn_v2.watch_tripwire": (409, ("form", {"list": LIST}),
+                                  "no watched row by that id is open: refused naming it, "
+                                  "nothing read"),
         # C2018: Re-apply… on SDN › Flows.
         "sdn_v2.reapply_preview": (409, ("form", {"list": LIST}),
                                    "no connection, switch or response named: refused naming "

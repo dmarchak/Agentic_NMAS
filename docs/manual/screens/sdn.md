@@ -326,8 +326,10 @@ mode and whether the loop is running.
   it says **Why it is not called a scan or a flood** and **What happens next**. Mercury closes
   it itself: when the flood rule fires for the same port or source, it joins that incident,
   whose row then reads **Flood · began as High packet rate** and says since when; when the
-  rate falls below the threshold, it ends as "ended, never more than a rate". The same source
-  on several switches is one row. You may dismiss it with a reason, or press **Rate-limit this
+  rate falls below the threshold, it ends as "ended, never more than a rate"; and when the loop
+  stops (by itself, by **Stop** or at the app's restart) it closes, its log saying so, since
+  nothing watches it once the loop is stopped (a rate still firing opens a new row at the next
+  start). The same source on several switches is one row. You may dismiss it with a reason, or press **Rate-limit this
   source…** to make it an incident awaiting you, answered as the scan rule's; AUTO never acts
   on it (C4124). It also watches what the
   flood rule holds but does not call a flood:
@@ -352,6 +354,28 @@ mode and whether the loop is running.
     allow `rate_limit_source` for floods, or the stream names no source to act on (a link
     port), the control is drawn disabled and says why.
 
+  A rate answered as the scan rule's is limited in **packets a second** (20 a second, a burst
+  of 10, by default): a scan's packets are about 60 bytes, so a cap in kbit/s does not slow
+  it, and one is refused for it. A large-packet stream's rate limit stays in kbit/s.
+
+  **Watch its ports…** on a High packet rate row (a switch whose flows name no transport
+  ports, so no scan can be counted) previews Mercury's **tripwire** for the row's source:
+  - **What it writes:** one flow per TCP port a port scan touches (21, 22, 23, 25, 80, 110,
+    135, 139, 143, 443, 445, 993, 995, 3306, 3389 and 8080; 53 is left out), each from the
+    source to the subnet NetBox records it in, going on by the switch's own goto to its later
+    table, so where the traffic goes is unchanged. Each stays two minutes (its hard timeout).
+  - **What it tells:** a source whose traffic touches six or more of them is called a
+    **scan**, of high confidence, and answered as any scan is; ordinary traffic touches one or
+    two. A scan beyond that subnet is not watched.
+  - **From there:** it is SDN › Flows' preview of a flow change: the exact sixteen requests
+    and their hash; **Send** applies them holding the switch, verifies them by reading the
+    table back, and records them. The tripwires are left out of the switch's coverage and of
+    the scan rule's own count.
+  - **When it is refused:** NetBox records no subnet for the source, or the switch's own flow
+    for that traffic does not go on by a goto (a single-table switch, or one sending to the
+    controller), named with the flow. It is drawn disabled where the row names no one source
+    address.
+
   Large packets from two or more sources to one host are one attack on that host, and are
   called a flood. How it works: [High packet rate](sdn-flows#high-rate).
 - **An incident, opened**: the detection (the rule, the source, the switch, its confidence
@@ -365,7 +389,9 @@ mode and whether the loop is running.
   recommends, the devices it names, the evidence ids it cites, and the model, cost and call),
   else who chose the
   action (the catalogue's default, chosen in code), and the action proposed from the catalogue
-  with its risk and the switch it acts on. **Ingress:** names that switch and the port the
+  with its risk and the switch it acts on. That switch, here and in the table's **Proposed**
+  column, is named as NetBox names it, else as it describes itself (never Open vSwitch's
+  "None"), its datapath id on hover and shown only where nothing names it. **Ingress:** names that switch and the port the
   controller lists the source's host on; when the ingress cannot be told (no source named, the
   topology not read now, no host or several ports listing the source, or the source on a switch
   that has not fired) the line reads **Proposed at:**, says why, and the switch that saw it
@@ -384,13 +410,20 @@ mode and whether the loop is running.
   [Classify a detection with AI](sdn-flows#classify).
   Its preview button, named for the action ("Preview the drop traffic from the source…"), builds its card as Flows' changes are (the action's parameters checked
   against the evidence: the source is the detection's, the hard timeout within the network's
-  ceiling); **Send** applies it as you. **Dismiss with this reason** closes it, sending nothing
+  ceiling); **Send** applies it as you. Where the loop has logged the threat as no longer active,
+  the preview says **No longer active**, when, and that no switch has shown it since, above
+  **Send**: sending is still your choice. **Dismiss with this reason** closes it, sending nothing
   (on an incident seen on several switches, **Dismiss the incident (N switches) with this
   reason**, which closes the incident with all its switches).
   An incident stays until you approve or dismiss it: when no switch shows it any longer, its row
   is marked **Inactive** and the opened incident says **Threat no longer active since** the
   collection that stopped showing it, its classification kept, and the line goes if it fires
-  again. When the AI's answer was
+  again. **One exception:** an incident of its own on an inter-switch link port whose flows
+  name no source (a transit switch seeing a flood on its way) is closed by the loop once no
+  switch shows it, its log saying so, since nothing names whose traffic it was; and when the
+  flood's ingress fires after it, within the rule's window and with no other incident of its
+  rule naming a source open, it joins that incident, seen also there, so one flood is one
+  incident whichever switch fired first. When the AI's answer was
   refused by the check (or no classification could be made), the card says so ("AI
   classification refused: why; proposed by the catalogue default") with **The refused answer
   in History**, and the rule's catalogue default awaits you, even in AUTO.
@@ -471,8 +504,9 @@ mode and whether the loop is running.
 - **The loop stops by itself.** **Start** takes **run for** (5, 20 or 60 minutes, 20 by
   default; a loop is never left running unattended, so an hour is the most), and the loop
   also stops after its **pass cap**, the passes its run-for holds at its interval and one
-  more. While it runs, the card says **Stops by itself** at what time, after how many passes
-  (and how many so far), or on Stop. When it ends itself its log says **stopped by itself**,
+  more. While it runs, the card says **Stops by itself at** its end time (in your time zone,
+  UTC on hover), after how many passes (and how many so far), or on Stop. When it stops,
+  each High packet rate row it left open closes, its log saying so. When it ends itself its log says **stopped by itself**,
   naming which bound ended it and how many passes ran; start it again for another run. The
   five-minute demonstration is the 5-minute choice.
 - **Link failures** ([how it works](#link-failure)): a card for each link the topology held

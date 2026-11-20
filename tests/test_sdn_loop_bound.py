@@ -10,7 +10,9 @@ only when a pass runs or the schedule waits.
   demonstration is one of the offered bounds, inside the default;
 - a loop that ends itself records ``stop`` by the loop's own bound, with its reason and passes,
   and its status says when it will stop while it runs;
-- SDN › Responses' Start sends Run for, and the route starts the loop with it.
+- SDN › Responses' Start sends Run for, and the route starts the loop with it;
+- the High packet rate rows a loop leaves open close when it stops, by itself or by Stop,
+  said in its log after the stop line.
 """
 import threading
 
@@ -127,6 +129,49 @@ def test_a_schedule_a_person_stopped_records_no_stop_of_the_bound_s(networks,  #
     _ended_by(monkeypatch, "stop")
     assert [r for r in LP.log_lines(NET)["rows"] if r["step"] == "stop"] == [], \
         "a person's Stop writes its own line (`stop`); the bound writes none"
+
+
+def _a_watch(source="192.0.2.9"):
+    """A High packet rate row the loop left open (`loop.watch`), on 192.0.2.x or 2001:db8::."""
+    from tests.test_sdn_incidents import det
+    d = det(1, source, rule="high_rate")
+    return LP.watch(NET, d, {"key": f"high_rate|{source}", "rule": "high_rate",
+                             "source": source, "seen_also": []})
+
+
+def _stopped_by_a_person(monkeypatch):
+    from modules.sdn import capability
+    monkeypatch.setattr(capability, "read", lambda network, **kw: {
+        "ok": True, "error": "", "controllers": []})
+    gate = threading.Event()
+    monkeypatch.setattr(LP, "run_pass", lambda network, **kw: gate.wait(5))
+    LP.start(NET, actor="op@example.com", interval=5, run_for=600)
+    LP.stop(NET, actor="op@example.com")
+    gate.set()
+    LP._jobs[NET]["thread"].join(10)
+
+
+@pytest.mark.parametrize("how", ["run_for", "pass_cap", "stop"])
+@pytest.mark.parametrize("source", ["192.0.2.9", "2001:db8::9"], ids=["IPv4", "IPv6"])
+def test_the_watches_a_loop_leaves_open_close_when_it_stops(networks, monkeypatch,  # noqa: F811
+                                                            how, source):
+    """No watch row outlives its loop (the Lab 9 hardware, 2026-11-20): whether it stopped by
+    itself or by Stop, each High packet rate row still open is closed ``ended``, and the log
+    says so after its stop line."""
+    row = _a_watch(source)
+    if how == "stop":
+        _stopped_by_a_person(monkeypatch)
+    else:
+        _ended_by(monkeypatch, how)
+    assert LP.watching(NET)["rows"] == []
+    (ended,) = [r for r in LP._read(NET, LP.PENDING_FILE)["rows"] if r.get("kind") == "ended"]
+    assert ended["id"] == row["id"] and ended["why"] == "the loop stopped: nothing watches it now"
+    lines = LP.log_lines(NET)["rows"]
+    (said,) = [r for r in lines if r.get("watch") == row["id"]]
+    assert said["words"] == (f"High packet rate {row['id']} (since {row['at']}) closed: the loop "
+                             "stopped, so nothing watches it now; it opens again if the loop "
+                             "is started and it still fires")
+    assert [r["step"] for r in lines].index("stop") < lines.index(said)
 
 
 def test_its_status_says_when_it_stops_while_it_runs(networks, monkeypatch):  # noqa: F811

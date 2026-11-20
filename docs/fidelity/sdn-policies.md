@@ -15,7 +15,12 @@ result, the committed list), beside the board's HTML. A shot at 1440, 1280 and 3
 step of this record.
 
 Templates compared: templates/v2/sdn_policies.html, templates/v2/_sdn_policies.html, templates/v2/_sdn_policy_answer.html, templates/v2/_sdn_op.html, templates/v2/_sdn_tabs.html
-Templates sha256: `f38387ec38228e6b4dffce1eab5d3d2f8a82566f75aca79612dcd1301b1d1e30`
+Templates sha256: `d31a3987bb76b359fc91c66a0a49dfa4b84283e12e9dd63ef4fcbb027e4693b7`
+Hashed again 2026-11-20 for the Lab 9 hardware's Responses items (the shared operation card):
+`_sdn_op.html`'s response preview gains a warning above Send where the loop logged its threat no
+longer active (docs/fidelity/sdn.md); a policy's preview is never a response's, so nothing drawn
+on Policies changes (the templates before it hashed
+`f38387ec38228e6b4dffce1eab5d3d2f8a82566f75aca79612dcd1301b1d1e30`).
 Hashed again 2026-11-20 for C4138 (the shared operation card): `_sdn_op.html` no longer holds the
 live redraw once its result is verified; nothing drawn on Policies changes (the templates before
 it hashed `3eae1be550a87e4c038cb416c543f1aaf5f194a50789cea9c6386127b3b92d78`).
