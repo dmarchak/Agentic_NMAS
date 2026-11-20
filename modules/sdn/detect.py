@@ -1054,16 +1054,29 @@ def mark_replies(detections: list, collected: dict) -> list:
     # incident): `scan_replied` marks them.
     scans = [s for s in detections
              if s.get("rule") == "scan" and s.get("basis") == "tripwire" and s.get("source")]
+    found = []
     for d in [x for x in rate if id(x) not in marks] if scans else []:
         s = scan_replied(d, scans, _mean_packet(collected, d), peers=rate)
         if s is not None:
-            marks[id(d)] = {
-                "source": s["source"], "rule": "scan", "port": s.get("port"),
-                "dpid_hex": s.get("dpid_hex"), "neither": False,
-                "words": (f"{d['source']} is in the subnet {s['source']}'s scan was watched in "
-                          f"by Mercury's tripwires, its packets small, so what its port sends "
-                          f"is its replies to the scan's probes. Mercury proposes no response "
-                          "against a scan's target")}
+            found.append((d, s))
+    # A scan of one host has one target: where nothing names their destinations, two or more
+    # hosts mirroring one scan are not all its replies, so none is taken for them (the review
+    # of 7437d140): each stays its own, answered as any is.
+    unnamed = {}
+    for d, s in found:
+        if not (_destinations(d) - {""}):
+            unnamed.setdefault(_canon_addr(s["source"]), []).append(id(d))
+    for d, s in found:
+        several = unnamed.get(_canon_addr(s["source"])) or []
+        if len(several) > 1 and id(d) in several:
+            continue
+        marks[id(d)] = {
+            "source": s["source"], "rule": "scan", "port": s.get("port"),
+            "dpid_hex": s.get("dpid_hex"), "neither": False,
+            "words": (f"{d['source']} is in the subnet {s['source']}'s scan was watched in by "
+                      f"Mercury's tripwires, its packets small, so what its port sends is its "
+                      f"replies to the scan's probes. Mercury proposes no response against a "
+                      "scan's target")}
     out = []
     for d in detections:
         m = marks.get(id(d))

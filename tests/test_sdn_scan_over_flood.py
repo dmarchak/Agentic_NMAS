@@ -238,6 +238,23 @@ def test_a_reply_flood_already_waiting_joins_the_scan_that_began_with_it(began, 
     assert set(waiting()) == want, waiting()
 
 
+def test_two_hosts_mirroring_the_scan_with_no_destination_named_are_each_their_own():
+    """The review of 7437d140: a scan of one host has one target, so where nothing names their
+    destinations, two hosts of the subnet mirroring the scan's rate are not both its replies
+    (one is a second attacker at the same tool's default rate): neither is taken, in the pass
+    or among the floods waiting when the scan opens."""
+    from modules.sdn import detect as D
+    one, two = flood(source="192.0.2.62"), flood(source="192.0.2.63")
+    marked = D.mark_replies([scan(), one, two, flood()], _collected(54))
+    for d in (one, two):
+        (got,) = [m for m in marked if m["key"] == d["key"]]
+        assert got["source"] == d["source"] and "replying_to" not in got
+    a_pass([flood(at=T0)])
+    a_pass([one, two], at=T0 + 2, still=[flood(at=T0), one, two])
+    a_pass([scan(at=T0 + 60)], at=T0 + 60)
+    assert set(waiting()) == {f"scan|{SRC}", "flood|192.0.2.62", "flood|192.0.2.63"}, waiting()
+
+
 def test_a_flood_of_several_large_packet_sources_offers_no_tripwire():
     """The review of d1cb5b71 (4): one attack of several large-packet sources on a host
     (`detect._large_packets`) is no scan; no tripwire is offered on it."""

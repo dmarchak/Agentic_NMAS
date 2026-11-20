@@ -1228,8 +1228,12 @@ def _replies_to(rows: list, scan: dict, src: str, floods: list) -> list:
         since = incidents._epoch((d.get("measurement") or {}).get("since"))  # noqa: SLF001
         window = int((r.get("incident") or {}).get("window_s") or 0)
         if since is not None and any(abs(since - b) <= window for b in began):
-            out.append(r)
-    return out
+            out.append((r, bool(dests)))
+    # A scan of one host has one target: two or more floods naming no destination that mirror
+    # the scan are not all its replies, so none of them is taken (the review of 7437d140).
+    if sum(1 for _r, named in out if not named) > 1:
+        out = [(r, named) for r, named in out if named]
+    return [r for r, _named in out]
 
 
 def attacks(new: list) -> list:
