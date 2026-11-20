@@ -877,9 +877,11 @@ def flow_refusal(pset: dict, changes: list, dpid, connection: dict, *, writer: s
     return flow_refusal_detail(pset, changes, dpid, connection, writer=writer)["words"]
 
 
-#: The one writer a protected class's serving flows may let past a class it meets
-#: (`served_above`): a closed-loop response, whose flow matches one source's address and so
-#: meets every class with a field it leaves unset (Lab 9 Part B, 2026-11-20).
+#: The closed loop's writer (`flow_ops.plan`'s ``writer``, passed by the response's own code,
+#: never read from an ask): a response matches one source's address, so it meets every class
+#: with a field it leaves unset, and is written only where the class names it among its owners;
+#: its preview then says what of the class it takes (`owned_class_words`; Lab 9 Part B,
+#: 2026-11-20).
 RESPONSE_WRITER = "response"
 
 
@@ -891,29 +893,39 @@ def serving_flows(cls: dict, flows, match: dict) -> list:
             and not disjoint(f.get("match") or {}, match)]
 
 
-def served_above(flow: dict, cls: dict, flows) -> str:
-    """Why *flow* takes none of class *cls*'s packets on its switch, or ``""`` when that is not
-    shown: at least one of the switch's live *flows* serves the class against *flow*'s match,
-    and every one of them is in *flow*'s table at a higher priority, so the switch matches each
-    of the class's packets there first (OpenFlow takes the highest-priority match in a table).
-    One serving flow below it, or in another table (a later table is reached only past
-    *flow*'s), and nothing is shown. Measured on the switch's flows as read now; the confirm
-    plans again on a fresh read."""
+def owned_class_words(flow: dict, cls: dict, flows, writer: str) -> str:
+    """What a write *writer* owns of class *cls* does to the class's packets, for its preview:
+    the class names *writer* among its owners, so the flow is written, and the switch's live
+    *flows* serving the class in the flow's table above it take what they match first (each
+    named by its priority). Never a claim that the flow takes none of the class: what those
+    flows do not match (another port, another MAC, another source port) is the flow's."""
     match = flow.get("match") or {}
     table, prio = int(flow.get("table_id") or 0), int(flow.get("priority") or 0)
     serving = serving_flows(cls, flows, match)
-    if not serving:
-        return ""
-    if any(int(f.get("table_id") or 0) != table or int(f.get("priority") or 0) <= prio
-           for f in serving):
-        return ""
-    prios = sorted({int(f.get("priority") or 0) for f in serving})
-    at = (f"priority {prios[0]}" if len(prios) == 1
-          else f"priorities {prios[0]} to {prios[-1]}")
-    return (f"its match meets the protected class {cls['name']} ({cls['invariant']}; "
-            f"{cls['source']}), and the {len(serving)} flow{'s' if len(serving) != 1 else ''} "
-            f"on this switch serving that class sit above it in table {table} ({at}, this flow "
-            f"{prio}): they take the class's packets first, so this flow takes none of them")
+    above = sorted({int(f.get("priority") or 0) for f in serving
+                    if int(f.get("table_id") or 0) == table and int(f.get("priority") or 0) > prio})
+    lead = (f"its match meets the protected class {cls['name']} ({cls['invariant']}; "
+            f"{cls['source']}), which names {writer} among its owners, so it is written")
+    if not above:
+        return (f"{lead}; no flow on this switch serving that class sits above it in table "
+                f"{table}, so it takes the class's packets it matches")
+    at = (f"priority {above[0]}" if len(above) == 1
+          else f"priorities {above[0]} to {above[-1]}")
+    return (f"{lead}; the class's flows above it in table {table} ({at}, this flow {prio}) take "
+            "the packets they match first, and it takes the class's packets they do not match")
+
+
+def taken_first(flow: dict, flows, classes) -> list:
+    """The switch's live *flows* in *flow*'s table, above it, that could take a packet it takes
+    and serve none of *classes*: each takes what it matches first, so *flow* never acts on
+    those packets (said in a response's preview, never refused: it leaves them as they were)."""
+    from modules.sdn.flow_ops import disjoint
+    match = flow.get("match") or {}
+    table, prio = int(flow.get("table_id") or 0), int(flow.get("priority") or 0)
+    serving = {id(f) for c in classes or () for f in serving_flows(c, flows, match)}
+    return [f for f in flows or [] if int(f.get("table_id") or 0) == table
+            and int(f.get("priority") or 0) > prio and id(f) not in serving
+            and not disjoint(f.get("match") or {}, match)]
 
 
 #: What of the protected set refused a flow write, as its record names it (`refused_by`).
@@ -940,10 +952,10 @@ def flow_refusal_detail(pset: dict, changes: list, dpid, connection: dict, *,
     refuses. *by* names what the refusal's words name: the control channel, the one class or
     the objects the first refused change met, or the set that could not be read.
 
-    A response's added flow (*writer* `RESPONSE_WRITER`) that meets a class it does not own is
-    let past that class only when *switch_flows* (the switch's live flows, as the plan read
-    them) show it takes none of the class's packets (`served_above`); *notes* says so for each,
-    for the preview. Every other writer, change and class is refused as before."""
+    Which classes a write may meet is ownership alone, as before. For a response's added flow
+    (*writer* `RESPONSE_WRITER`), *notes* says, for its preview, what of each class it owns and
+    meets it takes (`owned_class_words`) and which other flows above it keep what they match
+    (`taken_first`), read from *switch_flows* (the switch's live flows as the plan read them)."""
     from modules.sdn import control_plane
 
     channel = control_plane.refusal_detail(changes, connection, who=writer)
@@ -970,8 +982,14 @@ def flow_refusal_detail(pset: dict, changes: list, dpid, connection: dict, *,
             flows = [("removes", change.get("target") or {}, True)]
         for verb, flow, removal in flows:
             match = flow.get("match") or {}
+            said = writer == RESPONSE_WRITER and do == "add_flow" and bool(switch_flows)
+            owned = []
             for cls in pset.get("classes") or []:
                 if writer in (cls.get("owners") or []):
+                    if said and overlap(match, cls):
+                        owned.append(cls)
+                        notes.append(f"Change {n + 1}: "
+                                     f"{owned_class_words(flow, cls, switch_flows, writer)}.")
                     continue
                 if removal:
                     if not names_class(match, cls):
@@ -981,11 +999,6 @@ def flow_refusal_detail(pset: dict, changes: list, dpid, connection: dict, *,
                     met = overlap(match, cls)
                     if not met:
                         continue
-                    if writer == RESPONSE_WRITER and do == "add_flow" and switch_flows:
-                        below = served_above(flow, cls, switch_flows)
-                        if below:
-                            notes.append(f"Change {n + 1}: {below}.")
-                            continue
                 owners = ", ".join(cls.get("owners") or []) or "none"
                 return {"words": (
                     f"change {n + 1} {verb} a flow whose match meets the protected class "
@@ -994,6 +1007,16 @@ def flow_refusal_detail(pset: dict, changes: list, dpid, connection: dict, *,
                     f"{writer}'s: nothing is sent ({CITATION})"),
                     "by": [refused_by("class", cls["name"], invariant=cls["invariant"],
                                       source=cls["source"], met=met, citation=CITATION)]}
+            if said:
+                first = taken_first(flow, switch_flows, owned)
+                if first:
+                    from modules.sdn.flow_ops import flow_words
+                    notes.append(
+                        f"Change {n + 1}: {len(first)} flow{'s' if len(first) != 1 else ''} "
+                        "serving no protected class sit above it in its table and take what "
+                        "they match first, so this flow does not act on those packets: "
+                        + "; ".join(flow_words(f) for f in first[:5])
+                        + (f"; and {len(first) - 5} more" if len(first) > 5 else "") + ".")
             if not removal:
                 hits = _object_hits(pset, dpid, flow)
                 if hits:

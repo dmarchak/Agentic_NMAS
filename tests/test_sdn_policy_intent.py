@@ -482,9 +482,9 @@ class TestTheModelIsNeverTrusted:
 
 # ───────────────────────────────────────────────────── a source NetBox cables to a vendor switch
 
-def _with_router(lab, monkeypatch, filters):
+def _with_router(lab, monkeypatch, filters, address="198.51.100.254/24"):
     """The records with a router, gw-1 (role router, no end host's tag), whose GigabitEthernet0/1
-    holds 198.51.100.254 and is cabled to arista-sw1's Ethernet17 (OpenFlow port 17), as the lab's
+    holds *address* and is cabled to arista-sw1's Ethernet17 (OpenFlow port 17), as the lab's
     router is to its access switch; exported under the list's *filters*."""
     records = lab9_records()
     records["devices"].append({
@@ -498,7 +498,7 @@ def _with_router(lab, monkeypatch, filters):
         "type": {"value": "1000base-t"}, "enabled": True, "mgmt_only": False, "mode": None,
         "untagged_vlan": None, "tagged_vlans": [], "tags": [], "custom_fields": {},
         "primary_mac_address": {"mac_address": "02:00:00:00:00:fe"}}]
-    records["ip_addresses"].append({"id": 9600, "address": "198.51.100.254/24",
+    records["ip_addresses"].append({"id": 9600, "address": address,
                                     "assigned_object": {"id": 9500}})
     records["cables"].append({
         "a_terminations": [{"object": {"device": {"name": "gw-1"}, "name": "GigabitEthernet0/1"}}],
@@ -534,6 +534,18 @@ class TestASourceNetBoxCablesToAVendorSwitch:
         assert add["table_id"] == 0 and add["actions"] == []
         assert (add["match"]["ipv4_src"], add["match"]["ipv4_dst"], add["match"]["tcp_dst"]) == (
             "198.51.100.254", "198.51.100.11", 22)
+
+    def test_a_subnet_holding_a_cabled_address_enters_where_it_is_cabled_too(self, lab,
+                                                                             monkeypatch):
+        """198.51.100.8/30 holds h1 (on ovs1) and the router's .10 (cabled to arista-sw1): two
+        switches, refused, never policed at ovs1 alone."""
+        _with_router(lab, monkeypatch, {}, address="198.51.100.10/24")
+        lab.answer = answer(rule("block", "198.51.100.8/30", "h2", "tcp", 22))
+        got = draft(lab, "Block 198.51.100.8/30 from reaching h2 on tcp 22")
+        assert got["state"] == "refused", got["words"]
+        assert "enter the fabric at 2 switches" in got["words"]
+        assert "NetBox: gw-1's GigabitEthernet0/1 is cabled to arista-sw1 Ethernet17" in got["words"]
+        assert lab.fake.writes == []
 
     def test_a_router_outside_the_list_s_export_is_still_on_no_openflow_port(self, lab,
                                                                              monkeypatch):

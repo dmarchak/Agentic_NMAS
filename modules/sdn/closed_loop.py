@@ -8,9 +8,11 @@ from the response catalogue (`CATALOGUE`), deterministic, through the flow-opera
 flow Mercury changes. Without a confirm it is the preview, writing nothing; with one it is the
 apply. The actions:
 - ``drop_source`` (risk low): one flow on the detection's switch matching the source address
-  (IPv4 or IPv6) with no actions, in table 0 above every flow there not Mercury's that serves
-  no protected class the source's match meets, and so under those classes' own flows
-  (`flow_ops.response_place`; the guard lets it meet a class only so, `protected.served_above`),
+  (IPv4 or IPv6) with no actions, in table 0 under the lowest flow serving a protected class
+  the source's match meets and above every other flow below it, not Mercury's, that could take
+  the same packets (`flow_ops.response_place`); it meets a class only where the class names
+  ``response`` among its owners (the plan's guard, as for every writer), and its preview says
+  what of each such class it takes (`protected.owned_class_words`, `taken_first`),
   with the network's hard timeout; its preview says the same host's other
   family is not matched, naming the other addresses the controller's topology lists for the
   host (`drop_gap`, C2148);
@@ -1890,14 +1892,14 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
             source, _seen = _response_source(drv, conn, dpid, detection, out["params"])
             hard = _hard_timeout(network, out["params"])
             # Below the flows serving each protected class the source's match meets, in table
-            # 0, and above the rest it meets there (Lab 9 Part B, 2026-11-20): DNS and DHCP
-            # stay served, the dropped host's included. Where no priority fits, the plan's
-            # guard refuses it naming the class, and the refusal is recorded (C2944).
+            # 0, and above the rest it meets under them (Lab 9 Part B, 2026-11-20), so the
+            # network's own DNS and DHCP flows keep what they match, the dropped host's
+            # included. Whether it may meet a class at all is the class's owners' (the plan's
+            # guard), and its preview says what of each class it takes.
             from modules import protected
             pset = protected.for_network(network)
             met = [c for c in (pset.get("classes") or [])
-                   if protected.RESPONSE_WRITER not in (c.get("owners") or [])
-                   and protected.overlap(_source_match(source), c)]
+                   if protected.overlap(_source_match(source), c)]
             priority = flow_ops.response_place(read["flows"], own, recorded,
                                                match=_source_match(source), table_id=0,
                                                classes=met)
@@ -2058,7 +2060,9 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
         built = build_response(network, detection, action_id, params, driver=driver)
         if not built["ok"]:
             return dict(built, plan=None)
-        p = flow_ops.plan(network, built["ask"], driver=driver)
+        from modules import protected
+        p = flow_ops.plan(network, built["ask"], driver=driver,
+                          writer=protected.RESPONSE_WRITER)
         source = built["params"].get("source") or (detection or {}).get("source") or ""
         if p["ok"] and built["action"] == "rate_limit_source":
             p["will_not"].append(rate_limit_gap(source, built["params"], built.get("same_host")))
@@ -2104,9 +2108,11 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
     response = {"kind": "response", "action": action_id, "risk": CATALOGUE.get(
         action_id or "", {}).get("risk", ""), "detection": ask.get("detection") or {},
         "classified_by": classified_by or DEFAULT_WORDS}
+    from modules import protected
     return flow_ops.apply(network, ask, (confirm or {}).get("hash", ""), actor=actor,
                           actor_verified=actor_verified, mode=mode, autonomous=autonomous,
-                          response=response, driver=driver, **apply_kwargs)
+                          response=response, driver=driver, writer=protected.RESPONSE_WRITER,
+                          **apply_kwargs)
 
 
 #: The meter's unit as a response's log line says it, from its flags.

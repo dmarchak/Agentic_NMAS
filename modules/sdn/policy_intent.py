@@ -368,9 +368,14 @@ def resolve(w: dict, key: str) -> dict:
                           if ipaddress.ip_address(a).version == net.version))
     seen = [r for r in w["learned"] if ipaddress.ip_address(r["address"]).version ==
             net.version and ipaddress.ip_address(r["address"]) in net]
+    # A device interface NetBox cables in the subnet is a source too, so a subnet that also
+    # enters where the router is cabled is placed at two switches and refused, never policed at
+    # one while the router's traffic enters at the other.
+    cabled = [r for r in w.get("cabled") or [] if ipaddress.ip_address(r["address"]).version ==
+              net.version and ipaddress.ip_address(r["address"]) in net]
     return {"key": net.compressed, "kind": "subnet", "hosts": names, "addresses": [net.compressed],
-            "learned": seen, "label": f"subnet {net.compressed}"
-                                      + (f": {', '.join(names)} (NetBox)" if names else "")}
+            "learned": seen, "cabled": cabled, "label": f"subnet {net.compressed}"
+            + (f": {', '.join(names)} (NetBox)" if names else "")}
 
 
 def _tokens(text: str) -> list:

@@ -236,21 +236,27 @@ def response_priority(flows: list, own_cookies=(), intent_cookies=(), match=None
 def response_place(flows: list, own_cookies=(), intent_cookies=(), *, match: dict,
                    table_id: int = 0, classes=()) -> int:
     """The priority a closed-loop response's flow takes in table *table_id* of a switch whose
-    live *flows* these are, so it takes what it answers and none of the protected *classes* it
-    meets (those whose owners do not include the response).
+    live *flows* these are, so it takes what it answers and leaves the flows serving the
+    protected *classes* its match meets above it, to take what they match first (whether it may
+    meet those classes at all is their owners', asked by the plan's guard).
 
     Only that table's flows decide, since a flow in it is matched before any later table's.
-    Its flows serving one of *classes* (`protected.serving_flows`) are left out, and the
-    priority is `response_priority` over the rest: above the forwarding it must win against,
-    and so below the classes' own flows wherever there is room. Where there is none (the
-    priority reaches a serving flow's), the plan's guard refuses it naming the class
-    (`protected.served_above`)."""
+    Its flows serving one of *classes* (`protected.serving_flows`) set a ceiling, the lowest of
+    their priorities; the priority is `response_priority` over the other flows below that
+    ceiling: above the forwarding it must win against, and below the classes' own flows. A flow
+    above the ceiling that serves no class (the Lab 9 team's drop of DNS over TCP at 1200, say)
+    keeps taking what it matches first, and the preview names it (`protected.taken_first`).
+    Where no priority fits under the ceiling, it takes the next above the flows below it and
+    its preview says the class's flows it then sits above (`protected.owned_class_words`)."""
     from modules import protected
 
     here = [f for f in flows or [] if int(f.get("table_id") or 0) == int(table_id)]
-    serving = {id(f) for c in classes or () for f in protected.serving_flows(c, here, match)}
-    return response_priority([f for f in here if id(f) not in serving], own_cookies,
-                             intent_cookies, match=match)
+    serving = [f for c in classes or () for f in protected.serving_flows(c, here, match)]
+    ids = {id(f) for f in serving}
+    ceiling = min((int(f.get("priority") or 0) for f in serving), default=None)
+    rest = [f for f in here if id(f) not in ids
+            and (ceiling is None or int(f.get("priority") or 0) < ceiling)]
+    return response_priority(rest, own_cookies, intent_cookies, match=match)
 
 
 def free_meter_id(meters: list, features: dict = None, taken=(), flows=()) -> int:
@@ -359,8 +365,8 @@ def plan(network: str, ask: dict, *, driver=None, writer: str = None) -> dict:
     """The preview of *ask*, reading the switch and writing nothing. See the module's
     docstring. ``{"ok", "error", ...}``: on a refusal ``ok`` is False and ``error`` names the
     comparison made and both operands. *writer* is who writes, for B's owners (an internal
-    caller's own name, never read from the ask); given none, ``response`` for a response's ask
-    and ``person`` otherwise."""
+    caller's own name, never read from the ask: the closed loop and the re-apply pass
+    ``response``); given none, ``person``."""
     from modules.sdn import flow_intent
     from modules.sdn.drivers.base import SpecError, dpid_hex, parse_dpid
 
@@ -445,9 +451,12 @@ def plan(network: str, ask: dict, *, driver=None, writer: str = None) -> dict:
         # B, the protected set (C2379): the one guard every flow writer reaches, here in the
         # write path they share; the controller connection's control channel first (C2022),
         # then NetBox's protected classes and objects. The set's hash is bound with the plan.
-        who = writer or ("response" if ask.get("response") or ask.get("action") else "person")
-        # A response is let past a class it meets only where this read of the switch shows the
-        # class's own flows above it in its table (`protected.served_above`), said here.
+        # The writer is the caller's, never the ask's: a person's confirm carries its ask back
+        # from the page, so a field in it cannot make the write a response's (Lab 9 Part B,
+        # 2026-11-20). The closed loop and the re-apply pass `protected.RESPONSE_WRITER`.
+        who = writer or "person"
+        # What a response takes of a class it owns is said in its preview, read on this read
+        # of the switch (`protected.owned_class_words`, `taken_first`).
         refused = protected.flow_refusal_detail(pset, changes, dpid, conn, writer=who,
                                                 switch_flows=flows)
         out["warnings"] += refused.get("notes") or []
