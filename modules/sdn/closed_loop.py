@@ -1554,7 +1554,59 @@ def recorded_subnet(network: str, source: str):
     return None
 
 
-def tripwire_ask(network: str, detection: dict, *, driver=None) -> dict:
+def _may_meet(a: dict, b: dict) -> bool:
+    """Whether a packet may match both *a* and *b*, by flow_intent's field reading (a masked
+    prefix included, which `flow_ops.disjoint` never separates); True where it cannot tell."""
+    from modules.sdn import flow_intent
+
+    try:
+        return flow_intent._match_meet(flow_intent._fields(a),  # noqa: SLF001 (its reading)
+                                       flow_intent._fields(b)) is not None
+    except flow_intent._CannotTell:                   # noqa: SLF001
+        return True
+
+
+def _same_address(value, addr) -> bool:
+    """Whether a match's address *value* is *addr*, in any spelling (the review of d1cb5b71,
+    5: Ryu may spell an IPv6 address uncompressed)."""
+    import ipaddress
+
+    try:
+        return ipaddress.ip_address(str(value or "").strip()) == addr
+    except ValueError:
+        return False
+
+
+def _edge_switch(network: str, detection: dict, conn: str, stored: dict = None) -> tuple:
+    """Where a tripwire for *detection*'s source goes: the one switch port the controller's
+    topology lists its host on, off a link (`incidents._attachments`, the ingress a flood's
+    response is proposed at), else the detection's own switch, said: ``(dpid, dpid_hex,
+    words)``. A watching row's detection is the switch that saw it first, which may be a
+    transit switch (the review of d1cb5b71, 3)."""
+    from modules.sdn import incidents
+    from modules.sdn.drivers.base import parse_dpid
+
+    own = parse_dpid(detection.get("dpid") if detection.get("dpid") is not None
+                     else detection.get("dpid_hex"))
+    if stored is None:
+        try:
+            from modules.sdn import topology
+            stored = topology.stored(network)
+        except Exception as exc:                      # noqa: BLE001 (said)
+            stored = {"state": "could not read", "why": type(exc).__name__}
+    got = incidents._attachments(stored, incidents._canon(detection.get("source")),  # noqa
+                                 {conn})
+    if len(got["ports"]) == 1:
+        _c, dpid, dpid_hex, port = got["ports"][0]
+        return int(dpid), dpid_hex or f"{int(dpid):016x}", (
+            f"the source's own switch: the controller's topology lists its host on port {port}")
+    why = got["why"] or (f"the controller's topology lists it on {len(got['ports'])} ports"
+                         if got["ports"] else "the controller's topology does not list its host")
+    return own, detection.get("dpid_hex") or f"{own:016x}", (
+        f"the switch that saw it ({why})")
+
+
+def tripwire_ask(network: str, detection: dict, *, driver=None, stored: dict = None) -> dict:
     """The tripwire for a watched High packet rate (Lab 9 A, the operator's go of 2026-11-20 on
     the step-4 measurement): on the switch the source enters by, one Mercury flow per
     `TRIPWIRE_PORTS` port, each ``{eth_type, <family>_src: the source, <family>_dst: the subnet
@@ -1569,15 +1621,13 @@ def tripwire_ask(network: str, detection: dict, *, driver=None) -> dict:
     import ipaddress
 
     from modules.sdn import flow_intent, flow_ops
-    from modules.sdn.drivers.base import parse_dpid
 
     out = {"ok": False, "error": "", "ask": None, "words": ""}
     source = str(detection.get("source") or "")
     conn = detection.get("connection") or ""
     try:
-        dpid = parse_dpid(detection.get("dpid") if detection.get("dpid") is not None
-                          else detection.get("dpid_hex"))
         addr = ipaddress.ip_address(source)
+        dpid, where, placed = _edge_switch(network, detection, conn, stored)
     except Exception:                                 # noqa: BLE001 (said)
         return dict(out, error="the watched row names no one source address and switch, so "
                                "there is nothing to watch")
@@ -1594,12 +1644,11 @@ def tripwire_ask(network: str, detection: dict, *, driver=None) -> dict:
     if not read["ok"]:
         return dict(out, error=read["error"])
     fam = "ipv4" if addr.version == 4 else "ipv6"
-    where = detection.get("dpid_hex") or dpid
     table0 = [f for f in read["flows"] if int(f.get("table_id") or 0) == 0]
     # One set at a time (the review of 94fa79c8, 2): a second set beside a live one would
     # count one host's ordinary ports twice toward a scan.
     if any(flow_intent.is_tripwire(f.get("cookie"))
-           and str((f.get("match") or {}).get(f"{fam}_src") or "") == addr.compressed
+           and _same_address((f.get("match") or {}).get(f"{fam}_src"), addr)
            for f in table0):
         return dict(out, error=(f"Mercury's tripwires for {source} are already on switch "
                                 f"{where}; they end by their {TRIPWIRE_SECONDS} s hard timeout, "
@@ -1616,13 +1665,13 @@ def tripwire_ask(network: str, detection: dict, *, driver=None) -> dict:
         # shadowed by it; a tripwire takes only what the team's own flows would.
         meeting = [int(f.get("priority") or 0) for f in table0
                    if not flow_intent.is_mercury(f.get("cookie"))
-                   and not flow_ops.disjoint(f.get("match") or {}, match)]
+                   and _may_meet(f.get("match") or {}, match)]
         priority = min(0xFFFF, (max(meeting) if meeting else 0) + 1)
         held = next((f for f in table0
                      if flow_intent.is_mercury(f.get("cookie"))
                      and not flow_intent.is_tripwire(f.get("cookie"))
                      and int(f.get("priority") or 0) > priority
-                     and not flow_ops.disjoint(f.get("match") or {}, match)
+                     and _may_meet(f.get("match") or {}, match)
                      and (not f.get("actions")
                           or any(a.get("type") == "METER" for a in f.get("actions") or []))),
                     None)
@@ -1647,8 +1696,8 @@ def tripwire_ask(network: str, detection: dict, *, driver=None) -> dict:
             "actions": [dict(a) for a in on["actions"]]}})
     from modules.sdn.detect import TRIPWIRE_NEED
     return dict(out, ok=True, ask={"connection": conn, "dpid": dpid, "changes": changes},
-                words=(f"{len(changes)} tripwires on switch {detection.get('dpid_hex') or dpid}"
-                       f" for {source}: TCP {', '.join(map(str, TRIPWIRE_PORTS))} to "
+                words=(f"{len(changes)} tripwires on switch {where} ({placed}) "
+                       f"for {source}: TCP {', '.join(map(str, TRIPWIRE_PORTS))} to "
                        f"{subnet.compressed}, the subnet NetBox records it in, each {onward}, "
                        f"for {TRIPWIRE_SECONDS} s. A source that touches {TRIPWIRE_NEED} or "
                        "more of them is called a scan, of high confidence; ordinary traffic "

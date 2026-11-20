@@ -375,14 +375,16 @@ def joinable(rows: list, d: dict, now: float) -> dict:
             return r
     # A scan Mercury's tripwires confirmed wins over a flood from the same source (the
     # operator, 2026-11-20: a scan over 50 packets a second meets the flood rule after its
-    # 30 s hold): the flood's sighting joins the scan's incident, seen also, never its own.
-    return scan_over_flood(d, rows)
+    # 30 s hold): the flood's sighting joins the scan's incident, seen also, never its own;
+    # within the scan incident's window of its last sighting, so a scan card left waiting
+    # never absorbs a flood that comes much later (the review of d1cb5b71, 1).
+    return scan_over_flood(d, [r for r in rows if within(r)])
 
 
 def scan_over_flood(d: dict, rows: list):
     """The incident awaiting a person (among *rows*) that a flood detection *d* joins because
-    Mercury's tripwires confirmed a scan from the same source (`confirmed_scan`), or None. No
-    window: the scan's incident stays the source's while it awaits a person."""
+    Mercury's tripwires confirmed a scan from the same source (`confirmed_scan`), or None.
+    *rows* are those within their window (`joinable`'s)."""
     src = _canon(d.get("source"))
     if d.get("rule") != "flood" or not src:
         return None

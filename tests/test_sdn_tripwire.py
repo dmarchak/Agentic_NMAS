@@ -322,6 +322,49 @@ def test_hits_are_distinct_ports_with_a_counter(case):
     assert [x for x in out["detections"] if x.get("basis") == "tripwire"] == []
 
 
+def test_a_masked_team_flow_the_tripwire_never_meets_does_not_raise_it(lab):  # noqa: F811
+    """The review of d1cb5b71 (2): a management-class flow to 203.0.113.0/24 at 2000 never meets a
+    tripwire to the source's subnet, so it does not lift the tripwire above where a response
+    placed under it would go."""
+    _pipeline(lab)
+    lab.fake.table[OVS1].append({
+        "dpid": OVS1, "table_id": 0, "priority": 2000, "cookie": TEAM + 9,
+        "match": {"eth_type": 0x0800, "ipv4_dst": "203.0.113.0/24"},
+        "actions": [{"type": "OUTPUT", "port": "CONTROLLER"}], "idle_timeout": 0,
+        "hard_timeout": 0})
+    got = CL.tripwire_ask(NET, _watched(H1_V4), driver=lab.driver)
+    assert got["ok"], got["error"]
+    assert {c["flow"]["priority"] for c in got["ask"]["changes"]} == {1}
+
+
+def test_the_tripwire_goes_on_the_source_s_own_switch(lab):  # noqa: F811 - the fixture
+    """The review of d1cb5b71 (3): a watching row's detection is the switch that saw it first,
+    maybe a transit; the tripwire goes where the controller's topology lists the source's
+    host, the ingress a flood's response is proposed at."""
+    from modules.sdn.drivers.ryu import host_from_ryu
+    _pipeline(lab)
+    h1 = host_from_ryu({"mac": "02:00:00:00:00:01", "ipv4": [H1_V4], "ipv6": [],
+                        "port": {"dpid": f"{OVS1:016x}", "port_no": "00000005",
+                                 "hw_addr": "02:90:d3:08:55:05", "name": "eno5"}})
+    stored = {"state": "read", "controllers": [dict(lab.topo["controllers"][0], hosts=[h1])]}
+    got = CL.tripwire_ask(NET, _watched(H1_V4, dpid=4), driver=lab.driver, stored=stored)
+    assert got["ok"], got["error"]
+    assert got["ask"]["dpid"] == OVS1
+    assert "the source's own switch" in got["words"]
+
+
+def test_a_second_set_is_refused_whatever_the_address_s_spelling(lab):  # noqa: F811
+    """The review of d1cb5b71 (5): Ryu may spell an IPv6 source uncompressed."""
+    _pipeline(lab)
+    first = CL.tripwire_ask(NET, _watched(H1_V6), driver=lab.driver)
+    assert first["ok"], first["error"]
+    for c in first["ask"]["changes"]:
+        c["flow"]["match"]["ipv6_src"] = ipaddress.ip_address(H1_V6).exploded
+    _sent(lab, first)
+    again = CL.tripwire_ask(NET, _watched(H1_V6), driver=lab.driver)
+    assert not again["ok"] and "already on switch" in again["error"], again
+
+
 def test_the_tripwire_ports_leave_out_dns_and_are_distinct():
     assert 53 not in CL.TRIPWIRE_PORTS
     assert len(set(CL.TRIPWIRE_PORTS)) == len(CL.TRIPWIRE_PORTS) == 16

@@ -76,7 +76,7 @@ def test_watch_its_ports_previews_sixteen_tripwires_and_the_flow_confirm_sends_t
     text = unescape(card.get_data(as_text=True))
     assert card.status_code == 200, text
     assert f"Preview: {len(CL.TRIPWIRE_PORTS)} requests on" in text
-    assert f"16 tripwires on switch 0000000000000001 for {H1}" in text
+    assert "16 tripwires on switch 0000000000000001 (" in text and f"for {H1}: TCP 21" in text
     assert "198.51.100.0/24, the subnet NetBox records it in" in text
     assert world["fake"].writes == [], "the preview sends nothing"
     fields = form_fields(card.get_data(as_text=True))
@@ -129,7 +129,7 @@ def test_a_flood_incident_of_one_source_offers_its_tripwire(world, calls):  # no
     card = world["client"].post(f"/v2/sdn/watch/{row['id']}/tripwire", data={"list": NET})
     text = unescape(card.get_data(as_text=True))
     assert card.status_code == 200, text
-    assert f"16 tripwires on switch 0000000000000001 for {H1}" in text
+    assert "16 tripwires on switch 0000000000000001 (" in text and f"for {H1}: TCP 21" in text
     assert world["fake"].writes == []
 
 

@@ -337,7 +337,9 @@ def _tripwire_offer(d: dict) -> dict:
     goto are checked when it is pressed (`closed_loop.tripwire_ask`)."""
     import ipaddress
 
-    if (d.get("rule"), d.get("basis")) not in (("high_rate", "rate"), ("flood", "rate")):
+    if (d.get("rule"), d.get("basis")) not in (("high_rate", "rate"), ("flood", "rate"))             or d.get("attack_sources"):
+        # Not on one attack of several large-packet sources on a host (`detect._large_packets`,
+        # the review of d1cb5b71, 4): its packets are no scan's.
         return {"offered": False, "refusal": ""}
     try:
         ipaddress.ip_address(str(d.get("source") or ""))

@@ -366,14 +366,17 @@ mode and whether the loop is running.
   - **What it writes:** one flow per TCP port a port scan touches (21, 22, 23, 25, 80, 110,
     135, 139, 143, 443, 445, 993, 995, 3306, 3389 and 8080; 53 is left out), each from the
     source to the subnet NetBox records it in, going on by the switch's own goto to its later
-    table, so where the traffic goes is unchanged. Each sits one priority above the switch's
-    own flows it meets, so any response Mercury sends later is above it. Each stays two
+    table, so where the traffic goes is unchanged. They go on the source's own switch, where
+    the controller's topology lists its host (else the switch that saw it, said). Each sits
+    one priority above the switch's own flows it meets, so any response Mercury sends later is
+    above it. Each stays two
     minutes (its hard timeout). One set per source at a time.
   - **What it tells:** a source whose traffic touches six or more of its ports is called a
     **scan**, of high confidence, and answered as any scan is; ordinary traffic touches one or
     two. A scan beyond that subnet is not watched.
   - **The scan wins over the flood:** a flood incident awaiting you for the same source joins
-    the scan's incident (seen also there), and a flood seen afterwards joins it too, so the
+    the scan's incident (seen also there), and a flood seen afterwards, within the scan's
+    window (60 s by default) of its last sighting, joins it too, so the
     traffic is answered once, as a scan, in packets a second. A flood whose response you
     already sent is left as it is; with its meter in force, a tripwire for that source is
     refused, since Mercury's own response already holds its traffic.

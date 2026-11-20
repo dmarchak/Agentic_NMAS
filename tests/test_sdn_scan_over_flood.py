@@ -111,3 +111,21 @@ def test_the_scan_s_card_offers_its_rate_limit_in_packets_a_second():
              if r["rule"] == "flood"]
     assert fl["rate_default"] == CL.RATE_LIMIT_DEFAULT
     assert fl["tripwire"] == {"offered": True, "refusal": ""}
+
+
+def test_a_flood_long_after_the_scan_s_last_sighting_is_its_own():
+    """The review of d1cb5b71 (1): within the scan incident's window only, so a scan card left
+    waiting never absorbs a flood that comes much later (and AUTO may answer that one)."""
+    a_pass([scan(at=T0)])
+    f = flood(at=T0 + 600)
+    a_pass([f], at=T0 + 600)
+    assert set(waiting()) == {f"scan|{SRC}", f"flood|{SRC}"}, waiting()
+
+
+def test_a_flood_of_several_large_packet_sources_offers_no_tripwire():
+    """The review of d1cb5b71 (4): one attack of several large-packet sources on a host
+    (`detect._large_packets`) is no scan; no tripwire is offered on it."""
+    from modules import sdn_ops_page as P
+    attack = dict(flood(), attack_sources=[SRC, "192.0.2.62"], attack_host="192.0.2.3")
+    assert P._tripwire_offer(attack) == {"offered": False, "refusal": ""}
+    assert P._tripwire_offer(flood())["offered"]
