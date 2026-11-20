@@ -490,3 +490,49 @@ def test_onward_says_a_pair_the_flows_below_drop_in_part_or_by_the_table_s_defau
     nothing = O.onward([_f(10, {"eth_type": 0x0806}, [{"type": "OUTPUT", "port": 1}])], 0, 300,
                        pair)
     assert nothing["reason"] == "drops" and "table 0's default" in nothing["taker"], nothing
+
+
+@pytest.mark.parametrize("family", [4, 6], ids=["ipv4", "ipv6"])
+def test_a_hint_never_hides_a_drop_the_pair_s_own_match_meets(family):
+    """The review of 69e36e6c (1): the hint (the source's port, the destination's MAC) narrowed
+    the packet step, so a person's anti-spoofing drop on another ingress port was passed over
+    and the pair's flow, which takes every port's packets, would have undone it. A drop that
+    the pair's own match meets is found before any hint is used."""
+    pair = ONWARD_PAIRS[family]
+    v = "ipv4" if family == 4 else "ipv6"
+    spoof = _f(150, {"in_port": 3, "eth_type": pair["eth_type"], f"{v}_src": pair[f"{v}_src"]},
+               [], cookie=F.new_cookie(), hard=0)
+    miss = _f(0, {}, [{"type": "GOTO_TABLE", "table_id": 2}])
+    got = O.onward([spoof, miss], 0, 300, pair, {"in_port": 1, "in_phy_port": 1,
+                                                 "eth_dst": "02:00:00:00:00:61"})
+    assert not got["ok"] and got["reason"] == "may_drop", got
+    assert "the flow at priority 150" in got["taker"]
+    by_mac = _f(150, {"eth_dst": "02:00:00:00:00:77"}, [])
+    assert O.onward([by_mac, miss], 0, 300, pair,
+                    {"eth_dst": "02:00:00:00:00:61"})["reason"] == "may_drop"
+
+
+@pytest.mark.parametrize("family", [4, 6], ids=["ipv4", "ipv6"])
+@pytest.mark.parametrize("actions,whole,part", [
+    ([], "drops", "may_drop"),
+    ([{"type": "CLEAR_ACTIONS"}], "drops", "may_drop"),
+    ([{"type": "WRITE_ACTIONS", "actions": []}], "drops", "may_drop"),
+    ([{"type": "METER", "meter_id": 7}, {"type": "GOTO_TABLE", "table_id": 2}], "meters",
+     "may_meter"),
+    ([{"type": "GROUP", "group_id": 1}], "cannot_follow", "cannot_follow"),
+], ids=["no-actions", "clear-actions", "empty-write", "meter", "group"])
+def test_what_a_flow_below_does_is_read_by_its_actions_never_by_an_empty_list(family, actions,
+                                                                             whole, part):
+    """The review of 69e36e6c (2, 4): a flow whose instructions only clear its action set, or
+    write an empty one, drops what it takes; one through a meter meters it; one to a group goes
+    where Mercury cannot follow. Covering the pair, or taking part of it, each is said, and the
+    pair is never sent on past it."""
+    pair = ONWARD_PAIRS[family]
+    v = "ipv4" if family == 4 else "ipv6"
+    covering = _f(100, {"eth_type": pair["eth_type"], f"{v}_src": pair[f"{v}_src"]}, actions,
+                  cookie=F.new_cookie(), hard=0)
+    assert O.onward([covering], 0, 300, pair)["reason"] == whole
+    partial = _f(100, {"eth_type": pair["eth_type"], f"{v}_src": pair[f"{v}_src"],
+                       "ip_proto": 6, "tcp_dst": 22}, actions, cookie=F.new_cookie(), hard=0)
+    got = O.onward([partial, _f(0, {}, [{"type": "GOTO_TABLE", "table_id": 2}])], 0, 300, pair)
+    assert got["reason"] == part and not got["ok"], got

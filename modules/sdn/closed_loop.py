@@ -2056,16 +2056,22 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                                 **({"in_port": ingress, "in_phy_port": ingress}
                                    if isinstance(ingress, int) else {}))
                     on = flow_ops.onward(read["flows"], 0, priority, m, hint)
-                    if on.get("reason") in ("drops", "meters", "may_drop", "may_meter"):
-                        # The network's own flows below already drop or meter it, all of it or
-                        # part (a person's flow, a permanent policy, the table's default): a
-                        # rate limit above would undo that, so this pair is not metered, and
-                        # said (the reviews of 5d7799f0 and 3bb37445).
-                        done_by = {"drops": "dropped", "meters": "metered",
-                                   "may_drop": "partly dropped",
-                                   "may_meter": "partly metered"}[on["reason"]]
-                        not_metered.append(f"{target} (already {done_by} below it by "
-                                           f"{on['taker']})")
+                    if on.get("reason") in ("drops", "meters", "may_drop", "may_meter",
+                                            "cannot_follow"):
+                        # The network's own flows below drop or meter it, all of it or some
+                        # (a person's flow, a permanent policy, the table's default), or do
+                        # what Mercury cannot follow: a rate limit above would undo that, so
+                        # this pair is not metered, said for what the flows hold, no more (the
+                        # reviews of 5d7799f0, 3bb37445 and 69e36e6c).
+                        held = {"drops": "all of it is dropped below it by",
+                                "meters": "all of it is metered below it by",
+                                "may_drop": "some of it may be dropped below it by",
+                                "may_meter": "some of it may be metered below it by",
+                                "cannot_follow": "some of it is sent below it where Mercury "
+                                                 "cannot follow, by"}[on["reason"]]
+                        not_metered.append(f"{target} ({held} {on['taker']}; none of "
+                                           f"{source}'s traffic to it is limited by this "
+                                           "response)")
                         continue
                     goto = (on["ok"] and len(on["actions"]) == 1
                             and on["actions"][0].get("type") == "GOTO_TABLE")

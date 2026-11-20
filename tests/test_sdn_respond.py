@@ -180,7 +180,10 @@ def test_a_pair_the_network_drops_below_is_not_metered_and_never_forwarded(monke
     _d, fake, preview = _flood_on(monkeypatch, table)
     assert not preview["ok"]
     assert "nothing of" in preview["error"] and "left to meter" in preview["error"]
-    assert "192.0.2.99 (already dropped below it by the flow at priority 120" in preview["error"]
+    assert ("192.0.2.99 (all of it is dropped below it by the flow at priority 120"
+            in preview["error"])
+    assert "is limited by this response" in preview["error"]
+    assert "drop the source instead" in preview["error"], "the refusal says what to do"
     assert fake.writes == []
 
 

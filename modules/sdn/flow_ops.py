@@ -293,9 +293,10 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
     instructions. ``{"ok", "actions", "words", "error", "reason", "taker"}``: refused, naming
     the flows compared, when no flow takes the traffic, the one that does drops or meters it,
     or the packet cannot be followed; *reason* says which (``drops``, a flow or the table's
-    default; ``meters``; ``may_drop`` or ``may_meter``, where it cannot be followed and a
-    flow below that meets it drops or meters part of it; ``split``), *taker* the flow that
-    takes it and what it does, where one does."""
+    default; ``meters``; ``may_drop``, ``may_meter`` or ``cannot_follow``, where no one flow
+    takes all of it and a flow below that may take some drops, meters or does what Mercury
+    cannot follow; ``split``), *taker* the flow that takes it and what it does, where one
+    does. A hint only chooses among flows that forward: it never hides a drop."""
     from modules.sdn import flow_intent, trace
 
     hint = dict(hint or {})
@@ -316,21 +317,44 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
         return (flow_intent._match_meet(mine, theirs) is not None,
                 flow_intent._match_covers(theirs, mine))
 
+    def does(acts) -> str:
+        # What a flow's instructions do with what it takes, by flow_intent's own reading
+        # (`_does`), never by an empty list alone (the review of 69e36e6c: CLEAR_ACTIONS,
+        # SET_FIELD alone or an empty WRITE_ACTIONS drop too): ``meters``, ``cannot`` (a
+        # group, or an action Mercury could not read), ``drops`` (no output and nothing
+        # onward), or ``""`` (it forwards, out a port or on to a later table).
+        d = flow_intent._does([a for a in acts or [] if isinstance(a, dict)])
+        if d["meters"]:
+            return "meters"
+        if any(not w.startswith("continues to table") for w in d["onward"]):
+            return "cannot"
+        return "" if d["out"] or d["onward"] else "drops"
+
+    def taken(f):
+        return f"{trace._ref(f)}: {flow_intent.action_words(f.get('actions') or [])}"
+
+    def refused(reason, taker, error):
+        return {"ok": False, "actions": [], "words": "", "reason": reason,
+                "taker": taker, "error": error}
+
     def given(f, how):
-        acts = [dict(a) for a in f.get("actions") or []]
-        said = f"{trace._ref(f)}: {flow_intent.action_words(acts)}"
-        if not acts:
-            return {"ok": False, "actions": [], "words": "", "reason": "drops",
-                    "taker": said, "error": (
-                        f"its traffic is taken below it by {said}, which drops it, so there is "
-                        "nothing to send on")}
-        if any(a.get("type") == "METER" for a in acts):
-            return {"ok": False, "actions": [], "words": "", "reason": "meters",
-                    "taker": said, "error": (
-                        f"its traffic is taken below it by {said}, which meters it already")}
-        return {"ok": True, "actions": acts, "error": "", "reason": "", "taker": said,
+        said, kind = taken(f), does(f.get("actions"))
+        if kind == "drops":
+            return refused("drops", said, f"its traffic is taken below it by {said}, which "
+                                          "drops it, so there is nothing to send on")
+        if kind == "meters":
+            return refused("meters", said, f"its traffic is taken below it by {said}, which "
+                                           "meters it already")
+        if kind == "cannot":
+            return refused("cannot_follow", said, f"its traffic is taken below it by {said}, "
+                                                  "which Mercury cannot follow")
+        return {"ok": True, "actions": [dict(a) for a in f.get("actions") or []],
+                "error": "", "reason": "", "taker": said,
                 "words": f"then on as {said} ({how})"}
 
+    # 1. One flow takes every packet of the pair: the first priority at which any flow meets
+    # it, where every such flow covers it with the same instructions. Anything below that
+    # priority is shadowed by it, so it alone decides.
     for p in sorted({int(f.get("priority") or 0) for f in below}, reverse=True):
         meets = [(f, got) for f in below if int(f.get("priority") or 0) == p
                  for got in [meets_covers(f.get("match") or {})] if got[0]]
@@ -340,6 +364,24 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
         if all(got[1] for _f, got in meets) and len(acts) == 1:
             return given(meets[0][0], "every packet it matches would be taken there")
         break
+    # 2. No one flow takes it all: the pair's packets go several ways. Where ANY flow below
+    # that may take some of them (judged on the pair's own match, never narrowed by the hint;
+    # one the arithmetic cannot read counts as meeting) drops, meters or sends to something
+    # Mercury cannot follow, sending the pair on would undo that for those packets: refused,
+    # naming the flow (the reviews of 3bb37445 and 69e36e6c: the shape, not its members).
+    for f in sorted(below, key=lambda f: -int(f.get("priority") or 0)):
+        kind = does(f.get("actions"))
+        if kind and meets_covers(f.get("match") or {})[0]:
+            reason = {"drops": "may_drop", "meters": "may_meter",
+                      "cannot": "cannot_follow"}[kind]
+            return refused(reason, taken(f), (
+                f"the switch's flows below it take its traffic several ways, and "
+                f"{trace._ref(f)}, which "
+                + {"drops": "drops", "meters": "meters",
+                   "cannot": "Mercury cannot follow for"}[kind]
+                + " what it matches, may take some of it"))
+    # 3. Every flow below that may take some of it forwards it: the hint (the destination's
+    # MAC, the source's port) picks the one its packets take, among forwarding flows only.
     exact = all("/" not in str(v) for v in match.values())
     packet = dict(match, **hint) if exact else {}
     if packet:
@@ -351,31 +393,20 @@ def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = 
                          + (f"the destination's learned MAC {hint['eth_dst']}"
                             if hint.get("eth_dst") else "its own match"))
         if why is None:
-            # Nothing takes it, and no table-miss: OpenFlow drops it by the table's default.
-            return {"ok": False, "actions": [], "words": "", "reason": "drops",
-                    "taker": f"table {table_id}'s default (no flow under priority {priority} "
-                             "takes it, and no table-miss entry)",
-                    "error": (f"no flow under priority {priority} in table {table_id} takes "
-                              "it, so the switch drops it by the table's default")}
+            # Nothing takes its packets as the hint knows them, and no table-miss: those are
+            # dropped by the table's default (all of it, where no flow meets it at all).
+            whole = not any(meets_covers(f.get("match") or {})[0] for f in below)
+            return refused("drops" if whole else "may_drop",
+                           f"table {table_id}'s default (no flow under priority {priority} "
+                           "takes " + ("it" if whole else "its packets as Mercury knows them")
+                           + ", and no table-miss entry)",
+                           f"no flow under priority {priority} in table {table_id} takes "
+                           + ("it" if whole else "its packets as Mercury knows them")
+                           + ", so the switch drops "
+                           + ("it" if whole else "them") + " by the table's default")
     else:
         why = "its match is not one packet's (a subnet), so it cannot be followed"
-    # It cannot be followed as one flow: where any flow below that meets it drops or meters
-    # what it takes, some of the pair's traffic may be dropped or metered there already, and
-    # sending the pair on would undo that (the review of 3bb37445).
-    for f in sorted(below, key=lambda f: -int(f.get("priority") or 0)):
-        acts = f.get("actions") or []
-        kind = ("may_drop" if not acts else
-                "may_meter" if any(isinstance(a, dict) and a.get("type") == "METER"
-                                    for a in acts) else "")
-        if kind and meets_covers(f.get("match") or {})[0]:
-            return {"ok": False, "actions": [], "words": "", "reason": kind,
-                    "taker": f"{trace._ref(f)}: {flow_intent.action_words(acts)}",
-                    "error": (f"the switch's flows below it split its traffic and {why}; "
-                              f"{trace._ref(f)}, which "
-                              f"{'drops' if kind == 'may_drop' else 'meters'} what it "
-                              "matches, takes part of it")}
-    return {"ok": False, "actions": [], "words": "", "reason": "split", "taker": "",
-            "error": f"the switch's flows below it split its traffic and {why}"}
+    return refused("split", "", f"the switch's flows below it split its traffic and {why}")
 
 
 def free_meter_id(meters: list, features: dict = None, taken=(), flows=()) -> int:
