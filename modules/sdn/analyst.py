@@ -1360,7 +1360,15 @@ def remove_planted(network: str, pid: str, *, actor: str, drawn: str = None,
 
 
 def _matches(pattern: str, ident: str) -> bool:
-    return fnmatch.fnmatchcase(ident, pattern) if "*" in pattern else ident == pattern
+    """Whether the evidence id *ident* answers a planted issue's *pattern*: the id itself (or
+    its glob), and for a port (``port:<conn>:<dpid>:<n>``) also that port's counters
+    (``rate:<conn>:<dpid>:<n>``), the fact a flood or a load is read from (C4151: a flood's
+    finding cites the rate; the 19.13 cases already took a port by its rate, `b4_eval.
+    case_issues`). The one rule for the page's sheet, the judge and the evaluation."""
+    def one(p):
+        return fnmatch.fnmatchcase(ident, p) if "*" in p else ident == p
+
+    return one(pattern) or (pattern.startswith("port:") and one("rate:" + pattern[5:]))
 
 
 def planted_after(issue: dict, result: dict) -> bool:

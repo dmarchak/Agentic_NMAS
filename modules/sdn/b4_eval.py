@@ -596,6 +596,26 @@ def _role_summary(cases: list) -> dict:
                                              - per["baseline"]["cost_usd"], 6)}}
 
 
+def issue_counts(results: dict) -> list:
+    """Each threat case's planted issues, each found by how many of each technique's runs that
+    answered (C4151): a case with several issues is correct only when a run finds every one, so
+    the case's count alone hides which were found. Read from each run's ``missed_issues``, so a
+    kept report's JSON gives it again. ``[{"case", "issue", "runs": {t: n},
+    "found": {t: n}}]``."""
+    out = []
+    for c in results.get("cases") or []:
+        if c.get("kind") != "threat":
+            continue
+        for name in c.get("planted") or []:
+            runs = {t: [r for r in c["runs"][t] if r.get("ok")] for t in TECHNIQUES}
+            out.append({"case": c["key"], "issue": name,
+                        "runs": {t: len(runs[t]) for t in TECHNIQUES},
+                        "found": {t: sum(1 for r in runs[t]
+                                         if name not in (r.get("missed_issues") or []))
+                                  for t in TECHNIQUES}})
+    return out
+
+
 def summary(results: dict) -> dict:
     """The measures by role (recorded, held_out, blind, hardware) and over all, and the pass
     rule's verdict on the blind role alone (19.13), with its power said."""
@@ -625,7 +645,7 @@ def summary(results: dict) -> dict:
                              f"{round(100 / max(1, blind['cases']))} points, so the power is low")}
     return {"roles": roles, "all": every, "pass_rule": verdict,
             "not_converted": NOT_CONVERTED, "stopped": results.get("stopped") or "",
-            "hardware": results.get("hardware") or {}}
+            "hardware": results.get("hardware") or {}, "issues": issue_counts(results)}
 
 
 def report_markdown(results: dict, meta: dict) -> str:
@@ -672,7 +692,7 @@ def report_markdown(results: dict, meta: dict) -> str:
             f"95% {d['share_interval']}; McNemar exact p {d['mcnemar_p']}, "
             f"{d['flipped_to_reliable']} up, {d['flipped_from_reliable']} down) |",
             f"| Findings kept | {b['findings']} | {t['findings']} | |",
-            f"| Runs finding the planted issue | {b['found']} | {t['found']} | |",
+            f"| Runs finding every planted issue | {b['found']} | {t['found']} | |",
             f"| Misses (runs) | {b['misses']} | {t['misses']} | {t['misses'] - b['misses']:+d} |",
             f"| False positives (findings, by code's rule) | {b['false_positives']} | "
             f"{t['false_positives']} | {d['false_positives']:+d} |",
@@ -691,6 +711,18 @@ def report_markdown(results: dict, meta: dict) -> str:
         cells = [f"{sum(1 for r in c['runs'][t] if r['correct'])} of {len(c['runs'][t])}"
                  for t in TECHNIQUES]
         lines.append(f"| {c['key']} | {c['role']} | {c['kind']} | {cells[0]} | {cells[1]} |")
+    if any(len(c.get("planted") or []) > 1 for c in results.get("cases") or []):
+        # A run is correct only when it finds every planted issue (C4151): each issue's own
+        # count, so a case missing one of three is not read as missing them all.
+        lines += ["", "## Each planted issue", "",
+                  "A run is correct only when it finds every planted issue; each one's own "
+                  "count of the runs that answered:", "",
+                  "| Case | Planted issue | Without tools: found | With the trace tool: found |",
+                  "|---|---|---|---|"]
+        for x in s["issues"]:
+            lines.append(f"| {x['case']} | {x['issue']} | "
+                         + " | ".join(f"{x['found'][t]} of {x['runs'][t]}" for t in TECHNIQUES)
+                         + " |")
     lines += ["", "False positive: a kept finding that cites no planted issue's evidence and no "
               "fact the code measures as abnormal (a port down, a link not up, a drop flow, a "
               "port dropping packets or at 80% or more of its speed), and is not info "

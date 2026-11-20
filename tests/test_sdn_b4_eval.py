@@ -506,6 +506,63 @@ def test_a_hardware_run_on_fake_arms_scores_each_issue_by_b1_s_rule(lab):
     assert (_tree(lab.store), _tree(lab.copy)) == before, "neither folder is written"
 
 
+def test_a_port_s_issue_is_found_by_its_rate_on_the_sheet_and_by_the_judge():
+    """C4151 (the Lab 9 hardware, 2026-11-20): the flood h2 → h3 was planted citing the two
+    hosts' ports, and a finding about a flood cites the port's counters (its ``rate:`` id), so
+    no run of either arm could find it. A port's issue is found by that port's rate, never by
+    another port's; a rate's issue is not found by its port."""
+    from modules.ai import sdn_analyst_tools as AT2
+
+    issue = {"id": "pl-1", "name": "Traffic flood", "evidence": [PORT3], "at": ""}
+    rate3, rate2 = f"rate:ctl-1:{OVS3}:3", RATE2
+
+    def finding(e):
+        return {"severity": "high", "finding": f"about {e}", "why": "w", "evidence": [e]}
+    got = AN.marks([issue], {"ok": True, "findings": [finding(rate3)]}, {rate3})
+    assert (got[0]["found"], got[0]["in_collection"]) == ("found", True)
+    assert AN.marks([issue], {"ok": True, "findings": [finding(rate2)]})[0]["found"] == "missed"
+    assert AT2.judge(finding(rate3), [issue], set()) == "planted"
+    assert AT2.judge(finding(rate2), [issue], set()) == "false_positive"
+    by_rate = {"id": "pl-2", "name": "Port 2 flooded", "evidence": [RATE2], "at": ""}
+    assert AN.marks([by_rate], {"ok": True, "findings": [finding(f"port:ctl-1:{OVS3}:2")]})[0][
+        "found"] == "missed"
+
+
+def test_a_case_of_several_issues_reports_each_issue_s_own_count(lab, tmp_path):
+    """C4151: a run is correct only when it finds every planted issue, so S2 (two issues) read
+    "0 of 1" for both arms where each found one; the report and its JSON give each issue's own
+    count. The baseline cites port 3's rate only, found as the port's issue."""
+    def finding_of(evidence):
+        return {"severity": "high", "finding": f"about {evidence}", "why": "w",
+                "evidence": [evidence]}
+
+    def baseline(network, snap, **kw):
+        return {"ok": True, "call_id": "", "findings": [finding_of(f"rate:ctl-1:{OVS3}:3")]}
+
+    def tools(network, snap, **kw):
+        (drop,) = [i for i in AN.evidence_ids(snap) if i.startswith("drop:")]
+        return {"ok": True, "calls": [], "findings": [finding_of(drop)]}
+
+    picked = [c for c in EV.load_hardware(lab.copy, NET, clean=[])["cases"]
+              if c["key"] == lab.s2["id"]]
+    results = EV.run(picked, {"baseline": baseline, "tools": tools}, runs=2, network=NET,
+                     actor="evaluation:b4-issues", trigger={}, now=lambda: float(T0 + 20000))
+    (case,) = results["cases"]
+    assert [r["correct"] for t in ("baseline", "tools") for r in case["runs"][t]] == [False] * 4
+    assert EV.summary(results)["issues"] == [
+        {"case": lab.s2["id"], "issue": "OVS 3's port 3 pulled",
+         "runs": {"baseline": 2, "tools": 2}, "found": {"baseline": 2, "tools": 0}},
+        {"case": lab.s2["id"], "issue": "A stale drop",
+         "runs": {"baseline": 2, "tools": 2}, "found": {"baseline": 0, "tools": 2}}]
+    md = EV.report_markdown(results, {"actor": "evaluation:b4-issues", "network": NET})
+    assert "| Runs finding every planted issue | 0 | 0 | |" in md
+    assert f"| {lab.s2['id']} | OVS 3's port 3 pulled | 2 of 2 | 0 of 2 |" in md
+    assert f"| {lab.s2['id']} | A stale drop | 0 of 2 | 2 of 2 |" in md
+    # A kept report's JSON gives the same counts again, no run made.
+    kept = json.loads(json.dumps(results))
+    assert EV.issue_counts(kept) == EV.summary(results)["issues"]
+
+
 def test_the_estimate_counts_the_hardware_cases_and_a_run_reports_them(lab, tmp_path):
     from modules.ai import sdn_analyst_tools as AT2
 
