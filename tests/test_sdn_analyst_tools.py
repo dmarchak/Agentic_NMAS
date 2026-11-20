@@ -432,6 +432,35 @@ def test_the_press_draws_the_answer_its_tool_calls_and_the_comparison(tw, monkey
     assert len(tw.sent) == 3
 
 
+def test_each_read_s_arguments_are_sent_in_the_order_its_operation_writes_them():
+    """C4158 (B4 on the Lab 9 hardware, 2026-11-20): with ``args``' properties sorted (dpid,
+    dst, port, proto, src), a trace written src first could carry nothing after it, and every
+    trace the model asked for came back as one src holding dst and proto, refused. The schema
+    sent keeps each operation's own order (trace: src, dst, proto, port; a port: dpid, port),
+    for the analyst's reads and the router reads alike."""
+    from modules.ai import router_reads
+
+    schema = AT.SealedRead.model_json_schema()
+    args = schema["$defs"][next(k for k in schema["$defs"] if k.endswith("ReadArgs"))]
+    sent = list(args["properties"])
+    assert sent == ["src", "dst", "proto", "dpid", "port"], sent
+    for family in (AT.SEALED, router_reads.AI_READS):
+        order = RL.argument_order(family)
+        for op in family.operations:
+            assert [n for n in order if n in op.args] == list(op.args), (family.name, op.name)
+        assert RL.argument_order_broken(family) == []
+    # A family whose two operations reverse each other's order is said, never silently kept.
+    clash = RL.ReadFamily(name="clash", transport="seal", egress_class="topology",
+                          run=lambda *a: None, words="w", operations=(
+                              RL.Operation("one", {"a": RL.Arg(RL.Text(r".+", "x", 9)),
+                                                   "b": RL.Arg(RL.Text(r".+", "x", 9))},
+                                           sends=("snapshot one {a} {b}",), words="w"),
+                              RL.Operation("two", {"b": RL.Arg(RL.Text(r".+", "x", 9)),
+                                                   "a": RL.Arg(RL.Text(r".+", "x", 9))},
+                                           sends=("snapshot two {b} {a}",), words="w")))
+    assert RL.argument_order_broken(clash) == ["two"]
+
+
 def test_candidate_v6_is_v5_with_each_argument_its_own_field_and_its_traces_as_reads(tw):
     """C4155 (the Lab 9 hardware, 2026-11-20, snap-e6cc984fed776eaf): v5's model wrote every
     trace it asked for as one string in src (``"10.200.0.62','dst':'10.200.0.254','proto':
