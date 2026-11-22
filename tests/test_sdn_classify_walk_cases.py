@@ -115,13 +115,21 @@ def collection_of(case: dict) -> tuple:
     return collected, sw
 
 
-def rebuilt(case: dict) -> tuple:
+def rebuilt(case: dict, small: bool = False) -> tuple:
     """*case*'s detection and section as the code builds them now from `collection_of`: the
     rule its detection names (a scan's fallback at the case's threshold; a flood with the
     baseline and since its threshold and measurement state; an unauthorised flow over the walk's
-    flow intent) and the section builder."""
+    flow intent) and the section builder. *small* edits the ports' received bytes to small
+    packets (tests/test_sdn_source_from_topology.py's `small_packets`, the minimal edit), for a
+    test that borrows a large-packet case's rate as a High packet rate: the size cut (C4167)
+    leaves a port of large packets no High packet rate at all."""
     d = case["detection"]
     collected, sw = collection_of(case)
+    if small:
+        from tests.test_sdn_source_from_topology import small_packets
+        collected = small_packets(collected)
+        sw = next(s for c in collected["controllers"] for s in c["switches"]
+                  if s["dpid_hex"] == sw["dpid_hex"])
     t, m = d["threshold"], d["measurement"]
     if d["rule"] == "scan":
         values = dict(D.THRESHOLDS, sdn_scan_fallback_pps=t["value"])
@@ -215,7 +223,35 @@ def as_high_rate(kept: dict, key: bool = True) -> dict:
     return out
 
 
-@pytest.mark.parametrize("case", load()["retired"], ids=lambda c: c["key"])
+def _kept_mean(case: dict) -> float:
+    """The walk's kept port's mean received packet (its bytes over its packets a second)."""
+    (port,) = [p for p in case["section"]["pieces"] if p["kind"] == "port"]
+    return port["rx_bytes_per_s"] / port["rx_pps"]
+
+
+def _retired(large: bool) -> list:
+    return [c for c in load()["retired"] if (_kept_mean(c) > FLOOD_MAX_MEAN_BYTES) == large]
+
+
+@pytest.mark.parametrize("case", _retired(large=True), ids=lambda c: c["key"])
+def test_a_retired_case_of_large_packets_is_no_high_packet_rate(case):
+    """C4167 (the operator's measurement on the Lab 9 hardware, 2026-11-20: nmap's SYNs 58 B,
+    iperf3 at 5 Mbit/s about 1,500 B): the walk's fallback cases whose port's packets averaged
+    over 200 B (its iperf TCP data at about 43,800 B a packet as the switch counts them, its UDP
+    streams at 1,512 B) are no High packet rate now, the scan rule's note naming the port's
+    mean; the walk's own counters, rebuilt as they were kept."""
+    d = case["detection"]
+    collected, _sw = collection_of(case)
+    values = dict(D.THRESHOLDS, sdn_scan_fallback_pps=d["threshold"]["value"])
+    out = D.scan(collected, values)
+    assert [g for g in out["detections"] if g["subject"] == d["subject"]] == []
+    port = d["subject"]["value"]
+    assert any(n.startswith(f"port {port} of switch {d['dpid_hex']}")
+               and "large packets are no scan's, so it is not a High packet rate" in n
+               for n in out["notes"]), out["notes"]
+
+
+@pytest.mark.parametrize("case", _retired(large=False), ids=lambda c: c["key"])
 def test_each_retired_case_is_now_a_high_packet_rate_the_loop_never_classifies(case):
     """The walk's scan-fallback cases, rebuilt from the evidence it kept, are High packet rate
     detections (C2238): the same port, measurement, threshold value, source and evidence, the

@@ -6,8 +6,10 @@ repository or a GitHub config repository (the operator, 2026-11-05; docs/LAB9_LA
 Reads the kit's settings (the installation's user_settings.json and every list's settings.json)
 and every list's config repository's git remotes. The NMAS host's names come from the
 environment (KIT_NMAS_LAN, KIT_NMAS_TUNNEL), which `kit` fills from data/lab_hosts.json through
-scripts/nmas-host --field, so no address is written here. Prints key names, never a value.
-Exit 0 when clean, 1 naming each key that points where it must not.
+scripts/nmas-host --field, so no address is written here. An external NetBox declared in kit.env
+(KIT_NETBOX_URL, in the environment too) is the one non-loopback `netbox_url` accepted, compared
+by `_same_url`; the forbidden names are checked in it as everywhere. Prints key names, never a
+value. Exit 0 when clean, 1 naming each key that points where it must not.
 """
 import ipaddress
 import json
@@ -53,10 +55,33 @@ def _host_of(value: str) -> str:
         return ""
 
 
+def _normal(value: str) -> str:
+    """A URL as compared with KIT_NETBOX_URL: the scheme and host lowered, one trailing slash
+    dropped from the path, nothing else changed."""
+    try:
+        p = urlsplit(value.strip())
+    except ValueError:
+        return value.strip()
+    user, at, host = p.netloc.rpartition("@")
+    return p._replace(scheme=p.scheme.lower(), netloc=user + at + host.lower(),
+                      path=p.path.rstrip("/")).geturl()
+
+
+def _same_url(a: str, b: str) -> bool:
+    return bool(a.strip()) and _normal(a) == _normal(b)
+
+
 def problems(data_dir: str, git=None) -> list:
     """Each problem as words naming the file and key, never the value."""
     out = []
     tokens = [t.lower() for t in forbidden()]
+    declared = os.environ.get("KIT_NETBOX_URL", "").strip()
+    if declared:
+        if any(t in declared.lower() for t in tokens):
+            out.append("kit.env: KIT_NETBOX_URL points at the NMAS host's services or GitHub")
+        scheme = declared.split("://", 1)[0].lower() if "://" in declared else ""
+        if scheme not in ("http", "https") or not _host_of(declared):
+            out.append("kit.env: KIT_NETBOX_URL is not an http or https URL with a host")
     files = [os.path.join(data_dir, "user_settings.json")]
     lists = os.path.join(data_dir, "lists")
     slugs = sorted(os.listdir(lists)) if os.path.isdir(lists) else []
@@ -83,8 +108,11 @@ def problems(data_dir: str, git=None) -> list:
         top = {}
     if str(top.get("flask_host", "127.0.0.1")) not in LOOPBACK_HOSTS:
         out.append("user_settings.json: flask_host is not a loopback address")
-    nb = _host_of(str(top.get("netbox_url", "")))
-    if nb and nb not in LOOPBACK_HOSTS:
+    stored_nb = str(top.get("netbox_url", ""))
+    nb = _host_of(stored_nb)
+    if declared and _same_url(stored_nb, declared):
+        pass        # the external NetBox kit.env declares (its forbidden names checked above)
+    elif nb and nb not in LOOPBACK_HOSTS:
         try:
             if not ipaddress.ip_address(nb).is_loopback:
                 out.append("user_settings.json: netbox_url is not the kit's own NetBox")

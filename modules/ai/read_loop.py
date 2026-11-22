@@ -552,16 +552,49 @@ def _declare(family: ReadFamily) -> dict:
     return out
 
 
+def argument_order(family: ReadFamily) -> list:
+    """Every argument name of *family*'s operations, in one order that keeps each operation's
+    own arguments in the order it declares them (a trace's src, dst, proto, port; a port's dpid,
+    port): the operations' orders merged, ties by first appearance. Where two operations
+    declare orders that cannot both be kept, the names left are added in first appearance
+    (`argument_order_broken` names the operation whose order breaks)."""
+    first = list(dict.fromkeys(a for op in family.operations for a in op.args))
+    after = {n: set() for n in first}
+    for op in family.operations:
+        names = list(op.args)
+        for i, n in enumerate(names):
+            after[n] |= set(names[:i])
+    out = []
+    while len(out) < len(first):
+        ready = [n for n in first if n not in out and after[n] <= set(out)]
+        out.append(ready[0] if ready else next(n for n in first if n not in out))
+    return out
+
+
+def argument_order_broken(family: ReadFamily) -> list:
+    """The operations of *family* whose declared argument order `argument_order` cannot keep:
+    ``[]`` for every family Mercury declares (tests/test_sdn_analyst_tools.py holds it)."""
+    order = argument_order(family)
+    return [op.name for op in family.operations
+            if [n for n in order if n in op.args] != list(op.args)]
+
+
 def request_model(family: ReadFamily):
     """The strict model of one entry of pass 1's ``reads`` field for *family*: ``{op, args,
     why, hypothesis}``, *op* one of its operations, *args* an object holding every operation's
     argument names, each optional and any JSON scalar, so a value out of its shape, an
     argument another operation takes, or one missing reaches `check` and is refused there in
     words, never the whole answer refused for one read. The feature's pass-1 schema holds
-    ``reads: list[<this>] = []`` (no count bound: a fourth read is the check's refusal)."""
+    ``reads: list[<this>] = []`` (no count bound: a fourth read is the check's refusal).
+
+    *args*' properties are in `argument_order` (C4158): a provider that writes an object's
+    properties in its schema's order lets nothing follow the last one written, so with the
+    names sorted (``dpid, dst, port, proto, src``) a trace written src first could carry no
+    other field, and the model packed dst and proto into src's text (all ten of B4's trace-tool
+    reads on the Lab 9 hardware, 2026-11-20, each refused)."""
     camel = "".join(p.capitalize() for p in family.name.split("_"))
     scalar = Optional[Union[StrictBool, StrictInt, StrictFloat, StrictStr]]
-    names = sorted({a for op in family.operations for a in op.args})
+    names = argument_order(family)
     args_model = create_model(f"{camel}ReadArgs", __base__=StrictModel,
                               **{n: (scalar, None) for n in names})
     ops = Enum(f"{camel}ReadOp", {op.name: op.name for op in family.operations}, type=str)

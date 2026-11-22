@@ -43,7 +43,16 @@ compared and where NetBox says it:
   the class's own addresses or ports;
 - a flow naming a protected port (by NetBox's `openflow_port`) or VLAN.
 
-A class's owners (named in it) may write it. The set comes from the network's committed NSOT
+A class's owners (named in it) may write it. The writer is the code's, never the page's: a
+response's and a re-apply's writer is `response`, and a flow sent from this page is a person's
+whatever its request carries. **A response meets DNS's and DHCP's classes by its nature** (it
+drops one source's address, every protocol), so it is refused on a network whose classes do not
+name `response` among their owners. Naming it there is the network's decision. A response's
+preview then says, for each class, which of the network's own flows serving it sit above it in
+its table and take what they match first (a DNS punt on the host's port, say), and that the
+class's packets those flows do not match are the response's; on an ArubaOS-Switch, whose DNS and
+DHCP flows sit in table 200, past table 0, it says no flow of the class sits above it. The set
+comes from the network's committed NSOT
 export, or from NetBox read now; its hash is bound with the requests', so a NetBox change between
 the preview and the confirm sends nothing. A network whose devices are not NetBox's guards the
 controller's channel only, and the preview says so.
@@ -103,7 +112,15 @@ metered, and the preview names each under What will not happen, with the fact th
 source's IPv4 traffic is metered; risk low), or **remove the unauthorised flow**
 (delete-strict, and Mercury's own flow put back where it displaced one, for the time its hard
 timeout has left, never its whole timeout again, and not at all once it has expired; risk
-medium). Every flow a
+medium). A drop's or a rate limit's flows go in table 0 under the lowest flow there that serves
+a protected class the source's match meets, and above every other flow below it that could take
+the same packets: on an Arista whose forwarding is at 1000 and whose DHCP flows start at 1100,
+at 1010; on an Open vSwitch server whose forwarding is in table 2, at 300. A flow above it that
+serves no class (a drop of DNS over TCP at 1200, say) keeps taking what it matches, and the
+preview names each such flow. Where no priority fits under a class's flows, it sits above them,
+and the preview says that class's flows are not above it. Whether it may meet those classes at
+all is their owners' (above).
+Every flow a
 response adds carries a hard timeout (600 seconds unless you set another in the preview, at most
 the network's ceiling), so a mistaken response expires by itself; its meter is removed by Mercury
 once those flows have expired. A drop or a rate limit acts on the detection's source; a
@@ -127,7 +144,13 @@ always waits for you, whatever the allowed risk, saying "the source was inferred
 topology: a person confirms it" with the comparison it made: AUTO applies only a source the flows
 themselves name, the flows entering that port name none, and where the source came from. It is a
 row of Needs attention like any response awaiting you, and Mercury refuses an unattended confirm
-of such a source too, sending nothing. **When AUTO cannot preview its response** (the switch
+of such a source too, sending nothing. **A source NetBox declares is not inferred:** where the
+topology names one host on the port, and the network's committed NSOT export records exactly
+one end host interface cabled to that switch's port (its datapath id and OpenFlow number),
+holding the source's address and, where both know it, the same MAC, AUTO acts on it, its record
+saying "NetBox declares it" with the host, the interface and the port. Two records made apart
+agree, so a fabric whose flows match MAC addresses only can still respond unattended. Anything
+else, or an export that cannot be read, waits for you as above. **When AUTO cannot preview its response** (the switch
 is no longer on the controller, the connection is gone, the plan refused), nothing is sent and
 the response waits for you as in HITL, its card saying "AUTO could not preview <action>: <why>"
 and its Needs attention row naming that failure and that AUTO sent nothing; it clears when you
@@ -281,7 +304,9 @@ not compared.
 ### High packet rate {#high-rate}
 
 On a switch whose flows name no transport ports (they match MAC addresses only, or IP addresses
-and no port), no scan can be counted by destination port. There, a port receiving at least the
+and no port), or whose flows that name one name no source address (a DNS punt matched by its
+port, which shows no one source's destination ports), no scan can be counted by destination
+port. There, a port receiving at least the
 **High packet rate** threshold (`sdn_scan_fallback_pps`, 100 packets a second by default) is
 its own rule, at lower confidence. A rate alone cannot tell a scan from a flood's first seconds
 (the flood rule fires only after its 30-second hold) or from other heavy traffic, so Mercury
@@ -299,6 +324,11 @@ does not call it either:
 4. **Or you dismiss it**, with a reason. It cannot be confirmed: there is nothing to confirm.
 5. **Or, on a large-packet stream, you rate-limit it** (below): the row closes as "proposed
    by a person", and the stream is an incident awaiting you.
+6. **Or, on a High packet rate itself, you rate-limit it** with the same **Rate-limit this
+   source…**: it is answered and checked as the scan rule's, under the scan rule's response
+   policy, and becomes an incident awaiting you. On a fabric that forwards by MAC address, this
+   is how a scan is answered at all. Only a person makes it a response: AUTO never acts on a
+   High packet rate, whatever its mode.
 
 **A transfer is High packet rate too, not a flood.** When the flood rule's candidate port
 receives a transfer's shape, it is watched the same way, never proposed:
@@ -347,6 +377,40 @@ transfer, its mean received packet (its byte rate over its packet rate) is read:
 These are the one kind of row Mercury closes by itself, and the row says so. Until 2026-11-02
 this rate was the scan rule's fallback and was called a scan; on the Lab 8 walk it fired on a
 flood's first seconds and on ordinary transfers alike.
+
+## Declared external flow owners {#external}
+
+Another program on the controller may install and keep its own flows: a team's own Ryu
+applications that Mercury does not deploy or manage, for example. Declare each such owner in
+NetBox, and Mercury treats its flows as that owner's:
+
+- **Where:** a config context (named, for example, "Mercury external flow owners") whose data
+  is `{"mercury": {"external_flow_owners": [ ... ]}}`, assigned to the network's devices as the
+  protected flows' context is. NetBox merges it with the other `mercury` keys.
+- **Each entry:** `name` (a slug), `owner` (who runs it, in words), `cookie` and `mask` (the
+  cookies the owner's flows carry, written as hexadecimal: `"0x9a01000000000000"` under
+  `"0xffff000000000000"` claims every cookie whose high 16 bits are 9a01), `reason` (what the
+  flows do), and optionally `switches` (NetBox device names or 16-hex datapath ids; leave it out
+  for every switch).
+- **Then:** **Export from NetBox** on SDN › Apps and commit it. SDN › Flows and the closed loop
+  read the committed export; a change made through the switch's own preview reads NetBox now
+  when nothing is committed.
+
+**What it changes:** such a flow is drawn **external: <owner>** on SDN › Flows, with its
+declaration under it and no **Remove…**. The unauthorised-flow rule does not report it. No
+Mercury writer removes, changes or replaces it: a person's change, a response (proposed,
+confirmed or automatic), a re-apply and a policy are each refused at the preview, naming the
+flow, the owner and where it is declared. To override one of its flows, Mercury adds its own
+flow at a higher priority, which is what a response does (it takes a priority above the highest
+flow in its table, not Mercury's, that could match the same packets, under the flows serving a
+protected class it meets).
+
+**An entry that is not of its shape refuses only itself.** SDN › Flows names it and why, and its
+flows are drawn as unauthorised until it is corrected and exported again; every other entry, and
+every Mercury write, works as before. Refused besides a malformed entry: a mask of 0 (it would
+claim every flow), a cookie with bits outside its mask, a range claiming cookie 0 (the
+controller's own flows), a range meeting Mercury's own (its cookies' high 16 bits are 4d45), two
+entries of one name that differ, and two entries whose ranges meet on a switch (each refused).
 
 ## Re-apply a lost response {#reapply}
 

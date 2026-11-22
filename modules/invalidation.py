@@ -650,6 +650,7 @@ DECLARED = {
     "sdn_dhcp_v2.preview": Nothing("previews DHCP steering in its card; the confirm sends"),
     "sdn_dhcp_v2.remove_preview": Nothing("previews removing DHCP steering in its card; the "
                                           "confirm sends"),
+    "sdn_v2.watch_tripwire": Nothing("previews a watched row's tripwire in its card; the flow editor's confirm sends; one the protected set refuses is recorded for a verified person and answers 409, and a refusal declares nothing (C656): History and History › Export read it when next loaded"),
     "sdn_v2.response_preview": Nothing("previews a response in its card; the confirm sends; one the protected set refuses is recorded for a verified person and answers 409, and a refusal declares nothing (C656): History and History › Export read it when next loaded"),
     "sdn_v2.reapply_preview": Nothing("previews a lost response's re-apply in its card; the confirm sends; one the protected set refuses is recorded for a verified person and answers 409, and a refusal declares nothing (C656): History and History › Export read it when next loaded"),
     # C2765: its host reads are a reads-engine run, recorded (History › Reads).

@@ -31,6 +31,20 @@ C2589). Deterministic; no AI; reads only (nothing here writes to NetBox or a dev
   An entry not of its shape makes the whole set unreadable, and an unreadable set refuses
   every write it guards (an unreadable store refuses writes).
 
+**Declared external flow owners** (`external_owners`, C3930; the operator's decision of
+2026-11-19): flows another program on the controller installs and keeps, such as a team's own
+Ryu applications Mercury does not manage. The config context's ``mercury.external_flow_owners``
+(`EXTERNAL_KEY`) is a list of ``{name, owner, cookie, mask, reason, switches?}``: the cookies
+the owner's flows carry (``cookie`` under ``mask``, written as hexadecimal), optionally only on
+the named switches (NetBox device names, or 16-hex datapath ids). Such a flow is drawn
+``external: <owner>`` (`flow_intent.classify`), never reported as unauthorised, and no Mercury
+writer removes, changes or replaces it (`flow_ops.plan`); Mercury overrides one only with its
+own flow at a higher priority, as a response does. **Unlike the classes above, an entry not of
+its shape refuses only itself**: it is reported with why (`refused`) and every other entry, and
+every Mercury write, works as before. Refused besides the malformed: a mask of 0, a cookie with
+bits outside its mask, a range claiming cookie 0 (the controller's own) or meeting Mercury's
+own range, two entries of one name that differ, and two whose ranges meet (each refused).
+
 **A rule overlaps a class** (`overlap`) when, on every field both name, their values meet: equal
 numbers, intersecting prefixes (IPv4 and IPv6 alike); a field the rule leaves unset meets every
 value. A rule from anyone not among the class's owners that overlaps it is refused, naming the
@@ -61,6 +75,10 @@ log = logging.getLogger(__name__)
 
 TAG = "mercury-protected"
 CONTEXT_KEY = ("mercury", "protected_flows")
+#: The config context's declared external flow owners (C3930).
+EXTERNAL_KEY = ("mercury", "external_flow_owners")
+EXTERNAL_FIELDS = ("name", "owner", "cookie", "mask", "reason", "switches")
+COOKIE_ALL = (1 << 64) - 1
 SERVICE = "openflow"
 INVARIANTS = ("untouchable", "must_reach")
 #: The match fields a class is stated in and a rule is compared on (the SDN design revision 6,
@@ -427,6 +445,198 @@ def flow_classes(devices: list, prefixes: list, services: list) -> list:
     return sorted(out, key=lambda c: (c["name"], c["source"]))
 
 
+# --------------------------------------------------------------------------- external owners
+
+def cookie_number(value):
+    """A cookie or mask as NetBox states it: an integer, or a string of hexadecimal (``0x…``)
+    or decimal digits; None when it is neither or not a 64-bit unsigned number."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        n = value
+    elif isinstance(value, str):
+        text = value.strip().lower().replace("_", "")
+        try:
+            n = int(text, 16) if text.startswith("0x") else int(text, 10)
+        except ValueError:
+            return None
+    else:
+        return None
+    return n if 0 <= n <= COOKIE_ALL else None
+
+
+def _ranges_meet(v1: int, m1: int, v2: int, m2: int) -> bool:
+    """Whether two cookie ranges (each its value under its mask) hold a cookie in common."""
+    return (v1 ^ v2) & m1 & m2 == 0
+
+
+def _datapaths(devices) -> dict:
+    """``{NetBox device name: its datapath id}`` from each device's ``openflow_datapath_id``."""
+    out = {}
+    for d in devices or []:
+        if not isinstance(d, dict):
+            continue
+        dpid = str((d.get("custom_fields") or {}).get("openflow_datapath_id") or "")
+        if re.fullmatch(r"[0-9a-fA-F]{16}", dpid) and int(dpid, 16):
+            out[_name(d)] = int(dpid, 16)
+    return out
+
+
+def _external_entry(entry, where: str, datapaths: dict) -> dict:
+    """One ``mercury.external_flow_owners`` entry as an owner, or raises Unreadable naming what
+    is wrong with it (that entry alone; `external_owners` keeps the rest)."""
+    from modules.sdn import flow_intent
+
+    if not isinstance(entry, dict):
+        raise Unreadable(f"{where}: an entry is a mapping of {', '.join(EXTERNAL_FIELDS)}, not "
+                         f"{type(entry).__name__}")
+    name = str(entry.get("name") or "")
+    if not SLUG.match(name):
+        raise Unreadable(f"{where}: an owner's name is a slug, not {name!r}")
+    unknown = sorted(str(k) for k in set(entry) - set(EXTERNAL_FIELDS))
+    if unknown:
+        raise Unreadable(f"{where}: {name} names {', '.join(unknown)}, and an entry holds "
+                         f"{', '.join(EXTERNAL_FIELDS)}")
+    words = {}
+    for field, top in (("owner", 100), ("reason", 300)):
+        value = entry.get(field)
+        if not isinstance(value, str) or not value.strip() or len(value) > top:
+            raise Unreadable(f"{where}: {name}'s {field} is words, 1 to {top} characters")
+        words[field] = value.strip()
+    cookie, mask = cookie_number(entry.get("cookie")), cookie_number(entry.get("mask"))
+    if cookie is None:
+        raise Unreadable(f"{where}: {name}'s cookie {entry.get('cookie')!r} is not a 64-bit "
+                         "number (write it as hexadecimal, 0x…)")
+    if mask is None or mask == 0:
+        raise Unreadable(f"{where}: {name}'s mask {entry.get('mask')!r} is not a non-zero 64-bit "
+                         "number (a mask of 0 would claim every flow)")
+    if cookie & ~mask & COOKIE_ALL:
+        raise Unreadable(f"{where}: {name}'s cookie {cookie:#018x} has bits outside its mask "
+                         f"{mask:#018x}, so which cookies it claims has two readings")
+    if cookie == 0:
+        raise Unreadable(f"{where}: {name}'s range ({cookie:#018x} under {mask:#018x}) claims "
+                         "cookie 0, the controller's own flows' cookie")
+    mercury_mask = ((1 << 16) - 1) << flow_intent.SHIFT
+    if _ranges_meet(cookie, mask, flow_intent.PREFIX << flow_intent.SHIFT, mercury_mask):
+        raise Unreadable(f"{where}: {name}'s range ({cookie:#018x} under {mask:#018x}) meets "
+                         f"Mercury's own ({flow_intent.PREFIX:#06x} in the high 16 bits): "
+                         "Mercury's flows are never another owner's")
+    switches = entry.get("switches")
+    scope = None
+    if switches is not None:
+        if not isinstance(switches, list) or not switches:
+            raise Unreadable(f"{where}: {name}'s switches are a list of NetBox device names or "
+                             "16-hex datapath ids (leave the key out for every switch)")
+        scope = set()
+        for s in switches:
+            text = s.strip() if isinstance(s, str) else ""
+            if re.fullmatch(r"(0x)?[0-9a-fA-F]{16}", text):
+                scope.add(int(text[-16:], 16))
+            elif text in datapaths:
+                scope.add(datapaths[text])
+            else:
+                raise Unreadable(f"{where}: {name}'s switch {s!r} is neither a NetBox device "
+                                 "with an openflow_datapath_id nor a 16-hex datapath id")
+    return {"name": name, "owner": words["owner"], "reason": words["reason"], "cookie": cookie,
+            "mask": mask, "cookie_hex": f"{cookie:#018x}", "mask_hex": f"{mask:#018x}",
+            "switches": sorted(scope) if scope is not None else None,
+            "source": f"NetBox: {where.split('[')[0]}"}
+
+
+def external_owners(devices) -> dict:
+    """The declared external flow owners (C3930), from each device's RENDERED config context
+    ``mercury.external_flow_owners`` (NetBox's export, or its REST shape):
+    ``{"owners": [owner], "refused": [{"where", "name", "error"}]}``, owners sorted by name.
+
+    Never raises: an entry not of its shape is refused alone, with why, and the rest stand (the
+    operator, 2026-11-19: a malformed entry never blocks Mercury's flow writes). A context
+    rendered on several devices is read once per distinct entry. Two entries of one name that
+    differ are both refused, and so are two whose ranges meet (a flow in both would have two
+    owners)."""
+    datapaths = _datapaths(devices)
+    found, refused, seen = {}, [], set()
+
+    def refuse(where, name, error):
+        refused.append({"where": where, "name": name, "error": error})
+
+    for d in devices or []:
+        ctx = (d.get("config_context") or {}) if isinstance(d, dict) else {}
+        top = ctx.get(EXTERNAL_KEY[0]) if isinstance(ctx, dict) else None
+        if not isinstance(top, dict) or EXTERNAL_KEY[1] not in top:
+            continue
+        where = f"{_name(d)}'s config context {'.'.join(EXTERNAL_KEY)}"
+        entries = top[EXTERNAL_KEY[1]]
+        if not isinstance(entries, list):
+            key = ("list", json.dumps(entries, sort_keys=True, default=str))
+            if key not in seen:
+                seen.add(key)
+                refuse(where, "", f"{where} is a list of owners, not {type(entries).__name__}")
+            continue
+        for n, entry in enumerate(entries):
+            key = ("entry", json.dumps(entry, sort_keys=True, default=str))
+            if key in seen:
+                continue
+            seen.add(key)
+            name = str(entry.get("name") or "") if isinstance(entry, dict) else ""
+            try:
+                owner = _external_entry(entry, f"{where}[{n}]", datapaths)
+            except Unreadable as exc:
+                refuse(f"{where}[{n}]", name, str(exc))
+                continue
+            held = found.setdefault(owner["name"], [])
+            same = [o for o in held if {k: v for k, v in o.items() if k != "source"}
+                    == {k: v for k, v in owner.items() if k != "source"}]
+            if not same:
+                held.append(owner)
+    owners = []
+    for name, got in sorted(found.items()):
+        if len(got) > 1:
+            ways = "; ".join(sorted(f"{x['cookie_hex']} under {x['mask_hex']}"
+                                    + (f" on {len(x['switches'])} switches" if x["switches"]
+                                       else "") for x in got))
+            for o in got:
+                refuse(o["source"].removeprefix("NetBox: "), name,
+                       f"{name} is declared {len(got)} ways ({ways}), so which is meant is not "
+                       "known: each is refused")
+            continue
+        owners.append(got[0])
+    clash = set()
+    for i, a in enumerate(owners):
+        for b in owners[i + 1:]:
+            same_switch = a["switches"] is None or b["switches"] is None or (
+                set(a["switches"]) & set(b["switches"]))
+            if same_switch and _ranges_meet(a["cookie"], a["mask"], b["cookie"], b["mask"]):
+                clash |= {a["name"], b["name"]}
+                for x, y in ((a, b), (b, a)):
+                    refuse(x["source"].removeprefix("NetBox: "), x["name"],
+                           f"{x['name']}'s range ({x['cookie_hex']} under {x['mask_hex']}) meets "
+                           f"{y['name']}'s ({y['cookie_hex']} under {y['mask_hex']}), so a flow "
+                           "in both would have two owners: each is refused")
+    return {"owners": [o for o in owners if o["name"] not in clash], "refused": refused}
+
+
+def external_owner_of(owners, cookie, dpid=None):
+    """The declared external owner (`external_owners`' entry) of a flow carrying *cookie* on
+    switch *dpid*, or None. A cookie that is not a number has none."""
+    if not isinstance(cookie, int) or isinstance(cookie, bool):
+        return None
+    try:
+        dp = int(dpid) if dpid is not None and not isinstance(dpid, bool) else None
+    except (TypeError, ValueError):
+        dp = None
+    for o in owners or []:
+        if cookie & o["mask"] == o["cookie"] and (o.get("switches") is None
+                                                  or dp in o["switches"]):
+            return o
+    return None
+
+
+def external_words(owner: dict) -> str:
+    """How a flow of a declared external owner is said: its owner, then its declaration."""
+    return (f"external: {owner['owner']} ({owner['name']}: {owner['reason']}; cookies "
+            f"{owner['cookie_hex']} under {owner['mask_hex']}, declared in {owner['source']})")
+
+
 # --------------------------------------------------------------------------- overlap
 
 def _meet(field: str, a, b) -> bool:
@@ -527,6 +737,7 @@ def derive(body: dict) -> dict:
                 numbered[str(int(n))] = _name(i)
         ports[name] = numbered
     return {"objects": objects, "switches": switches, "ports": ports,
+            "external": external_owners(devices),
             "classes": flow_classes(devices, prefixes, body.get("services") or [])}
 
 
@@ -545,7 +756,7 @@ def for_network(network: str) -> dict:
     from modules.nsot import export as X
 
     out = {"state": "unreadable", "source": "", "sha256": "", "objects": {}, "classes": [],
-           "switches": {}, "ports": {}, "error": ""}
+           "switches": {}, "ports": {}, "external": {"owners": [], "refused": []}, "error": ""}
     try:
         source = (source_config.load(network) or {}).get("source") or "local"
     except Exception as exc:                          # noqa: BLE001 (said, never raised)
@@ -578,6 +789,39 @@ def for_network(network: str) -> dict:
         out["error"] = f"{network}'s protected set is not of its shape: {exc}"
         return out
     out["state"], out["sha256"] = "ok", str(doc.get("sha256") or "")
+    return out
+
+
+def external_for_network(network: str) -> dict:
+    """*network*'s declared external flow owners for DRAWING and DETECTING (C3930): ``{"state":
+    "ok"|"none"|"unreadable", "owners", "refused", "source", "error"}``, from the COMMITTED NSOT
+    export only (readers take what is committed, and a reader every 30 s never asks NetBox), so
+    a declaration counts once it is exported and committed. Never raises. ``none`` where the
+    network has no committed export or its devices are not NetBox's; ``unreadable`` where the
+    export does not verify. A write's guard reads the owners through `for_network` instead,
+    NetBox read now where nothing is committed."""
+    from modules.inventory import source_config
+    from modules.nsot import export as X
+
+    out = {"state": "unreadable", "owners": [], "refused": [], "source": "", "error": ""}
+    try:
+        if ((source_config.load(network) or {}).get("source") or "local") \
+                != source_config.SOURCE_NETBOX:
+            out.update(state="none", source=f"{network}'s devices are not NetBox's")
+            return out
+        got = X.read(network)
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        out["error"] = f"{network}'s NSOT export could not be read: {exc}"[:300]
+        return out
+    if got.get("absent"):
+        out.update(state="none", source=f"{network} has no committed NSOT export")
+        return out
+    if not got["ok"]:
+        out["error"] = f"{network}'s committed NSOT export cannot be used: {got['error']}"
+        return out
+    found = external_owners(list((got["export"].get("body") or {}).get("devices") or []))
+    out.update(state="ok", owners=found["owners"], refused=found["refused"],
+               source=f"the committed NSOT export {got['sha256'][:12]}")
     return out
 
 
@@ -633,6 +877,58 @@ def flow_refusal(pset: dict, changes: list, dpid, connection: dict, *, writer: s
     return flow_refusal_detail(pset, changes, dpid, connection, writer=writer)["words"]
 
 
+#: The closed loop's writer (`flow_ops.plan`'s ``writer``, passed by the response's own code,
+#: never read from an ask): a response matches one source's address, so it meets every class
+#: with a field it leaves unset, and is written only where the class names it among its owners;
+#: its preview then says what of the class it takes (`owned_class_words`; Lab 9 Part B,
+#: 2026-11-20).
+RESPONSE_WRITER = "response"
+
+
+def serving_flows(cls: dict, flows, match: dict) -> list:
+    """The switch's live *flows* that serve class *cls* (their match names the class's own
+    traffic, `names_class`) and could take a packet *match* takes (not disjoint from it)."""
+    from modules.sdn.flow_ops import disjoint
+    return [f for f in flows or [] if names_class(f.get("match") or {}, cls)
+            and not disjoint(f.get("match") or {}, match)]
+
+
+def owned_class_words(flow: dict, cls: dict, flows, writer: str) -> str:
+    """What a write *writer* owns of class *cls* does to the class's packets, for its preview:
+    the class names *writer* among its owners, so the flow is written, and the switch's live
+    *flows* serving the class in the flow's table above it take what they match first (each
+    named by its priority). Never a claim that the flow takes none of the class: what those
+    flows do not match (another port, another MAC, another source port) is the flow's."""
+    match = flow.get("match") or {}
+    table, prio = int(flow.get("table_id") or 0), int(flow.get("priority") or 0)
+    serving = serving_flows(cls, flows, match)
+    above = sorted({int(f.get("priority") or 0) for f in serving
+                    if int(f.get("table_id") or 0) == table and int(f.get("priority") or 0) > prio})
+    lead = (f"its match meets the protected class {cls['name']} ({cls['invariant']}; "
+            f"{cls['source']}), which names {writer} among its owners, so it is written")
+    if not above:
+        return (f"{lead}; no flow on this switch serving that class sits above it in table "
+                f"{table}, so it takes the class's packets it matches")
+    at = (f"priority {above[0]}" if len(above) == 1
+          else f"priorities {above[0]} to {above[-1]}")
+    return (f"{lead}; the class's flows above it in table {table} ({at}, this flow {prio}) take "
+            "the packets they match first, and it takes the class's packets they do not match")
+
+
+def taken_first(flow: dict, flows, classes) -> list:
+    """The switch's live *flows* in *flow*'s table, above it, that could take a packet it takes
+    and serve none of *classes* (the network's every class, so "serving no protected class" is
+    true of each): each takes what it matches first, so *flow* never acts on those packets
+    (said in a response's preview, never refused: it leaves them as they were)."""
+    from modules.sdn.flow_ops import disjoint
+    match = flow.get("match") or {}
+    table, prio = int(flow.get("table_id") or 0), int(flow.get("priority") or 0)
+    serving = {id(f) for c in classes or () for f in serving_flows(c, flows, match)}
+    return [f for f in flows or [] if int(f.get("table_id") or 0) == table
+            and int(f.get("priority") or 0) > prio and id(f) not in serving
+            and not disjoint(f.get("match") or {}, match)]
+
+
 #: What of the protected set refused a flow write, as its record names it (`refused_by`).
 GUARDS = {"control_channel": "the control channel", "class": "a protected flow class",
           "object": "a protected object", "unreadable": "the protected set, unreadable"}
@@ -651,11 +947,16 @@ def refused_by(guard: str, name: str, *, invariant: str = "", source: str = "", 
 
 
 def flow_refusal_detail(pset: dict, changes: list, dpid, connection: dict, *,
-                        writer: str) -> dict:
+                        writer: str, switch_flows=None) -> dict:
     """`flow_refusal` with what refused, for the record of a refused write (C2944):
-    ``{"words", "by": [`refused_by`]}``; *words* ``""`` and *by* empty when nothing refuses.
-    *by* names what the refusal's words name: the control channel, the one class or the
-    objects the first refused change met, or the set that could not be read."""
+    ``{"words", "by": [`refused_by`], "notes"}``; *words* ``""`` and *by* empty when nothing
+    refuses. *by* names what the refusal's words name: the control channel, the one class or
+    the objects the first refused change met, or the set that could not be read.
+
+    Which classes a write may meet is ownership alone, as before. For a response's added flow
+    (*writer* `RESPONSE_WRITER`), *notes* says, for its preview, what of each class it owns and
+    meets it takes (`owned_class_words`) and which other flows above it keep what they match
+    (`taken_first`), read from *switch_flows* (the switch's live flows as the plan read them)."""
     from modules.sdn import control_plane
 
     channel = control_plane.refusal_detail(changes, connection, who=writer)
@@ -669,6 +970,7 @@ def flow_refusal_detail(pset: dict, changes: list, dpid, connection: dict, *,
                           "flow can be checked against it: nothing is sent"),
                 "by": [refused_by("unreadable", "the protected set",
                                   met=[str(pset.get("error") or "")])]}
+    notes = []
     for n, change in enumerate(changes or []):
         do = change.get("do")
         flows = []
@@ -681,8 +983,12 @@ def flow_refusal_detail(pset: dict, changes: list, dpid, connection: dict, *,
             flows = [("removes", change.get("target") or {}, True)]
         for verb, flow, removal in flows:
             match = flow.get("match") or {}
+            said = writer == RESPONSE_WRITER and do == "add_flow" and bool(switch_flows)
             for cls in pset.get("classes") or []:
                 if writer in (cls.get("owners") or []):
+                    if said and overlap(match, cls):
+                        notes.append(f"Change {n + 1}: "
+                                     f"{owned_class_words(flow, cls, switch_flows, writer)}.")
                     continue
                 if removal:
                     if not names_class(match, cls):
@@ -700,6 +1006,16 @@ def flow_refusal_detail(pset: dict, changes: list, dpid, connection: dict, *,
                     f"{writer}'s: nothing is sent ({CITATION})"),
                     "by": [refused_by("class", cls["name"], invariant=cls["invariant"],
                                       source=cls["source"], met=met, citation=CITATION)]}
+            if said:
+                first = taken_first(flow, switch_flows, pset.get("classes") or [])
+                if first:
+                    from modules.sdn.flow_ops import flow_words
+                    notes.append(
+                        f"Change {n + 1}: {len(first)} flow{'s' if len(first) != 1 else ''} "
+                        "serving no protected class sit above it in its table and take what "
+                        "they match first, so this flow does not act on those packets: "
+                        + "; ".join(flow_words(f) for f in first[:5])
+                        + (f"; and {len(first) - 5} more" if len(first) > 5 else "") + ".")
             if not removal:
                 hits = _object_hits(pset, dpid, flow)
                 if hits:
@@ -707,7 +1023,7 @@ def flow_refusal_detail(pset: dict, changes: list, dpid, connection: dict, *,
                         f"change {n + 1} {verb} a flow naming a protected object: "
                         f"{'; '.join(hits)}. No write may: nothing is sent ({CITATION})"),
                         "by": [refused_by("object", h, citation=CITATION) for h in hits]}
-    return {"words": "", "by": []}
+    return {"words": "", "by": [], "notes": notes}
 
 
 def switch_note(pset: dict, dpid) -> str:

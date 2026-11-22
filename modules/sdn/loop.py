@@ -107,7 +107,13 @@ is said and not watched apart (`_watch_pass`).
 A detection that resolves (`detect.observe`: a collection that judged its subject no longer
 shows it) never closes its response: the response stays awaiting a person, marked "threat no
 longer active since <time>", its classification kept, until a person approves or dismisses
-it (C1968).
+it (C1968). The one exception (the Lab 9 hardware, 2026-11-20): a sourceless transit incident
+(`incidents.sourceless_transit`, a link port's detection whose flows name no source, its own
+incident) is closed ``cleared`` by the loop once no switch shows it, since nothing names whose
+traffic it was; and one whose flood's ingress fires after it joins that incident
+(`_transit_joins`), closed ``joined``, so one flood is one incident in either order. **When the
+loop stops** (by itself, by Stop or at the app's restart) each High packet rate row still open
+closes ``ended`` (`end_watches`), said in the log: no watch row outlives its loop.
 
 **The log** (``sdn_loop.jsonl`` in the network's folder): one line per step of each pass, with
 its time, what it read and decided; `log_lines` reads the newest. A pass with no new detection
@@ -141,10 +147,11 @@ or the refused call, and its ``incident``: key, window, ingress, the switches se
 any number of ``classified`` (a person's Classify: the classification, and the action it
 proposes), ``seen`` (other switches seeing it later, within its window; C1999), ``inactive``
 (none of its switches shows it any longer: since when) and ``active`` (it fired again),
-then one of ``confirmed`` (the operation that answered it) or ``dismissed`` (by whom and why).
-``cleared`` (the detection resolved before anyone acted) is no longer written, and still read
-as closed in an older record. A hold (C2005) is ``mitigated`` (the detection, the response
-holding it, its operation and until when) then ``released`` (why); its id (``mit-…``) is never
+then one of ``confirmed`` (the operation that answered it) or ``dismissed`` (by whom and why),
+or, for a sourceless transit incident only, the loop's ``cleared`` or ``joined`` (`closed_by`).
+``cleared`` for any other response (the detection resolved before anyone acted) is no longer
+written, and still read as closed in an older record. A hold (C2005) is ``mitigated`` (the
+detection, the response holding it, its operation and until when) then ``released`` (why); its id (``mit-…``) is never
 a response's, so `awaiting` passes over both. A watching row (High packet rate) is
 ``watching``, any number of ``seen``, then one of ``joined``, ``ended`` or ``dismissed``
 (`watching` reads them); its id (``watch-…``) is never a response's either. A flood response
@@ -341,7 +348,7 @@ def propose(network: str, detection: dict, action: str, risk: str, *, why: str,
     preview's failure (C2159) or its confirm's refusal before any request (C2195): the
     response is a person's as if AUTO were off, and the failure is kept on it, for its card
     and its Needs attention row."""
-    from modules.sdn import incidents
+    from modules.sdn import closed_loop, incidents
 
     now = time.time() if now is None else now
     for row in awaiting(network)["rows"]:
@@ -352,6 +359,14 @@ def propose(network: str, detection: dict, action: str, risk: str, *, why: str,
            "detection": incidents.stamp(detection, incident) if incident else detection,
            "classification": classification, "params": dict(params or {}),
            "classified": classified, "refused_call": refused_call}
+    # The other actions a person may preview (the operator, 2026-11-20: a scan's card offered
+    # only its proposal): the policy's for the rule, a source drop only where the protected
+    # set allows it, read once here so the card's page load reads nothing.
+    try:
+        row.update(closed_loop.response_choices(network, detection, action))
+    except Exception as exc:                          # noqa: BLE001 (said on the card)
+        row.update(choices=[], withheld=[{"action": "", "label": "Other actions",
+                                          "why": f"could not be checked ({type(exc).__name__})"}])
     if auto_failed:
         row["auto_failed"] = auto_failed
     if incident:
@@ -439,8 +454,29 @@ def responses_record(network: str) -> dict:
     return _read(network, PENDING_FILE)
 
 
-#: The kinds that close a response: a person's, or (an older record's) ``cleared``.
-CLOSED = ("confirmed", "dismissed", "cleared")
+#: The kinds that close a response: a person's; ``cleared`` (an older record's, and the loop's
+#: for a sourceless transit incident no switch shows any longer); ``joined`` (the loop's, a
+#: sourceless transit incident joined into the flood incident naming its source; `closed_by`).
+CLOSED = ("confirmed", "dismissed", "cleared", "joined")
+#: Who the loop's own closes name.
+LOOP_ACTOR = "the loop"
+
+
+def closed_by(network: str, response_id: str, how: str, *, why: str, incident: str = "",
+              now: float = None) -> dict:
+    """Close a sourceless transit incident (`incidents.sourceless_transit`) by the loop, the
+    one response the system closes (the Lab 9 hardware, 2026-11-20; every other stays a
+    person's, C1968): ``cleared`` once no switch shows it (nothing names whose traffic it was,
+    so nothing is left to act on), or ``joined`` into the flood incident *incident* that names
+    its source; and a flood incident ``joined`` into the scan incident Mercury's tripwires
+    confirmed for its source (`_scan_supersedes`). *why* its words."""
+    if how not in ("cleared", "joined"):
+        raise ValueError(f"the loop closes a transit incident cleared or joined, not {how!r}")
+    now = time.time() if now is None else now
+    row = {"kind": how, "id": response_id, "at": _iso(now), "by": LOOP_ACTOR, "why": why,
+           "incident": incident}
+    _append(network, PENDING_FILE, row)
+    return row
 
 
 def awaiting(network: str) -> dict:
@@ -525,7 +561,9 @@ class ProposalRefused(ValueError):
 def propose_from_watch(network: str, watch_id: str, *, actor: str, actor_verified: str,
                        actor_kind: str, now: float = None, stored: dict = None) -> dict:
     """A person's "Rate-limit this source…" on a watched large-packet stream (C2313's
-    condition, the operator's decision of 2026-11-03, option (i)): the watching row *watch_id*
+    condition, the operator's decision of 2026-11-03, option (i)) or a watched High packet rate
+    (C4124, the operator's decision of 2026-11-20, answered as the scan rule; HITL only, since
+    only a person makes a watched row a response): the watching row *watch_id*
     made a response awaiting a person, and the row closed ``proposed_by_person``. Its action
     `closed_loop.PERSON_ACTION`, its parameters the catalogue's defaults, its detection the
     watched one with its evidence, its incident the watching row's (its switches seen also),
@@ -535,10 +573,11 @@ def propose_from_watch(network: str, watch_id: str, *, actor: str, actor_verifie
     Verify and record. Refused (`ProposalRefused`, naming why) unless *actor* is a verified
     person (*actor_verified* neither empty nor ``none``, *actor_kind* ``person``: a verified
     service is not one, whatever the gate's settings), the row is open, and
-    `closed_loop.person_proposal_refusal` passes: a large-packet stream, a source to act on,
-    and the network's response policy allowing the rate limit for the flood rule, the rule a
-    large-packet stream is checked as (the flood rule's held candidate). ``{"response",
-    "closed"}``, the rows appended."""
+    `closed_loop.person_proposal_refusal` passes: a large-packet stream or a High packet rate,
+    a source to act on, and the network's response policy allowing the rate limit for the rule
+    it is checked as (the flood rule's held candidate for a large-packet stream, the scan rule
+    for a High packet rate: `closed_loop.answered_rule`). ``{"response", "closed"}``, the rows
+    appended."""
     from modules import identity
     from modules.sdn import closed_loop, incidents
 
@@ -562,13 +601,15 @@ def propose_from_watch(network: str, watch_id: str, *, actor: str, actor_verifie
     rec = dict(inc, ingress_known=bool(chosen["known"]), ingress_words=chosen["words"],
                ingress_port=chosen["port"], seen_also=list(row.get("seen_also") or []))
     action = closed_loop.PERSON_ACTION
+    what = closed_loop.PERSON_WORDS.get(d.get("basis"), "a watched row")
+    rule = closed_loop.answered_rule(d)
     now = time.time() if now is None else now
     response = propose(
         network, d, action, closed_loop.CATALOGUE[action]["risk"], now=now,
-        why=f"proposed by {actor} from a watched large-packet stream",
-        params=dict(closed_loop.RATE_LIMIT_DEFAULT),
+        why=f"proposed by {actor} from {what.replace('a ', 'a watched ', 1)}",
+        params=closed_loop.rate_limit_default(rule),
         classified=(f"no AI classification: {actor} proposed the rate limit from watching row "
-                    f"{watch_id}, checked as the flood rule's under the network's response "
+                    f"{watch_id}, checked as the {rule} rule's under the network's response "
                     "policy"), incident=rec)
     closed = {"kind": "proposed_by_person", "id": watch_id, "at": _iso(now), "actor": actor,
               "actor_verified": actor_verified, "why": "proposed by a person",
@@ -1052,6 +1093,149 @@ def _incidents(network: str, seen: dict, fresh: list, rows_waiting: list, now: f
     return incident_of, todo
 
 
+def _transit_joins(network: str, proposed: list, now: float, line) -> list:
+    """Each sourceless transit incident awaiting a person (`incidents.sourceless_transit`)
+    whose flood's ingress fired after it: the one incident of its rule naming a source, open
+    within its window of the transit's last sighting (`incidents.link_incident`, C4137's rule:
+    with several it stays its own), when that incident is one of this pass's *proposed*. It
+    is seen also there (`incidents.via_link`'s words) and closed ``joined`` (`closed_by`), so
+    one flood is one incident in either order. ``[{"id", "into"}]``."""
+    from modules.sdn import incidents
+
+    rows = awaiting(network)["rows"]
+    named = [r for r in rows if not incidents.key_of(r).startswith(incidents.SINGLE + "|")]
+    out = []
+    for t in [r for r in rows if incidents.sourceless_transit(r)]:
+        d = t.get("detection") or {}
+        last = incidents._epoch(t.get("last_seen") or t.get("at"))
+        window = int((t.get("incident") or {}).get("window_s") or 0)
+
+        def near(r):
+            at = incidents._epoch(r.get("last_seen") or r.get("at"))
+            return None not in (at, last) and abs(at - last) <= window
+
+        into = incidents.link_incident(d, [r for r in named if near(r)], incidents.key_of)
+        if into is None or into["id"] not in proposed:
+            continue
+        key = incidents.key_of(into)
+        seen_also(network, into["id"], [incidents.via_link(d, key)], now=now)
+        closed_by(network, t["id"], "joined", incident=into["id"], now=now,
+                  why=f"joined incident {into['id']}, the {d.get('rule')} incident naming its "
+                      "source")
+        out.append({"id": t["id"], "into": into["id"]})
+        what = _incident_words({"members": [into.get("detection") or {}], "rule": d.get("rule"),
+                                "source": key.partition("|")[2]})
+        line("incident", (
+            f"incident {t['id']} (its link port naming no source) joins incident {into['id']}, "
+            f"{what}, opened after it within {window} s: one flood, one incident; seen also "
+            "there, and closed here"), response=t["id"], incident=into["id"])
+    return out
+
+
+def _scan_supersedes(network: str, proposed: list, now: float, line) -> list:
+    """Each flood incident awaiting a person, and each watching row, of a source whose scan
+    Mercury's tripwires confirmed in this pass (one of *proposed*, `incidents.confirmed_scan`):
+    a scan over 50 packets a second meets the flood rule after its 30 s hold, so the same
+    traffic is both, and the scan wins (the operator, 2026-11-20): the flood's detection is
+    seen also on the scan's incident and its row closed ``joined`` (`closed_by`), a watching
+    row closed ``joined`` (`watched`), so its answer is the scan's, in packets a second. A
+    flood whose response was already sent is not touched. ``[{"id", "into"}]``."""
+    from modules.sdn import incidents
+
+    rows = awaiting(network)["rows"]
+    out = []
+    for scan in [r for r in rows if r["id"] in proposed and incidents.confirmed_scan(r)]:
+        src = incidents.key_of(scan).partition("|")[2]
+        floods = [r for r in rows if incidents.key_of(r) == f"flood|{src}"]
+        watches = [w for w in watching(network)["rows"]
+                   if canon_source((w.get("detection") or {}).get("source")) == src]
+        for r in floods:
+            seen_also(network, scan["id"], [r.get("detection") or {}], now=now)
+            closed_by(network, r["id"], "joined", incident=scan["id"], now=now,
+                      why=f"joined scan incident {scan['id']}: Mercury's tripwires confirmed "
+                          f"{src}'s traffic is a scan, so its flood is the scan's")
+        for w in watches:
+            watched(network, w["id"], "joined", incident=scan["id"], now=now,
+                    why=f"joined scan incident {scan['id']}")
+        for r in floods + watches:
+            out.append({"id": r["id"], "into": scan["id"]})
+            line("incident", (
+                f"{'incident' if r in floods else 'watching row'} {r['id']} ({src}) joins scan "
+                f"incident {scan['id']}: Mercury's tripwires confirmed the scan, so the same "
+                "traffic is answered once, as a scan; seen also there, and closed here"),
+                response=r["id"], incident=scan["id"])
+        # The scan's target's replies, already a flood incident before the tripwires
+        # confirmed it (the Lab 9 hardware, 2026-11-20: the target's RSTs, its own Flood):
+        # a flood from the watched subnet that began within its window of the scanner's own
+        # (`_replies_to`) joins too, never answered against the target.
+        for r in _replies_to(rows, scan, src, floods):
+            seen_also(network, scan["id"], [r.get("detection") or {}], now=now)
+            closed_by(network, r["id"], "joined", incident=scan["id"], now=now,
+                      why=f"joined scan incident {scan['id']}: its traffic is the replies to "
+                          f"{src}'s scan, which Mercury's tripwires confirmed")
+            out.append({"id": r["id"], "into": scan["id"]})
+            line("incident", (
+                f"incident {r['id']} ({incidents.key_of(r).partition('|')[2]}) joins scan "
+                f"incident {scan['id']}: it is the replies to {src}'s scan (its source in the "
+                "subnet the tripwires watched, beginning with the scanner's own flood); "
+                "nothing is answered against a scan's target"),
+                response=r["id"], incident=scan["id"])
+    return out
+
+
+def _replies_to(rows: list, scan: dict, src: str, floods: list) -> list:
+    """The flood incidents awaiting a person (among *rows*) that are the replies to the
+    confirmed *scan* from *src*: from a host in a subnet its tripwires watched, other than
+    *src*, whose destinations include *src* where named (where unnamed, its rate mirroring
+    one of *src*'s own *floods*, `detect.mirrors`), and whose flood began within its window
+    of one of *src*'s own *floods* (the scanner's traffic and its target's replies begin
+    together; a flood that did not is its own)."""
+    import ipaddress
+
+    from modules.sdn import detect, incidents
+
+    nets = []
+    for n in ((scan.get("detection") or {}).get("measurement") or {}).get("watched") or []:
+        try:
+            nets.append(ipaddress.ip_network(str(n), strict=False))
+        except ValueError:
+            continue
+    began = [incidents._epoch(((f.get("detection") or {}).get("measurement") or {})  # noqa
+                              .get("since")) for f in floods]
+    began = [b for b in began if b is not None]
+    out = []
+    for r in rows:
+        key = incidents.key_of(r)
+        rule, _bar, who = key.partition("|")
+        d = r.get("detection") or {}
+        if rule != "flood" or who == src or not nets or not began:
+            continue
+        try:
+            addr = ipaddress.ip_address(who)
+        except ValueError:
+            continue
+        if not any(addr.version == n.version and addr in n for n in nets):
+            continue
+        dests = detect._destinations(d) - {""}           # noqa: SLF001 (its own reading)
+        if dests and src not in dests:
+            continue
+        # Destinations unnamed: its rate must mirror one of the scanner's own floods (the
+        # review of 37e377db, 1), so a second host of the subnet flooding is its own.
+        if not dests and not any(detect.mirrors(detect._rate_of(d),  # noqa: SLF001
+                                                detect._rate_of(f.get("detection") or {}))
+                                 for f in floods):
+            continue
+        since = incidents._epoch((d.get("measurement") or {}).get("since"))  # noqa: SLF001
+        window = int((r.get("incident") or {}).get("window_s") or 0)
+        if since is not None and any(abs(since - b) <= window for b in began):
+            out.append((r, bool(dests)))
+    # A scan of one host has one target: two or more floods naming no destination that mirror
+    # the scan are not all its replies, so none of them is taken (the review of 7437d140).
+    if sum(1 for _r, named in out if not named) > 1:
+        out = [(r, named) for r, named in out if named]
+    return [r for r, _named in out]
+
+
 def attacks(new: list) -> list:
     """The attacks among a pass's new incidents (C2279, PHASE8_PLAN 17.10): flood incidents
     whose detections send to one address (`detect._destinations`: the flows' destinations, and
@@ -1298,6 +1482,29 @@ def verdict_of(network: str, d: dict, got: dict) -> dict:
                        + f"; proposed {action}, checked in code"))
 
 
+def scan_rate(network: str, d: dict, verdict: dict) -> dict:
+    """*verdict* (`verdict_of`'s) for a scan Mercury's tripwires confirmed (the operator,
+    2026-11-20): its response is the rate limit in packets a second
+    (`closed_loop.rate_limit_default`'s scan default, 20 a second, a burst of 10), where the
+    network's response policy allows it for scans; a drop the AI recommended stays offered
+    beside it on the card where the protected set allows it (`closed_loop.response_choices`).
+    Any other verdict, or a policy that allows no rate limit for scans, is unchanged."""
+    from modules.sdn import closed_loop
+
+    action = "rate_limit_source"
+    if (d.get("rule"), d.get("basis")) != ("scan", "tripwire")             or verdict.get("action") in ("", action)             or closed_loop.policy_refusal(network, "scan", action):
+        return verdict
+    params = dict(closed_loop.rate_limit_default("scan"))
+    if (verdict.get("params") or {}).get("hard_timeout"):
+        params["hard_timeout"] = verdict["params"]["hard_timeout"]
+    return dict(verdict, action=action, risk=closed_loop.CATALOGUE[action]["risk"],
+                params=params,
+                words=(f"{verdict.get('words') or ''}; a scan Mercury's tripwires confirmed is "
+                       f"answered by a rate limit in packets a second ({params['rate']} a second, "
+                       f"a burst of {params['burst']}), {verdict.get('action')} offered beside "
+                       "it where the protected set allows it").lstrip("; "))
+
+
 #: A rate limit's parameters a drop does not take (`capable`).
 _RATE_PARAMS = ("unit", "rate", "burst", "meter_id", "targets", "not_metered", "ports_from")
 
@@ -1347,7 +1554,7 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
 
     out = {"ok": False, "error": "", "fired": [], "proposed": [], "applied": [], "inactive": [],
            "mitigated": [], "released": [], "incidents": [], "seen_also": [], "watching": [],
-           "joined": [], "ended": [], "lines": [],
+           "joined": [], "ended": [], "cleared": [], "joined_into": [], "lines": [],
            "links": {"opened": [], "verified": [], "restored": []}}
 
     def line(step, words, **extra):
@@ -1373,6 +1580,7 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
     def respond(d, inc, rec, verdict):
         """Detection *d*'s response in the network's mode (the module's docstring, step 4),
         on its classification *verdict*, for its new incident *inc* (*rec* its record)."""
+        verdict = scan_rate(network, d, verdict)
         verdict = capable(network, d, verdict)
         if verdict.get("capability_words"):
             line("respond", verdict["capability_words"])
@@ -1423,8 +1631,10 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                                  "switches": 1 + len(rec["seen_also"])})
         # The one writer of a response's line (`closed_loop.log_response`): the switch, the
         # operation and the entries as Verify read them back, as a person's confirm logs.
+        # With the basis AUTO acted on for its source (C4154), in the response's one line.
         out["lines"].append(closed_loop.log_response(
-            network, done, action=action, who=AUTO_ACTOR, ask=preview["ask"], now=now()))
+            network, done, action=action, who=AUTO_ACTOR, ask=preview["ask"], now=now(),
+            basis=(decision["autonomous"] or {}).get("source") or ""))
 
     try:
         if modes.record_expiry(network, now())["recorded"]:
@@ -1499,8 +1709,21 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         still = {d["key"] for d in seen.get("detections") or []} | {
             u.get("key") for u in seen.get("unjudged") or []}
         for row in held:
-            if row["id"] in out["inactive"] or row.get("inactive_since") or \
+            if row["id"] in out["inactive"] + out["cleared"] or \
                     set(row.get("members") or ()) & still:
+                continue
+            if incidents.sourceless_transit(row):
+                # Nothing names whose traffic it was, and nothing reads it now: closed, not
+                # left for a person to dismiss (the Lab 9 hardware, 2026-11-20).
+                d = row.get("detection") or {}
+                words = (f"incident {row['id']} closed: its link port ({d.get('dpid_hex')} "
+                         f"port {d.get('port')}) named no source, and no switch shows it now; "
+                         "nothing to act on")
+                closed_by(network, row["id"], "cleared", why=words, now=now())
+                out["cleared"].append(row["id"])
+                line("incident", words, response=row["id"])
+                continue
+            if row.get("inactive_since"):
                 continue
             mark(network, row["id"], "inactive", since=since, now=now())
             out["inactive"].append(row["id"])
@@ -1642,6 +1865,13 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
             stages["total"] = clock() - detected_at
             line("timing", _timing_words(stages),
                  stages={k: round(v, 3) for k, v in stages.items()})
+        if out["proposed"]:
+            # One flood, one incident, whichever switch fired first (the Lab 9 hardware,
+            # 2026-11-20): a sourceless transit incident opened before its ingress's joins it.
+            out["joined_into"] = _transit_joins(network, out["proposed"], now(), line)
+            # A scan the tripwires confirmed answers its source's flood (the operator,
+            # 2026-11-20): one incident, the scan's.
+            out["joined_into"] += _scan_supersedes(network, out["proposed"], now(), line)
         # High packet rate (board S-HR, C2238; PHASE8_PLAN 17.8), after the responses so a
         # flood answered in this pass is the incident it joins: each flood active now with the
         # response that answers it (awaiting a person, applied, or holding its source off).
@@ -1681,7 +1911,7 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         # (C1843): `ai_calls`, so the top bar's AI chip and an open spend panel read again.
         keys = (["alerts"] if seen.get("changed") else []) + (
             ["sdn"] if out["fired"] or out["proposed"] or out["applied"] or out["inactive"]
-            or out["released"] or out["watching"] or out["joined"] or out["ended"]
+            or out["cleared"] or out["released"] or out["watching"] or out["joined"] or out["ended"]
             or out["seen_also"] or expired["removed"] or any(out["links"].values())
             else []) + (
             ["ai_calls"] if todo else [])
@@ -1769,6 +1999,33 @@ def schedule(network: str, interval: float, stop_event, one_pass, *, clock=time.
     return "stop"
 
 
+#: Why a watching row the loop left open closes when it stops.
+STOPPED_WHY = "the loop stopped: nothing watches it now"
+
+
+def end_watches(network: str, now: float = None) -> list:
+    """Close each High packet rate row still open on *network* (`watching`) ``ended``, saying
+    so in the log, when its loop stops, by itself, by Stop or at the app's restart (the Lab 9
+    hardware, 2026-11-20): nothing watches it once the loop is stopped, so no watch row
+    outlives its loop. A rate still firing opens a new one at the next start. The watching
+    rows' ids closed; a store that cannot be read or written is logged, never raised (the
+    stop stands)."""
+    now = time.time() if now is None else now
+    closed = []
+    try:
+        for row in watching(network)["rows"]:
+            watched(network, row["id"], "ended", why=STOPPED_WHY, now=now)
+            closed.append(row["id"])
+            say(network, "watch", f"High packet rate {row['id']} (since {row.get('at')}) closed: "
+                                  "the loop stopped, so nothing watches it now; it opens again "
+                                  "if the loop is started and it still fires", now,
+                watch=row["id"])
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        log.error("sdn loop: closing %s's watching rows at its stop failed (%s)", network,
+                  type(exc).__name__)
+    return closed
+
+
 def _bound_words(reason: str, job: dict) -> str:
     minutes = f"{job['run_for_s'] / 60:g} minute{'s' if job['run_for_s'] != 60 else ''}"
     passes = job["passes"]["n"]
@@ -1833,6 +2090,8 @@ def start(network: str, *, actor: str, interval: float = DEFAULT_INTERVAL, drive
             if reason in ("run_for", "pass_cap"):
                 say(network, "stop", _bound_words(reason, job), by=BOUND_ACTOR,
                     reason=reason, passes=job["passes"]["n"])
+            if end_watches(network):
+                _announce(network, ["sdn"], job["id"])
 
         job["thread"] = threading.Thread(target=run, name=f"sdn-loop-{network}", daemon=True)
         _jobs[network] = job
@@ -1873,6 +2132,7 @@ def after_restart(networks=None, now: float = None) -> list:
         say(network, "stop", f"stopped by {RESTART_ACTOR}: its last line was at {last} UTC; "
                              "the loop does not start again by itself: start it on SDN › "
                              "Responses", now, by=RESTART_ACTOR, last_at=last)
+        end_watches(network, now)
         out.append({"network": network, "last_at": last})
     return out
 

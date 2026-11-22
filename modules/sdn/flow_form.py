@@ -127,6 +127,12 @@ def ask_from_form(values) -> dict:
                   "flow": flow_from_form(values, flow_intent.new_cookie())}
     elif do == "remove":
         change = {"do": "remove_flow", "target": target_of(values)}
+    elif do == "remove_meter":
+        # A meter no flow uses (C4150): the plan refuses one a flow still points at.
+        try:
+            change = {"do": "remove_meter", "meter_id": int(str(values.get("meter_id")).strip())}
+        except ValueError:
+            raise FormRefused("the form names no meter (its meter id)") from None
     else:
-        raise FormRefused(f"the form's change is add, edit or remove, not {do!r}")
+        raise FormRefused(f"the form's change is add, edit, remove or remove_meter, not {do!r}")
     return {"connection": conn, "dpid": dpid, "changes": [change]}

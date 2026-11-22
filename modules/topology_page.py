@@ -732,6 +732,8 @@ def view(list_name: str, values) -> dict:
             out["state"] = "not_configured"
             return out
         out["no_prometheus"] = True
+        # Configured and not answering: said as that, never as not configured.
+        out["prometheus_unread"] = value.get("prometheus_unread") or ""
     if net is None:
         out["state"] = "not_read"
         return out
@@ -747,7 +749,8 @@ def view(list_name: str, values) -> dict:
     # labels every link by its source (Labels on).
     out["sdn"] = net.get("sdn")
     out["coverage"] = (_coverage(list_name, net, st["value_at"],
-                                 scraped=not out.get("no_prometheus"))
+                                 scraped=not out.get("no_prometheus"),
+                                 value_unread=out.get("prometheus_unread") or "")
                        if net.get("sdn") else [])
     if net.get("sdn"):
         for l in links:
@@ -844,7 +847,7 @@ def drawn(v: dict) -> dict:
 
 
 def _coverage(list_name: str, net: dict, value_at: str, now: float = None,
-              scraped: bool = True) -> list:
+              scraped: bool = True, value_unread: str = "") -> list:
     """The strip above the map in a network with a controller layer (board F): one chip per
     source, ``[{"text", "cls"}]``: LLDP (the Topology reader's read; "not read" when
     Prometheus is not configured, *scraped* False), each controller (read, or couldn't read
@@ -855,8 +858,11 @@ def _coverage(list_name: str, net: dict, value_at: str, now: float = None,
     from modules.sdn import topology as SDN
 
     sdn = net.get("sdn") or {}
+    unread = (value_unread or "") if not scraped else ""
     chips = [{"text": f"LLDP · the Topology reader, read {value_at}", "cls": ""} if scraped
-             else {"text": "LLDP: not read (Prometheus is not configured)", "cls": "warn"}]
+             else {"text": ("LLDP: not read (Prometheus could not be read)" if unread
+                            else "LLDP: not read (Prometheus is not configured)"),
+                   "cls": "warn", "title": unread}]
     nb = sdn.get("netbox")
     if nb:
         if nb.get("state") == "read":

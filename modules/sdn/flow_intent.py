@@ -37,6 +37,9 @@ and its write (`records_migrate.store_append`, owner-only, a line at a time).
 - ``mercury_differs``: recorded, and one of those is not the record's, each difference named
   with both values;
 - ``controller_own``: its cookie is one the connection declares as its application's own;
+- ``external``: its cookie falls in a range the network declares in NetBox for another program
+  on the controller (`protected.external_owners`, C3930): drawn as that owner's, never
+  reported, and never removed or replaced by any Mercury writer (`flow_ops.plan`);
 - ``unauthorised``: anything else (an unknown cookie; Mercury's prefix with no record, a record
   withdrawn, or another connection's record), reported like an intent departure.
 And each recorded flow not installed: ``expired`` when its hard timeout, as set, has passed
@@ -96,7 +99,7 @@ FILE_NAME = "flow_intent.jsonl"
 PREFIX = 0x4D45
 SHIFT = 48
 ID_MASK = (1 << SHIFT) - 1
-STATES = ("mercury", "mercury_differs", "controller_own", "unauthorised")
+STATES = ("mercury", "mercury_differs", "controller_own", "external", "unauthorised")
 RECORD_STATES = ("missing", "expired", "not_judged")
 #: What a flow's record holds of it, compared with what is installed.
 COMPARED = ("dpid", "table_id", "priority", "match", "actions")
@@ -126,13 +129,32 @@ def flow_id(cookie: int) -> int:
     return cookie & ID_MASK
 
 
+#: The id's top 16 bits that mark a tripwire (Lab 9 A, the scan probe: "TW"): Mercury's own
+#: flow, which coverage and the scan rule's sightings leave out (`is_tripwire`).
+TRIPWIRE_TAG = 0x5457
+
+
 def new_cookie() -> int:
     """A fresh Mercury cookie, its id drawn at random from 2^48 (so a preview can carry it
-    before anything is recorded; `record_installed` refuses one already recorded)."""
+    before anything is recorded; `record_installed` refuses one already recorded), never one
+    carrying the tripwire's tag."""
     while True:
         drawn = secrets.randbits(SHIFT)
-        if drawn:
+        if drawn and drawn >> 32 != TRIPWIRE_TAG:
             return mercury_cookie(drawn)
+
+
+def tripwire_cookie() -> int:
+    """A fresh Mercury cookie marked a tripwire (`TRIPWIRE_TAG` in its id's top bits)."""
+    while True:
+        drawn = secrets.randbits(32)
+        if drawn:
+            return mercury_cookie((TRIPWIRE_TAG << 32) | drawn)
+
+
+def is_tripwire(cookie) -> bool:
+    """Whether *cookie* is one of Mercury's tripwires (`tripwire_cookie`)."""
+    return is_mercury(cookie) and (cookie & ID_MASK) >> 32 == TRIPWIRE_TAG
 
 
 def cookie_hex(cookie) -> str:
@@ -656,7 +678,7 @@ def differences(record: dict, flow: dict) -> list:
 # ───────────────────────────────────────────────────────────────────────────── classifying
 
 def classify(flows: list, connection: dict, intent_rows: list, *, read_switches=None,
-             withdrawn: dict = None, now: float = None) -> dict:
+             withdrawn: dict = None, now: float = None, external=None) -> dict:
     """Whose each installed flow is, and which recorded flows are not installed.
 
     *flows*: the flows read from *connection*'s switches (the drivers' one shape, each with its
@@ -665,12 +687,17 @@ def classify(flows: list, connection: dict, intent_rows: list, *, read_switches=
     *read_switches*: the switches whose tables were read whole (default: those *flows* came
     from); a record on any other is ``not_judged``. *withdrawn*: `intent()`'s, so a flow
     Mercury withdrew and still installed is named as such. *now*: the clock a hard timeout is
-    judged by (Mercury's).
+    judged by (Mercury's). *external*: the network's declared external flow owners
+    (`protected.external_owners`' ``owners``, C3930): a flow neither Mercury's (no record, not
+    Mercury's prefix) nor the controller's own whose cookie one of them declares on its switch
+    is ``external``, its ``external`` naming that owner, never ``unauthorised``.
 
     ``{"connection", "flows": [flow + {"owner", "differs", "words", "record"}], "records":
     [{"cookie", "state", "words", ...}], "counts"}``. *intent_rows* may be `intent()`'s whole
     answer: an unreadable one classifies nothing and says so (``state`` ``unreadable``), since
     without the records no flow can be called Mercury's or unauthorised."""
+    from modules import protected
+
     if isinstance(intent_rows, dict):
         if intent_rows.get("state") != "ok":
             return {"connection": (connection or {}).get("name"), "state": "unreadable",
@@ -706,6 +733,12 @@ def classify(flows: list, connection: dict, intent_rows: list, *, read_switches=
             row.update(owner="controller_own", differs=[], record=None,
                        words=f"the controller's own (cookie {cookie_hex(cookie)} is declared "
                              f"as its application's on {name})")
+        elif not is_mercury(cookie) and protected.external_owner_of(
+                external, cookie, flow.get("dpid")) is not None:
+            ext = protected.external_owner_of(external, cookie, flow.get("dpid"))
+            row.update(owner="external", differs=[], record=None,
+                       external={"name": ext["name"], "owner": ext["owner"]},
+                       words=protected.external_words(ext))
         else:
             why = f"cookie {cookie_hex(cookie)} is neither Mercury's nor declared as the " \
                   f"controller's own on {name}"

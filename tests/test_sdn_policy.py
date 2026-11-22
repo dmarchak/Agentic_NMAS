@@ -275,8 +275,10 @@ def test_the_lab_8_scan_is_rate_limited_under_sdn_lab_s_policy(networks):  # noq
     assert preview["action"] == "rate_limit_source" and preview["ask"]["action"] == \
         "rate_limit_source"
     meter, *flows = preview["plan"]["steps"]
-    band = json.loads(meter["request"]["body"])["bands"]
-    assert band == [{"burst_size": 100, "rate": 1000, "type": "DROP"}]
+    meter_body = json.loads(meter["request"]["body"])
+    # A scan's limit is in packets a second (the operator, 2026-11-20): 20 pps, a burst of 10.
+    assert meter_body["bands"] == [{"burst_size": 10, "rate": 20, "type": "DROP"}]
+    assert "PKTPS" in meter_body["flags"] and "KBPS" not in meter_body["flags"]
     (flow,) = flows
     body = json.loads(flow["request"]["body"])
     assert body["match"] == {"eth_type": 2048, "ipv4_dst": "192.0.2.3", "ipv4_src": "192.0.2.1"}

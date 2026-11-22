@@ -65,12 +65,15 @@ def preview(network: str, kind: str, ask: dict, plan: dict, extra: dict = None,
 
 def response_preview(network: str, row: dict, got: dict, refusal: dict = None) -> dict:
     """A response's preview: the plan's card with the detection, the action and its risk, and
-    who chose the action (the AI call that proposed it, or the catalogue's default). *refusal*
-    is the record a preview the protected set refused kept (`refused`)."""
+    who chose the action (the AI call that proposed it, or the catalogue's default), and
+    ``inactive_since``: when the loop logged its threat no longer active (`loop.mark`, drawn
+    as a warning before Send, which stays the person's choice), "" while it is active.
+    *refusal* is the record a preview the protected set refused kept (`refused`)."""
     from modules.sdn import closed_loop
 
     params = got.get("params") or {}
     extra = {"rid": row.get("id"), "action": got.get("action"), "risk": got.get("risk"),
+             "inactive_since": row.get("inactive_since") or "",
              "detection": {"words": (row.get("detection") or {}).get("words", "")},
              "params": {k: params[k] for k in PARAMS_DRAWN if k in params},
              "label": closed_loop.CATALOGUE.get(got.get("action") or "", {}).get("label", ""),
@@ -113,6 +116,7 @@ def result(network: str, kind: str, done: dict) -> dict:
                      "answer": (f"HTTP {answer.get('status')}, sent" if answer.get("ok") else
                                 f"refused: {answer.get('error')}")})
     return {"network": network, "kind": kind, "state": "result",
+            "outcome": done.get("outcome") or "",
             "outcome_words": words, "tone": tone, "error": done.get("error", ""),
             "id": done.get("id", ""),
             "checks": [{"state": c.get("state"), "words": c.get("words")}
@@ -245,11 +249,23 @@ def _verdict(r: dict, ai: dict) -> str:
     return "refused" if words.startswith("AI classification refused") else "not classified"
 
 
-def incident_rows(awaiting: dict) -> list:
+def incident_rows(awaiting: dict, network: str = "") -> list:
     """The incidents awaiting a person (C1999; board SdnResponses), as the table draws them:
     each its rule, source, how many switches saw it, the ingress and the switches seen also,
-    its age, the AI verdict and the proposed action, by severity then the longest waiting."""
-    from modules.sdn import closed_loop, incidents
+    its age, the AI verdict and the proposed action, by severity then the longest waiting.
+    The switch it is proposed at is named (``switch``, `known.name_of`: NetBox's name, else
+    its own description, never "None"; "" when neither names it) on *network*, NetBox's names
+    read once and each switch once."""
+    from modules.sdn import closed_loop, incidents, known
+
+    nb, named = (known.names_for(network) if network else {}), {}
+
+    def switch(d):
+        at = (d.get("connection"), d.get("dpid") if d.get("dpid") is not None
+              else d.get("dpid_hex"))
+        if network and at not in named:
+            named[at] = known.name_of(network, at[0], at[1], names=nb)
+        return named.get(at, "")
 
     rows = []
     for r in incidents.order(awaiting["rows"]):
@@ -266,6 +282,7 @@ def incident_rows(awaiting: dict) -> list:
                      "rule_label": RULE_LABELS.get(d.get("rule"), d.get("rule") or ""),
                      "title": d.get("title") or d.get("rule"), "words": d.get("words"),
                      "source": d.get("source"), "dpid_hex": d.get("dpid_hex"),
+                     "switch": switch(d),
                      "confidence": d.get("confidence"), "action": r.get("action"),
                      "label": entry.get("label", r.get("action")),
                      "risk": r.get("risk"), "action_words": entry.get("words", ""),
@@ -274,6 +291,17 @@ def incident_rows(awaiting: dict) -> list:
                      "refused_call": r.get("refused_call") or "",
                      "inactive_since": r.get("inactive_since") or "",
                      "ai": ai, "params": dict(r.get("params") or {}),
+                     # The rate limit's form starts at the answered rule's own default (the
+                     # review of 94fa79c8, 3): packets a second for a scan, kbit/s otherwise.
+                     "rate_default": closed_loop.rate_limit_default(
+                         closed_loop.answered_rule(d)),
+                     # A flood of small packets from one source may be a scan (it meets the
+                     # flood rule after 30 s at the High packet rate's 100 pps): its tripwire.
+                     "tripwire": _tripwire_offer(d),
+                     # The policy's other actions a person may preview, and those withheld
+                     # with why (`closed_loop.response_choices`, kept when it was proposed).
+                     "choices": list(r.get("choices") or []),
+                     "withheld": list(r.get("withheld") or []),
                      "severity": sev, "severity_words": SEVERITY_WORDS[sev],
                      "severity_tone": SEVERITY_TONE[sev], "verdict": _verdict(r, ai),
                      "switches": 1 + len(also), "seen_also": also,
@@ -298,9 +326,31 @@ def _person_proposal(network: str, d: dict, pol: dict) -> dict:
     from modules.sdn import closed_loop
 
     if (d.get("rule"), d.get("basis")) not in closed_loop.PERSON_ANSWERED:
-        return {"offered": False, "refusal": ""}
-    return {"offered": True,
+        return {"offered": False, "refusal": "", "rule": ""}
+    return {"offered": True, "rule": closed_loop.answered_rule(d),
             "refusal": closed_loop.person_proposal_refusal(network, d, pol=pol)}
+
+
+def _tripwire_offer(d: dict) -> dict:
+    """A row's "Watch its ports…" (Lab 9 A, the scan tripwire): ``{"offered",
+    "refusal"}``. Offered on a High packet rate whose switch's flows name no transport ports
+    (the scan rule's fallback, basis ``rate``), and on a flood of small packets (basis
+    ``rate``): a scan over 50 packets a second meets the flood rule after its 30 s hold, so
+    the watching row it opened has joined the flood by then; *refusal* why it is drawn disabled (no one
+    source address to watch). Reads nothing: the subnet NetBox records and the switch's own
+    goto are checked when it is pressed (`closed_loop.tripwire_ask`)."""
+    import ipaddress
+
+    offered = (("high_rate", "rate"), ("flood", "rate"))
+    if (d.get("rule"), d.get("basis")) not in offered or d.get("attack_sources"):
+        # Not on one attack of several large-packet sources on a host (`detect._large_packets`,
+        # the review of d1cb5b71, 4): its packets are no scan's.
+        return {"offered": False, "refusal": ""}
+    try:
+        ipaddress.ip_address(str(d.get("source") or ""))
+    except ValueError:
+        return {"offered": True, "refusal": "the row names no one source address to watch"}
+    return {"offered": True, "refusal": ""}
 
 
 def watch_rows(watching: dict, network: str = "", pol: dict = None) -> list:
@@ -337,6 +387,8 @@ def watch_rows(watching: dict, network: str = "", pol: dict = None) -> list:
                      if d.get("basis") == "large_packets" else "",
                      # C2313's condition: a person may rate-limit a large-packet stream.
                      "propose": _person_proposal(network, d, pol),
+                     # Lab 9 A: Mercury's tripwire for the row's source, a person's flow change.
+                     "tripwire": _tripwire_offer(d),
                      "switches": 1 + len(also), "seen_also": also,
                      "last_seen": r.get("last_seen") or r.get("at"),
                      "window_words": inc.get("window_words") or ""})
@@ -396,7 +448,7 @@ def responses_view(network: str, run: str = "", q: str = "", sev: str = "",
     from modules.sdn import capability, detect, flow_ops, incidents, link_failure, loop, modes
 
     awaiting = loop.awaiting(network)
-    every = incident_rows(awaiting)
+    every = incident_rows(awaiting, network)
     watching = loop.watching(network)
     watched = watch_rows(watching, network)
     q, sev = (q or "").strip(), sev if sev in incidents.SEVERITY_ORDER else ""

@@ -22,6 +22,9 @@ stored as the SDN reader stores it.
 - **Active while any switch shows it**: one seen-also switch resolving keeps the incident
   active; the last one resolving marks it no longer active.
 - **Not grouped**: unauthorised flows and a detection naming no source are each their own.
+- **A sourceless transit incident** (the Lab 9 hardware, 2026-11-20): a link port's own
+  incident naming no source closes once no switch shows it; when its flood's ingress fires a
+  pass later it joins that incident (IPv4 and IPv6), and beside two floods it stays its own.
 - **The table**: by severity then age, the switches seen also on expand, a filter that says it
   shows a subset.
 """
@@ -444,6 +447,46 @@ def test_a_link_port_carrying_two_incidents_sources_stays_its_own():
     assert [i["key"] for i in incidents.group([s2], WINDOWS)] == [f"detection|{s2['key']}"]
 
 
+def _unnamed(s2):
+    """s2's link-port flood as on the Lab 9 hardware (2026-11-20): the team's flows match the
+    destination MAC only, so the link port's entering flows carry no source MAC."""
+    return {k: v for k, v in s2.items() if k != "link_sources"}
+
+
+@pytest.mark.parametrize("order", ["ingress first", "link first"])
+def test_a_link_port_whose_flows_name_no_source_joins_the_one_flood_incident(order):
+    """One flood seen at its ingress (s1, h2 named) and on its way (s2's link port, no source
+    MAC in its flows) is one incident, the link port seen also saying why."""
+    s1, s2, topo = _walk_floods()
+    s2 = _unnamed(s2)
+    assert incidents.link_keys(s2) == set(), "premise: nothing ties it to a host"
+    (inc,) = incidents.group([s1, s2] if order == "ingress first" else [s2, s1], WINDOWS)
+    assert inc["key"] == "flood|192.0.2.2" and len(inc["members"]) == 2
+    chosen = incidents.ingress(NET, inc, topo)
+    (also,) = incidents.record(inc, chosen)["seen_also"]
+    assert also["words"].endswith(
+        "port 3 is an inter-switch link whose flows name no source address or MAC, and "
+        "192.0.2.2's is the one flood incident open: taken as the same attack, seen on its way")
+
+
+def test_a_link_port_naming_no_source_beside_two_floods_or_none_stays_its_own():
+    s1, s2, _t = _walk_floods()
+    s2 = _unnamed(s2)
+    h1 = dict(det(1, "192.0.2.1", rule="flood", at=detect._epoch(s1["at"])), port=1)
+    got = incidents.group([s1, h1, s2], WINDOWS)
+    assert f"detection|{s2['key']}" in [i["key"] for i in got], "two floods: cannot tell"
+    assert [i["key"] for i in incidents.group([s2], WINDOWS)] == [f"detection|{s2['key']}"]
+
+
+def test_a_later_link_port_sighting_naming_no_source_joins_the_awaiting_incident():
+    """The same in the next pass: the one flood incident awaiting a person within its window."""
+    s1, s2, _t = _walk_floods()
+    row = {"incident": {"key": "flood|192.0.2.2", "window_s": 30}, "detection": s1,
+           "at": s1["at"], "last_seen": s1["at"]}
+    got = incidents.joinable([row], _unnamed(s2), detect._epoch(s1["at"]) + 5)
+    assert got is row
+
+
 def test_through_the_loop_one_classification_one_row_and_s2_seen_also(calls, monkeypatch):
     """The row's test: the loop's pass over the walk's two floods makes one incident, one
     classification call (on s1's detection, the ingress), one response awaiting a person and
@@ -481,3 +524,74 @@ def test_a_link_port_firing_a_pass_later_joins_the_incident_awaiting(calls, monk
     assert row["seen_also"][0]["words"].endswith(LINK_WORDS.format(src="192.0.2.2"))
     (line,) = [x for x in out["lines"] if x["step"] == "incident"]
     assert line["words"].startswith("SDN flood from 192.0.2.2 seen also on ")
+
+
+# ── a sourceless transit incident (the Lab 9 hardware, 2026-11-20: queue 15) ─────────────────
+
+def _transit_alone(monkeypatch, edit=None):
+    """s2's link-port flood naming no source (`_unnamed`) firing a pass before s1's, so it is
+    its own incident awaiting a person: ``(s1, s2, at, its row)``."""
+    s1, s2, topo = _walk_floods(edit=edit)
+    s2 = _unnamed(s2)
+    _stored_is(monkeypatch, topo)
+    monkeypatch.setattr(CL, "respond_to_threat", lambda *a, **k: {})
+    at = detect._epoch(s1["at"])
+    assert a_pass([s2], at=at)["ok"]
+    (row,) = _rows()
+    assert row["incident"]["key"] == f"detection|{s2['key']}", "premise: its own incident"
+    return s1, s2, at, row
+
+
+def test_a_sourceless_transit_incident_no_switch_shows_closes(calls, monkeypatch):
+    """Nothing names its source and nothing is reading it any longer: the loop closes it
+    (``cleared``, saying why, in the log too), where a source-named incident stays awaiting a
+    person marked no longer active (C1968)."""
+    _s1, s2, at, row = _transit_alone(monkeypatch)
+    out = a_pass([], at=at + 10, resolved=[s2["key"]], still=[])
+    assert out["ok"], out
+    assert _rows() == [], "closed, not listed"
+    assert out["cleared"] == [row["id"]] and out["inactive"] == []
+    assert "sdn" in out["announced"]["keys"], "SDN › Responses redraws without it"
+    (kept,) = [r for r in LP._read(NET, LP.PENDING_FILE)["rows"] if r.get("kind") == "cleared"]
+    assert kept["id"] == row["id"] and kept["by"] == LP.LOOP_ACTOR
+    (said,) = [x for x in out["lines"] if x.get("response") == row["id"]]
+    assert said["words"] == (
+        f"incident {row['id']} closed: its link port (0000000000000002 port 3) named no "
+        "source, and no switch shows it now; nothing to act on")
+
+
+@pytest.mark.parametrize("edit,source", [(None, "192.0.2.2"), ("v6", "2001:db8:8::2")],
+                         ids=["IPv4", "IPv6"])
+def test_a_transit_sighting_before_its_ingress_joins_the_ingress_incident(calls, monkeypatch,
+                                                                         edit, source):
+    """One flood, one incident, whichever switch fires first: the ingress (s1, h2 named)
+    firing a pass after the link port's incident opened is proposed at its ingress, and the
+    link port's incident closes ``joined`` into it, seen also there saying why."""
+    from tests.test_sdn_source_from_topology import h2_v6_only
+
+    s1, s2, at, transit = _transit_alone(monkeypatch, edit=h2_v6_only if edit else None)
+    out = a_pass([dict(s1, at=LP._iso(at + 10))], at=at + 10, still=[s1, s2])
+    assert out["ok"], out
+    (row,) = _rows()
+    assert row["incident"]["key"] == f"flood|{source}"
+    assert row["detection"]["key"] == s1["key"] and row["incident"]["ingress_port"] == 2
+    assert [s["key"] for s in row["seen_also"]] == [s2["key"]]
+    assert row["seen_also"][0]["words"].endswith(
+        f"port 3 is an inter-switch link whose flows name no source address or MAC, and "
+        f"{source}'s is the one flood incident open: taken as the same attack, seen on its way")
+    (closed,) = [r for r in LP._read(NET, LP.PENDING_FILE)["rows"] if r.get("kind") == "joined"]
+    assert (closed["id"], closed["incident"]) == (transit["id"], row["id"])
+    assert out["joined_into"] == [{"id": transit["id"], "into": row["id"]}]
+    (said,) = [x for x in out["lines"] if x.get("response") == transit["id"]]
+    assert said["words"].startswith(f"incident {transit['id']} (its link port naming no source) "
+                                    f"joins incident {row['id']}, SDN flood from {source}")
+
+
+def test_a_transit_incident_beside_two_floods_stays_its_own(calls, monkeypatch):
+    """The join must not widen: two flood incidents naming a source are open, so the link port
+    cannot tell which it carries and stays its own (C4137's rule, in either order)."""
+    s1, s2, at, transit = _transit_alone(monkeypatch)
+    h1 = dict(det(1, "192.0.2.1", rule="flood", at=at + 10), port=1)
+    out = a_pass([dict(s1, at=LP._iso(at + 10)), h1], at=at + 10, still=[s1, s2, h1])
+    assert out["ok"], out
+    assert transit["id"] in [r["id"] for r in _rows()] and out["joined_into"] == []

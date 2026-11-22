@@ -8,7 +8,9 @@ real Ryu driver and `tests.sdn_fakes.FakeRyu` seeded with Ryu's captured flow ta
 - **Responses**: a response awaiting a person is drawn with who chose its action (the
   catalogue's default, with no AI classification; tests/test_sdn_classify.py has the AI's); its
   preview is the plan's card; its confirm applies and closes it as confirmed; a dismissal needs
-  its reason.
+  its reason. The Proposed column names the switch (NetBox's name, else its own, never
+  "None"); a preview whose threat is logged no longer active warns, naming when, and Send
+  still works; "Stops by itself" names its time.
 - **The mode and the loop**: AUTO on with a reason and an expiry, off at once; the loop started
   and stopped, each recorded.
 - **The network's stage (C2009)**: its route refuses no reason, an unknown value and an
@@ -136,6 +138,104 @@ def test_a_response_awaiting_a_person_previews_confirms_and_closes(lab):
     assert LP.awaiting("Default")["rows"] == []
     (op,) = F.operations("Default")["rows"]
     assert op["response"]["action"] == "drop_source" and op["mode"] == "hitl"
+
+
+def _scan(source="192.0.2.1", key="k1", dpid=1):
+    return {"key": key, "rule": "scan", "title": "SDN scan", "network": "Default",
+            "connection": "lab-controller", "dpid": dpid, "dpid_hex": f"{dpid:016x}",
+            "source": source, "targets": ["192.0.2.2"], "confidence": "high",
+            "words": f"{source} reached 25 distinct destination ports"}
+
+
+def _proposed_cell(html, rid):
+    """The incident row's Proposed column (its summary's last cell)."""
+    row = html[html.index(f'id="sdn-i-{rid}"'):]
+    summary = row[:row.index("</summary>")]
+    return summary[summary.rindex("<span>"):]
+
+
+@pytest.mark.parametrize("nb,controller,shown", [
+    ({3: "switch3"}, "None", "switch3"),
+    ({}, "ovs-edge", "ovs-edge"),
+    ({}, "None", "0000000000000003")], ids=["netbox", "controller", "neither"])
+def test_the_proposed_column_names_the_switch_by_its_name(lab, monkeypatch, nb, controller,
+                                                         shown):
+    """Queue 16 (the Lab 9 hardware, 2026-11-20): the Proposed column, and the card's Proposed
+    line, name the switch as NetBox names it, else as it describes itself, never "None" (Open
+    vSwitch's placeholder), its datapath id said only when nothing names it, and on hover."""
+    from modules.sdn import closed_loop as CL
+    from modules.sdn import known
+
+    from flask import render_template
+
+    import app as A
+    from modules import sdn_ops_page
+
+    monkeypatch.setattr(known, "names_for", lambda network: dict(nb))
+    monkeypatch.setattr(CL, "_switch_name", lambda network, conn, dpid: controller)
+    row = LP.propose("Default", _scan(dpid=3), "drop_source", "low", why="HITL")
+    view = sdn_ops_page.responses_view("Default")
+    (drawn,) = view["awaiting"]
+    assert drawn["switch"] == ("" if shown.startswith("0000") else shown)
+    with A.app.test_request_context():
+        html = unescape(render_template("v2/_sdn_responses.html", g=view))
+    cell = _proposed_cell(html, row["id"])
+    assert f'at <span class="mono" title="0000000000000003">{shown}</span>' in cell, cell
+    assert "(None)" not in html and ">None<" not in html
+    assert f'on <span class="mono" title="0000000000000003">{shown}</span> (catalogue action' \
+        in html
+
+
+def test_the_loop_says_the_time_it_stops_by_itself(lab, monkeypatch):
+    """Queue 17: "Stops by itself" names its end time (`until`), never an age of a time still
+    ahead ("just now"): Start pressed, the loop runs, and the answer draws its bound's time."""
+    import threading
+
+    from modules.sdn import capability
+    monkeypatch.setattr(capability, "read", lambda network, **kw: {
+        "ok": True, "error": "", "controllers": []})
+    gate = threading.Event()
+    monkeypatch.setattr(LP, "run_pass", lambda network, **kw: gate.wait(5))
+    try:
+        r = lab["client"].post("/v2/sdn/loop", data={"list": "Default", "run": "start",
+                                                     "interval": "10", "run_for": "20"})
+        got = LP.status("Default")
+        assert r.status_code == 200 and got["running"] and got["run_for_s"] == 1200
+        until = got["until"]
+        html = unescape(r.get_data(as_text=True))
+    finally:
+        LP.stop("Default", actor="op@example.com")
+        gate.set()
+        LP._jobs["Default"]["thread"].join(10)
+    bound = html[html.index('sdn-loop-bound">'):]
+    bound = bound[:bound.index("</p>")]
+    assert (f'<strong>Stops by itself</strong> at <time class="clock" datetime="{until}" '
+            f'data-clock title="{until[:10]} {until[11:19]} UTC">{until[11:16]} UTC</time> '
+            '(run for 20 minutes)') in bound, bound
+    assert "just now" not in bound
+
+
+@pytest.mark.parametrize("source", ["192.0.2.1", "2001:db8::1"], ids=["IPv4", "IPv6"])
+def test_the_preview_warns_when_its_threat_is_logged_no_longer_active(lab, source):
+    """Queue item 4: a response whose threat the loop logged as no longer active previews with
+    a warning naming when it stopped; Send stays the person's choice (drawn, and it works)."""
+    row = LP.propose("Default", _scan(source), "drop_source", "low", why="HITL")
+    c = lab["client"]
+    html = unescape(c.post(f"/v2/sdn/response/{row['id']}/preview",
+                           data={"list": "Default"}).get_data(as_text=True))
+    assert "no longer active" not in html, "active: no warning"
+    LP.mark("Default", row["id"], "inactive", since="2026-11-20T04:20:05Z")
+    r = c.post(f"/v2/sdn/response/{row['id']}/preview", data={"list": "Default"})
+    raw = r.get_data(as_text=True)
+    html = unescape(raw)
+    assert r.status_code == 200, html
+    assert ('<strong>No longer active:</strong> the loop logged this threat as no longer '
+            'active at <time class="clock" datetime="2026-11-20T04:20:05Z" data-clock '
+            'title="2026-11-20 04:20:05 UTC">04:20 UTC</time>: no switch has shown it since. '
+            'Sending is still your choice') in html, html
+    assert "Send 1 request" in html or "Send 2 requests" in html
+    r = c.post("/v2/sdn/response/confirm", data=form_fields(raw))
+    assert "Done, verified" in r.get_data(as_text=True)
 
 
 def test_a_dismissal_needs_its_reason(lab):
@@ -298,7 +398,9 @@ def _announce_sdn(b, times=1):
 
 def test_every_operation_card_holds_a_live_redraw(lab):
     """The marker the browser's hold reads (`data-holds-live`, static/js/nmas_v2.js
-    `holdReason`) is on the preview, its result and the flow editor, each drawn in place."""
+    `holdReason`) is on the preview and the flow editor, each drawn in place; a verified
+    result holds nothing (the operator, 2026-11-20: the person's own Send is done, and the list
+    redraws to show it), and a refused one still holds."""
     c = lab["client"]
     row = LP.propose("Default", {"key": "k-mark", "rule": "scan", "network": "Default",
                                  "connection": "lab-controller", "dpid": 1,
@@ -309,14 +411,18 @@ def test_every_operation_card_holds_a_live_redraw(lab):
     result = c.post("/v2/sdn/response/confirm", data=form_fields(preview)).get_data(as_text=True)
     editor = c.get("/v2/sdn/flow/form?do=add&connection=lab-controller&dpid=0000000000000001"
                    "&list=Default").get_data(as_text=True)
-    for name, html in (("preview", preview), ("result", result), ("editor", editor)):
+    for name, html in (("preview", preview), ("editor", editor)):
         assert re.search(r'class="card sdn-op[^"]*"[^>]* data-holds-live="review"', html), name
+    assert "Done, verified" in result and "data-holds-live" not in result
+    again = c.post("/v2/sdn/response/confirm", data=form_fields(preview)).get_data(as_text=True)
+    assert "Nothing was sent" in again and 'data-holds-live="review"' in again, "refused holds"
 
 
 def test_an_open_preview_survives_two_refreshes_and_its_send_works(lab):
     """The row's test (C2001): open a preview, let two refreshes pass, the preview and its hash
-    are still there and Send works; with no card open, a refresh redraws at once; after Send the
-    result stays until Show it now (busy on itself), which redraws."""
+    are still there and Send works; with no card open, a refresh redraws at once; after a
+    verified Send nothing holds (the operator, 2026-11-20), and the held redraws land by
+    themselves."""
     from tests import browser
     ok, why = browser.available()
     if not ok:
@@ -359,23 +465,16 @@ def test_an_open_preview_survives_two_refreshes_and_its_send_works(lab):
             # Send still works.
             b.js(f"document.querySelector('{slot} .sdn-op-confirm button[type=submit]').click();"
                  " return 1")
-            b.wait_for(f"var s = document.querySelector('{slot}');"
-                       "return !!s && s.textContent.indexOf('Done, verified') >= 0", 20)
-            b.wait_for(f"var n = document.querySelector('{slot} .held-note');"
-                       f"return !!n && n.textContent.indexOf('{REVIEW_WORDS}') >= 0", 10)
-            # Show it now: busy on itself at once, then the newer region, no card held.
-            pressed = b.js(f"var b = document.querySelector('{slot} .held-resume'); b.click();"
-                           "return {disabled: b.disabled, busy: b.getAttribute('aria-busy'),"
-                           " words: b.textContent}")
+            # A verified Send holds nothing (the operator, 2026-11-20): the redraws held while the
+            # preview was open land by themselves once it answers, and the list shows it done.
             b.wait_for("var r = document.getElementById('sdn');"
                        "return !!r && !r.getAttribute('data-held') && "
-                       "!r.querySelector('.sdn-op')", 15)
+                       "!r.querySelector('.sdn-op') && !r.querySelector('.held-note')", 20)
             after = b.js("return document.getElementById('sdn').textContent"
                          ".indexOf('No response is awaiting a person') >= 0")
         finally:
             b.go("about:blank")
             browser.close_socketio_sessions()
-    assert pressed == {"disabled": True, "busy": "true", "words": "Showing…"}, pressed
     assert after is True
     assert LP.awaiting("Default")["rows"] == []
     (op,) = F.operations("Default")["rows"]

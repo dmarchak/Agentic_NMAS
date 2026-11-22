@@ -868,6 +868,10 @@ def _run_once(reader: Reader, announce, clock, trigger) -> dict:
     except Exception as exc:                            # noqa: BLE001
         error = f"{type(exc).__name__}: {exc}"
         no_answer = not_answering(exc)
+        # The traceback goes to the log (masked, as every handler is): the stored error is
+        # the exception's words alone, and a fault like the kit's endpoints reader's
+        # "KeyError: 'subnet'" (C4161) could not be placed without it.
+        log.warning("reader %s: the read raised %s", reader.name, error, exc_info=True)
     took = int((time.monotonic() - t0) * 1000)
     # Rule 14: did its dependency not answer, the whole read or one part of it?
     dep = reader.dependency

@@ -3700,6 +3700,20 @@ def _sdn(client, _lab, _mp):
                     "/v2/sdn/flows?list=Lab&own=show", "/v2/sdn/flows?list=Lab&q=METER",
                     "/v2/sdn/view?list=Lab&tab=flows&q=no-such-flow"):
             assert client.get(url).status_code == 200, url
+        # C3930: a declared external flow owner NetBox holds that is refused (a mask of 0) is
+        # said above the switches, with why.
+        from modules import protected as P
+        real_external = P.external_for_network
+        refused = P.external_owners([{"name": "s1", "config_context": {"mercury": {
+            "external_flow_owners": [{"name": "lab9-broken", "owner": "a team's app",
+                                      "cookie": "0x9a01000000000000", "mask": "0x0",
+                                      "reason": "forwarding"}]}}}])
+        mp.setattr(P, "external_for_network", lambda network: dict(
+            refused, state="ok", source="planted", error=""))
+        store_read("Lab", clock=lambda: T0 + 20)
+        page = client.get("/v2/sdn/flows?list=Lab").get_data(as_text=True)
+        assert "1 declared external flow owner refused" in page and "a mask of 0" in page
+        mp.setattr(P, "external_for_network", real_external)
         flows = json.loads(next(e for e in WITH_PEER if e["path"] == "/stats/flow/1")["body"])
         session["now"] = Captured(flows=[f for f in flows["1"]
                                          if not set(f["match"]) - {"in_port", "dl_dst",
@@ -3792,6 +3806,10 @@ def _sdn_operations(client, mp, session):
     # and the other switch seen also, so the incident's detail draws its seen-also list.
     from modules.sdn import incidents
     flood = dict(d, key="k-ctx-2", rule="flood")
+    # The source drop beside its rate limit withheld (the protected set refusing it, planted
+    # here as the Lab 9 hardware's management class did, 2026-11-20): the card says why.
+    mp.setattr("modules.sdn.closed_loop.source_drop_refusal", lambda network, det: (
+        "it meets the untouchable management class, which no response owns (planted)"))
     other = LP.propose("Lab", flood, "rate_limit_source", "low", why="HITL", incident={
         "key": incidents.group_key(flood), "rule": "flood", "source": "192.0.2.1",
         "window_s": 30, "window_setting": "sdn_flood_window_seconds",
@@ -4971,7 +4989,9 @@ def _sdn_switches(client, _lab, _mp):
         # History's row for the verified configuration: its source and its changes drawn. Two
         # kinds chosen, so the rows are these alone and the page's states are otherwise the
         # walk's (it filters by no single kind, and no row of its store carries a mark).
-        history = client.get("/v2/history?list=Lab&kind=sdn&kind=controller_deploy")\
+        # All time (since=): the rows are dated 2026-11-10, and History's default window is
+        # the last 7 days, so from 2026-11-17 a dated read drew none of them.
+        history = client.get("/v2/history?list=Lab&kind=sdn&kind=controller_deploy&since=")\
             .get_data(as_text=True)
         assert "OpenFlow configuration on arista-sw1" in history and "Built from" in history
         assert client.get(f"{base}/slot?card=template").status_code == 200

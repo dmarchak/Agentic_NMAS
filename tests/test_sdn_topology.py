@@ -625,6 +625,54 @@ def test_with_no_prometheus_a_network_s_controller_layer_is_still_read():
     assert none == {"configured": False, "networks": {}, "errors": []}
 
 
+def test_prometheus_configured_and_not_answering_still_draws_the_controller_s_layer():
+    """The Lab 9 kit, 2026-11-20 (Prometheus unreachable behind a VPN client): the read raised,
+    so the reader failed every minute and its value stayed two days old. The controller's
+    layer is read and drawn as with no Prometheus, saying why the routed map is not; with no
+    controller layer to draw, the failure is the reader's, as before."""
+    def unreachable():
+        raise RuntimeError("Prometheus could not be asked for lldpRemEntry: Could not connect "
+                           "to http://127.0.0.1:9090")
+    got = T.read(source=unreachable, clock=lambda: 0,
+                 population=lambda: [("Lab", _ref(), ["leaf-1", "leaf-2"])],
+                 sdn=lambda network, now: {"state": "read", "controllers": [_controller()]},
+                 netbox=lambda network: _netbox())
+    assert got["configured"] is False and set(got["networks"]) == {"lab"}
+    assert got["prometheus_unread"].startswith("Prometheus could not be asked for lldpRemEntry")
+    assert got["prometheus_unread"] in got["errors"]
+    assert got["networks"]["lab"]["nodes"]["leaf-1"]["sdn"]["dpid"] == 1
+    with pytest.raises(RuntimeError, match="could not be asked"):
+        T.read(source=unreachable, clock=lambda: 0,
+               population=lambda: [("Lab", _ref(), ["r1"])],
+               sdn=lambda network, now: {"state": "none", "why": "", "controllers": []},
+               netbox=lambda network: None)
+
+
+def test_the_page_says_prometheus_could_not_be_read_never_not_configured(kit, monkeypatch):
+    """End to end: the reader's own value with Prometheus failing, stored, then drawn; the
+    notice gives the reason the reader stored."""
+    from tests import test_sdn_trace_v2 as V
+    from tests.test_topology_v2 import _store
+
+    def unreachable():
+        raise RuntimeError("Prometheus could not be asked for lldpRemEntry: Could not connect")
+    value = _kit_value(source=unreachable)
+    _store(value)
+    box = {"store": V.fresh(), "asked": []}
+    V.answering(monkeypatch, box)
+    html = _map(kit)
+    notice = re.search(r'<div class="notice notice-warn" role="status" id="topo-no-prometheus">'
+                       r'.*?</div>', html, re.S).group(0)
+    assert value["prometheus_unread"] == ("Prometheus could not be asked for lldpRemEntry: "
+                                          "Could not connect")
+    assert (f"The routed map is not drawn: Prometheus could not be read "
+            f"({value['prometheus_unread']}).") in notice
+    assert "Prometheus is not configured" not in notice
+    assert re.search(r'class="topo-n topo-c-sdn[^"]*" data-node="leaf-1"', html)
+    strip = re.search(r'<div class="topo-cov small".*?</div>', html, re.S).group(0)
+    assert "LLDP: not read (Prometheus could not be read)" in strip
+
+
 def test_netbox_s_view_that_cannot_be_read_is_said_and_the_layer_still_drawn():
     def boom(network):
         raise OSError("the repository is locked")
@@ -654,11 +702,11 @@ def kit(tmp_path, monkeypatch):
         os.remove(reader_job.store_path("topology-graph"))
 
 
-def _kit_value():
+def _kit_value(source=lambda: (False, {}, {})):
     """Lab as the kit was: no Prometheus, a controller connection, each switch a managed
     NetBox device, one more managed device nothing reads: the Topology reader's own value for
-    it (`read`)."""
-    value = T.read(source=lambda: (False, {}, {}), clock=lambda: READ_EPOCH,
+    it (`read`). *source* stands for Prometheus (none configured by default)."""
+    value = T.read(source=source, clock=lambda: READ_EPOCH,
                    population=lambda: [("Lab", _ref(), ["leaf-1", "leaf-2", "zz-new"])],
                    sdn=lambda network, now: {"state": "read", "controllers": [_controller()]},
                    netbox=lambda network: _netbox())

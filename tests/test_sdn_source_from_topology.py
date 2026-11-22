@@ -144,10 +144,15 @@ def walk_flood(key, topo, small=False):
 
 
 def walk_fallback(key, topo):
-    """The walk's fallback scan *key* judged again by the scan rule over its kept evidence."""
+    """The walk's fallback scan *key* judged again by the scan rule over its kept evidence,
+    its ports' received bytes edited to small packets (`small_packets`): the size cut (C4167)
+    leaves a port of the walk's large packets no High packet rate, and these tests are about how
+    its source is named."""
     case = walk(key)
     d = case["detection"]
     collected, sw = collection_of(case)
+    collected = small_packets(collected)
+    sw = collected["controllers"][0]["switches"][0]
     values = dict(D.THRESHOLDS, sdn_scan_fallback_pps=d["threshold"]["value"])
     got = D.scan(collected, values, topo=topo)["detections"]
     (det,) = [g for g in got if g["subject"] == d["subject"]]
@@ -263,6 +268,7 @@ def test_observe_reads_the_stored_topology(monkeypatch):
     """`observe` looks the source up in the SDN reader's stored topology when none is handed in;
     the pack it keeps carries how it was found."""
     collected, _sw = collection_of(walk("walk-fp-1"))
+    collected = small_packets(collected)       # C4167's size cut: see `walk_fallback`
     collected["network"] = "Default"
     asked = []
     topo = stored()
@@ -448,10 +454,14 @@ def test_the_card_draws_the_picker_one_host_named_and_none_with_no_preview(lab):
                                       network="Default"), "drop_source", "low", why="HITL")
     page = c.get("/v2/sdn/responses?list=Default").get_data(as_text=True)
     pick = _row_html(page, several["id"])
-    (select,) = re.findall(r'<select name="source".*?</select>', pick, re.S)
-    assert re.findall(r'<option value="([^"]*)"', select) == ["", H2, "192.0.2.5"]
-    assert "one of the 2 hosts on port 2…" in select and " required" in select
-    assert ">192.0.2.5 (00:00:00:00:00:05)</option>" in select
+    # The proposal's Preview and the policy's other action's (the flood rule's rate limit
+    # beside the drop, the operator, 2026-11-20) each carry the picker.
+    selects = re.findall(r'<select name="source".*?</select>', pick, re.S)
+    assert len(selects) == 2, selects
+    for select in selects:
+        assert re.findall(r'<option value="([^"]*)"', select) == ["", H2, "192.0.2.5"]
+        assert "one of the 2 hosts on port 2…" in select and " required" in select
+        assert ">192.0.2.5 (00:00:00:00:00:05)</option>" in select
     assert "one of 2</span>" in pick and "Choose which one beside Preview below" in pick
     one_row = _row_html(page, named["id"])
     assert '<select name="source"' not in one_row

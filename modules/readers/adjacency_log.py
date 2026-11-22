@@ -268,7 +268,7 @@ def _loki_configured() -> bool:
     before anything is asked of Loki."""
     from modules.integrations.loki import LokiIntegration
 
-    return LokiIntegration().is_configured()
+    return bool(LokiIntegration().is_configured())
 
 
 def read(clock=time.time, ask=None, population=None, job=None, configured=None) -> dict:
@@ -292,8 +292,11 @@ def read(clock=time.time, ask=None, population=None, job=None, configured=None) 
     if configured is None:
         configured = ask is not None or _loki_configured()
     if not configured:
-        # A state, never a failure: nothing is asked, and nothing is claimed read.
-        return dict(out, configured=False)
+        # A state, never a failure: nothing is asked, and nothing is claimed read. No Loki on
+        # this installation (the Lab 9 kit, C4160) is said as not configured, as every consumer
+        # of this value draws it, never a reader failing every run (it raised NoSyslogJob
+        # asking Loki for the syslog job: a CRITICAL row 10 days).
+        return dict(out, configured=False, why="Loki is not configured: set it in Settings")
     if not pop:
         return out
     selector = job if job is not None else job_matcher()

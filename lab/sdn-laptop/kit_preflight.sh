@@ -1,20 +1,24 @@
 #!/bin/bash
-# The laptop kit's preflight (docs/LAB9_LAPTOP_RUN.md): one PASS or FAIL line per check, then the
-# count. Run by `kit preflight`, which sets KIT_HOME and sources kit.env. Read-only: it changes
+# The laptop kit's preflight (docs/LAB9_LAPTOP_RUN.md): one PASS or FAIL line per check (SKIP,
+# never counted, for the local NetBox stack's checks when KIT_NETBOX_URL is set), then the count. Run by `kit preflight`, which sets KIT_HOME and sources kit.env. Read-only: it changes
 # nothing on the laptop, the lab or Mercury. Exit status: the number of FAILs.
 set -u
 : "${KIT_HOME:?}" "${MERCURY_PORT:=5080}" "${NETBOX_PORT:=8001}" "${OPENFLOW_PORT:=6653}"
 : "${CONTROLLER_REST_PORT:=8080}" "${LAB_IF:=}" "${CONTROLLER_ADDR:=}" "${PROMETHEUS_PORT:=9090}"
+: "${KIT_NETBOX_URL:=}"
 fails=0
-line() {                                    # line PASS|FAIL name detail
+line() {                                    # line PASS|FAIL|SKIP name detail; SKIP is no FAIL
   printf '%s %s%s\n' "$1" "$2" "${3:+: $3}"
-  [ "$1" = PASS ] || fails=$((fails + 1))
+  [ "$1" = PASS ] || [ "$1" = SKIP ] || fails=$((fails + 1))
 }
+EXTERNAL="KIT_NETBOX_URL is set, so the kit runs no local NetBox stack (kit preflight tests that NetBox through Mercury)"
 tcp() {                                     # tcp HOST PORT: a connect within 3 s
   timeout 3 bash -c 'exec 3<>"/dev/tcp/$1/$2"' _ "$1" "$2" 2>/dev/null
 }
 
-# 1. Docker
+# 1. Docker (for the local NetBox stack only), 2. that NetBox answers on loopback
+if [ -n "$KIT_NETBOX_URL" ]; then line SKIP "Docker up" "$EXTERNAL"; line SKIP "NetBox answers" "$EXTERNAL"
+else
 if docker info >/dev/null 2>&1; then line PASS "Docker up" "$(docker version -f '{{.Server.Version}}' 2>/dev/null)"
 else line FAIL "Docker up" "docker info failed (is the daemon running, and is the user in the docker group?)"; fi
 
@@ -22,6 +26,7 @@ else line FAIL "Docker up" "docker info failed (is the daemon running, and is th
 code=$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://127.0.0.1:$NETBOX_PORT/login/" 2>/dev/null)
 if [ "$code" = 200 ]; then line PASS "NetBox answers" "127.0.0.1:$NETBOX_PORT/login/ 200"
 else line FAIL "NetBox answers" "127.0.0.1:$NETBOX_PORT/login/ gave ${code:-no answer} (kit start brings it up)"; fi
+fi
 
 # 3. Mercury's /health says ready, and it listens on loopback only
 health=$(curl -s -m 5 -H "Host: 127.0.0.1:$MERCURY_PORT" "http://127.0.0.1:$MERCURY_PORT/health" 2>/dev/null)
@@ -43,11 +48,16 @@ loopback_only Mercury "$MERCURY_PORT"
 
 # 3b. The kit's Prometheus (compose.yml, pinned v2.53.0) answers on loopback, and is published
 #     on loopback only: anything listening but 127.0.0.1 or [::1] (0.0.0.0, [::], a LAN
-#     address, another 127.x address) is a FAIL naming it.
+#     address, another 127.x address) is a FAIL naming it. With KIT_NETBOX_URL set the kit
+#     runs no local Compose project, and Prometheus is in it: both checks SKIP.
+if [ -n "$KIT_NETBOX_URL" ]; then
+  line SKIP "Prometheus answers" "KIT_NETBOX_URL is set, so the kit runs no local Compose project (its NetBox and Prometheus)"
+else
 code=$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://127.0.0.1:$PROMETHEUS_PORT/-/ready" 2>/dev/null)
 if [ "$code" = 200 ]; then line PASS "Prometheus answers" "127.0.0.1:$PROMETHEUS_PORT/-/ready 200"
 else line FAIL "Prometheus answers" "127.0.0.1:$PROMETHEUS_PORT/-/ready gave ${code:-no answer} (kit start brings it up)"; fi
 loopback_only Prometheus "$PROMETHEUS_PORT"
+fi
 
 # 4. The controller (the lab's controller server, reached over the lab leg)
 if [ -z "$CONTROLLER_ADDR" ]; then line FAIL "controller reachable" "CONTROLLER_ADDR is not set in $KIT_HOME/kit.env"

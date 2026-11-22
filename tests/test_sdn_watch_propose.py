@@ -207,6 +207,7 @@ def test_the_response_it_makes_previews_and_confirms_through_the_normal_routes(l
     import tests.test_sdn_lab8 as L8
 
     lab["fake"].topology = L8.captured_topology()
+    _without_live_drop(lab)
     w = watched(stream())
     assert press(lab, w["id"]).status_code == 200
     (row,) = LP.awaiting(NET)["rows"]
@@ -238,6 +239,7 @@ def test_the_confirm_checks_the_flood_rule_s_policy_again(lab, no_ai):  # noqa: 
     """`answered_rule` at the confirm: the policy saved between the preview and the confirm
     forbidding the flood rule's rate limit refuses it, nothing sent."""
     import tests.test_sdn_lab8 as L8
+    _without_live_drop(lab)
 
     lab["fake"].topology = L8.captured_topology()
     w = watched(stream())
@@ -257,19 +259,64 @@ def test_the_confirm_checks_the_flood_rule_s_policy_again(lab, no_ai):  # noqa: 
 # ───────────────────────────────────────────────────────────────────────────── where offered
 
 def test_a_watched_stream_not_of_large_packets_offers_no_control_and_is_refused(lab, no_ai):  # noqa: F811,E501
-    """A rate-only High packet rate (basis ``rate``, the scan fallback's): no control drawn;
-    posted anyway, refused naming its basis."""
-    d = dict(stream(), basis="rate", key="k-rate-only")
+    """A transfer's High packet rate (basis ``transfer``, C2278: watched, never proposed): no
+    control drawn; posted anyway, refused naming its basis. (Basis ``rate`` is offered since
+    C4124, below.)"""
+    d = dict(stream(), basis="transfer", key="k-transfer")
     w = watched(d)
     html = page(lab)
     assert f'id="sdn-i-{w["id"]}"' in html, "premise: its row is drawn"
     assert f"/v2/sdn/watch/{w['id']}/propose" not in html
     r = press(lab, w["id"])
     assert r.status_code == 409
-    assert ("only a watched large-packet stream (High packet rate, basis large_packets) is "
-            "proposed by a person; this one is high_rate, basis rate") in unescape(
-                r.get_data(as_text=True))
+    assert ("only a watched large-packet stream or High packet rate (High packet rate, basis "
+            "large_packets or rate) is proposed by a person; this one is high_rate, basis "
+            "transfer") in unescape(r.get_data(as_text=True))
     assert LP.awaiting(NET)["rows"] == []
+
+
+def test_a_high_packet_rate_is_proposed_by_a_person_as_the_scan_rule_s(lab, no_ai,  # noqa: F811,E501
+                                                                       monkeypatch):
+    """C4124 (the operator, 2026-11-20): a rate-only High packet rate (basis ``rate``, a port's
+    rate where the flows name no transport ports, as on the Lab 9 fabric) offers Rate-limit
+    this source…, its row saying it is left to the person and answered as the scan rule's; the
+    press makes a response awaiting a person, checked as the scan rule's, and sends nothing."""
+    from modules.sdn import topology as SDN
+
+    topo = stored(name="lab-controller")
+    monkeypatch.setattr(SDN, "stored", lambda network, now=None, cached=None: topo)
+    w = watched(dict(stream(), basis="rate", key="k-rate-only"))
+    html = unescape(page(lab))
+    button = control(html, w["id"])
+    assert " disabled " not in button and "the scan rule's rate limit" in button
+    assert ("It is left to you: nothing is proposed unless you press Rate-limit this source… "
+            "below, answered as the scan rule's; AUTO never acts on it (C4124).") in html
+    r = press(lab, w["id"])
+    assert r.status_code == 200, unescape(r.get_data(as_text=True))
+    (row,) = LP.awaiting(NET)["rows"]
+    assert row["action"] == "rate_limit_source"
+    assert row["why"] == f"proposed by {TEST_PERSON} from a watched High packet rate"
+    assert "checked as the scan rule's under the network's response policy" in row["classified"]
+    assert CL.answered_rule(row["detection"]) == "scan"
+    assert lab["fake"].writes == []
+
+
+def test_auto_never_acts_on_a_high_packet_rate(lab, no_ai):  # noqa: F811
+    """AUTO on, the network marked lab: the loop's pass watches a High packet rate and proposes
+    nothing, applies nothing and asks no classifier (C4124: HITL only)."""
+    import time
+
+    from modules.sdn import modes as MD
+
+    MD.set_stage(NET, "lab", actor="admin@example.com", actor_verified="access",
+                 reason="the course lab's network")
+    now = time.time()
+    MD.turn_on(NET, actor="admin@example.com", actor_verified="access", reason="lab 9 run",
+               until=now + 600, allowed_risk="medium", now=now)
+    assert MD.current(NET, now + 1)["mode"] == "auto", "premise: AUTO on"
+    w = watched(dict(stream(), basis="rate", key="k-rate-auto"))
+    assert w["action"] == "none"
+    assert LP.awaiting(NET)["rows"] == [] and lab["fake"].writes == []
 
 
 def test_a_stream_naming_no_source_draws_the_control_disabled_saying_why(lab, no_ai):  # noqa: F811,E501
@@ -285,6 +332,15 @@ def test_a_stream_naming_no_source_draws_the_control_disabled_saying_why(lab, no
 
 
 # ───────────────────────────────────────────────────────────────────────────── not watched again
+
+def _without_live_drop(lab):
+    """The captured table less its own Mercury response, a drop of 192.0.2.0/24 at priority
+    100 with hard timeout 300 (Lab 8's run): live, it would leave every pair of a 192.0.2.x
+    source unmetered (the review of bcea1999, 2), and these tests are about the rate limit's
+    own path."""
+    lab["fake"].table[1] = [f for f in lab["fake"].table[1]
+                            if f.get("cookie") != 0x4D45524300000001]
+
 
 def _pass(d, fired=True):
     """One loop pass in which *d* fires again (*fired*), or resolves."""

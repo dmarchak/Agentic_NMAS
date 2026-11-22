@@ -2388,6 +2388,17 @@ def _sdn_refusal(r: dict, switch: str, members) -> dict:
     return event
 
 
+def _sdn_auto_who(r: dict) -> str:
+    """Who an SDN operation was by: its actor, and for AUTO who turned it on, their reason and
+    the basis AUTO acted on for the source (C4154: NetBox's declaration, C4133, or the flows)."""
+    who = r.get("actor", "")
+    if r.get("mode") != "auto":
+        return who
+    auto = r.get("autonomous") or {}
+    return (f"{who} (autonomous: AUTO by {auto.get('by')}, {auto.get('reason')}"
+            + (f"; its source: {auto['source']}" if auto.get("source") else "") + ")")
+
+
 def sdn_operations(ctx):
     """Each SDN operation (PHASE8_PLAN 17.1 S8 and S16, modules/sdn/flow_ops.py; a switch's
     OpenFlow configuration, modules/sdn/openflow_config.py): a person's flow change, a response
@@ -2449,10 +2460,7 @@ def sdn_operations(ctx):
         checks = "; ".join(f"{c.get('state')}: {c.get('words')}"
                            for c in (r.get("verify") or {}).get("checks") or [])
         seconds = (r.get("verify") or {}).get("seconds")
-        who = r.get("actor", "")
-        if r.get("mode") == "auto":
-            auto = r.get("autonomous") or {}
-            who = f"{who} (autonomous: AUTO by {auto.get('by')}, {auto.get('reason')})"
+        who = _sdn_auto_who(r)
         # The recorded words name the switch by its datapath id; the row says its name. A
         # configuration that kept its changes says those; one from before they were kept, its
         # template's lines, as it always did.

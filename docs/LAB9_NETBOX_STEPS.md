@@ -193,6 +193,13 @@ refused, naming the class.
    Press **Create**. NetBox merges it into each device's rendered context beside the
    `mercury.management` key of steps 1 and 2. An entry of any other shape makes the whole
    protected set unreadable, and an unreadable set refuses every flow write, naming why.
+
+   **The closed loop's drops and rate limits (B3) need `"response"` among these four classes'
+   owners**, a decision of the network's: a response drops one source's address, every
+   protocol, so it meets DNS's and DHCP's classes by its nature and is refused without it. With
+   it, the response sits in table 0 under the team's own DNS and DHCP flows, which keep what they
+   match, and its preview says which of the class's packets are its. Add it to each entry's
+   `owners` (for example `["app:dns_blacklist", "response"]`), then export again.
 2. **If the DNS server is a device in NetBox:** a Service on it named `dns`, protocol UDP,
    port 53, with the server's address chosen in **IP addresses**, and the tag
    `mercury-protected`, adds the server's own class (`must_reach dns`, owned by nobody).
