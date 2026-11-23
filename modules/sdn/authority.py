@@ -88,6 +88,14 @@ NOT_DIRECT = {
     "heal_proposal_v2.approve": "the request names a recorded proposal, not a device; its "
                                 "device is the proposal's own, read from its record, one "
                                 "the drift check read and compared with its intent",
+    # C3957: a saved fix's press on an incident (b001bb46). The runner it starts refuses a
+    # controller-managed switch by `of` at its approve step, naming the controller (b2aac483,
+    # kept by the operator's ruling 1, 2026-11-18), the one home of that check for every path
+    # to the runner.
+    "fixit_v2.fix_with_script": "the request names an incident, not a device; its device is "
+                                "the incident's own, and the runner the press starts refuses "
+                                "a controller-managed one by its authority, naming the "
+                                "controller, before anything is sent",
     # Gate 1b: saving and promoting record a network's scripts, actions and line shapes; none
     # configures a device (a saved action's own run is DIRECT above, `device_run`; a promoted
     # script's runs are self-healing's, as a proposal's are, C2477).
