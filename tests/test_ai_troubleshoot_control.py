@@ -334,12 +334,18 @@ class TestTheRowsSayIt:
         assert re.search(r'<span class="inc-row-sub simple-status working-now" data-status '
                          r'data-busy title="The AI is investigating">The AI is investigating',
                          body), body
-        # Ended: its failure kept, the row says the outcome in one line.
+        # Ended in a failure: its failure kept and drawn on the incident's page. Premise
+        # corrected (00c70e0f, the operator, 2026-11-16: "a status not from the AI never starts
+        # 'AI:'"; the row's AI status is the AI's own finding only, its source a label): the
+        # provider's failure is Mercury's words about the AI, not the AI's finding, so the row
+        # carries no AI status and draws its incident's own.
         F.claim_start(inc_of(iid), f"decision:{iid}:failed", trigger="auto", state="failed",
                       words="the provider did not answer")
         row = next(r for r in incidents_list.rows(NET)["rows"] if r["id"] == iid)
-        assert row["ai"]["state"] == "ended" and "the provider did not answer" in \
-            row["ai"]["words"]
+        assert row["ai"] is None, row["ai"]
+        page = unescape(world.client.get(f"/v2/incident/{iid}?list={NET}")
+                        .get_data(as_text=True))
+        assert "the provider did not answer" in page, "the failure is said on the incident"
 
     def test_a_needs_attention_row_about_the_incident_says_it_too(self):
         from modules import attention
