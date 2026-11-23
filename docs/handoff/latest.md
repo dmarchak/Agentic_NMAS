@@ -83,7 +83,11 @@ pass, fail and skip counts serial and parallel (xdist; fix tests that share stat
   1. Read the serial run (section 1) against the 12-worker run's counts. Fix each test whose
      outcome differs (shared state; C4200 is a known case, its victims already isolated).
   2. Speed up the slowest tests above, without changing what they assert, until a full run
-     is under 600 s.
+     is under 600 s. Measured on 2026-11-23:
+     - test_source_index's walks survey takes 46 s. The cost is the analysis, re-run in three
+       export rounds; the parse is cached since 88ea4887.
+     - test_ai_intent_change's 116 s is about 1.4 s in each of 81 tests: a per-test fixture.
+       Widening that fixture's scope risks shared state; measure what it builds first.
   3. Then Phase 2: the assistant to the amended design note.
 - **ci.yml:** no change is needed. CI already runs five shards (`scripts/nmas-shards`) at
   `--cap 4`.
