@@ -22,6 +22,7 @@ above it: ``# disk walk: <why>``.
 """
 
 import ast
+import functools
 import io
 import os
 import re
@@ -58,12 +59,19 @@ def _dotted(node):
     return None
 
 
+@functools.lru_cache(maxsize=None)
+def _parsed(src: str, name: str):
+    """*src* parsed once a run by its exact text: the survey builds each file four times (three
+    export rounds and its walks), and nothing reading the tree changes it."""
+    return ast.parse(src, filename=name)
+
+
 class _File:
     """One test file's walks, with each walk's path resolved to the checkout or not."""
 
     def __init__(self, src, name, exports=None):
         self.src, self.name, self.exports = src, name, exports or {}
-        self.tree = ast.parse(src, filename=name)
+        self.tree = _parsed(src, name)
         self.parent = {}
         for n in ast.walk(self.tree):
             for c in ast.iter_child_nodes(n):
