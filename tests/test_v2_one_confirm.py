@@ -144,6 +144,67 @@ def references(texts: dict, wanted: set) -> list:
     return out
 
 
+#: A template macro whose first parameter is the URL it posts (`{% macro press(href, ...) %}`):
+#: its name, its other parameters, and its body.
+HREF_MACRO = re.compile(r"\{%-?\s*macro\s+(\w+)\(\s*href\b([^)]*)\)\s*-?%\}(.*?)"
+                        r"\{%-?\s*endmacro\s*-?%\}", re.S)
+LITERAL = re.compile(r"(\w+)\s*=\s*(['\"])(.*?)\2")
+
+
+def _call_args(text: str, start: int):
+    """The top-level arguments of the call whose ``(`` is at *start*, as source text, and the
+    index after its ``)``; None when it never closes."""
+    depth, quote, args, here = 0, "", [], start + 1
+    for i in range(start, len(text)):
+        ch = text[i]
+        if quote:
+            quote = "" if ch == quote else quote
+        elif ch in "'\"":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+            if depth == 0:
+                args.append(text[here:i].strip())
+                return args, i + 1
+        elif ch == "," and depth == 1:
+            args.append(text[here:i].strip())
+            here = i + 1
+    return None
+
+
+def macro_calls(texts: dict) -> dict:
+    """Each call of a template's own href macro (C4085: a confirm drawn only through
+    `_fixit_section.html`'s `press(url_for(...), ...)` was seen by no element scan), expanded
+    with that call's own arguments: the macro's body with ``{{ href }}`` as the call's first
+    argument and each ``gate(<param>)`` as ``gate('<literal>')``, the call's literal or the
+    parameter's default. Keyed ``<path>: <macro>() at <offset>``, to scan as a template."""
+    out = {}
+    for path, text in texts.items():
+        for m in HREF_MACRO.finditer(text):
+            name, params, body = m.group(1), m.group(2), m.group(3)
+            defaults = {k: v for k, _q, v in LITERAL.findall(params)}
+            for call in re.finditer(r"(?<![\w.])%s\(" % re.escape(name), text):
+                if m.start() <= call.start() < m.end():
+                    continue                            # the macro's own definition
+                got = _call_args(text, call.end() - 1)
+                if not got or not got[0]:
+                    continue
+                args = got[0]
+                given = dict(defaults)
+                for a in args[1:]:
+                    kw = re.fullmatch(r"(\w+)\s*=\s*(['\"])(.*)\2", a, re.S)
+                    if kw:
+                        given[kw.group(1)] = kw.group(3)
+                expanded = re.sub(r"\{\{\s*href\s*\}\}", lambda _m: "{{ %s }}" % args[0], body)
+                expanded = re.sub(r"\bgate\((\w+)\)",
+                                  lambda g: ("gate('%s')" % given[g.group(1)])
+                                  if g.group(1) in given else g.group(0), expanded)
+                out[f"{path}: {name}() at {call.start()}"] = expanded
+    return out
+
+
 def _confirm_buttons(ref) -> list:
     """(button tag, its body) of the confirm a reference draws: the button itself, or each
     submit button of the form that sends the form's own request (a button with a request of its
@@ -227,7 +288,7 @@ def dialog_calls(src: str) -> list:
 def survey():
     texts = _v2_templates()
     pop = population()
-    refs = references(texts, pop)
+    refs = references({**texts, **macro_calls(texts)}, pop)
     return {"texts": texts, "population": pop, "refs": refs,
             "named": {r["endpoint"] for r in refs}}
 
@@ -349,6 +410,31 @@ class TestTheScansFind:
     def test_a_confirm_bound_to_nothing_is_found(self):
         planted = self.REAL.replace('name="fingerprint"', 'name="other"')
         assert any("'fingerprint'" in w for w in shape_problems(self._refs(planted)[0]))
+
+    MACRO = ("{%- macro press(href, words, kind='configure') -%}"
+             '<span class="op-act"><button type="button" data-op="reload" hx-post="{{ href }}" '
+             'hx-disabled-elt="this"{{ gate(kind) }}><span class="op-idle">{{ words }}</span>'
+             '<span class="op-busy">Busy…</span></button></span>{%- endmacro -%}')
+
+    def _macro_refs(self, text):
+        return references(macro_calls({"planted.html": text}), {"device_v2.reload_confirm"})
+
+    def test_a_confirm_drawn_through_a_macro_is_found_with_its_call_s_arguments(self):
+        """C4085: the route named only in a macro call's first argument is found, the macro's
+        button its element, and the call's ``kind`` its gate."""
+        planted = self.MACRO + ("{{ press(url_for('device_v2.reload_confirm', name=h, "
+                                "fingerprint=f), 'Reload', kind='confirm') }}")
+        refs = self._macro_refs(planted)
+        assert [r["endpoint"] for r in refs] == ["device_v2.reload_confirm"], refs
+        assert "gate('confirm')" in refs[0]["tag"], refs[0]["tag"]
+        assert shape_problems(refs[0]) == [], shape_problems(refs[0])
+        assert self._refs(planted) == [], "no element of the plain scan names it"
+
+    def test_a_macro_s_confirm_lacking_the_pattern_is_found(self):
+        planted = self.MACRO.replace(' hx-disabled-elt="this"', "") + (
+            "{{ press(url_for('device_v2.reload_confirm', name=h, fingerprint=f), 'Reload') }}")
+        wrong = shape_problems(self._macro_refs(planted)[0])
+        assert any('hx-disabled-elt="this"' in w for w in wrong), wrong
 
     def test_a_browser_dialog_is_found_and_a_method_named_confirm_is_not(self):
         assert dialog_calls("if (window.confirm('Sure?')) go();") == ["window.confirm("]
