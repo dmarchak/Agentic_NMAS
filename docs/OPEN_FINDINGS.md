@@ -2576,6 +2576,8 @@ These have acceptance criteria written and no stage owning them.
 
 ## Count
 
+**2107 open at 2026-11-23 20:05 UTC, COUNTED from the rows (A 20, B 536, UNKNOWN 296, C 1255; by tests/test_register_hygiene.py's `live_rows` and bucket tag, C1755), on branch rulings/gui-kit:** the rulings on overnight/gui's standing failures (C3957, C3958, C4085 closed; C4193, C4194, C4197, C4198 recorded and closed), and C4195 and C4196 (C) the two problems of 6f023dc3 (docs/handoff/decisions-2026-11-22.md).
+
 **2108 open at 2026-11-23 19:29 UTC, COUNTED from the rows (A 20, B 540, UNKNOWN 296, C 1252; by tests/test_register_hygiene.py's `live_rows` and bucket tag, C1755), on branch integrate/gui-kit-main:** overnight/gui (6eca7eec) with merge/kit-into-main merged on it; one row per id, its latest state (C3930 is the kit's later text, overnight/gui's older copy dropped).
 
 **2077 open at 2026-11-18 22:43 UTC, COUNTED from the rows (A 20, B 532, UNKNOWN 293, C 1232; by tests/test_register_hygiene.py's `live_rows` and bucket tag, C1755), on branch overnight/gui:** C4094 recorded and closed (the `design/` folder claimed); C2229's flake log gains CI #1925's two browser failures.
