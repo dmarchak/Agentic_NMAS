@@ -1,5 +1,18 @@
 # Rulings needed: overnight/gui's standing failures left failing
 
+**Closed: every question here is answered. What waits on the operator now is in
+[OPERATOR.md](OPERATOR.md), the one queue.** The operator's rulings of 2026-11-23 (late
+evening), carried out by the week plan's Stage 1 (`docs/plan/week-2026-11-23.md`):
+- **C3886:** the masking placeholder carries a short keyed fingerprint of the secret (for
+  example `<secret:7f3a>`), so running against startup tells different secrets apart. Reads
+  stay recorded and masked, and the secret is never shown. Device-write review before any
+  deploy. This is option 2 below (a digest of each secret line), keyed.
+- **C4207:** the recommendation: the interim's can't-fix only stands and gives R1 its start.
+- **C4208:** the recommendation: no; an attached tail's R1 start fires no scripts first.
+- **C4206:** the behaviour stands; correct the record's wording.
+- **C4090:** the operator authorises extending `scripts/nmas-config-read` with a read-only,
+  masked reader for heal and fix-it records, and capturing the records with it.
+
 The operator's policy of 2026-11-23: a failure whose behaviour change a record shows the operator
 decided has its test updated or retired (Test-Weakened, a row); one with no record that looks
 accidental has its code fixed; one that is unclear or needs the operator's words stays failing
