@@ -1214,17 +1214,16 @@ class TestARunThatSentNothingNeverPassed:
         assert attempt["passed"] is False
 
 
-def page_stands_in(monkeypatch, incident, state="passed"):
-    """`heal.detect.verified_fix`'s reads of the incident's page stood in: *incident* has a
-    troubleshooting record and a page, and its section reads *state* (the reviewer's case: the
-    section draws its newest attempt). The attempts themselves are read from the records."""
+def page_stands_in(monkeypatch, incident) -> dict:
+    """`heal.detect.verified_fix`'s one read beside the run records stood in: *incident* has a
+    troubleshooting record. Returns the heal incident it is (its device, and its detected time
+    as its first trigger's), as the loop hands it over. Premise corrected (the operator's ruling
+    of 2026-11-23 on test_heal_analysis_never_read): `verified_fix` reads the runs from the
+    runners' own records (`nsot.run_links`), never the incident's page or its fix-it section,
+    so those are no longer stood in."""
     monkeypatch.setattr("modules.incidents_list._fixit_ids", lambda network: {incident.id})
-    monkeypatch.setattr("modules.incident_page.resolve", lambda network, iid: {
-        "found": "page", "incident": {"id": iid, "device": incident.device}})
-    monkeypatch.setattr("modules.fixit.section.incident_of", lambda network, found: {
-        "incident": incident, "why": ""})
-    monkeypatch.setattr("modules.fixit.section.view", lambda network, found, **kw: {
-        "state": state})
+    return {"id": incident.id, "device": incident.device,
+            "triggers": [{"epoch": incident.detected}]}
 
 
 class TestOnlyThisIncidentsFixClosesIt:
@@ -1241,12 +1240,12 @@ class TestOnlyThisIncidentsFixClosesIt:
         a_run(T0, ok=True)                            # on r2, in the window, naming no incident
         (attempt,) = F.attempts(inc())["attempts"]
         assert (attempt["passed"], attempt["linked"]) == (True, "window"), attempt
-        page_stands_in(monkeypatch, inc())
-        assert detect.verified_fix(NET, {"id": ID, "device": "r2"}) == {}
+        heal_inc = page_stands_in(monkeypatch, inc())
+        assert detect.verified_fix(NET, heal_inc) == {}
 
     def test_a_run_its_record_names_still_closes_it(self, lab, monkeypatch):
         from modules.heal import detect
         rec = carry(a_run(T0, ok=True), {"incident": ID, "attempt": 1})
-        page_stands_in(monkeypatch, inc())
-        got = detect.verified_fix(NET, {"id": ID, "device": "r2"})
+        heal_inc = page_stands_in(monkeypatch, inc())
+        got = detect.verified_fix(NET, heal_inc)
         assert got["run"] == rec["id"], got

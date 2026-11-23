@@ -475,7 +475,7 @@ def failures_of(record: dict) -> list:
     (``retry:<id>``), its time the retry's end, EXCEPT a daily retry's (the operator,
     2026-11-16: a daily retry never starts the AI; whether new evidence or a new capability
     should is a follow-up). Its outcome is the trigger."""
-    from modules.fixit.auto import key_of
+    from modules.heal.keys import key_of
 
     out = []
     for r in (record or {}).get("retries") or []:

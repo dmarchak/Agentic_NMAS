@@ -577,83 +577,47 @@ def record_proposal(incident: Incident, source: str, operation: str = "", params
 # ── The attempts, derived ───────────────────────────────────────────────────────────────────
 
 def passed(run: dict) -> bool:
-    """Whether *run*'s own record says its fix worked: the state its operation writes when
-    its verify passed (`PASSED_STATE`). The one place a later verdict (the symptom cleared, no
-    harm) joins. A run that sent nothing is never one: a command plan's run whose precondition
-    said there was nothing to do is recorded ``done`` with outcome ``not_needed``
-    (`command_plan_run.RECORD_STATE`), its verify never run (the correctness review's G1-H1,
-    2026-11-18: such a run closed its incident "fixed: the plan's run … verified")."""
-    from modules.nsot.command_plan_run import NOT_NEEDED
+    """Whether *run*'s own record says its fix worked (`run_links.passed`, its one home): the
+    state its operation writes when its verify passed, never a run that sent nothing."""
+    from modules.nsot import run_links
 
-    return run.get("state") == PASSED_STATE and run.get("outcome") != NOT_NEEDED
+    return run_links.passed(run)
 
 
 def _stamp(name: str):
-    """The start a run's id (or its file's name) states, epoch seconds, or None."""
-    m = _RUN_NAME.match(str(name or ""))
-    if not m:
-        return None
-    try:
-        return calendar.timegm(time.strptime(m.group(1), "%Y%m%dT%H%M%S")) + int(m.group(2)) / 1e6
-    except ValueError:
-        return None
+    """The start a run's id states (`run_links.stamp`)."""
+    from modules.nsot import run_links
+
+    return run_links.stamp(name)
 
 
 def _named(run: dict) -> tuple:
-    """``(incident id, proposal id)`` *run*'s record names (`RUN_FIELD`), each ``""`` when it
-    names none."""
-    link = run.get(RUN_FIELD)
-    if not isinstance(link, dict) or not isinstance(link.get("incident"), str):
-        return "", ""
-    proposal = link.get("proposal")
-    return link["incident"], proposal if isinstance(proposal, str) else ""
+    """``(incident id, proposal id)`` *run*'s record names (`run_links.named`)."""
+    from modules.nsot import run_links
+
+    return run_links.named(run)
 
 
 def _cut(incident: Incident):
-    """The moment *incident*'s device name passed to another device after the incident was
-    detected (`retire.name_cuts`: a retirement, an abandoned onboarding, a new device's
-    Create), or None: a run keyed by the name after it is never this incident's device's."""
-    from modules.nsot import retire
+    """The moment *incident*'s device name passed to another device after it was detected
+    (`run_links.cut_of`), or None."""
+    from modules.nsot import run_links
 
-    cut = retire.name_cuts(incident.network).get((incident.device or "").lower())
-    return cut if cut and cut.get("epoch", 0) > incident.detected else None
+    return run_links.cut_of(incident.network, incident.device, incident.detected)
 
 
-#: Marks a run read from a step of an incident's plan (`_plan_step_runs`), never a record's.
+#: Marks a run read from a step of an incident's plan (`run_links.PLAN_STEP`).
 PLAN_STEP = "_plan_step"
-#: A plan step's states that ran (its own apply was reached), and the one that passed.
+#: A plan step's states that ran (`run_links.PLAN_STEP_RAN`).
 PLAN_STEP_RAN = ("done", "failed")
 
 
 def _plan_step_runs(run: dict, incident: Incident) -> list:
-    """Each step of *run* (a plan engine run record, `plan_engine.KEY`, of an incident's fix)
-    that is a step kind the fix admits beside the catalogue (`plan_engine.FIX_ADMITTED`), names
-    *incident* and ran, as a run of its own the attempts read: its kind as the operation, the
-    values its kind compares an attempt by (`StepKind.attempt_of`, from its parameters and what
-    its preview resolved), its state ``done`` only when it passed, and the plan run's id, actor
-    and times. ``[]`` for any other record."""
-    from modules import plan_engine as PE
+    """Each step of plan engine run *run* that names *incident* and ran, as a run of its own
+    (`run_links.plan_step_runs`, its one home)."""
+    from modules.nsot import run_links
 
-    if run.get("key") != PE.KEY or run.get("plan") != PE.INCIDENT_FIX:
-        return []
-    out = []
-    for st in run.get("plan_steps") or []:
-        p = st.get("params") if isinstance(st, dict) else None
-        if (not isinstance(p, dict) or st.get("kind") not in PE.FIX_ADMITTED
-                or p.get("incident") != incident.id or st.get("state") not in PLAN_STEP_RAN):
-            continue
-        kind = PE.STEP_KINDS[st["kind"]]
-        out.append({PLAN_STEP: True, "key": st["kind"], "id": run.get("id"),
-                    "device": p.get("device") or "", "started_at": run.get("started_at"),
-                    "finished_at": run.get("finished_at"), "actor": run.get("actor"),
-                    "actor_verified": run.get("actor_verified"),
-                    "outcome": st.get("outcome") or "",
-                    "state": PASSED_STATE if st.get("state") == "done" else "failed",
-                    "why": st.get("words_said") or "",
-                    "params": kind.attempt_of(p, st.get("resolved") or {}),
-                    RUN_FIELD: {"incident": incident.id,
-                                "proposal": str(p.get("proposal") or "")}})
-    return out
+    return run_links.plan_step_runs(run, incident.id)
 
 
 def attempts(incident: Incident, resolved: float = None, *, now: float = None,
@@ -675,46 +639,21 @@ def attempts(incident: Incident, resolved: float = None, *, now: float = None,
     cannot be read or has no start time (``unreadable``, by name), more runs than *limit*
     (``truncated``), or this incident's own record. ``refused`` counts the refused runs left
     out; ``cut`` is the name cut applied, if one was."""
-    from modules.config import list_data_path
-    from modules.nsot import privileged
+    from modules.nsot import run_links
 
     _check(incident)
     end = (float(resolved) if resolved is not None
            else time.time() if now is None else float(now))
     rec = read(incident)
     sources = {line["proposal"]: line["source"] for line in rec["lines"] if "proposal" in line}
-    got = privileged.runs(incident.network, limit=limit,
-                          data_dir=list_data_path(incident.network))
-    runs = [r for r in got["runs"] if isinstance(r, dict)]
-    oldest = _stamp(runs[-1].get("id")) if runs else None
-    truncated = len(got["runs"]) >= limit and (oldest is None or oldest >= incident.detected)
-    bad = [n for n in got["unreadable"]
-           if _stamp(n) is None or incident.detected <= _stamp(n) <= end]
-    found = []
-    for r in [s for run in runs for s in _plan_step_runs(run, incident)] + runs:
-        if (r.get("key") not in CATALOGUE_KEYS and not r.get(PLAN_STEP)
-                and not _catalog.is_command_plan(r.get("key"))):
-            continue
-        named, proposal = _named(r)
-        if named and named != incident.id:
-            continue
-        if not named and (not incident.device or r.get("device") != incident.device):
-            continue
-        started = _epoch(r.get("started_at"))
-        if started is None:
-            bad.append(str(r.get("id") or "a run with no id"))
-            continue
-        if not named and not incident.detected <= started <= end:
-            continue
-        found.append((started, str(r.get("id") or ""), "record" if named else "window",
-                      proposal, r))
-    cut = _cut(incident) if any(f[2] == "window" for f in found) else None
-    if cut:
-        found = [f for f in found if f[2] == "record" or f[0] <= cut["epoch"]]
-    refused = sum(1 for f in found if f[4].get("state") == REFUSED_STATE)
+    # The runs themselves are the runners' records' (`run_links.linked_runs`, one home: the
+    # heal loop's verified-fix read takes them there too, never from this record).
+    got = run_links.linked_runs(incident.network, incident.id, incident.device,
+                                incident.detected, end, limit=limit)
+    bad, truncated, cut, refused = (got["unreadable"], got["truncated"], got["cut"],
+                                    got["refused"])
     out = []
-    for started, run_id, linked, proposal, r in sorted(
-            (f for f in found if f[4].get("state") != REFUSED_STATE), key=lambda f: f[:2]):
+    for started, run_id, linked, proposal, r in got["runs"]:
         params = _run_params(r)
         out.append({"n": len(out) + 1, "run": run_id, "operation": r["key"],
                     "device": r.get("device") or "", "started_at": started,

@@ -158,12 +158,10 @@ def incident_of(network: str, found: dict) -> dict:
         return {"incident": None, "why": (
             f"{device}'s identity is not known: neither {network}'s manifest nor its inventory "
             "holds it, so this incident's troubleshooting record cannot be kept")}
+    from modules.nsot import run_links
+
     trig = [t for t in inc.get("triggers") or [] if isinstance(t, dict)]
-    try:
-        detected = float((trig[0] if trig else {}).get("epoch") or 0)
-    except (TypeError, ValueError):
-        detected = 0.0
-    detected = detected or _epoch(inc.get("opened_at")) or _epoch(entry.get("first_at")) or 0
+    detected = run_links.detected_of(inc, entry)
     if not detected:
         return {"incident": None, "why": (
             f"when {iid} was detected is not kept, so which runs are its attempts cannot be "

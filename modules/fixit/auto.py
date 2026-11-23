@@ -179,10 +179,11 @@ def eligible(failure: dict, sw: dict, heal: dict = None) -> str:
 
 
 def key_of(kind: str, ident: str) -> str:
-    """A failure's key: ``decision:<incident>``, ``held:<incident>``, ``act:<decision>``,
-    ``tail:<decision>`` or ``run:<run id>`` (the
-    shape a background trigger's finding id takes: no underscore, no space)."""
-    return f"{kind}:{ident}"
+    """A failure's key (`heal.keys.key_of`, its one home, which the heal loop's retry reads
+    without naming this module)."""
+    from modules.heal import keys
+
+    return keys.key_of(kind, ident)
 
 
 def failures(network: str, *, open_ids=None) -> dict:

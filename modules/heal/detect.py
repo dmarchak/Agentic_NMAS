@@ -264,14 +264,15 @@ def _epoch_of(iso) -> float:
 
 def _grace_started(network: str, inc: dict, person: dict, j: dict, reads: list,
                    now: float) -> None:
-    """Keep the grace on *inc* and tell its person once (`heal_notice.grace_notice`): the
-    window's end is the existing grace's (`grace.judge`'s ``due_at``), no new timer."""
-    from modules import heal_notice
+    """Keep the grace on *inc*, untold: the window's end is the existing grace's (`grace.judge`'s
+    ``due_at``), no new timer. Its person is told once by the notifier, in the runner's notify
+    step (`heal_notice.run_graces`), which keeps ``told`` itself: the loop reads no answer of
+    the notifier's (docs/HEAL_TO_INTENT.md section 12; the operator's ruling of 2026-11-23)."""
     from modules.heal import incidents
 
     change = max(outside_changes(dict(inc, defer_until=None)) or [0.0])
     g = inc.get("grace") or {}
-    if g.get("change_epoch") == change and g.get("told"):
+    if g.get("change_epoch") == change:
         return
     lines = next((r.get("changed_lines") for r in reversed(reads)
                   if r.get("state") == "drifted"), None)
@@ -284,10 +285,6 @@ def _grace_started(network: str, inc: dict, person: dict, j: dict, reads: list,
          "source": person.get("source") or "", "words": person.get("words") or "",
          "change_epoch": change, "until": _iso(float(j.get("due_at") or now)),
          "lines": lines, "told": False}
-    try:
-        g["told"] = bool(heal_notice.grace_notice(network, inc, g).get("sent") is not None)
-    except Exception as exc:                          # noqa: BLE001 (the grace runs, said)
-        log.error("heal: %s's person could not be told: %s", inc.get("id"), exc)
     incidents.record_grace(network, inc["id"], g)
 
 
@@ -681,43 +678,39 @@ def _plan_ran_to_its_end(network: str, run_id: str) -> bool:
 def verified_fix(network: str, inc: dict) -> dict:
     """The fix a person approved and ran in incident *inc* that passed its own device check:
     ``{"run", "attempt", "operation", "device", "epoch", "at"}`` (*epoch* and *at* when its run
-    finished, after its verify), or ``{}``. Passed as its page says it: the troubleshooting
-    section's state ``passed`` (`fixit.section.view`, which the incident page reads as
-    ``attempt_passed``), its newest attempt's own run record ``done`` (`fixit.incident.passed`:
-    the state a command plan's run writes when its verify passed). Read only for an incident
-    with a troubleshooting record, and only once its newest attempt passed, so the section is
-    read for the rare case alone. ``{}`` when the attempts are incomplete (an attempt not read
-    is never read as passed)."""
-    from modules import incident_page, incidents_list
-    from modules.fixit import incident as F
-    from modules.fixit import section
+    finished, after its verify), or ``{}``. Read from the runners' own records
+    (`nsot.run_links.linked_runs`, the attempts' one home), never the fix-it record, which holds
+    the AI's proposals (docs/HEAL_TO_INTENT.md section 12; the operator's ruling of 2026-11-23):
+    its newest run, named by the incident's record (``record``), whose own record says its
+    verify passed (`run_links.passed`), and that ran to its end (`_plan_ran_to_its_end`). Read
+    only for an incident with a troubleshooting record. ``{}`` when the runs are incomplete (a
+    record not read, or the read truncated inside the incident's window): a run not read is
+    never read as passed."""
+    from modules import incidents_list
+    from modules.nsot import run_links
 
     if inc.get("id") not in incidents_list._fixit_ids(network):
         return {}
-    found = incident_page.resolve(network, inc["id"])
-    if found["found"] != "page":
+    detected, device = run_links.detected_of(inc), inc.get("device") or ""
+    if not detected or not device:
         return {}
-    fi = section.incident_of(network, found)["incident"]
-    if fi is None:
+    got = run_links.linked_runs(network, inc["id"], device, detected, time.time())
+    if got["unreadable"] or got["truncated"] or not got["runs"]:
         return {}
-    tried = F.attempts(fi)
-    last = tried["attempts"][-1] if tried["attempts"] else None
-    if (tried["state"] != "ok" or not last or not last["passed"]
-            or last["finished_at"] is None):
-        return {}
-    if last.get("linked") != "record":
+    _started, run_id, linked, _proposal, rec = got["runs"][-1]
+    finished = run_links.epoch(rec.get("finished_at"))
+    if linked != "record":
         # A run on the incident's device inside its window that names no incident is drawn as
         # an attempt, but it is no fix a person approved in this incident: it may have fixed
         # another port (the correctness review's G7-D2, 2026-11-18). The incident stands; its
         # own symptom read closes it.
         return {}
-    if not _plan_ran_to_its_end(network, last["run"]):
+    if not run_links.passed(rec) or finished is None:
         return {}
-    if section.view(network, found).get("state") != "passed":
+    if not _plan_ran_to_its_end(network, run_id):
         return {}
-    return {"run": last["run"], "attempt": last["n"], "operation": last["operation"],
-            "device": last["device"] or inc.get("device") or "",
-            "epoch": float(last["finished_at"]), "at": _iso(float(last["finished_at"]))}
+    return {"run": run_id, "attempt": len(got["runs"]), "operation": rec["key"],
+            "device": rec.get("device") or device, "epoch": finished, "at": _iso(finished)}
 
 
 def watching_networks() -> list:

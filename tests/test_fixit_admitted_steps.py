@@ -231,8 +231,7 @@ class TestTheRepeat:
         privileged.record("Lab", rec)
         got = F.attempts(incident())["attempts"]
         assert [(a["operation"], a["passed"]) for a in got] == [("intent-edit", True)], got
-        page_stands_in(monkeypatch, incident())
-        assert detect.verified_fix("Lab", {"id": INCIDENT, "device": "r2"}) == {}
+        assert detect.verified_fix("Lab", page_stands_in(monkeypatch, incident())) == {}
 
     def test_a_plan_whose_deploy_failed_is_never_drawn_passed(self, lab, monkeypatch):
         """The correctness review's G7-D6 (2026-11-18; C3809): every step of one plan run
@@ -254,8 +253,7 @@ class TestTheRepeat:
         from tests.test_fixit_incident import page_stands_in
         rec = run_line(line_of(EDIT, DEPLOY))
         assert rec["outcome"] == "done", rec
-        page_stands_in(monkeypatch, incident())
-        got = detect.verified_fix("Lab", {"id": INCIDENT, "device": "r2"})
+        got = detect.verified_fix("Lab", page_stands_in(monkeypatch, incident()))
         assert (got["run"], got["operation"]) == (rec["id"], "intent-deploy"), got
 
     def test_a_step_refused_before_its_apply_is_no_attempt(self, lab, monkeypatch):

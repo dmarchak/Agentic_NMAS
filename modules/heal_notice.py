@@ -339,6 +339,39 @@ def due(network: str, now: float = None) -> list:
             and e["incident"] not in taken and now - float(e.get("epoch") or 0) <= NEW_WITHIN_S]
 
 
+def run_graces(network: str, *, deliver=None) -> dict:
+    """The notify step's graces: each open incident whose configuration grace a named person's
+    change started (`heal.detect._grace_started`, which keeps it untold) and that was not told
+    yet is told once (`grace_notice`), and whether it was told is kept on the incident by the
+    notifier itself (`incidents.record_grace`), so the heal loop reads no answer of the
+    notifier's (docs/HEAL_TO_INTENT.md section 12; the operator's ruling of 2026-11-23).
+    ``{"told": [incident ids], "failed": [why]}``; a failed delivery stays untold, said."""
+    from modules.heal import incidents
+
+    out = {"told": [], "failed": []}
+    try:
+        doc = incidents.read(network)
+    except Exception as exc:                          # said; the next pass reads it again
+        out["failed"].append(f"graces: {type(exc).__name__}: {exc}")
+        return out
+    for inc in doc.get("incidents") or []:
+        g = inc.get("grace") if isinstance(inc, dict) else None
+        if (not isinstance(g, dict) or g.get("told") or not g.get("change_epoch")
+                or inc.get("state") not in incidents.OPEN_STATES):
+            continue
+        try:
+            sent = grace_notice(network, inc, g, deliver=deliver)
+            told = sent.get("sent") is not None
+        except Exception as exc:                      # the grace runs; said
+            log.error("heal: %s's person could not be told: %s", inc.get("id"), exc)
+            out["failed"].append(f"{inc.get('id')}: {type(exc).__name__}: {exc}")
+            continue
+        incidents.record_grace(network, inc["id"], dict(g, told=told))
+        if told:
+            out["told"].append(inc["id"])
+    return out
+
+
 def run(network: str, *, now: float = None, starter=None, wait_s: float = None,
         action_starter=None) -> dict:
     """The notify step of a runner's pass: each due incident taken once and its notice started
@@ -348,6 +381,8 @@ def run(network: str, *, now: float = None, starter=None, wait_s: float = None,
     out = {"network": network, "started": [], "failed": []}
     acts = run_actions(network, now=now, starter=action_starter)
     out["told"], out["failed"] = acts["told"], list(acts["failed"])
+    out["graces"] = run_graces(network)
+    out["failed"] += out["graces"]["failed"]
     from modules.ai import heal_analysis as HA
 
     for e in due(network, now):
