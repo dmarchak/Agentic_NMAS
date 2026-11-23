@@ -52,8 +52,13 @@ RESERVE = 2 * GIB
 #: One worker's memory, a headless browser counted as one more (the operator's formula; the
 #: measurement it covers is in the docstring).
 PER_WORKER = 1.2 * GIB
-#: Never more than this per run, whatever the memory: CI's runner's four vCPUs (nmas-gate).
-MAX_WORKERS = 4
+#: Never more than this per run, whatever the memory. 4 (CI's runner's four vCPUs) until the
+#: operator's Phase 1 of 2026-11-22 ("a fast suite: under 10 minutes locally"): the laptop has
+#: 24 CPUs, and a full run at 11 workers took 913 s against 1,516 s at 4, its lowest
+#: MemAvailable 5.0 GiB from 16.3 (2026-11-23, the memory formula above still sizing each run).
+#: CI asks `--cap 4`, so its sizing is unchanged (tests/test_nmas_workers.py
+#: `TestCISizingIsUnchanged`, the operator, 2026-11-12).
+MAX_WORKERS = 12
 FULL_LOCK = os.environ.get("NMAS_FULL_LOCK",
                            os.path.expanduser("~/.cache/nmas/full-suite.lock"))
 

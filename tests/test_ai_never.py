@@ -36,6 +36,7 @@ handed to the AI as a callable would not be seen (tests/test_ai_fix_rule.py C sc
 references in modules/ai/). A class reached is reached whole.
 """
 import ast
+import functools
 import os
 
 import pytest
@@ -64,7 +65,14 @@ def product_files() -> dict:
     """``{path: source}`` of every product file: what git tracks (`source_index.tracked`), and
     the files git does not track yet but does not ignore (a build in the working tree is
     product code too, and is scanned), both named by git, never by a walk of the disk. A
-    planted module is added to this map by its test."""
+    planted module is added to this map by its test. A fresh map each call, read once a run
+    (`_product_files`: about 40 s a test was this read and every file's parse, each test
+    alike; the full suite of 2026-11-23, Phase 1)."""
+    return dict(_product_files())
+
+
+@functools.lru_cache(maxsize=None)
+def _product_files() -> dict:
     import subprocess
 
     rels = [os.path.relpath(p, ROOT) for p in tracked("modules", "routes", suffix=".py")]
@@ -83,8 +91,11 @@ def module_of(rel: str) -> str:
     return rel.replace("/", ".")
 
 
+@functools.lru_cache(maxsize=None)
 def units_of(rel: str, source: str) -> dict:
-    """``{unit name: (reached dotted names, own-file units called)}`` for one file."""
+    """``{unit name: (reached dotted names, own-file units called)}`` for one file, kept by its
+    path and exact source (a planted module's own source is its own key); read, never
+    changed, by its callers."""
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -217,24 +228,31 @@ def family_runs(files: dict) -> set:
     is an entry of its own."""
     out = set()
     for rel, source in files.items():
-        if not rel.startswith("modules/ai/"):
-            continue
-        module = module_of(rel)
-        tree = ast.parse(source)
-        bound, _ = bindings(tree, os.path.dirname(rel).replace("/", "."))
-        own = {n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
-        for node in ast.walk(tree):
-            if not (isinstance(node, ast.Call) and getattr(node.func, "attr", getattr(
-                    node.func, "id", "")) == "ReadFamily"):
-                continue
-            for kw in node.keywords:
-                if kw.arg == "run" and isinstance(kw.value, ast.Name):
-                    name = kw.value.id
-                    out.add(f"{module}.{name}" if name in own else bound.get(name, ""))
-                elif kw.arg == "run" and isinstance(kw.value, ast.Attribute):
-                    from tests.test_ai_fix_rule import resolved
-                    out.add(resolved(kw.value, bound))
+        if rel.startswith("modules/ai/"):
+            out |= _family_runs_of(rel, source)
     return {o for o in out if o}
+
+
+@functools.lru_cache(maxsize=None)
+def _family_runs_of(rel: str, source: str) -> frozenset:
+    """`family_runs` of one file under modules/ai/, kept by its path and exact source."""
+    out = set()
+    module = module_of(rel)
+    tree = ast.parse(source)
+    bound, _ = bindings(tree, os.path.dirname(rel).replace("/", "."))
+    own = {n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and getattr(node.func, "attr", getattr(
+                node.func, "id", "")) == "ReadFamily"):
+            continue
+        for kw in node.keywords:
+            if kw.arg == "run" and isinstance(kw.value, ast.Name):
+                name = kw.value.id
+                out.add(f"{module}.{name}" if name in own else bound.get(name, ""))
+            elif kw.arg == "run" and isinstance(kw.value, ast.Attribute):
+                from tests.test_ai_fix_rule import resolved
+                out.add(resolved(kw.value, bound))
+    return frozenset(o for o in out if o)
 
 
 def entries(units: dict, files: dict = None) -> list:

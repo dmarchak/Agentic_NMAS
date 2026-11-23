@@ -51,12 +51,14 @@ def _meminfo(tmp_path, gib: float) -> str:
 
 
 @pytest.mark.parametrize("gib,runs,browsers,want", [
-    # min(4, floor((A - 2 - browsers x 1.2) / 1.2 / runs)), at least 1 (the operator's formula)
+    # min(MAX_WORKERS, floor((A - 2 - browsers x 1.2) / 1.2 / runs)), at least 1 (the
+    # operator's formula; MAX_WORKERS 4 until Phase 1, 2026-11-23, and 12 since)
     (3.8, 1, 0, 1),        # 2026-10-19 21:1x UTC, two agents' runs beside it
     (4.4, 1, 0, 2),
     (6.7, 1, 0, 3),
     (6.9, 1, 0, 4),
-    (30.0, 1, 0, 4),       # never more than CI's four
+    (16.3, 1, 0, 11),      # 2026-11-23: the measured 11-worker full run's start
+    (30.0, 1, 0, 12),      # never more than MAX_WORKERS; CI asks --cap 4 (below)
     (5.6, 1, 1, 2),        # a headless browser counts as one worker's memory
     # Several runs at once are the gate's suite, sized by its measured peak since 2026-11-12
     # (the operator: "A gate alone keeps 2 workers at 16 GiB free"): 16.5 GiB at 2 workers (the
@@ -282,12 +284,14 @@ class TestCISizingIsUnchanged:
         return max(1, min(cap, 4, per))
 
     def test_one_run_is_sized_as_before_at_every_memory(self, monkeypatch):
+        """CI's one run, `workers` under CI's own `--cap 4` (the command line's `min(n, cap)`):
+        the laptop's MAX_WORKERS, raised in Phase 1 (2026-11-23), never reaches it."""
         monkeypatch.setenv("NMAS_GATE_CEILING", "1")             # the laptop's: no effect here
         for tenths in range(0, 321):                             # 0 to 32 GiB
             available = -(-tenths * GIB // 10)
             for browsers in (0, 1, 2, 3):
                 for beside in (False, True):
-                    assert W.workers(available, 1, browsers, beside=beside) == \
+                    assert min(4, W.workers(available, 1, browsers, beside=beside)) == \
                         self.formula(tenths, browsers), (tenths / 10, browsers, beside)
 
     @pytest.mark.parametrize("gib,browsers,want", [(14.5, 0, 4), (14.5, 3, 4), (10.0, 3, 3),
