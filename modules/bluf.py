@@ -135,6 +135,13 @@ TABLE = {
     "err_disabled": _e("{device} {object} err-disabled by {cause}: {affected} is offline",
                        "{affected} has no network until the port is recovered; the rest of the "
                        "network is unaffected", "button", "degraded"),
+    # The err-disable syslog line before its port's confirming read (`problem.UNCONFIRMED`):
+    # said as reported, its fix none until the read confirms it as `err_disabled`.
+    "err_disable_reported": _e("{device} reported {object} err-disabled; Mercury reads the "
+                               "port to confirm it",
+                               "A host on that port may have no network until the port is "
+                               "recovered; the rest of the network is unaffected", "none",
+                               "degraded"),
 }
 
 #: A guard or hold working as designed, as one plain line (`hold_line`), by guard number

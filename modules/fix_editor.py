@@ -136,7 +136,7 @@ def options(network: str, held=None, own: str = "") -> dict:
     causes = set(errdisable.CAUSES.values()) | {p.cause for _r, p in held if p.cause}
     roles = {"access", "trunk"} | {p.port_role for _r, p in held if p.port_role}
     return {"conditions": [{"value": c, "words": c.replace("_", "-") + f" ({noun})"}
-                           for c, (noun, _chk) in P.CONDITIONS.items()],
+                           for c, (noun, _chk) in P.CONDITIONS.items() if c in P.MATCHABLE],
             "causes": sorted(causes), "roles": sorted(roles),
             "lines": command_policy.offered(network), "checks": checks(own)}
 
@@ -153,7 +153,7 @@ def draft_from_form(form, opts: dict) -> dict:
     g = form.get
     match = {}
     cond = (g("condition") or "").strip()
-    if cond in P.CONDITIONS:
+    if cond in P.MATCHABLE:
         match["condition"] = cond
         for f in ("cause", "port_role"):
             v = (g(f) or "").strip()

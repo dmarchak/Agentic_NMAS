@@ -80,7 +80,17 @@ CONDITIONS = {
     # G7 (C3712): a switch port err-disabled by BPDU guard or port security; its check is the
     # cause's own (`heal.errdisable.CLEARED_CHECKS`), set by the classification.
     "err_disabled": ("a switch port", ""),
+    # The err-disable syslog trigger (7cc49a1b) before its port's confirming read: the device
+    # said a port was err-disabled, and `heal.errdisable.problem_fields` has not confirmed it
+    # yet, so it is classified as reported, never as `err_disabled` (no saved fix matches it,
+    # `MATCHABLE`).
+    "err_disable_reported": ("a switch port", ""),
 }
+
+#: The conditions a saved fix's match may name: every condition but a report awaiting its
+#: confirming read, so no fix is offered, or fires in Auto, on an unconfirmed classification.
+UNCONFIRMED = ("err_disable_reported",)
+MATCHABLE = tuple(c for c in CONDITIONS if c not in UNCONFIRMED)
 
 #: Every signal kind Mercury raises, to its problem's condition: the heal's trigger kinds, the
 #: lost stream, and the fix kinds the decision classifies a departure as.
@@ -99,6 +109,7 @@ CONDITION_OF = {
     "port_bounce": "port_stuck", "session_clear": "bgp_session_stuck",
     "ospf_reset": "ospf_neighbour_stuck", "dampening_proposal": "port_flapping",
     ERR_DISABLE: "err_disabled",
+    "errdisable": "err_disable_reported",
 }
 
 

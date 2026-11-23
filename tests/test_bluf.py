@@ -31,6 +31,27 @@ class TestEveryProblemHasItsThreeLines:
     def test_no_problem_lacks_what_impact_or_fix(self):
         assert B.missing() == []
 
+    def test_an_unconfirmed_err_disable_report_is_its_own_problem_no_saved_fix_matches(self):
+        """7cc49a1b made the err-disable syslog line a trigger kind (``errdisable``) with no
+        problem condition: its incident had no BLUF until the port's confirming read. It is
+        classified as reported (`problem.UNCONFIRMED`), with its three lines, and no saved
+        fix may name it, so no fix is offered, or fires in Auto, before that read; the
+        confirmed port stays `err_disabled`, which a fix may match."""
+        from modules import fix_editor
+        from modules.nsot import saved_plans
+        assert P.CONDITION_OF["errdisable"] == "err_disable_reported"
+        assert P.CONDITION_OF[P.ERR_DISABLE] == "err_disabled"
+        assert B.TABLE["err_disable_reported"]["fix"] == "none"
+        assert "err_disable_reported" not in P.MATCHABLE and "err_disabled" in P.MATCHABLE
+        assert saved_plans.match_refusal({"condition": "err_disable_reported"})
+        assert saved_plans.match_refusal({"condition": "err_disabled"}) == ""
+        from werkzeug.datastructures import MultiDict
+        opts = {"causes": [], "roles": [], "lines": [], "checks": {"pre": [], "ver": []}}
+        assert fix_editor.draft_from_form(MultiDict({"condition": "err_disable_reported"}),
+                                          opts)["match"] == {}
+        assert fix_editor.draft_from_form(MultiDict({"condition": "err_disabled"}),
+                                          opts)["match"] == {"condition": "err_disabled"}
+
     def test_a_planted_signal_with_no_problem_is_found(self, monkeypatch):
         from modules.heal import kinds
         monkeypatch.setitem(kinds.TIER, "planted_kind", 1)

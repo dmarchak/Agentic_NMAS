@@ -429,8 +429,8 @@ def match_refusal(match) -> str:
                 "script never matches an alert's name or a raw line")
     if not all(isinstance(v, str) for v in match.values()):
         return "each field of a match is text"
-    if match.get("condition") not in P.CONDITIONS:
-        return (f"a match names the problem's condition, one of Mercury's, and "
+    if match.get("condition") not in P.MATCHABLE:
+        return (f"a match names the problem's condition, one of Mercury's confirmed ones, and "
                 f"{match.get('condition')!r} is none")
     if "cleared" in match and match["cleared"] not in P.CLEARED:
         return f"a match's cleared is one of {', '.join(c for c in P.CLEARED if c)}"
