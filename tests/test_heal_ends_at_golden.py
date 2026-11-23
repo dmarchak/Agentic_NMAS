@@ -12,12 +12,18 @@ golden matches its intent.
 No device, no network, a fake clock; the decision's sources are tests/test_heal_decide.py's
 `Fake`, the fold's world tests/test_heal_triggers.py's.
 """
+import time
+
 import pytest
 
+import tests.test_heal_standing as HS
+
+from tests.test_heal_analysis import ai  # noqa: F401 (the fixture)
 from tests.test_heal_decide import DC, DS, GOLDEN, I, settle
 from tests.test_heal_decide import Fake, lab  # noqa: F401 (the fixture `fold` builds on)
 from tests.test_heal_policy import T0, iso
 from tests.test_heal_standing import R8, change, decide, fold, golden_now, the  # noqa: F401
+from tests.test_heal_standing import adj, pass_at, read_as
 from tests.test_heal_triggers import T
 from tests.test_sdn_connections import networks  # noqa: F401 (the fixture `lab` builds on)
 
@@ -111,3 +117,61 @@ def test_a_departure_that_leaves_no_unit_at_a_departing_golden_is_a_cant_fix(
     assert (d["outcome"], d["tier"], d["program"]) == ("cant_fix", 3, []), d
     assert "golden departs from its committed intent" in d["words"], d["words"]
     assert "nothing to heal" not in d["words"], d["words"]
+
+
+def _symptom_cant_fix_at(state):
+    """A symptom can't-fix decided at edge-b's golden, that golden in *state* (its symptom not
+    read since the drop, so Tier 3 standing ``on: symptom``: tests/test_heal_standing.py's
+    `TestW5.standing_cant_fix`, its golden's state given)."""
+    settle(GOLDEN, how="at_golden", triggers=[adj(time.time() - 60)], claim=False)
+    src = Fake(GOLDEN, state=state)
+    src.symptom_now = lambda device, triggers: "stale"
+    (d,) = DC.run("Default", now=T0, sources=src)["decided"]
+    assert d["outcome"] == "cant_fix", d
+    inc = I.read("Default")["incidents"][0]
+    assert inc["state"] == "standing" and inc["standing"]["on"] == "symptom", inc
+    return inc
+
+
+@pytest.mark.parametrize("state", ["departs", "unknown"])
+def test_the_detect_pass_ends_no_symptom_cant_fix_at_a_departing_golden(  # noqa: F811
+        lab, monkeypatch, state):
+    """C4109 (ruling 0, the operator, 2026-11-18: "Keep the interim (c)"; C3910's class on the
+    detect pass): a symptom can't-fix at a golden departing from intent (or unknown) whose
+    symptom then reads gone leaves the device at that golden, which is a departure, so the
+    incident stays the interim's Tier 3 can't-fix. `detect._standing` closed it "nothing to
+    heal: every symptom ... cleared by itself ... is at its golden", never asking
+    `act.golden_not_proof` as `triggers.clean_ended` does. At a golden at its intent it ends
+    as before (tests/test_heal_standing.py's `TestW5`)."""
+    inc = _symptom_cant_fix_at(state)
+    golden_now(monkeypatch, state)
+    got = pass_at(T0 + 62, read_as("clean"), symptom=lambda d, tr: "gone")
+    assert got["cleared"] == [], got["cleared"]
+    now = I.read("Default")["incidents"][0]
+    assert now["state"] == "standing" and now["standing"]["decision"] == \
+        inc["standing"]["decision"], now
+    golden_now(monkeypatch, "at_intent")
+    got = pass_at(T0 + 63, read_as("clean"), symptom=lambda d, tr: "gone")
+    assert [c["incident"] for c in got["cleared"]] == [inc["id"]], got["cleared"]
+
+
+@pytest.mark.parametrize("state", ["departs", "unknown"])
+def test_the_notice_ends_no_symptom_cant_fix_at_a_departing_golden(  # noqa: F811
+        ai, monkeypatch, state):
+    """C4109's second close: the can't-fix notice's, when Mercury's diagnosis reads the symptom
+    gone and it stays quiet (`heal_notice._cleared`): at a golden departing from intent (or
+    unknown) it ends nothing, and the can't-fix is told as any standing one is."""
+    from modules import heal_notice
+    from modules.ai import heal_analysis as HA
+
+    inc = _symptom_cant_fix_at(state)
+    golden_now(monkeypatch, state)
+    monkeypatch.setattr(HA, "analyse", lambda *a, **k: {})
+    events = []
+    got = heal_notice.notice(
+        "Default", inc["id"], deliver=lambda n, e: events.append(e) or {"ok": True},
+        wait_s=5, now=T0 + 1, diagnose=HS.TestW5().diagnosis(monkeypatch), diagnosis_wait_s=5,
+        quiet_wait=lambda s: None, symptom=lambda device, triggers: "gone")
+    assert not got.get("cleared"), got.get("cleared")
+    assert I.read("Default")["incidents"][0]["state"] == "standing"
+    assert [e["event"] for e in events] == ["cant_fix"], events

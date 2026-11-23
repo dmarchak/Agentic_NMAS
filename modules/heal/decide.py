@@ -343,6 +343,20 @@ def _tier(kind: str) -> int:
     return TIER.get(kind, 4)
 
 
+def golden_ends_nothing(network: str, device: str, sources=None) -> str:
+    """Why a close of *device*'s incident "at its golden" ends nothing now, or ``""``: its
+    golden, read live (`Sources.golden`), judged by the one judgement `act.golden_not_proof`
+    (ruling 0, the operator, 2026-11-18: a golden departing from intent, or unknown, is the
+    interim's Tier 3 can't-fix). The closes that end an incident at its golden without a
+    decision ask it: the drift run's clean read (`triggers.clean_ended`), the detect pass's
+    symptom gone (`detect._standing`) and the can't-fix notice's (`heal_notice._cleared`;
+    C4109)."""
+    from modules.heal import act
+
+    src = sources or Sources(network)
+    return act.golden_not_proof(device, src.golden(device, src.device(device)))
+
+
 def _departing_golden(base: dict, device: str, golden: dict, *, at_golden: bool) -> dict:
     """The interim for a golden that departs from committed intent (C3909, C3910; the
     operator's ruling 0, 2026-11-18: "Keep the interim (c)"): a can't-fix of Tier 3, no fix of

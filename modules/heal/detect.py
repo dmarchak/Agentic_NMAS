@@ -529,6 +529,18 @@ def _standing(network, incidents_now, out, mode, now, by, symptom=None) -> None:
                 f"every symptom {inc['id']} named read gone from its store at "
                 f"{decide._hhmm(now)} UTC"))
             continue
+        # C4109 (ruling 0): at a golden departing from intent (or unknown) the device is off
+        # its intent, so its symptom gone ends nothing: the interim's Tier 3 can't-fix stands.
+        try:
+            departs = decide.golden_ends_nothing(network, inc["device"])
+        except Exception as exc:                      # said; it stands, read at the next pass
+            log.error("heal: %s's %s: its golden could not be read: %s", network, inc["id"],
+                      exc)
+            continue
+        if departs:
+            log.info("heal: %s's %s: its symptom read gone ends nothing: %s", network,
+                     inc["id"], departs)
+            continue
         d = decide.end_standing(
             network, inc["id"],
             (f"nothing to heal: every symptom the incident named has cleared by itself at "

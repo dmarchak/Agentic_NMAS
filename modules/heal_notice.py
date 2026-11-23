@@ -689,8 +689,9 @@ def _investigation(network: str, incident_id: str, key: str, ask, *, deliver, tr
     # the act holds it; at intent with its symptom gone, the incident closes on that read and
     # nothing is asked (nor any script fired). Otherwise the read is kept in the step log, and
     # the incident is resolved after it, so the AI's evidence holds it.
+    # A tail attached to this incident from its own closed one is asked here (ruling 17, C4110).
     from modules.heal import act as HA
-    confirmed = HA.confirm_before_ai(network, key)
+    confirmed = HA.confirm_before_ai(network, key, on=incident_id)
     found = incident_page.resolve(network, incident_id)
     inc = section.incident_of(network, found)["incident"] if found["found"] == "page" else None
     who = {"by": by, "verified": verified} if by else {}
@@ -1538,6 +1539,10 @@ def _cleared(network: str, incident_id: str, d: dict, *, wait=None, symptom=None
             from modules.heal import act
             act.request_confirm(network, incident_id, (
                 f"its symptoms read gone and quiet {minutes} minutes (the can't-fix notice)"))
+            return {}
+        # C4109 (ruling 0): at a golden departing from intent (or unknown) the device is off
+        # its intent, so it ends nothing, and the can't-fix is told as before.
+        if decide.golden_ends_nothing(network, again["device"]):
             return {}
         return decide.end_standing(
             network, incident_id,

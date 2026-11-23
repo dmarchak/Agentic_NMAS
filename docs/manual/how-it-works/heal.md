@@ -180,7 +180,8 @@ one incident however long it takes a person to deal with it:
   the list); for a can't-fix at its golden on a symptom, the symptom read gone, by the detect
   pass or by Mercury's own diagnosis before its notice ("cleared by itself at HH:MM UTC,
   nothing to do"); or a verified fix ([Detect](#detect), step 8). A can't-fix whose golden
-  departs from its intent is not ended by a read at that golden, and an incident standing on a
+  departs from its intent (or whose intent state is unknown) is not ended by a read at that
+  golden, nor by its symptom read gone, and an incident standing on a
   heal that did not heal ends only on Mercury's confirmation read ([Confirm first](#confirm)).
   Turning self-healing off ends nothing: every standing incident stays, waiting for it.
 
@@ -328,7 +329,9 @@ the healed parts at intent; the symptom read again after the confirmation began,
 port problem's port read clear; and, where the save was not shown done, startup holding what
 runs. It then reads "already fixed; confirmation was blocked (<why the heal said it did
 not>)". Anything else, or anything that could not be read, is no proof: the read is kept as the
-heal's `confirm` step, and the AI starts with it in its evidence beside the failure.
+heal's `confirm` step, and the AI starts with it in its evidence beside the failure. A tail
+failure attached to another open incident is not judged by its own incident's close: the AI is
+asked on the open incident it was attached to.
 
 Every other close that would end an incident standing on such a heal (a drift run reading the
 device at its golden, its symptom read gone, a decision of nothing to heal) asks for the same
