@@ -1,4 +1,4 @@
-# Handoff: the run of 2026-11-23, Phase 0 done, Phase 1 next
+# Handoff: the run of 2026-11-23, Phase 0 done, Phase 1 in progress
 
 Read CLAUDE.md, then this file, and nothing else to start (docs/handoff/START.md is the
 standing prompt). Decisions: `docs/handoff/decisions-2026-11-23.md`. Today's report:
@@ -49,17 +49,35 @@ blocks only a deploy.
 
 ## 4. The plan (the operator's, 2026-11-22; word for word in section 2 of docs/handoff/2026-11-22.md)
 
-**Next: Phase 1, fast suite.** Under 10 minutes locally, with the same pass, fail and skip
-counts serial and parallel (xdist; fix tests that share state). ci.yml is protected: write the
-change it would need here for the operator. The lever, as measured:
-- About 6,000 worker-seconds a run at 4 workers (1,516 s on 2026-11-23, 32,253 tests).
-- `scripts/nmas-workers` caps local runs at 4 (`MAX_WORKERS`). It is not a protected guard,
-  but `scripts/nmas-test`, which asks it, is.
-- Its memory formula allows about 17 on a free laptop (24 CPUs, 30 GiB); about 15 workers
-  would reach 10 minutes if the run scales.
+**Now: Phase 1, fast suite, in progress.** The goal: under 10 minutes locally, with the same
+pass, fail and skip counts serial and parallel (xdist; fix tests that share state).
+- **Done** (branch `rulings/gui-kit`):
+  - bd1cd9ae (C4201): `scripts/nmas-workers` `MAX_WORKERS` 4 to 12, CI's `--cap 4` sizing
+    unchanged. test_ai_never parses each file once a run (627 to 11 worker-seconds).
+  - 0b27eee9 (C4202): test_mercury_cli's load flake.
+- **Measured:**
+  - 4 workers: 1,516 s, 5,735 worker-seconds.
+  - 11 workers: 913 s.
+  - 12 workers, on bd1cd9ae: 846 s, 8,578 worker-seconds, lowest MemAvailable 5.5 GiB from
+    about 16 GiB free.
+  - More workers inflate each test's time, so the next lever is the slowest tests (worker
+    seconds at 11 workers): test_v2_layout_in_a_browser 265, test_ai_intent_change 227,
+    test_profile_apply_v2 177, test_live_merge 133, test_console_records_at_rest 117,
+    test_source_index 108 (one test, 107 s), test_v2_context_is_drawn 92 (its floors 81 s),
+    test_no_utc_drawn 80 and test_display_names_drawn 77 (each one walk test).
+  - The scratch tool that reads a JUnit file's worker-seconds was not committed.
+- **Next:**
+  1. A full run of the branch head at `-n 12` with `NMAS_TEST_TIMEOUT=2900`. If only the
+     rulings file's 12 fail, fast-forward main to it and push.
+  2. A serial run (`-p no:xdist`, about 100 minutes; start it before 00:20 Denver) and
+     compare its counts with the parallel run's. Shared state found is fixed (C4200 is one
+     case, its victims already isolated).
+  3. Speed up the slowest tests above, without changing what they assert, until a full run
+     is under 600 s.
+- **ci.yml:** no change is needed. CI already runs five shards (`scripts/nmas-shards`) at
+  `--cap 4`.
 - A full run needs `NMAS_TEST_TIMEOUT` over its length: nmas-test's default session bound is
   300 s.
-- C4200 (a test leaving an incident in a worker's state) is one shared-state case already known.
 
 **Phase 2, the AI assistant**, **Phase 3, GUI usability**, **Phase 4, page performance**: as
 section 2 of docs/handoff/2026-11-22.md states, with section 2 above for Phase 2's reads.

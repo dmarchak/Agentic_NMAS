@@ -31,3 +31,10 @@ One line each: decision | why (the record) | how to reverse.
 - test_heal_analysis_never_read (2 tests): left failing, in the rulings file | the operator named it as needing their words | rule it.
 - C3886 (test_heal_act's one apply path): left failing, in the rulings file | its fix is on the device-write path and needs a measurement first | rule it.
 - C4090 (test_v2_context_is_drawn's ten loops): left failing, in the rulings file | each needs a real captured record, or a list that only shrinks raised | rule it.
+
+## Phase 1, the fast suite
+
+- `scripts/nmas-workers` `MAX_WORKERS` 4 to 12 for local runs (bd1cd9ae, C4201), with tests/test_nmas_workers.py's laptop case and its CI case (`min(4, workers)`, CI's own `--cap 4`) updated under Test-Weakened trailers | the operator's Phase 1 of 2026-11-22, "a fast suite: under 10 minutes locally"; measured, 11 workers 913 s, its lowest MemAvailable 5.0 GiB; CI's sizing, the operator's 2026-11-12 record, unchanged | revert bd1cd9ae.
+- test_ai_never parses each product file once a run (bd1cd9ae): 627 to 11 worker-seconds, no assertion changed | the largest single cost in the run | revert bd1cd9ae.
+- test_mercury_cli compares the printed verdict with the one the command computed (0b27eee9, C4202): its second check timed a mutant out at the gate's 0.5 s floor under 12 workers' load | Phase 1's same counts serial and parallel; the product's bound is unchanged | revert 0b27eee9.
+- The full run on bd1cd9ae at 12 workers: 846 s, 32,173 passed, 13 failed (the rulings file's 12 and C4202's, fixed in 0b27eee9); main stays at bdfb1f95 until a run of the head shows the rulings file's 12 alone | the operator's condition for moving main | none.
