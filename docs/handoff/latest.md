@@ -11,7 +11,8 @@ agent making the rulings under their policy** (decisions-2026-11-23.md, first se
 Nothing the plan needs waits on the operator. What does wait on them is in section 3, and it
 blocks only a deploy.
 
-- **main is 120abc10** (pushed): overnight/gui fast-forwarded, merge/kit-into-main merged on it
+- **main is c9fe36a2** (pushed; Phase 0 moved it to 120abc10, Phase 1's first step to
+  c9fe36a2): overnight/gui fast-forwarded, merge/kit-into-main merged on it
   (40e88747), the rulings and the merge's fix-forward on top (branch `rulings/gui-kit`).
 - **The full suite on 120abc10** (4 workers, 1,516 s): 32,173 passed, 12 failed, 68 skipped.
   The 12 are exactly `docs/handoff/rulings-overnight-gui.md`'s. Every other test is green.
@@ -67,8 +68,8 @@ pass, fail and skip counts serial and parallel (xdist; fix tests that share stat
     test_no_utc_drawn 80 and test_display_names_drawn 77 (each one walk test).
   - The scratch tool that reads a JUnit file's worker-seconds was not committed.
 - **Next:**
-  1. A full run of the branch head at `-n 12` with `NMAS_TEST_TIMEOUT=2900`. If only the
-     rulings file's 12 fail, fast-forward main to it and push.
+  1. Done: the full run of c9fe36a2 at 12 workers took 809 s (32,174 passed, the rulings
+     file's 12 failed, 68 skipped), and main was fast-forwarded to c9fe36a2 and pushed.
   2. A serial run (`-p no:xdist`, about 100 minutes; start it before 00:20 Denver) and
      compare its counts with the parallel run's. Shared state found is fixed (C4200 is one
      case, its victims already isolated).
