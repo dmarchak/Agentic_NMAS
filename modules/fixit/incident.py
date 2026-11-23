@@ -738,11 +738,13 @@ def calls_of(incident: Incident) -> dict:
     ``about_other``: a call about another incident, or one that joined one). Every call of
     this incident's own investigations (`investigates`) is its call too, though no line names
     it: one its watchdog stopped, or one that raised after its calls, keeps no proposal (the
-    correctness review's G5 MEDIUM-1). Read within the incident (`calls.rows_since` from when
-    it was detected), never the whole record; a record with no start line and no proposal
-    naming a call reads nothing (every investigation takes a start line first, the one start
-    path). ``unreadable`` (this record or the calls') holds no calls, never none in their
-    place; ``partial`` when the calls' record holds no row for an id named (``missing``)."""
+    correctness review's G5 MEDIUM-1), and so is every self-healing analysis of it
+    (`analyses`; ruling 16, the operator, 2026-11-18: "heal_analysis calls count toward the
+    incident's AI cap"), which takes no line here at all, so the record of AI calls is read
+    whether or not this record holds a line. Read within the incident (`calls.rows_since` from
+    when it was detected), never the whole record. ``unreadable`` (this record or the calls')
+    holds no calls, never none in their place; ``partial`` when the calls' record holds no row
+    for an id named (``missing``)."""
     _check(incident)
     rec = read(incident)
     if rec["state"] == "unreadable":
@@ -752,8 +754,6 @@ def calls_of(incident: Incident) -> dict:
         for c in (line.get("calls") or []) if "proposal" in line else []:
             if c not in ids:
                 ids.append(c)
-    if not ids and not any("start" in line for line in rec["lines"]):
-        return {"state": "ok", "calls": [], "missing": [], "error": ""}
     from modules.ai import calls
 
     got = calls.rows_since(datetime.datetime.fromtimestamp(incident.detected,
@@ -762,11 +762,12 @@ def calls_of(incident: Incident) -> dict:
         return {"state": "unreadable", "calls": [], "missing": [],
                 "error": (f"the record of AI calls could not be read ({got['error']}), so what "
                           + (f"{incident.id}'s {len(ids)} call(s)" if ids else
-                             f"{incident.id}'s investigations") + " cost is not known")}
+                             f"{incident.id}'s AI calls") + " cost is not known")}
     rows = {r.get("id"): r for r in got["rows"]}
     missing = [c for c in ids if c not in rows]
     ids += [r["id"] for r in got["rows"]
-            if r.get("id") and r["id"] not in ids and investigates(r, incident)]
+            if r.get("id") and r["id"] not in ids
+            and (investigates(r, incident) or analyses(r, incident))]
 
     def about(row) -> str:
         subject = (row or {}).get("subject")
@@ -804,11 +805,25 @@ def investigates(row: dict, incident: Incident) -> bool:
             and subject.get("kind") == "heal_incident" and subject.get("id") == incident.id)
 
 
+def analyses(row: dict, incident: Incident) -> bool:
+    """Whether *row*, a call in the record of AI calls, is the self-healing analysis's of
+    *incident* (`heal_analysis.FEATURE`, its subject this incident, as `heal_analysis.prepare`
+    writes it): spend toward the incident's AI cap (ruling 16, the operator, 2026-11-18)."""
+    subject = (row or {}).get("subject")
+    return (row.get("feature") == ANALYSIS_FEATURE and isinstance(subject, dict)
+            and subject.get("kind") == "heal_incident" and subject.get("id") == incident.id)
+
+
+#: The self-healing analysis's feature as the record of AI calls names it
+#: (`heal_analysis.FEATURE`), named here and never imported: the analysis's module is reached
+#: only by those who draw it (tests/test_read_loop_never_read.py, `KNOWN_ANALYSIS`).
+ANALYSIS_FEATURE = "heal_analysis"
+
+
 def cost_so_far(incident: Incident) -> dict:
     """What *incident*'s AI calls cost (`calls_of`), summed each time: ``{"state":
     "ok"|"partial"|"unreadable", "usd", "calls", "missing", "error"}``. ``unreadable`` has no
-    sum, never 0; ``partial`` the sum of the calls the record holds; a record with no start
-    line and no proposal naming a call is 0 with nothing read."""
+    sum, never 0; ``partial`` the sum of the calls the record holds; no call of it is 0."""
     got = calls_of(incident)
     if got["state"] == "unreadable":
         return {"state": "unreadable", "usd": None, "calls": 0, "missing": [],

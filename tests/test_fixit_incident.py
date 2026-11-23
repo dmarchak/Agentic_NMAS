@@ -996,34 +996,44 @@ class TestTheCost:
         assert F.cost_so_far(inc())["usd"] == pytest.approx(0.37)
         assert F.cancel(inc(), ACTOR, "access")["ai_usd"] == pytest.approx(0.37)
 
-    def test_no_call_named_is_nothing_spent_with_nothing_read(self, lab, monkeypatch):
-        from modules.ai import calls
-        asked = []
-        monkeypatch.setattr(calls, "rows_since", lambda start: asked.append(start) or {
-            "state": "unreadable", "rows": [], "error": "planted"})
-        F.record_proposal(inc(), "mercury", R.KEY, {"subs": ["101"]})
-        assert F.cost_so_far(inc()) == {"state": "ok", "usd": 0.0, "calls": 0, "missing": [],
-                                       "error": ""}
-        assert F.cost_so_far(inc("hi-0000000000ee"))["usd"] == 0.0 and asked == []
-
     def test_an_investigations_calls_no_line_names_are_its_own_and_no_others(self, lab):
-        """The correctness review's G5 MEDIUM-1: once an investigation took its start line,
-        every call of this incident's own investigations (a person's press and R1's, by their
-        features and this incident's subject) is its spend though no proposal names it (a
-        stopped or failed one keeps none); another incident's call, another feature's call
-        about this incident (the self-healing analysis) and a call whose subject is another
-        kind under the same id are not."""
+        """The correctness review's G5 MEDIUM-1: every call of this incident's own
+        investigations (a person's press and R1's, by their features and this incident's
+        subject) is its spend though no proposal names it (a stopped or failed one keeps
+        none), and so is the self-healing analysis's of it (ruling 16, the operator,
+        2026-11-18: "heal_analysis calls count toward the incident's AI cap"), start line or
+        none; another incident's call and a call whose subject is another kind under the same
+        id are not."""
         mine = {"kind": "heal_incident", "id": ID}
         a_call(CALL_A, 0.30, subject=mine)
         a_call(CALL_B, 0.20, subject=mine, feature="fixit_auto")
         a_call(CALL_C, 0.50, subject={"kind": "heal_incident", "id": "hi-0000000000ee"})
         a_call("ai-00000000000000ee", 0.40, subject=mine, feature="heal_analysis")
         a_call("ai-00000000000000ff", 0.60, subject={"kind": "evaluation_case", "id": ID})
-        assert F.cost_so_far(inc())["usd"] == 0.0, "no start line: nothing read"
+        before = F.cost_so_far(inc())
+        assert (before["state"], before["usd"], before["calls"]) == (
+            "ok", pytest.approx(0.90), 3), before
         F.claim_start(inc(), "person:start", trigger="person", state="started", by=ACTOR,
                       verified="access")
         got = F.cost_so_far(inc())
-        assert (got["state"], got["usd"], got["calls"]) == ("ok", pytest.approx(0.50), 2), got
+        assert (got["state"], got["usd"], got["calls"]) == ("ok", pytest.approx(0.90), 3), got
+
+    def test_a_self_healing_analysis_counts_toward_the_cap_before_any_start(self, lab):
+        """Ruling 16 (the operator, 2026-11-18): an incident's self-healing analysis takes no
+        line in its troubleshooting record, and its call is spend toward the incident's AI cap
+        all the same, so the first press's cap check (`policy.cap_state`, asked before any
+        start line) counts it."""
+        from modules.ai import heal_analysis as HA
+        from modules.fixit import policy as P
+        from modules.settings_schema import write_settings
+        assert (F.ANALYSIS_FEATURE, "heal_incident") == (HA.FEATURE, HA.FINDING)
+        a_call("ai-00000000000000ee", 0.40, subject={"kind": "heal_incident", "id": ID},
+               feature=HA.FEATURE)
+        assert F.read(inc())["lines"] == []
+        assert F.cost_so_far(inc())["usd"] == pytest.approx(0.40)
+        assert write_settings({"ai_cap_usd_per_incident": 0.50})["ok"]
+        got = P.cap_state(inc(), 0.20)
+        assert got["state"] == "refused" and got["spent"] == pytest.approx(0.40), got
 
     def test_the_live_cap_adds_this_investigations_calls_once(self, lab):
         """The gateway's live incident cap (`fixit_troubleshoot.incident_cap`): the incident's

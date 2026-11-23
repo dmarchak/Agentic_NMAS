@@ -581,6 +581,11 @@ class TestGuards:
         d = one(GOLDEN + ROUTE4, src=src)
         assert (d["outcome"], d["guard"]["guard"]) == ("held", 4)
         assert words in d["words"] and src.reads == 0
+        # Its guard's name says what it holds (C4029, the operator, 2026-11-18: "Remove the
+        # retired behaviour from guard names"), never the golden that departs from intent,
+        # which holds nothing since C3909: Needs attention's held row reads it.
+        assert d["guard"]["name"] == (
+            "heal off for this device (an observe-only device or a host)"), d["guard"]
 
     def test_5_the_topology_hold(self, lab):
         held = {"held": True, "until": iso(T0 + 600), "words": "held until then",

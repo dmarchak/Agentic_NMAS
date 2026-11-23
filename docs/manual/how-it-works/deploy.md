@@ -58,7 +58,9 @@ the server answers from git and the credential store. Planning opens no device s
    layer whose render sends the line), or from the monitoring profile, because merge-only
    sends every missing line and you should see what rides along.
 5. **Check the gates.** Read: the template's approval, the render's report, the receipts (how
-   often each flagged line was authorised on this device before), the rolled-back record and
+   often each flagged line was authorised on this device before; a fix's run that left the
+   configuration as before, or whose port tripped again, authorised nothing), the rolled-back
+   record and
    the device lock. Sent: nothing. Recorded: nothing. Each gate is drawn by name: template
    approved; committed intent; the template reproduces the device; every line modelled or
    acknowledged; printable ASCII; lines needing a reason: the dangerous ones (`shutdown`,

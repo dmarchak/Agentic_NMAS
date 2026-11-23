@@ -200,6 +200,69 @@ def _in_population(network: str, inc: dict, now: float, dry=frozenset()) -> tupl
     return "", None
 
 
+def _selected(network: str, trigger: str, key: str, match: dict, incs: list, now: float,
+              skip=()) -> dict:
+    """THE incidents one retry of *trigger* (keyed *key*) sends back, of *incs*: ``{id:
+    {"kind", "hold", "decision", "device"}}`` (`run`'s population, the module's docstring).
+    *match*: the saved script's (``script_saved``: only the incidents whose classified problem
+    holds it). Save's words read the same selection (`would_run`). A read."""
+    from modules import incident_page
+    from modules import problem as P
+    from modules.heal import batch as B
+    from modules.nsot import saved_plans
+
+    plans, skip = {}, set(skip or ())
+    dry = _dry_run_decisions(network, incs)
+    for inc in incs:
+        if inc.get("id") in skip or B.claimed_by_batch(inc, now):
+            continue
+        if trigger == "daily" and not due_daily(inc, now):
+            continue
+        if any(r.get("key") == key for r in inc.get("retries") or []):
+            continue
+        kind, hold = _in_population(network, inc, now, dry)
+        if trigger == "now_auto" and (inc.get("standing") or {}).get("outcome") != "would_heal":
+            continue                                  # the catch-up is the would-heals' alone
+        if not kind or _firing(network, inc["id"]):
+            continue
+        if trigger == "script_saved":
+            try:
+                prob = P.classify(incident_page.resolve(network, inc["id"]))
+            except Exception as exc:                  # noqa: BLE001 (said; not retried)
+                log.error("heal: %s's problem could not be classified: %s", inc["id"], exc)
+                continue
+            if not prob.condition or not saved_plans.matches(match or {}, prob):
+                continue
+        plans[inc["id"]] = {"kind": kind, "hold": hold,
+                            "decision": (inc.get("standing") or {}).get("decision") or "",
+                            "device": inc.get("device") or ""}
+    return plans
+
+
+def would_run(network: str, match: dict, *, now: float = None, exclude=()) -> dict:
+    """What saving an Automatic script with *match* runs on (ruling 3, the operator,
+    2026-11-18: "Save names the count and the devices it will run on. No new confirm"): the
+    ``script_saved`` retry's own selection (`_selected`), read now, less *exclude* (the
+    incident the card is on): ``{"auto", "incidents": [{"incident", "device"}], "devices",
+    "error"}``. *auto*: self-healing is in Auto now, so Save sends them back at once (each
+    decided again, the script fired where Mercury has no fix of its own); otherwise they are
+    tried when it is switched on (the switch-on's retry). An unreadable store is *error*, with
+    no incidents. A read."""
+    from modules.heal import incidents, policy
+
+    now = time.time() if now is None else float(now)
+    auto = policy.current(network, now).get("mode") == "auto"
+    got = incidents.read(network)
+    if got["state"] == "unreadable":
+        return {"auto": auto, "incidents": [], "devices": [], "error": got["error"]}
+    plans = _selected(network, "script_saved", "script_saved:would-run", match,
+                      got["incidents"], now)
+    hit = [{"incident": i, "device": p["device"]} for i, p in plans.items()
+           if i not in set(exclude or ())]
+    return {"auto": auto, "incidents": hit,
+            "devices": sorted({h["device"] for h in hit if h["device"]}), "error": ""}
+
+
 def run(network: str, trigger: str, *, instance: str, script: str = "", how: str = "saved",
         by: str = "", now: float = None, decide_now: bool = True, skip=()) -> dict:
     """The retry pass for *network* and one *trigger* instance (the module's docstring):
@@ -210,8 +273,6 @@ def run(network: str, trigger: str, *, instance: str, script: str = "", how: str
     *skip* (C3823): incidents a batch turning self-healing on fixes itself (the switch-on's
     restores and saved scripts, `heal.batch.run`), never retried by this pass: no retry row,
     nothing sent back."""
-    from modules import incident_page
-    from modules import problem as P
     from modules.heal import incidents, policy
     from modules.nsot import saved_plans
 
@@ -255,31 +316,9 @@ def run(network: str, trigger: str, *, instance: str, script: str = "", how: str
     got = incidents.read(network)
     if got["state"] == "unreadable":
         return dict(out, words=got["error"])
-    plans, skip = {}, set(skip or ())
     from modules.heal import batch as B
-    dry = _dry_run_decisions(network, got["incidents"])
-    for inc in got["incidents"]:
-        if inc.get("id") in skip or B.claimed_by_batch(inc, now):
-            continue
-        if trigger == "daily" and not due_daily(inc, now):
-            continue
-        if any(r.get("key") == key for r in inc.get("retries") or []):
-            continue
-        kind, hold = _in_population(network, inc, now, dry)
-        if trigger == "now_auto" and (inc.get("standing") or {}).get("outcome") != "would_heal":
-            continue                                  # the catch-up is the would-heals' alone
-        if not kind or _firing(network, inc["id"]):
-            continue
-        if trigger == "script_saved":
-            try:
-                prob = P.classify(incident_page.resolve(network, inc["id"]))
-            except Exception as exc:                  # noqa: BLE001 (said; not retried)
-                log.error("heal: %s's problem could not be classified: %s", inc["id"], exc)
-                continue
-            if not prob.condition or not saved_plans.matches(entry.get("match") or {}, prob):
-                continue
-        plans[inc["id"]] = {"kind": kind, "hold": hold,
-                            "decision": (inc.get("standing") or {}).get("decision") or ""}
+    plans = _selected(network, trigger, key, entry.get("match") or {}, got["incidents"], now,
+                      skip)
     if not plans:
         return dict(out, ran=True, words="nothing to retry")
 

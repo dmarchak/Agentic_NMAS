@@ -849,7 +849,7 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     else:
         nxt = {"kind": "hand_over", "label": "Hand over", "href": actions["hand_over"]["href"]}
     out["why_person"] = ("" if state == "passed" else
-                         _why_person(nxt, offer, found, out.get("ai_answer")))
+                         _why_person(nxt, offer, found, out.get("ai_answer"), network))
     out["bluf"] = {k: v for k, v in B.bluf(B.model_of(found, nxt)).items()
                    if k in ("what", "impact", "fix", "severity", "title", "since", "evidence",
                             "problem", "kept")}
@@ -1034,19 +1034,24 @@ def _and_words(items: list) -> str:
     return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
 
 
-def _why_person(nxt: dict, offer: dict, found: dict, answer: dict = None) -> str:
+def _why_person(nxt: dict, offer: dict, found: dict, answer: dict = None,
+                network: str = "") -> str:
     """Why a person is needed, one short reason beside its one action (the operator,
-    2026-11-16), or ``""``: guard 4's disagreement, guard 6's many devices, a saved script, the
-    AI's plan, no saved fix yet (the AI can investigate), or nothing safe found."""
+    2026-11-16), or ``""``: guard 4's hold (a device Mercury may not heal), a saved script, the
+    AI's plan, no saved fix yet (the AI can investigate), or nothing safe found. Guard 4 holds
+    only an observe-only device or a host since C3909 (`decide._g4`), and guard 6 holds
+    nothing (`decide._g6`), so neither is said as a golden disagreeing with intent or as many
+    devices at once (C4029, the operator, 2026-11-18). *network*: the section's own (the
+    Incidents row's found carries none, C4086)."""
     from modules import problem as P
 
     inc = (found or {}).get("incident") or {}
+    network = network or (found or {}).get("network") or ""
     g = (inc.get("standing") or {}).get("guard")
     g = g.get("guard") if isinstance(g, dict) else g
     if g == 4:
-        return "Saved config and intent disagree: decide which is right"
-    if g == 6:
-        return "Many devices changed at once: approve fixing them all"
+        return ("Self-healing is off for this device (an observe-only device or a host): a "
+                "person fixes it")
     standing = inc.get("standing") or {}
     if standing.get("outcome") == "would_heal":
         # A dry run's would-heal says what Mercury would put back and why it has not (the
@@ -1073,12 +1078,12 @@ def _why_person(nxt: dict, offer: dict, found: dict, answer: dict = None) -> str
         # stream says Mercury has no fix it runs by itself.
         from modules.heal import retry
         try:
-            said = retry.reason((found or {}).get("network") or "", inc)
+            said = retry.reason(network, inc)
         except Exception as exc:                      # noqa: BLE001 (said without it)
             log.error("fixit: %s's retries could not be said: %s", inc.get("id"), exc)
             said = ""
         if said:
-            return said
+            return said + _switch_off(network, inc)
     if kind == "start":
         try:
             prob = P.classify(found)
@@ -1092,6 +1097,24 @@ def _why_person(nxt: dict, offer: dict, found: dict, answer: dict = None) -> str
     # Standing on a decision with nothing above to say: the decision's own reason, never a
     # reasonless "waits for a person" (the operator, 2026-11-16).
     return _standing_words(found) if standing else ""
+
+
+def _switch_off(network: str, inc: dict) -> str:
+    """What a lost stream's status line adds while the network's automatic troubleshooting is
+    off (ruling 12, the operator, 2026-11-18: "restore 'the switch is off' on the lost stream's
+    status line"): ", but automatic troubleshooting is off for this network" (the words R1's
+    refusal says, `fixit.auto.eligible`), linked to the switch where it is drawn
+    (`switch_linked`); "" for any other incident, with the switch on, or unreadable."""
+    from modules.fixit import auto as A
+
+    try:
+        if not A.no_code_fix(inc or {}) or A.switch(network)["on"]:
+            return ""
+    except Exception as exc:                          # noqa: BLE001 (said without it)
+        log.error("fixit: %s's automatic troubleshooting switch could not be read: %s",
+                  (inc or {}).get("id"), exc)
+        return ""
+    return ", but automatic troubleshooting is off for this network"
 
 
 def _standing_words(found: dict) -> str:

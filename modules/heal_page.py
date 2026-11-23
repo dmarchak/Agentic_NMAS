@@ -533,9 +533,13 @@ def _sent_list(form, key) -> list:
 
 
 def _auto_refusal(network: str) -> str:
-    from modules.sdn import modes as sdn_modes
+    """Why the Mode dropdown does not offer Auto on *network*: the heal policy's own answer
+    (`heal.policy.auto_refusal`; C4029, the operator, 2026-11-18: "Mode must offer Auto
+    wherever the policy allows it"), never SDN's stage gate, which the policy no longer
+    holds."""
+    from modules.heal import policy as H
 
-    return sdn_modes.auto_refusal(network)
+    return H.auto_refusal(network)
 
 
 def _mode_words(mode: str, until: str) -> str:

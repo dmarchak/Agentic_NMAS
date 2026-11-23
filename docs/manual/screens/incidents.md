@@ -88,10 +88,11 @@ table; and its status:
   is on, counting the seconds since it began ("Self-healing: restoring edge2 · Apply",
   "Self-healing: fixing with saved script <fix> · verifying"), or the AI's investigation. A
   heal that is only starting reads "· starting". While it needs a person, why, in one short
-  reason, the same its page gives beside its one action: "A saved script can fix this:
-  <fix>", "The AI's plan is ready: needs your approval", the AI's latest finding (labelled
-  **AI**), "No saved fix for <cause> yet: the AI can investigate" or "No saved fix, and the AI
-  found no safe plan"; with none of those, "Waiting for a person: " and the decision's own
+  reason, word for word its page's status line (the same line its Needs attention row says): "A
+  saved script can fix this: <fix>", "The AI's plan is ready: needs your approval", "Mercury
+  refuses its fix as it stands: …", the AI's latest finding (labelled **AI**), a lost stream's
+  "Mercury has no fix it runs by itself for a lost stream; …", "No saved fix for <cause> yet:
+  the AI can investigate" or "No saved fix, and the AI found no safe plan"; with none of those, "Waiting for a person: " and the decision's own
   reason ("would put back “<line>” on <interface> (self-healing was in dry run)"), never a
   reasonless line. A held incident says what holds it and when the next automatic heal is
   allowed. Otherwise what it waits for, and when it began;

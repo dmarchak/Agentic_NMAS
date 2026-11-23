@@ -214,9 +214,12 @@ class TestTheStates:
         # section's `status`), where "Stopped: … Nothing more runs unless you choose." was.
         # Premise corrected again (board R5's status line, becced07; 9f62b2c7, the operator,
         # 2026-11-16: a person's Re-subscribe is never Mercury's fix, so the line says Mercury
-        # has no fix it runs by itself for a lost stream, and that the AI can investigate).
+        # has no fix it runs by itself for a lost stream, and that the AI can investigate), and
+        # that the switch is off (ruling 12, the operator, 2026-11-18).
         status = status_of(sec)
-        assert status.endswith("The AI can investigate"), status
+        assert status.endswith(
+            "The AI can investigate, but automatic troubleshooting is off for this network"), \
+            status
         assert 'data-attempt="1"' in sec and "<strong>failed:</strong>" in sec
         assert f"result={rec['id']}" in sec, "Open the run opens the run's own card"
         # Premise corrected (the operator's R2, 2026-11-14: "Cancel and 'Retry with more

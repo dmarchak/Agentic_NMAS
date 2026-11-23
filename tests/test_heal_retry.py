@@ -203,6 +203,27 @@ class TestAScriptSaved:
         assert got["retried"] == [] and "is no Automatic script" in got["words"], got
         assert record_of(iid)["state"] == "standing"
 
+    def test_save_names_the_incidents_and_devices_the_retry_then_sends_back(
+            self, scripts, monkeypatch):
+        """Ruling 3 (the operator, 2026-11-18: "Save names the count and the devices it will
+        run on. No new confirm"): what Save names before the press (`would_run`) is the
+        script-saved retry's own selection, so it is exactly what the retry then sends back:
+        the matching incidents on edge-b and edge-d, never edge-c's other condition, less the
+        card's own incident."""
+        conditions = {"edge-b": "err_disabled", "edge-c": "down", "edge-d": "err_disabled",
+                      "edge-e": "err_disabled"}
+        monkeypatch.setattr(P, "classify", lambda page: P.Problem(
+            device=page["device"], object="Gi1/0", condition=conditions[page["device"]]))
+        b, _c, d, own = (standing("edge-b"), standing("edge-c"), standing("edge-d"),
+                         standing("edge-e"))
+        said = retry.would_run(NET, {"condition": "err_disabled"}, now=T0, exclude=(own,))
+        assert said["auto"] is True and said["error"] == "", said
+        assert sorted(x["incident"] for x in said["incidents"]) == sorted([b, d]), said
+        assert said["devices"] == ["edge-b", "edge-d"], said
+        got = retry.run(NET, "script_saved", script=SCRIPT, instance=f"{SCRIPT}:t1",
+                        now=T0, decide_now=False)
+        assert sorted(got["retried"]) == sorted([b, d, own]), got
+
 
 class TestNowAuto:
     """C3844 (c4948c2c, the operator, 2026-11-16): while the network is in Auto, each standing

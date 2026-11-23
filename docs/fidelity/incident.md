@@ -163,7 +163,14 @@ its place and its state. Compared by the templates' diff and the tests' render
 full pass (docs/FAST_LANE_DEBT.md). Templates sha256 before:
 `c7874111c11285de3264ae2c4173e1326d1de16148692cdf6351026fe6f2e83d`.
 
-Templates sha256: `468a48d7c485e7698a8d7eed5d4baf027cc551b7b94b5b8a0ef8a160085de783`
+Hashed again 2026-11-23 for the merge of rulings-words (ruling 3 of 2026-11-18, 33bf385f:
+"Save names the count and the devices it will run on. No new confirm."): `_saved_plans_saves.html`'s
+Save card's impact line and the Save's title gain the "runs on" words (how many other open
+incidents it runs the fix on, and their devices). No region moves. Compared by the template
+diff, not by new shots (owed in the full pass, docs/FAST_LANE_DEBT.md). Templates sha256
+before: `468a48d7c485e7698a8d7eed5d4baf027cc551b7b94b5b8a0ef8a160085de783`.
+
+Templates sha256: `138c42a817d7663a935de95fea42b16ca5b0fd0076e143f8c4a13eaa934943d9`
 Templates sha256 before the saved plans card said a right's holders unset (2026-11-15, Gate 1b's review, item 7; the row "Rights not set" below): `770515ac382839dde54d1ae789920a7578375acf87fe6fb9d221961273361976`
 Templates sha256 before C3725's session moved from a press to the proposal's record (2026-11-15, the operator; the session row below): `90974cd13f0f0f2aece5e005c3cc5e3c2c21726aa22192e6535bce1ca4953909`
 Templates sha256 before the verify-speed gate's page fixes (2026-11-14, C3725, C3727, C3728, C3729, below): `b8969275f9560c0d423e154d881391989736eb6548a35bb27ab4020fa5542a6c`

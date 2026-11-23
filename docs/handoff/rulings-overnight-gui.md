@@ -19,6 +19,15 @@ Measured on `integrate/gui-kit-main` (overnight/gui with merge/kit-into-main mer
   2. compare a digest of each secret line;
   3. leave the act its own raw read (today's code: right verdict, two sessions).
   - Recommendation: option 1, a verdict the engine computes on raw text and records masked.
+- **From tonight's device-write reviews (all three branches were reviewed safe and merged),
+  yours to decide:**
+  - C4207 (ed71eb35): should the interim's can't-fix fire Automatic scripts and the diagnosis
+    action (as it now does), or only stand and give R1 its start? Recommendation: only stand
+    and give R1 its start.
+  - C4208 (f376e955): should an attached tail's R1 start fire the open incident's scripts
+    first? Recommendation: no; the heal's own decision comes first.
+  - C4206 (9f456d31): may a decided unconfirmed err-disable report match `link_down` fixes?
+    Recommendation: yes, once decided (that is unchanged), and fix the commit title's words.
 - Section 4, C4090: **left failing, its row open.** The records it needs live in the host's
   data store, and the agent's reads of it are refused by the config-read hook
   (`scripts/hooks/claude-no-raw-config-reads`). `scripts/nmas-config-read` reads goldens and

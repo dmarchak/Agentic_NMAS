@@ -191,11 +191,13 @@ class TestNoCatchUp:
         iid = plant()
         x = S.view(NET, incident_page.resolve(NET, iid), now=NOW)
         assert x["actions"]["start"]["offered"] and x["auto"]["on"] is False
-        # Premise corrected (9f62b2c7 and 106c117d, the operator, 2026-11-16: the status line
-        # says why a person is needed, from the incident's own record: a lost stream has no fix
-        # Mercury runs by itself, and the AI can investigate): the switch being off is its
-        # costs line's (`auto`, off above), no longer the status line's.
-        assert x["status"].endswith("The AI can investigate"), x["status"]
+        # The status line says why a person is needed, from the incident's own record (9f62b2c7
+        # and 106c117d, the operator, 2026-11-16: a lost stream has no fix Mercury runs by
+        # itself, and the AI can investigate), and that the switch is off (ruling 12, the
+        # operator, 2026-11-18: "restore 'the switch is off' on the lost stream's status line").
+        assert x["status"].endswith(
+            "The AI can investigate, but automatic troubleshooting is off for this network"), \
+            x["status"]
 
     def test_a_failure_after_it_went_on_does_start(self, ai, clock):
         turn_on(DETECTED - 1)

@@ -134,17 +134,20 @@ AI_STATES = ("investigating", "ended")
 
 
 def _fixit_of(network: str, found: dict) -> dict:
-    """``{"state", "ai"}``: the incident's troubleshooting section state (`fixit.section.view`,
-    "" when it cannot be read) and what its rows say of the AI (Gate 2): ``{"state":
-    "investigating", "since", "words"}`` while an investigation runs (*since* its start line's
-    time), ``{"state": "ended", "since", "words"}`` once one ended (*words* the section's own
-    one-line status: what it found, or why it stopped), or None when the AI never started on
-    it. From the section's view and the incident's start lines: a read of its records."""
+    """``{"state", "ai", "plan", "working", "status"}``: the incident's troubleshooting section
+    state (`fixit.section.drawn`, "" when it cannot be read), what its rows say of the AI (Gate
+    2): ``{"state": "investigating", "since", "words"}`` while an investigation runs (*since*
+    its start line's time), ``{"state": "ended", "since", "words"}`` once one ended (*words*
+    the section's own one-line status: what it found, or why it stopped), or None when the AI
+    never started on it; and *status*, the incident page's own status line as its page draws
+    it (C4086, the operator, 2026-11-18: "one shared source for 'why a person is needed'"),
+    which the row and Needs attention say while it needs a person. From the section as the
+    page draws it and the incident's start lines: a read of its records."""
     from modules.fixit import incident as F
     from modules.fixit import section
 
     try:
-        v = section.view(network, found)
+        v = section.drawn(network, found)
     except Exception as exc:                            # noqa: BLE001 (a row still draws)
         log.warning("incidents list: %s's troubleshooting of %s cannot be read (%s)",
                     network, found.get("id"), type(exc).__name__)
@@ -176,7 +179,7 @@ def _fixit_of(network: str, found: dict) -> dict:
     # fix, a gap) is the section's "proposed" too, and must never be said as one to approve.
     return {"state": v.get("state") or "", "ai": ai, "plan": bool(v.get("proposal")),
             "working": " · ".join(w for w in (v.get("working"), v.get("working_step")) if w),
-            "why_person": v.get("why_person") or ""}
+            "status": v.get("status") or ""}
 
 
 def _group(st: dict, tl: dict, how: dict = None) -> str:
@@ -204,9 +207,14 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
     device = (inc or {}).get("device") or entry.get("device") or ""
     heal = IP.state_of(inc, entry, decisions)
     # Read for one with a troubleshooting record, and for any that needs a person, whose row
-    # says why (the operator, 2026-11-16).
+    # says why (the operator, 2026-11-16): by its heal state or by the page's own state with
+    # no troubleshooting read (C4086: a lost stream nothing has tried needs a person by the
+    # page's state alone).
+    needs = heal == "needs_person" or (
+        heal not in IP.RESOLVED
+        and IP.status(inc, entry, decisions, "")["state"] == "needs_person")
     fx = (_fixit_of(network, found) if heal not in IP.RESOLVED and (
-        found["id"] in fixit_ids or heal == "needs_person")
+        found["id"] in fixit_ids or needs)
           else {"state": "", "ai": None, "plan": False})
     fixit = fx["state"]
     st = IP.status(inc, entry, decisions, fixit)
@@ -260,7 +268,7 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
             # one line ("Waiting for a person: …" while it needs one), "" once resolved.
             "status": "" if resolved else (
                 fx.get("working") or fx.get("held")
-                or (fx.get("why_person") if st["state"] == "needs_person" else "")
+                or (fx.get("status") if st["state"] == "needs_person" else "")
                 or grace_words(inc, st["why"])
                 or status_words(st["state"], st.get("reason") or WAITS.get(st["why"], ""))),
             "since": tl["detected"]["at"] or (inc or {}).get("opened_at")

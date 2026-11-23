@@ -1,20 +1,22 @@
-"""The detect pass: each watching incident's device read, until the grace period settles it
-(board H, part H2; docs/HEAL_TO_INTENT.md section 4 step 1, and N1). It reads devices and
+"""The detect pass: each watching incident's device read, and the read settling it (board H,
+part H2; docs/HEAL_TO_INTENT.md section 4 step 1, and N1). It reads devices and
 changes none: the read is `drift_check.check_device`, the same read and comparison as "Check
 drift now" (C2336), a stitched read refused and its session closed, its result merged into the
 network's stored run so the drift row says what it found.
 
 **A pass, per network, under its heal lock** (`incidents.HealLock`: one at a time across
 processes, refused by name). In it:
-1. the network's mode (`policy.current`): off (or stopped everywhere) closes every watching
-   or standing incident, "nothing new starts", and reads nothing; an AUTO whose expiry passed
-   is recorded once (`policy.record_expiry`);
-2. each watching incident, oldest first: the grace period's judgement (`grace.judge`) on its
-   reads and the outside changes its triggers hold; a read made when one is due (the first at
-   once, the second at least ``heal_grace_seconds`` after the first: 120 s on a network marked
-   lab, 900 s otherwise);
+1. the network's mode (`policy.current`): off (or stopped everywhere) reads nothing and
+   starts nothing, and every open incident stays open, waiting for self-healing (C3880, the
+   operator, 2026-11-16: "Self-healing Off must not close standing incidents"); an AUTO whose
+   expiry passed is recorded once (`policy.record_expiry`);
+2. each watching incident, oldest first: its device read once and judged on that read
+   (`grace.judge`, ``once``): no grace period and no second read (round 2 of the speed pass,
+   the operator, 2026-11-17: "no grace for anyone"), so a drifted read settles it at once; a
+   change a person's own press answered (kept into intent, or put back) ends its incident
+   as that press says;
 3. each attached member read once: it is still checked, and never healed on its own;
-4. an incident the grace period settles (`grace.SETTLED_STATES`) is made ``ready``; one sent
+4. an incident its read settles (`grace.SETTLED_STATES`) is made ``ready``; one sent
    back from standing (C2813) that settled on THE departure its decision judged stands on that
    decision again (`incidents.restand`), never a second decision of it;
 5. each Tier 2 proposal still waiting for a person (`decisions.proposals`) has its device read
@@ -31,7 +33,7 @@ processes, refused by name). In it:
 
 **Where H2 ends.** A ready incident is the decision's (H3): `incidents.ready(network)` lists
 them, each whole, and the decision takes one with `incidents.claim`. Nothing here classifies,
-plans, guards (but the grace period) or sends.
+plans, guards or sends.
 
 **The runner** (`start`): one thread in the app's process, a pass over every network with a
 watching or ready incident each `PASS_SECONDS`, and at once when a trigger was sighted
@@ -41,8 +43,7 @@ H17), and each heal it made is started as its own job (`act.run`, H4). After eve
 the notify step (H8, `_notify_step`): each new can't-fix on any network is told about once,
 with its AI analysis, by the notifier (`modules/heal_notice.py`), whose answer the runner
 never reads.
-An incident the decision deferred (`incidents.defer`) is not read before its time, and its
-grace period restarts there.
+An incident the decision deferred (`incidents.defer`) is not read before its time.
 """
 
 import logging

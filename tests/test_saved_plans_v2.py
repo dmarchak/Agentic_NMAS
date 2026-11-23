@@ -96,6 +96,38 @@ class TestTheCard:
         assert e["match"] == {"condition": "err_disabled", "cause": "BPDU guard"}
         assert e["mode"] == "auto" and e["promoted_by"] == PERSON, "Save is the approval"
 
+    def test_save_names_the_count_and_the_devices_it_will_run_on(self, card, monkeypatch):
+        """Ruling 3 (the operator, 2026-11-18: "Save names the count and the devices it will
+        run on. No new confirm"; G3-M1, C4050): the default Save's line and its title name the
+        other open incidents it runs on and their devices, from the script-saved retry's own
+        selection (`heal.retry.would_run`, asked with the card's match, its own incident
+        left out), before the press; Save stays one press."""
+        from modules.heal import retry
+        asked = []
+
+        def would_run(network, match, *, now=None, exclude=()):
+            asked.append((network, dict(match), tuple(exclude)))
+            return {"auto": True, "devices": ["s3", "s5"], "error": "",
+                    "incidents": [{"incident": "hi-s3", "device": "s3"},
+                                  {"incident": "hi-s5", "device": "s5"}]}
+        monkeypatch.setattr(retry, "would_run", would_run)
+        html = _html(_get(card))
+        line = re.search(r'<p class="simple-impact">(.*?)</p>', html).group(1)
+        assert "Save runs it now on 2 other open incidents, on s3 and s5" in line, line
+        assert 'data-runs-on="2" data-devices="s3 s5"' in line, line
+        save = re.search(r'<button[^>]*data-save="default"[^>]*>', html).group(0)
+        assert "Save runs it now on 2 other open incidents, on s3 and s5" in save, save
+        assert "hx-confirm" not in save, "no new confirm"
+        ((network, match, exclude),) = asked
+        assert network == NET and exclude == (INC,), asked
+        assert match["condition"] == "err_disabled" and match["cause"] == "BPDU guard", match
+        # Not in Auto, the same selection is named for when self-healing is switched on.
+        monkeypatch.setattr(retry, "would_run", lambda network, match, **kw: {
+            "auto": False, "devices": ["s3"], "error": "",
+            "incidents": [{"incident": "hi-s3", "device": "s3"}]})
+        assert ("It runs on 1 other open incident, on s3, once self-healing is on"
+                in _html(_get(card)))
+
     def test_no_verified_run_says_so_and_offers_nothing(self, card, monkeypatch):
         monkeypatch.setattr("modules.fixit.incident.attempts", lambda inc, *a, **kw: {
             "attempts": []})

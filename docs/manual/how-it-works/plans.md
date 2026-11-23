@@ -105,7 +105,10 @@ not hold is said beside its button, which is drawn disabled.
 **Saving is the approval** (the operator, 2026-11-15). Once a fix verified, the incident's card
 asks "Save this fix so Mercury handles it automatically?". **Save** saves it as a self-heal
 script in **Automatic**, with the problem's name and its match ticked, promoted by you: it runs
-when its match holds while the network's self-healing is on. **Customize…** holds the same form
+when its match holds while the network's self-healing is on. Before you press it, the card
+names how many other open incidents Save runs it on and their devices ("Save runs it now on 2
+other open incidents, on s3 and s5"; "once self-healing is on" while it is not in Auto), read
+from the same selection the retry below makes. **Customize…** holds the same form
 with **Dry run** as a choice. **Not now** puts the offer off for this incident, saving nothing,
 and the card then says so in one line with **Save this fix…**, which shows the offer again.
 Every saved fix is listed on [Fixes](fixes).

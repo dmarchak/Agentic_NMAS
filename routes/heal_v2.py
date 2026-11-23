@@ -103,7 +103,8 @@ def _until(form, out: dict, now: float = None) -> str:
     the viewer's own zone (`routes.v2.viewer_zone`, the zone every time on the screen is drawn
     in), else a quick choice (hours from now), each converted once here to the UTC instant
     the policy keeps; the tab's picker sent empty with no quick choice is no expiry, which the
-    policy refuses naming it. A request that is not the tab's (H1's callers) sends
+    policy takes as "until turned off" (N8 as changed by the operator, 2026-11-16, cd0aa4cc:
+    `policy._proposed`). A request that is not the tab's (H1's callers) sends
     ``heal_mode_until`` as people write a UTC time, or as the policy keeps it. Returns how it
     was given: ``picker``, ``quick``, ``typed`` or ""."""
     from modules import heal_page

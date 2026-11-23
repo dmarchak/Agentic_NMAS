@@ -15,7 +15,7 @@ import json
 
 import pytest
 
-from modules.ai import explain, triggers
+from modules.ai import explain, gateway, profiles, triggers
 from tests.ai_person import pressed_by
 from tests.test_ai_batch import Clock, FakeBatches
 from tests.test_ai_explain import V6_PROMPT, _answer, world  # noqa: F401 (the fixture)
@@ -55,6 +55,13 @@ def test_each_batched_request_is_explain_packs_but_its_cache_ttl(world):
     assert sorted(got["results"]) == ["p0-explain-v4-r0", "p0-explain-v4-r1"]
     expected = json.loads(json.dumps(called))
     expected["system"][-1]["cache_control"] = {"type": "ephemeral", "ttl": "1h"}
+    # Ruling 13 (the operator, 2026-11-18: "Size batched evaluations to the model's maximum"):
+    # a batched request asks what a press asks before any cap (`gateway.asked_tokens`).
+    # Explain thinks, so that is its task's bound, measured from the record of calls when the
+    # batch is built: the press above, recorded, is one more measured answer than it saw.
+    from modules.ai import background
+    expected["max_tokens"] = gateway.asked_tokens(
+        profiles.TASKS["explain"]["model"], 0, background.output_bound("explain"))[0]
     for r in fake.created[0]:
         assert json.dumps(r["params"]) == json.dumps(expected)
     for cid, one in got["results"].items():

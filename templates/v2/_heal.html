@@ -44,7 +44,7 @@
       <dt>Mode</dt><dd><strong>{{ h.means.split(':')[0] }}</strong>:{{ h.means.split(':', 1)[1] }}{% if cur.mode == 'auto' and h.until_words %} ({{ h.until_words }}){% endif %}
         <span class="set-origin heal-why">Now: {{ cur.words | people }}</span></dd>
       <dt>Set</dt><dd>{%- if cur.confirmed.by %}{{ h.confirmed_words }} by {{ cur.confirmed.by | people }} ({{ 'verified' if cur.confirmed.actor_verified not in ('', 'none') else 'not verified' }}), “{{ cur.confirmed.reason }}”{% else %}<span class="muted">never confirmed: the defaults are in force, and they heal nothing</span>{% endif %}</dd>
-      <dt>Network stage</dt><dd>{{ cur.stage.stage or ('cannot be read' if cur.stage.state == 'unreadable' else 'not marked') }} <span class="muted">(Auto is allowed only on a network marked lab, until the AUTO production-readiness gate)</span></dd>
+      <dt>Network stage</dt><dd>{{ cur.stage.stage or ('cannot be read' if cur.stage.state == 'unreadable' else 'not marked') }}</dd>
       <dt>Production's bar</dt><dd>{{ h.bar }}. <span class="muted">Lab drills never count toward it.</span></dd>
       <dt>Policy fingerprint</dt><dd class="mono">{{ cur.fingerprint or 'none' }}{% if cur.confirmed.fingerprint and cur.confirmed.fingerprint != cur.fingerprint %} <span class="set-origin">(confirmed {{ cur.confirmed.fingerprint }})</span>{% endif %}</dd>
     </dl>
@@ -56,7 +56,7 @@
         <select id="heal-mode-pick" data-modal-select aria-haspopup="dialog" title="Choosing a mode opens its change: nothing changes until you confirm it">
           {%- for m, words in (('off', 'Off'), ('dry_run', 'Dry run'), ('auto', 'Auto')) %}
           {%- set refused_auto = m == 'auto' and M.auto_refused and m != cur.mode %}
-          <option value="{{ m }}"{% if m == cur.mode %} selected{% elif not refused_auto %} data-modal-choice="heal-mode-{{ m }}"{% endif %}{% if refused_auto %} disabled title="{{ M.auto_refused }}"{% endif %}>{{ words }}{% if refused_auto %} (a network marked lab only){% endif %}</option>
+          <option value="{{ m }}"{% if m == cur.mode %} selected{% elif not refused_auto %} data-modal-choice="heal-mode-{{ m }}"{% endif %}{% if refused_auto %} disabled title="{{ M.auto_refused }}"{% endif %}>{{ words }}{% if refused_auto %} (not offered){% endif %}</option>
           {%- endfor %}
         </select>{{ how('settings', 'self-healing', compact=True, op='changing the mode') }}</span>
       {%- if cur.mode == 'auto' %}

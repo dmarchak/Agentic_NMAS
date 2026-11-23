@@ -192,11 +192,10 @@ a device to its committed intent; nothing on this tab contacts a device.
   each record saying what it would have done, or **Auto**: the Tier 1 kinds allowed below heal
   without a person until the expiry, then dry run, or, with no expiry, until someone turns it
   off), with why in words ("dry run: AUTO … expired", "off: self-healing is stopped
-  everywhere"); who set it, when and their reason; the network's stage (the tab still says Auto
-  is allowed only on a network marked lab, until the AUTO production-readiness gate, and its
-  Mode dropdown keeps to that, while the policy itself, since 2026-11-16, allows Auto on any
-  network: the control strip's Self-healing switch on [Incidents](incidents) turns it on until
-  turned off, on any network; [The Self-healing toggle](heal-batch#self-healing-toggle));
+  everywhere"); who set it, when and their reason; the network's stage (since 2026-11-16 the
+  policy allows Auto on any network, whatever its stage, and the Mode dropdown offers it
+  wherever the policy does, as the control strip's Self-healing switch on
+  [Incidents](incidents) turns it on; [The Self-healing toggle](heal-batch#self-healing-toggle));
   production's bar (30 days and 100 dry-run events at 1% wrong or fewer; lab drills never
   count); and the policy's fingerprint. Values a person did not confirm are not in force, and
   the chip says **not in force: off**. While Auto is in force, every page's top bar says so too
@@ -205,7 +204,7 @@ a device to its committed intent; nothing on this tab contacts a device.
   records of it: each confirmed change, each Turn off, an Auto that reached its expiry, and Who
   is told's saves.
 - **Mode** is a dropdown, the mode in force chosen: choosing **Off**, **Dry run** or **Auto**
-  (Auto offered only on a network marked lab; elsewhere it is drawn disabled, saying why) opens
+  (Auto offered wherever the policy allows it, on any network) opens
   that change as a window over the page, beside the dropdown, with the focus inside it. Every
   change on this tab opens the same way, and nothing changes until you confirm: **Cancel** or
   Escape closes it, the dropdown back on the mode in force and the focus back on what you

@@ -107,7 +107,10 @@ line per subscription with its state in words (the operation's outcome, or what 
 said), each line opening to its three checks with their addresses, ports and connection
 numbers, and any stale session flagged. No page load, no refresh and no announcement starts
 another attempt. What comes next is the bottom line's one action: the AI's investigation
-([Starting by itself](#automatic), or **Start AI troubleshooting**), or **Hand over…**.
+([Starting by itself](#automatic), or **Start AI troubleshooting**), or **Hand over…**. On a
+lost stream, while the network's automatic troubleshooting is off, the status line also says
+so ("The AI can investigate, but automatic troubleshooting is off for this network"), the
+words linked to the switch.
 
 ## The steps, from a plan to its run {#steps}
 
@@ -254,8 +257,9 @@ line then says who proposed it, and the incident's list can tell later how it wa
 
 **AI spend per incident** (Settings › Installation › AI, the AI troubleshooting card, $1.00 by
 default) holds every call of the incident's investigations. What it has spent is every call of
-its own investigations, one its watchdog stopped or that failed after its calls included, each
-counted once, read again before each call; calls in flight hold their share. A call is sent only
+its own investigations, one its watchdog stopped or that failed after its calls included, and
+every self-healing analysis of it (the operator, 2026-11-18), each counted once, read again
+before each call; calls in flight hold their share. A call is sent only
 when what is left covers its hold (its counted prompt and its task's typical answer), and it is
 stopped mid-answer, "budget ran out mid-answer", before it would pass the cap
 ([The day cap](installation-settings#ai-cap)). A start is refused when what is left cannot pay
