@@ -22,6 +22,9 @@ import pytest
 from modules import attention as A
 from modules import installation_kind as K
 from modules import job_health as J
+from tests.attention_alone import no_stored_incidents  # noqa: F401 (the fixture)
+
+pytestmark = pytest.mark.usefixtures("no_stored_incidents")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 with open(os.path.join(ROOT, "tests", "fixtures", "installation_kind",

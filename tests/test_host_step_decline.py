@@ -23,6 +23,10 @@ import json
 
 import pytest
 
+from tests.attention_alone import no_stored_incidents  # noqa: F401 (the fixture)
+
+pytestmark = pytest.mark.usefixtures("no_stored_incidents")
+
 RUNNER = "8bd2539600efd045393cefa00c6da6fcc8e19961"
 SLICE = "8c05952345c88717c6ae213aa6c2dc2c23bf58fa"
 INSTALL = "install the local CI runner when the operator chooses, by docs/LOCAL_CI.md section 11"

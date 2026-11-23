@@ -23,7 +23,9 @@ from modules import invalidation as I
 from modules import reader_job, reader_wakes as W
 from modules import recheck as RC
 
-pytestmark = pytest.mark.usefixtures("reader_stores_in_tmp")
+from tests.attention_alone import no_stored_incidents  # noqa: F401,E402 (the fixture)
+
+pytestmark = pytest.mark.usefixtures("reader_stores_in_tmp", "no_stored_incidents")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NAME = "t-recheck"

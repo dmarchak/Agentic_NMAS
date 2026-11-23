@@ -48,6 +48,14 @@ def _window(unreachable=("s2",)):
 @pytest.fixture
 def b2(monkeypatch):
     from modules import device
+    # B2's clock from this test's own start: set once at import, a window 815 s ahead of NOW
+    # had ended when the full suite reached this file more than 13 minutes after collecting it
+    # (2026-11-23, 4 workers, 1,515 s), and its reads drew the replay as raised. The
+    # attention code reads the wall clock, so the replay is placed around it, as it was.
+    now = time.time()
+    monkeypatch.setitem(globals(), "NOW", now)
+    monkeypatch.setitem(globals(), "T0", now - 480)
+    monkeypatch.setitem(globals(), "UNTIL", now - 480 + 1295)
     monkeypatch.setattr(device, "load_saved_devices", lambda *a, **k: list(INVENTORY))
     monkeypatch.setattr(device, "get_device_lists", lambda: [{"name": "Lab", "filename": "lab"}])
     monkeypatch.setattr(A, "_device_networks",
@@ -104,8 +112,9 @@ def _adjacency_log():
         receipts=lambda ln, dev: [])
 
 
-def _drift(now=NOW):
-    last = {"ok": True, "checked": 9, "drifted_devices": [], "no_golden": [], "skipped": [],
+def _drift(now=None):
+    now = NOW if now is None else now
+    last ={"ok": True, "checked": 9, "drifted_devices": [], "no_golden": [], "skipped": [],
             "errors": [{"hostname": h, "reason": "TCP connection to device failed"}
                        for h in ("r2", "s2")]}
     status = {"list": "Lab", "state": "idle", "disabled": False, "last_run": last,
