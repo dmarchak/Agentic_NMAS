@@ -273,7 +273,8 @@
   {%- if more_links %}
   <p class="small inc-links">
     {%- for l in more_links %}
-    {%- if l == 'intent' %}<a href="{{ url_for('device_v2.device', name=p.device, list=p.network, tab='intent') }}">Open {{ p.device }}'s Intent</a>
+    {%- if l == 'why' %}<a href="#inc-done">Why: the stage that failed</a>
+    {%- elif l == 'intent' %}<a href="{{ url_for('device_v2.device', name=p.device, list=p.network, tab='intent') }}">Open {{ p.device }}'s Intent</a>
     {%- else %}<a href="{{ url_for('device_v2.device', name=p.device, list=p.network) }}">Open {{ p.device }}</a>
     {%- endif %}{% if not loop.last %} · {% endif %}
     {%- endfor %}</p>

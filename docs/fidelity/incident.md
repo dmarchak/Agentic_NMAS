@@ -153,7 +153,17 @@ regions are read from the templates against the boards. Templates sha256 before:
 | R5: the saved card's Details and Not now (screens 5 and 6) | no Details on the saved card; Not now hides the offer | one Details (the optional reusable action, the scripts and shapes lists); "Not saved: put off by <name>." with Save this fix… | **deviation** (log: R5 incident page: the saved card's Details), and for Not now, "R5 incident page: Not now's line" |
 | The unknown id | not drawn (board F: the states) | "No incident hi-000000000000 is recorded.", where it looked and why, Open Needs attention · Open History | **same** |
 
-Templates sha256: `c7874111c11285de3264ae2c4173e1326d1de16148692cdf6351026fe6f2e83d`
+Hashed again 2026-11-23 for C3970 (the operator's ruling of 2026-11-23: the reason is stated
+once, where it is; other places link to it): when a fix's own stage failed, the card's status
+line says "It needs a person: its fix did not heal it. The stage that failed under What Mercury
+has done says why", where it repeated that stage's sentence, and the card's links gain "Why:
+the stage that failed" (`#inc-done`) before Open <device>. No element moves; the line keeps
+its place and its state. Compared by the templates' diff and the tests' render
+(tests/test_incident_titles.py `TestEachFactOnce`), not by new shots: the shots are owed in the
+full pass (docs/FAST_LANE_DEBT.md). Templates sha256 before:
+`c7874111c11285de3264ae2c4173e1326d1de16148692cdf6351026fe6f2e83d`.
+
+Templates sha256: `468a48d7c485e7698a8d7eed5d4baf027cc551b7b94b5b8a0ef8a160085de783`
 Templates sha256 before the saved plans card said a right's holders unset (2026-11-15, Gate 1b's review, item 7; the row "Rights not set" below): `770515ac382839dde54d1ae789920a7578375acf87fe6fb9d221961273361976`
 Templates sha256 before C3725's session moved from a press to the proposal's record (2026-11-15, the operator; the session row below): `90974cd13f0f0f2aece5e005c3cc5e3c2c21726aa22192e6535bce1ca4953909`
 Templates sha256 before the verify-speed gate's page fixes (2026-11-14, C3725, C3727, C3728, C3729, below): `b8969275f9560c0d423e154d881391989736eb6548a35bb27ab4020fa5542a6c`

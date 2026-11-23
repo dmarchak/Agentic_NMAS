@@ -676,8 +676,13 @@ def status(incident, entry: dict, decisions: list, fixit: str = "") -> dict:
         # proof): the header says what it is, never "Open" nor "Fixed" (the Incidents list's
         # "Closed, not confirmed").
         words = UNCONFIRMED_WORDS
+    # C3970 (the operator's ruling of 2026-11-23): where the reason is an act's own failed or
+    # standing step, the stage that failed under What Mercury has done says it, once; the
+    # card's line links to it (`_todo`), never repeating it.
+    at_stage = why == "verify_failed" or (
+        why == "decided" and bool(((incident or {}).get("standing") or {}).get("act")))
     return {"state": state, "words": words, "needs": state == "needs_person",
-            "why": why, "reason": reason,
+            "why": why, "reason": reason, "at_stage": at_stage,
             "closed_unconfirmed": words == UNCONFIRMED_WORDS}
 
 
@@ -1203,15 +1208,19 @@ def _todo(st: dict, device: str, tl: dict, fixit: dict, item: dict) -> dict:
                          "approves it.", "more": "", "links": ["device"]}
     words = {
         # Its item's own words say what failed and what to do about it; with no item, here.
-        "verify_failed": ((f"It needs a person: {st['reason'][:1].lower()}{st['reason'][1:]}."
-                           if st.get("reason") else "It needs a person.")
-                          + ("" if item["state"] == "stands" else
-                             " Read the stage that failed under What Mercury has done, then "
-                             f"{device} itself.")),
+        # The operator's ruling of 2026-11-23 on C3970: the reason is said once, by the stage
+        # that failed under What Mercury has done (docs/UI_RULES.md, each fact once); this line
+        # says the state and links to it (the "why" link) instead of repeating it.
+        "verify_failed": ("It needs a person: its fix did not heal it. The stage that failed "
+                          "under What Mercury has done says why"
+                          + ("." if item["state"] == "stands" else f"; then read {device} "
+                             "itself.")),
         "proposal": "It needs a person: a fix waits for a person's decision. Nothing is sent "
                     "until it is approved.",
         # Its reason in plain words (`waits_words`), never a reasonless line.
-        "decided": (f"It needs a person: {st['reason'][:1].lower()}{st['reason'][1:]}."
+        "decided": ("It needs a person: its fix did not heal it. The stage that failed under "
+                    "What Mercury has done says why." if st.get("at_stage") else
+                    f"It needs a person: {st['reason'][:1].lower()}{st['reason'][1:]}."
                     if st.get("reason") else "It needs a person."),
         "lost_stream": f"It needs a person: the fix changes {device}'s configuration, so a "
                        f"person approves it. Until one does, {device}'s telemetry stays lost.",
@@ -1241,6 +1250,8 @@ def _todo(st: dict, device: str, tl: dict, fixit: dict, item: dict) -> dict:
                 f"acknowledged it. Open {device} to see how it stands.")
     # The primary button already opens the device where that is the item's action.
     links = (["history"] if item["first"] in ("device", "") else ["device", "history"])
+    if st.get("at_stage"):
+        links = ["why"] + links                   # to the stage that says why (C3970)
     return {"words": words, "more": more, "links": links}
 
 

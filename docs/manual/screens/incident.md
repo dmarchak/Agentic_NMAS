@@ -255,7 +255,7 @@ out from the incident's own records and from what was tried in Fixing it:
 | Mercury working | a heal, a saved fix or the AI's investigation runs on it now, over any earlier state | What it is doing now, its live step |
 | Open | Mercury is still reading the device, or its fix is running | Nothing yet |
 | Open | a fix a person approved is running, or passed its verify | Nothing yet, or Nothing now: the incident closes when its symptom clears |
-| Needs a person | every other case: a decision only a person can act on, a proposed fix, a failed verify, a fix that stopped without fixing it, a lost telemetry stream | It needs a person, why, and the one action above |
+| Needs a person | every other case: a decision only a person can act on, a proposed fix, a failed verify, a fix that stopped without fixing it, a lost telemetry stream | It needs a person, why, and the one action above; where its fix's own stage failed, the stage under What Mercury has done says why, once, and this line links to it ("Why: the stage that failed") |
 
 So a page never says "No person needed" or "Mercury is working on it" in one place and
 "Stopped: nothing more runs unless you choose" in another.
