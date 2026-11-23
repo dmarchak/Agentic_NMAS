@@ -1,4 +1,4 @@
-# Handoff: the run of 2026-11-23, Phase 0 done, Phase 1 in progress
+# Handoff: the run of 2026-11-23, the operator's evening rulings done, Phase 1 in progress
 
 Read CLAUDE.md, then this file, and nothing else to start (docs/handoff/START.md is the
 standing prompt). Decisions: `docs/handoff/decisions-2026-11-23.md`. Today's report:
@@ -11,14 +11,21 @@ agent making the rulings under their policy** (decisions-2026-11-23.md, first se
 Nothing the plan needs waits on the operator. What does wait on them is in section 3, and it
 blocks only a deploy.
 
-- **main is c9fe36a2** (pushed; Phase 0 moved it to 120abc10, Phase 1's first step to
-  c9fe36a2): overnight/gui fast-forwarded, merge/kit-into-main merged on it
-  (40e88747), the rulings and the merge's fix-forward on top (branch `rulings/gui-kit`).
-- **The full suite on 120abc10** (4 workers, 1,516 s): 32,173 passed, 12 failed, 68 skipped.
-  The 12 are exactly `docs/handoff/rulings-overnight-gui.md`'s. Every other test is green.
+- **main is fdaec024** (pushed, branch `rulings/gui-kit`). It holds:
+  - overnight/gui with merge/kit-into-main (40e88747);
+  - the operator's evening rulings 1 and 2 (cfe043d8, bd09416f);
+  - ruling 3's attempt, reverted (7d68fbf3, f68d4f18; C4204);
+  - overnight/fastlane-retire, rulings-close-2 and rulings-words, merged after their
+    device-write reviews passed (cb50b80a, 827ba673, d24cbdc4).
+- **The full suite on d24cbdc4** (12 workers, 816 s): 32,219 passed, 4 failed, 68 skipped:
+  - C3886 and C4090, which wait on the operator (rulings file);
+  - C4081's modal, a known browser flake that passes alone;
+  - test_device_names, fixed in fdaec024.
 - **Nothing is deployed:** the suite is not fully green.
-- Worktrees (outside the workspace): `~/nmas-worktrees/rulings-gui-kit` (the branch, clean),
-  `~/nmas-worktrees/integrate-gui-kit` (40e88747, done with). Suite logs: `~/mercury-runs/suite/`.
+- A serial run of fdaec024 (Phase 1's counts) runs in `~/nmas-worktrees/serial`, its log
+  `~/mercury-runs/suite/serial.log` (JUnit `serial.xml`). Compare its counts with
+  `m.xml` (the 12-worker run of d24cbdc4) and remove the worktree once read.
+- Suite logs: `~/mercury-runs/suite/`.
 
 ## 2. The operator's standing decisions of 2026-11-23
 
@@ -30,7 +37,11 @@ blocks only a deploy.
     `docs/handoff/rulings-overnight-gui.md` (6 lines or fewer each).
   - Every ruling made is one line in the day's decisions file, with its record.
 - **Main moves** (fast-forward and push) when the only failures left are the rulings file's.
-  **No deploy until the suite is fully green.**
+  **No deploy until the suite is fully green** (then through nmas-deploy, never 02:30 to 03:30
+  Denver).
+- **The rulings block only the deploy, never the run:** keep working through the plan until
+  the 02:30 handover; progress goes in the day's report file, not in chat (the operator,
+  2026-11-23 evening).
 - **Phase 2's reads:** the assistant uses the same read-only tools a person has, device reads
   included (show, show_config, ping, traceroute, and Mercury's own reads: `fixit_reads.FAMILY`'s
   operations).
@@ -41,12 +52,13 @@ blocks only a deploy.
 
 ## 3. Waiting on the operator (blocks only a deploy)
 
-- `docs/handoff/rulings-overnight-gui.md`: 4 causes, 12 tests (C3970, test_heal_analysis_never_read,
-  C3886, C4090).
-- The device-write review of 9f456d31 (C4194: the conditions a saved fix may match), owed before
-  any deploy.
-- overnight/fastlane-retire's 21 later commits, rulings-words and rulings-close-2 (2026-11-18)
-  are not merged. They hold device-write commits whose independent reviews are owed.
+- `docs/handoff/rulings-overnight-gui.md`:
+  - C3886's design, after its HIGH (C4204);
+  - C4090's capture, blocked by the config-read hook;
+  - the reviews' C4206 to C4208.
+- All the owed device-write reviews are done (decisions-2026-11-23.md, ruling 5).
+- Fix next (mine, not the operator's): C4205 (Save's "runs on" line should follow the
+  Customize… ticks).
 
 ## 4. The plan (the operator's, 2026-11-22; word for word in section 2 of docs/handoff/2026-11-22.md)
 
@@ -68,13 +80,11 @@ pass, fail and skip counts serial and parallel (xdist; fix tests that share stat
     test_no_utc_drawn 80 and test_display_names_drawn 77 (each one walk test).
   - The scratch tool that reads a JUnit file's worker-seconds was not committed.
 - **Next:**
-  1. Done: the full run of c9fe36a2 at 12 workers took 809 s (32,174 passed, the rulings
-     file's 12 failed, 68 skipped), and main was fast-forwarded to c9fe36a2 and pushed.
-  2. A serial run (`-p no:xdist`, about 100 minutes; start it before 00:20 Denver) and
-     compare its counts with the parallel run's. Shared state found is fixed (C4200 is one
-     case, its victims already isolated).
-  3. Speed up the slowest tests above, without changing what they assert, until a full run
+  1. Read the serial run (section 1) against the 12-worker run's counts. Fix each test whose
+     outcome differs (shared state; C4200 is a known case, its victims already isolated).
+  2. Speed up the slowest tests above, without changing what they assert, until a full run
      is under 600 s.
+  3. Then Phase 2: the assistant to the amended design note.
 - **ci.yml:** no change is needed. CI already runs five shards (`scripts/nmas-shards`) at
   `--cap 4`.
 - A full run needs `NMAS_TEST_TIMEOUT` over its length: nmas-test's default session bound is
