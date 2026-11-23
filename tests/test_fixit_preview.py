@@ -729,19 +729,32 @@ def test_a_pack_that_fits_is_sent_whole(ai, reads, monkeypatch):  # noqa: F811
     assert T.TOPOLOGY_LEFT_OUT not in json.dumps(prep["data"])
 
 
-def test_the_reserve_holds_three_reads_at_their_largest(ai, reads, monkeypatch):  # noqa: F811
-    """The review of the fit (2026-11-14): three reads at the cap, their why and hypothesis at
-    `read_loop.TEXT_MAX`, answered with show output escaped as it is twice (a line break every
-    40 characters, a quoted word on each line), built into pass 2 through the press's own
-    builders (`read_loop.second_request`, `gateway.request_body`): what pass 2 adds is within
-    `READS_RESERVE_CHARS`, as `fit` models it (pass 1, less the read set, plus the reserve)."""
+def test_three_reads_at_their_largest_fit_the_room_pass_1_leaves(ai, reads, monkeypatch):  # noqa: F811
+    """Rewritten from the reserve test (C3958). 7b0bb884 (the operator, 2026-11-16: "remove
+    every AI token/size limit Mercury sets itself"; a read's 4,096-byte cap and the reserve for
+    pass 2's reads went with it): the one bound is the room the model's context window leaves,
+    and a later pass's reads share the room pass 1 leaves (`read_room`), past it the newest
+    answers cut, said (`read_loop._within_room`).
+
+    The review of the fit's case kept (2026-11-14): three reads, their why and hypothesis at
+    `read_loop.TEXT_MAX`, answered with show output escaped as it is twice (a quoted word on
+    each line), here each answer as large as the whole planted room. The preview runs them and
+    holds every one whole (it shows all a press could send); the press's own loop feature
+    (`loop_feature`) carries the room pass 1 leaves, and the loop's cut (`_within_room`) holds
+    the three reads to it, the newest cut, saying so."""
+    import dataclasses
+
+    from modules.ai import fixit_reads as FR
     from modules.ai import fixit_troubleshoot as T
+    from modules.ai import profiles
     from modules.ai import read_loop as RL
-    from modules.ai import router_reads as RR
     _class(monkeypatch, True)
+    monkeypatch.setattr(profiles, "prompt_room", lambda name: ROOM_PLANTED)
+    largest = int(ROOM_PLANTED * gateway.CHARS_PER_TOKEN)
     line = 'state "up" ' + "x" * 24 + "\n"
-    answer = (line * (RL.AI_READ_CAP // len(line) + 1))[:RL.AI_READ_CAP - 200]
-    monkeypatch.setattr(RR, "run", lambda op, args, requests, scope: RL.Answered(answer))
+    answer = (line * (largest // len(line) + 1))[:largest]
+    monkeypatch.setattr(FR, "FAMILY", dataclasses.replace(
+        FR.FAMILY, run_many=lambda items, scope: [RL.Answered(answer) for _item in items]))
     asked = [{"op": "show", "args": {"device": "r2", "words": words},
               "why": "y" * RL.TEXT_MAX, "hypothesis": "h" * RL.TEXT_MAX}
              for words in ("telemetry ietf subscription all", "telemetry internal connection",
@@ -750,16 +763,21 @@ def test_the_reserve_holds_three_reads_at_their_largest(ai, reads, monkeypatch):
     iid = stopped(ai)
     got = _preview(iid)
     assert [r["verdict"] for r in got["reads"]] == ["run"] * 3, got["reads"]
-    first = len(json.dumps(got["first"]["body"], ensure_ascii=False))
-    second = len(json.dumps(got["second"]["body"], ensure_ascii=False))
-    # Premise corrected (C3797): the next pass keeps the read set (it may ask again), so it adds
-    # its reads to pass 1, held to the room pass 1 leaves under the bound.
-    assert second <= first + T.READS_RESERVE_CHARS, (first, second, T.READS_RESERVE_CHARS)
-    assert T.read_room(T.request(NET, *_found(ai, iid))) >= \
-        T.READS_RESERVE_CHARS - len(T.read_set()) - T.READS_OVERHEAD_CHARS, \
-        "at least the room pass 2 had"
-    # And the reserve is no guess: at least the reviewer's measured 15,967 characters.
-    assert T.READS_RESERVE_CHARS >= 15967, T.READS_RESERVE_CHARS
+    assert json.dumps(got["second"]["body"], ensure_ascii=False).count("x" * 24) >= 3 * (
+        largest // len(line)), "the preview's pass 2 holds every read whole"
+    # The press's records of those three reads, as the loop keeps them: each request with its
+    # verdict and its whole answer.
+    records = [dict(a, id=r["id"], verdict=r["verdict"], answer=answer,
+                    bytes=len(answer.encode()), cut=False, withheld=0)
+               for a, r in zip(asked, got["reads"])]
+    prep = T.request(NET, *_found(ai, iid))
+    room = T.read_room(prep)
+    assert room and room > 0, room
+    assert T.loop_feature(prep).read_room == room, "the press's loop is held to that room"
+    assert RL._sent_chars(records) > room, "floor: the three reads are past the room"
+    assert RL._within_room(records, room, records) is True
+    assert RL._sent_chars(records) <= room, (RL._sent_chars(records), room)
+    assert records[-1]["cut"] is True and records[-1]["answer"].endswith(RL.ROOM_CUT)
 
 
 def test_a_press_says_what_was_cut_on_its_line(ai, reads, monkeypatch):  # noqa: F811
