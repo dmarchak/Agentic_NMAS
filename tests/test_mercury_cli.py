@@ -77,11 +77,19 @@ def rewrite(path: str, old: str, new: str) -> None:
 
 @pytest.mark.parametrize("name, code", [("switch-links", 0), ("arp-guard", 1),
                                         ("tautology", 1)])
-def test_job_check_exits_by_the_verdict_on_each_fixture(tmp_path, capsys, name, code):
+def test_job_check_exits_by_the_verdict_on_each_fixture(tmp_path, capsys, monkeypatch, name,
+                                                         code):
+    # The verdict the command printed is the one it computed (kept from its own call of the
+    # gate): a second check beside it could time one mutant out at its 0.5 s floor under a
+    # loaded run and print other counts (the 12-worker full run, 2026-11-23, C4202).
     folder = copy(tmp_path, os.path.join(JOBS, name))
+    computed, real = [], G.check
+    monkeypatch.setattr(G, "check", lambda *a, **k: computed.append(real(*a, **k)) or
+                        computed[-1])
     got, out, _err = run(capsys, "job", "check", folder)
     assert got == code
-    verdict = G.check(folder)
+    assert len(computed) == 1, "the command checked once"
+    verdict = computed[0]
     assert verdict.passed is (code == 0)
     for c in verdict.checks:
         assert re.search(rf"^  {'passed' if c.passed else 'FAILED'}  {c.name} +"
