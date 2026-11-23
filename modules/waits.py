@@ -367,9 +367,20 @@ WAITS = {
         "the interval between two passes", "the caller's interval", "caller", False),
     "modules/sdn/flow_ops.py::counters": _w(
         "the interval between two counter samples", "the caller's interval", "caller", False),
+    # The Lab 9 kit's meter keeper (C4150, merged 2026-11-23): one pass a cadence.
+    "modules/sdn/flow_ops.py::start_meter_keeper.run": _w(
+        "the meter keeper's next pass over recorded meters past their expiry",
+        "METER_KEEPER_S, the SDN reader's own cadence", "cadence", False, ("METER_KEEPER_S",)),
     "modules/sdn/flow_ops.py::verify_installed": _w(
         "installed flows and meters to read back, a pause between reads",
         "the caller's reads and pause", "caller", True),
+    # The Lab 9 kit's reroute read again (merged 2026-11-23): a press waits for the SDN
+    # reader's run it asked for, checking READ_AGAIN_POLL_S apart, ended early when it lands.
+    "modules/sdn/link_failure.py::read_flows_again": _w(
+        "the SDN reader's read again that a press asked for, checked READ_AGAIN_POLL_S apart",
+        "the reader's own bound (`reader_job.answer_bound`, 2.5 times its measured runs), or "
+        "READ_AGAIN_FALLBACK_S, the reader's interval, when it has none",
+        "measured each run", True, ("READ_AGAIN_POLL_S", "READ_AGAIN_FALLBACK_S")),
     "modules/sdn/loop.py::schedule": _w(
         "the SDN loop's next pass, or its stop", "the loop's interval", "cadence", True),
     "modules/sdn/openflow_config.py::agent_reads_back": _w(

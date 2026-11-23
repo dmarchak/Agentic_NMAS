@@ -1306,6 +1306,7 @@ NOT_COPIED = {
     "CLAUDE.md": "the rules' document; tests/test_claude_md.py reads it from ROOT",
     "README.md": "read by no test",
     "design": "the GUI redesign brief's mockups and their shots (ef43ef41); read by no test",
+    "tools": "the unattended run's session script (4cdd5d91), run by cron; read by no test",
     "requirements-mutation.txt": "mutmut's own pins, installed before the copy exists",
 }
 

@@ -108,6 +108,7 @@
   "tests/*": "this repository's; fixtures are captures from the lab (see audit)",
   "docs/*": "this repository's; the probe configs are the lab's (see audit)",
   "design/*": "this repository's: the GUI redesign brief's mockups and their shots (ef43ef41)",
+  "tools/*": "this repository's: the unattended run's session script (4cdd5d91)",
   "deploy/*": "this repository's, except what vendored claims",
   "static/js/nmas_*.js": "this repository's",
   "static/css/nmas-v2.css": "this repository's",

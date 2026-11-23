@@ -450,6 +450,24 @@ def _iso(epoch):
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
 
 
+def _drawn_words(words: str, drawn: str) -> bool:
+    """Whether *drawn* holds the builder's *words* as the screen draws them: every instant in
+    them through the one clock (`routes/v2.times`, e08ddfe2, C3290: "every time a person sees
+    ... goes through the viewer's zone"), its ISO instant the ``<time>``'s ``datetime``, the
+    words between exactly as written."""
+    import re
+
+    from routes.v2 import INSTANT_IN_WORDS
+
+    parts, at = [], 0
+    for m in INSTANT_IN_WORDS.finditer(words):
+        parts.append(re.escape(words[at:m.start()]))
+        parts.append(f'<time class="clock" datetime="{re.escape(m.group(0))}"[^>]*>[^<]+</time>')
+        at = m.end()
+    parts.append(re.escape(words[at:]))
+    return re.search("".join(parts), drawn) is not None
+
+
 def _pressed(client, at):
     from html import unescape
 
@@ -472,7 +490,7 @@ def test_a_press_on_a_stored_read_older_than_the_failure_reads_again_and_answers
     assert kept["outcome"] == "rerouted" and kept["read_at"] == _iso(now), kept
     assert kept["judged_on"].startswith(
         f"judged on the flow tables read again on this press at {_iso(now)}"), kept
-    assert "rerouted, verified" in drawn and kept["judged_on"] in drawn
+    assert "rerouted, verified" in drawn and _drawn_words(kept["judged_on"], drawn)
 
 
 @pytest.mark.usefixtures("reader_stores_in_tmp")
@@ -488,7 +506,7 @@ def test_a_press_on_a_stored_read_newer_than_the_failure_reads_nothing_again(
     assert kept.get("judged_on", "").startswith(
         f"judged on the SDN reader's stored read at {_iso(now - 5)} ("), kept
     assert f"after the failure detected at {_iso(now - 10)}" in kept["judged_on"]
-    assert kept["judged_on"] in drawn and not kept.get("read_error")
+    assert _drawn_words(kept["judged_on"], drawn) and not kept.get("read_error")
 
 
 @pytest.mark.usefixtures("reader_stores_in_tmp")
@@ -506,7 +524,7 @@ def test_a_fresh_read_that_fails_is_said_in_place_and_the_older_read_labelled(
     assert kept["judged_on"].startswith(f"the SDN reader's stored read at {_iso(now - 20)} ("), \
         kept
     assert f"older than the failure detected at {_iso(now - 10)}" in kept["judged_on"]
-    assert kept["read_error"] in drawn and kept["judged_on"] in drawn
+    assert kept["read_error"] in drawn and _drawn_words(kept["judged_on"], drawn)
     assert "couldn't read now" in drawn and ">verifying<" not in drawn
 
 

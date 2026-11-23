@@ -15,8 +15,8 @@
       },
       "required": [
         "device",
-        "subscription",
-        "words"
+        "words",
+        "subscription"
       ],
       "type": "object"
     },

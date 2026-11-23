@@ -186,12 +186,23 @@ def test_the_proposed_column_names_the_switch_by_its_name(lab, monkeypatch, nb, 
         in html
 
 
+def _utc_viewer(monkeypatch):
+    """The viewer reads times in UTC: main's clock draws each time in the viewer's zone, the
+    host's when none is stored (0e19fd52 and e08ddfe2, the operator, 2026-11-12 and 2026-11-13:
+    "every time a person sees ... goes through the viewer's zone"), so the words asserted here
+    are pinned to one zone, whatever the host's."""
+    from modules import time_zones
+
+    monkeypatch.setattr(time_zones, "zone_of", lambda actor: time_zones.zone_info("UTC"))
+
+
 def test_the_loop_says_the_time_it_stops_by_itself(lab, monkeypatch):
     """Queue 17: "Stops by itself" names its end time (`until`), never an age of a time still
     ahead ("just now"): Start pressed, the loop runs, and the answer draws its bound's time."""
     import threading
 
     from modules.sdn import capability
+    _utc_viewer(monkeypatch)
     monkeypatch.setattr(capability, "read", lambda network, **kw: {
         "ok": True, "error": "", "controllers": []})
     gate = threading.Event()
@@ -216,9 +227,10 @@ def test_the_loop_says_the_time_it_stops_by_itself(lab, monkeypatch):
 
 
 @pytest.mark.parametrize("source", ["192.0.2.1", "2001:db8::1"], ids=["IPv4", "IPv6"])
-def test_the_preview_warns_when_its_threat_is_logged_no_longer_active(lab, source):
+def test_the_preview_warns_when_its_threat_is_logged_no_longer_active(lab, source, monkeypatch):
     """Queue item 4: a response whose threat the loop logged as no longer active previews with
     a warning naming when it stopped; Send stays the person's choice (drawn, and it works)."""
+    _utc_viewer(monkeypatch)
     row = LP.propose("Default", _scan(source), "drop_source", "low", why="HITL")
     c = lab["client"]
     html = unescape(c.post(f"/v2/sdn/response/{row['id']}/preview",
