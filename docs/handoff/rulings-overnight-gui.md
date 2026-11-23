@@ -6,6 +6,16 @@ accidental has its code fixed; one that is unclear or needs the operator's words
 and is listed here. The rulings made are one line each in `docs/handoff/decisions-2026-11-23.md`.
 Measured on `integrate/gui-kit-main` (overnight/gui with merge/kit-into-main merged on it).
 
+**Ruled by the operator, 2026-11-23 (evening):**
+- Section 1, C3970: done (cfe043d8).
+- Section 2, test_heal_analysis_never_read: done (bd09416f, C4203).
+- Section 3, C3886: fixed (7d68fbf3), its device-write review under way.
+- Section 4, C4090: **left failing, its row open.** The records it needs live in the host's
+  data store, and the agent's reads of it are refused by the config-read hook
+  (`scripts/hooks/claude-no-raw-config-reads`). `scripts/nmas-config-read` reads goldens and
+  configs only. Capturing them needs a masked reader for heal and fix-it records, or the
+  operator's own capture; the kit's lab hardware is not what blocks it.
+
 ## 1. C3970: each fact once on the incident page (8 tests)
 
 - **Tests:** `tests/test_incident_titles.py::TestEachFactOnce::test_a_failure_is_said_once[failed, partial, refused, rolled_back, symptom_remains]` and `::test_a_failed_verify_says_it_once_and_its_sentence_once[failed, partial, symptom_remains]`.
