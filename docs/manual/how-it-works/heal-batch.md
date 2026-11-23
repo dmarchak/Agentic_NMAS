@@ -53,7 +53,9 @@ dialog:
    2026-11-16: a self-healing batch "runs every device at once: each held, preconditions
    checked, verified and rolled back on its own; no canary device first"). Each restore's
    incident is decided again with guard 6 resolved; a program that moved since the card was
-   drawn is refused, nothing sent. Then the self-healing fix itself: the device held, the
+   drawn is refused, nothing sent: its incident stays open, the refusal is on its device's
+   History, and it is a failure the AI may start troubleshooting on, as any refused fix is.
+   Then the self-healing fix itself: the device held, the
    deploy's nine stages, verified, rolled back on failure, and recorded, as any heal is
    ([Self-healing](heal)). Each saved script runs through its own path, its plan hash the one
    approved. A device that fails stops no other: its outcome is said on its own incident.

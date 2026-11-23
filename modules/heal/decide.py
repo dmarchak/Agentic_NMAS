@@ -343,6 +343,22 @@ def _tier(kind: str) -> int:
     return TIER.get(kind, 4)
 
 
+def _departing_golden(base: dict, device: str, golden: dict, *, at_golden: bool) -> dict:
+    """The interim for a golden that departs from committed intent (C3909, C3910; the
+    operator's ruling 0, 2026-11-18: "Keep the interim (c)"): a can't-fix of Tier 3, no fix of
+    Mercury's own, so R1 starts on it and the AI investigates; never a hold, never "nothing to
+    heal" (the operator, 2026-11-17: "a device at a golden that departs from intent is a
+    departure"), and never a send: the restore to intent is C4093's build. Its one home, for a
+    departure Mercury would restore, for one that leaves no unit, and for an incident settled
+    at its golden (*at_golden*: its words say the device is at that golden)."""
+    why = ("a restore to intent that adds lines the golden never held is not built yet: no fix "
+           "of Mercury's own, so the AI investigates")
+    words = (f"{device} is at its golden, which departs from its intent "
+             f"({golden.get('words') or golden.get('state')}), and {why}" if at_golden else
+             f"{device}'s golden departs from its committed intent, and {why}")
+    return dict(base, tier=3, outcome="cant_fix", words=words)
+
+
 #: The outcomes whose words state the cause first (C2823): what a person reads where they
 #: decide, or where Mercury says what it did or could not do. A deferral, an off and nothing to
 #: heal say only why.
@@ -449,7 +465,7 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
     approval of guard 6's batch holding this incident (`heal.batch.approve`), or the preview's
     reckoning (``{"preview": True}``): guards 6 and 8 are resolved for it (`BATCH_RESOLVES`)."""
     from modules.drift_check import departure, drift_diff
-    from modules.heal import decisions, guards, incidents, kinds, policy
+    from modules.heal import act, decisions, guards, incidents, kinds, policy
     from modules.heal.guards import value
 
     from modules import fault_drills
@@ -581,23 +597,24 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
         # timer"), and no can't-fix row.
         now_state = (src.symptom_now(device, judged)
                      if symptom and hasattr(src, "symptom_now") else "")
-        # The correctness review's G4-D3 and D6: the golden's state as `_g4` read it, never
-        # assumed at intent (C3909: a golden departing from intent holds nothing).
-        intent_words = ("which matches its intent" if golden.get("state") == "at_intent" else
-                        "which departs from its intent "
-                        f"({golden.get('words') or golden.get('state')})")
-        if symptom and now_state == "gone":
-            return dict(base, outcome="nothing",
-                        words=(f"nothing to heal: every symptom the incident named has cleared "
-                               f"by itself at {_hhmm(now)} UTC, nothing to do: {device} is at "
-                               f"its golden, {intent_words} (each symptom read again after "
-                               "it)"))
-        if symptom:
+        if symptom and now_state != "gone":
             out = {"kind": symptom, "tier": 3, "units": [], "blocked": None}
             return dict(base, kind=symptom, tier=3, outcome="cant_fix",
                         words=_outcome(mode, out, [], [], device)[1])
+        # The correctness review's G4-D3 and D6: the golden's state as `_g4` read it, never
+        # assumed at intent. C3910 (ruling 0): a device at a golden that departs from intent
+        # (or whose intent state is unknown: a read at it proves nothing, the one judgement
+        # `act.golden_not_proof`) is the interim's can't-fix, never nothing to heal.
+        if act.golden_not_proof(device, golden):
+            return _departing_golden(base, device, golden, at_golden=True)
+        if symptom:
+            return dict(base, outcome="nothing",
+                        words=(f"nothing to heal: every symptom the incident named has cleared "
+                               f"by itself at {_hhmm(now)} UTC, nothing to do: {device} is at "
+                               "its golden, which matches its intent (each symptom read again "
+                               "after it)"))
         return dict(base, outcome="nothing",
-                    words=f"nothing to heal: {device} is at its golden, {intent_words}")
+                    words=f"nothing to heal: {device} is at its golden, which matches its intent")
     text, error = src.read(dev)
     if not text:
         return dict(base, outcome="deferred", until=now + 60,
@@ -618,8 +635,14 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
                        revert=revert_scope(mode, incident))
     base.update(units=[kinds.masked_unit(u) for u in c["units"]], kind=c["kind"],
                 tier=c["tier"], left_out=c["left_out"])
+    departs = act.golden_not_proof(device, golden)
     if not c["units"]:
         base["phase"] = "decide"
+        if departs:
+            # The correctness review's MEDIUM-C on this path: a departure that leaves no unit,
+            # its golden departing from intent, is no proof of the approved state either (the
+            # interim's can't-fix, ruling 0), never nothing to heal with the link still down.
+            return _departing_golden(base, device, golden, at_golden=False)
         return dict(base, outcome="nothing",
                     words=(f"nothing to heal: what departed is not from the approved state "
                            f"({c['left_out']['intent_only']} line(s) only intent holds: an "
@@ -630,17 +653,13 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
         from modules.pipeline import dangerous_commands
         from modules.redact import redact_text
 
-        if golden.get("state") != "at_intent":
+        if departs:
             # The review of C3909 (HIGH): a whole stanza restored from intent would carry
             # intent-only lines no kind judged (an ACL, a secret, a QoS policy) under Tier 1.
-            # Until that restore classifies every line it sends (C3910), a golden departing
-            # from intent is no fix of Mercury's own: R1's failure, the AI investigates; never
-            # a hold, never a send of unjudged lines.
-            return dict(base, tier=3, outcome="cant_fix",
-                        words=(f"{device}'s golden departs from its committed intent, and a "
-                               "restore to intent that adds lines the golden never held is "
-                               "not built yet: no fix of Mercury's own, so the AI "
-                               "investigates"))
+            # Until that restore sends only what the last deployed intent held (C4093), a
+            # golden departing from intent is no fix of Mercury's own: R1's failure, the AI
+            # investigates; never a hold, never a send of unjudged lines.
+            return _departing_golden(base, device, golden, at_golden=False)
         prog = program(restore_source(golden, intended), text, c["units"], c["removal_ids"],
                        mgmt_ip=dev.get("ip", ""), platform=platform)
         base.update(program=[redact_text(x) for x in prog["commands"]],

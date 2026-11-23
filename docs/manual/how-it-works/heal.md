@@ -48,7 +48,8 @@ incident every 30 seconds, and at once when a trigger arrives. One pass, per net
      check, not on its alerts clearing". An approved plan's run ends it at once when the run
      ends, and this pass ends any it missed. Only a run this incident's own troubleshooting
      started counts (a run on the same device that names no incident may have fixed another
-     port), only a plan that ran to its end (one stopped at a later step fixed nothing), and
+     port), only a plan that ran to its end, whatever kind of step passed (one stopped at a
+     later step fixed nothing, even when an earlier re-subscribe or saved action verified), and
      only a run that sent and verified (one whose precondition found nothing to do sent
      nothing). A trigger after that check (the err-disable again, the alert fired again) is the
      problem back: the incident stands on it. Its alert still firing 5 minutes after the check
@@ -91,10 +92,11 @@ held. Its steps:
    on what it holds now.
 6. `classify`: each unit that departs is classed by kind, each kind has its tier, and the
    program (the exact lines it would send) and its hash are computed. A golden that departs
-   from its committed intent is a Tier 3 can't-fix: a restore to intent that would add lines the
-   golden never held is not built yet, so it is no fix of Mercury's own, and the AI
-   investigates where that is on. A fix that would cut Mercury's own path to the device is Tier
-   4.
+   from its committed intent (or whose intent state cannot be told) is a Tier 3 can't-fix,
+   whether the departure leaves a unit to restore or none: a restore to intent that would add
+   lines the golden never held is not built yet, so it is no fix of Mercury's own, and the AI
+   investigates where that is on. Nothing is sent. A fix that would cut Mercury's own path to
+   the device is Tier 4.
 7. `decide`: in **Dry run**, what it would have done is recorded and nothing is sent; in
    **Auto**, a Tier 1 kind the policy allows is healed; a Tier 2 kind is proposed to a person;
    a Tier 3 or 4 kind is can't fix.
@@ -140,11 +142,14 @@ can't-fix leads with **Open <device> (likely cause)**, labelled as a hypothesis.
 the one the symptom's own records name, or the only such device in the network. Mercury names
 none when several unnamed devices changed. **Acknowledge…** records the cause, if you know it.
 
-An incident whose read found the device at its golden has nothing to heal, so a person's
-revert ends "nothing to heal". A symptom read gone when it is decided is nothing to heal at
-once, "every symptom the incident named has cleared by itself", and raises no can't-fix: an
-incident whose device read finds no problem closes on that read, never on a quiet timer. The
-words say whether the golden matches its intent or departs from it, as the decision read it.
+An incident whose read found the device at its golden, that golden matching its intent, has
+nothing to heal, so a person's revert ends "nothing to heal". A symptom read gone when it is
+decided is nothing to heal at once, "every symptom the incident named has cleared by itself",
+and raises no can't-fix: an incident whose device read finds no problem closes on that read,
+never on a quiet timer. A device at a golden that departs from its intent is still off its
+intent, so it is never nothing to heal: with no symptom, or every symptom read gone, it is the
+Tier 3 can't-fix of [Decide](#decide) step 6, "<device> is at its golden, which departs from
+its intent (…)", and its incident stays open, needing a person.
 
 ## Standing on its decision {#standing}
 
@@ -167,7 +172,7 @@ one incident however long it takes a person to deal with it:
 - **Anything else that changes the device** (a configuration change from outside Mercury, a
   person's revert, the drift check finding a different departure) sends it back to be judged
   again on its next read. A revert that puts the device back at its golden ends "nothing
-  to heal". A symptom the reverted change caused is that change's, so it is not judged again as
+  to heal" where that golden matches its intent. A symptom the reverted change caused is that change's, so it is not judged again as
   a can't-fix of its own.
 - **It ends** when the device is read back at its golden or its intent: a later decision of
   nothing to heal; a drift check that read the device at its golden after the decision (the
@@ -190,7 +195,10 @@ A heal runs as its own job, as the policy, on behalf of the person who confirmed
 step is the deploy pipeline's ([Deploy](deploy)):
 
 1. `take`: it takes the decision, once.
-2. `stops`: the kill switch, the mode, the network's stage, the policy and planned work, again.
+2. `stops`: the kill switch, the mode, the policy it was decided under (a policy confirmed
+   again since the decision sends nothing, naming both fingerprints), the kinds allowed Auto
+   and planned work a person declared, again; and a policy no person is recorded as
+   confirming sends nothing (nobody would be accountable).
 3. `read`: it reads the device again.
 4. `plan`: it recomputes the program from that read and refuses unless its hash is the
    decision's. Nothing is sent when the device moved.
@@ -305,8 +313,11 @@ daily retry decided.
 golden commit or its read against the new golden fails (a restart that cut the tail short
 included), the incident it closed is reopened, standing on that failed step: "fixed, and a step
 after it failed: <why>". Only a heal's own tail reopens its own incident, and only one closed by
-that heal; a past incident is never reopened. The heal's card still says Fixed, the failed step
-flagged under it, and Needs attention keeps its own item about the step.
+that heal; a past incident is never reopened. When its device is already in another open
+incident (a device is in one open incident at a time), the failure attaches to that incident
+instead: the closed one stays closed, and the AI may start troubleshooting on the open one with
+the failed step as its failure. The heal's card still says Fixed, the failed step flagged under
+it, and Needs attention keeps its own item about the step.
 
 ### Confirm first {#confirm}
 
@@ -322,9 +333,10 @@ heal's `confirm` step, and the AI starts with it in its evidence beside the fail
 Every other close that would end an incident standing on such a heal (a drift run reading the
 device at its golden, its symptom read gone, a decision of nothing to heal) asks for the same
 confirmation read instead, at most once an hour for the same heal, and the incident closes only
-on its proof. An incident closed on such an outcome before this was built (no proof kept) reads
-**Closed, not confirmed** on [Incidents](incidents) and on its page, never Fixed nor Open; it is
-confirmed by the same read once, and never reopened.
+on its proof. An incident closed on such an outcome before this was built (no proof kept) is not
+read as closed: an incident closes only on a healed outcome, so it is on [Incidents](incidents)'
+Open tab under **Needs a person**, its page says Needs a person, and it has its row on Needs
+attention, never Fixed; the same read confirms it once, and with its proof it reads Fixed.
 
 ### A problem that keeps coming back {#findings}
 

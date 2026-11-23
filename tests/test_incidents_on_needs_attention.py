@@ -86,6 +86,56 @@ class TestEveryIncidentThatNeedsAPersonIsOnNeedsAttention:
         assert missing(ids) == [], ("an incident that needs a person is only on Incidents, "
                                     "not on Needs attention")
 
+    def test_a_store_closed_incident_its_fix_never_confirmed(self, client):  # noqa: F811
+        """C4084 (the operator, 2026-11-18: "an incident closes only on a healed outcome.
+        'Closed but not confirmed' stays open and needs a person. Fix whichever page says
+        otherwise, with a test"): the rolled-back heal its store closed before C3870
+        (closed_unconfirmed.json, a real capture) read Needs a person by its page's rule, yet
+        the Incidents list put it on Closed, "Closed, not confirmed", its page's header said so
+        and Needs attention held no row for it. Now all three show it open and needing a
+        person: on Open under Needs a person, its header Needs a person, and a row here."""
+        from modules import incidents_list as L
+        doc = LV._load("closed_unconfirmed")
+        LV.plant([doc])
+        iid = doc["page"]
+        assert doc["incidents"][0]["state"] == "closed", "the store holds it closed"
+        assert needing([iid]) == [iid]
+        found = IP.resolve(NET, iid)
+        st = IP.status(found["incident"], found["entry"], found["decisions"])
+        assert (st["state"], st["words"], st["needs"]) == ("needs_person", "Needs a person",
+                                                           True), st
+        open_rows = {r["id"]: (g["key"], r) for g in L.page(NET, "open")["groups"]
+                     for r in g["rows"]}
+        assert open_rows.get(iid, ("",))[0] == "needs_person", sorted(open_rows)
+        assert iid not in {r["id"] for g in L.page(NET, "closed")["groups"] for r in g["rows"]}
+        assert missing([iid]) == [], ("an incident that needs a person is only on Incidents, "
+                                      "not on Needs attention")
+
+    def test_an_incident_at_a_golden_that_departs_from_intent(self, client):  # noqa: F811
+        """C3910 (the operator's ruling 0, 2026-11-18: "Keep the interim (c)", a departing
+        golden is a Tier 3 can't-fix the AI investigates): an incident settled at its golden,
+        that golden departing from committed intent and no symptom, was decided "nothing to
+        heal" and closed. Decided by the heal's own decision job now, it is a can't-fix that
+        stands open, and its page, the Incidents list's Open tab and Needs attention all show
+        it needing a person (C4084's rule: only a healed outcome closes an incident)."""
+        from modules import incidents_list as L
+        from tests import test_incident_page as T
+        from tests.test_heal_policy import T0
+
+        T.settle(T.GOLDEN, triggers=[T.CFG], how="at_golden", claim=False)
+        from modules.heal import decisions
+
+        (ran,) = T.DC.run(NET, now=T0, sources=T.Fake(T.GOLDEN, state="departs"))["decided"]
+        iid = ran["incident"]
+        d = decisions.find(NET, ran["decision"])
+        assert (d["outcome"], d["tier"]) == ("cant_fix", 3), d
+        assert needing([iid]) == [iid]
+        open_rows = {r["id"]: g["key"] for g in L.page(NET, "open")["groups"]
+                     for r in g["rows"]}
+        assert open_rows.get(iid) == "needs_person", open_rows
+        assert missing([iid]) == [], ("an incident that needs a person is only on Incidents, "
+                                      "not on Needs attention")
+
     @pytest.mark.parametrize("name", sorted(S.PLANTS))
     def test_the_incident_state_tests_planted_incidents(self, client, measured, name):  # noqa: F811
         plant, state = S.PLANTS[name]

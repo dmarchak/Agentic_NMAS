@@ -86,8 +86,8 @@ def planted(client):  # noqa: F811
     # Premise corrected (measured 2026-11-18: rolled_back() on this branch leaves its incident
     # STANDING, 7d54cf24 and C3870, so tests/fixtures/incident_page/failed.json, re-captured
     # from it for its walks test, is open): the rolled-back heal its STORE closed, which these
-    # tests hold on Closed as "Closed, not confirmed" (C3876), is the capture taken before
-    # C3870, kept as closed_unconfirmed.json, unchanged.
+    # tests hold on Open as needing a person (C4084; C3876 had held it on Closed), is the
+    # capture taken before C3870, kept as closed_unconfirmed.json, unchanged.
     docs = {n: _load(f) for n, f in (("healed", "healed"), ("failed", "closed_unconfirmed"),
                                      ("busy", "busy"))}
     plant(list(docs.values()))
@@ -150,32 +150,33 @@ class TestTheRows:
         assert busy["folded"] not in rows
 
     def test_open_groups_by_what_each_waits_for_and_closed_by_how_it_ended(self, planted):
-        """C3876 (the operator, 2026-11-16): the tabs follow the incidents store, so the
-        rolled-back heal its capture holds closed (closed before C3870 kept such an incident
-        open) is on Closed, "Closed, not confirmed", never Open and never Fixed."""
+        """Premise corrected (C4084, the operator, 2026-11-18: "an incident closes only on a
+        healed outcome. 'Closed but not confirmed' stays open and needs a person"; C3876's
+        reading, 2026-11-16, put it on Closed): the rolled-back heal its capture holds closed
+        (closed before C3870 kept such an incident open) is on Open under Needs a person, as
+        its own page says, never Closed and never Fixed."""
         p = L.page(NET, "open")
         assert [(g["key"], g["n"], g["open"]) for g in p["groups"]] == [
-            ("needs_person", 1, True), ("watching", 1, True)]
-        assert (p["total"], p["summary"], p["folded"]) == (2, ["1 needs a person",
+            ("needs_person", 2, True), ("watching", 1, True)]
+        assert (p["total"], p["summary"], p["folded"]) == (3, ["2 needs a person",
                                                                "1 watching"], 1)
+        assert planted["failed"]["page"] in {r["id"] for r in p["groups"][0]["rows"]}
         closed = L.page(NET, "closed")
-        assert [(g["key"], g["n"]) for g in closed["groups"]] == [("fixed_mercury", 1),
-                                                                  ("closed_unconfirmed", 1)]
+        assert [(g["key"], g["n"]) for g in closed["groups"]] == [("fixed_mercury", 1)]
         (row,) = closed["groups"][0]["rows"]
         assert row["by"] == "Mercury" and row["ttr"] and row["ended"], row
-        (past,) = closed["groups"][1]["rows"]
-        assert past["id"] == planted["failed"]["page"], past
-        assert [(t["key"], t["n"]) for t in p["tabs"]] == [("open", 2), ("closed", 2)]
+        assert [(t["key"], t["n"]) for t in p["tabs"]] == [("open", 3), ("closed", 1)]
 
     def test_search_and_the_device_filter_narrow_it(self, planted):
-        """The filters narrow each tab (the failed capture is on Closed since C3876)."""
+        """The filters narrow each tab (premise corrected, C4084: the failed capture is on Open,
+        needing a person)."""
         busy = planted["busy"]
         assert list(listed(L.page(NET, "open", q=busy["related"]))) == [busy["related"]]
         p = L.page(NET, "open", device="edge-b")
-        assert sorted(listed(p)) == [busy["page"]]
-        assert (p["matched"], p["total"]) == (1, 2)
-        assert sorted(listed(L.page(NET, "closed", device="edge-b"))) == sorted([
-            planted["healed"]["page"], planted["failed"]["page"]])
+        assert sorted(listed(p)) == sorted([busy["page"], planted["failed"]["page"]])
+        assert (p["matched"], p["total"]) == (2, 3)
+        assert sorted(listed(L.page(NET, "closed", device="edge-b"))) == [
+            planted["healed"]["page"]]
         assert p["devices"] == sorted({"edge-b", "dist-c"}), p["devices"]
 
     def test_an_unreadable_store_is_said_never_read_as_empty(self, planted):
@@ -529,12 +530,12 @@ class TestPressedInARealBrowser:
         # Premise corrected (measured 2026-11-18: templates/v2/base.html draws Troubleshooting ›
         # Fixes between them, C3849, board fixes-list approved by the operator 2026-11-16).
         assert section == ["Incidents", "Fixes", "Self-healing"], section
-        # Premise corrected (C3876, the operator, 2026-11-16: the rolled-back heal its store
-        # closed is on Closed, as TestTheRows holds: 2 open; measured 2026-11-18 in Firefox:
-        # "2 open · 1 needs a person · 1 watching").
-        assert landed[1] == "Incidents" and landed[2].startswith("2 open"), landed
+        # Premise corrected (C4084, the operator, 2026-11-18: "'Closed but not confirmed' stays
+        # open and needs a person"; C3876 had put the rolled-back heal its store closed on
+        # Closed): it is on Open, as TestTheRows holds: 3 open.
+        assert landed[1] == "Incidents" and landed[2].startswith("3 open"), landed
         assert kids == ["svg span", "svg span"], kids
-        assert count == "Open · 2", count
+        assert count == "Open · 3", count
         assert heal == f"/v2/settings/network/{NET}?tab=heal", heal
 
     def test_a_row_opens_its_incident_whose_breadcrumb_leads_back_and_search_narrows(
@@ -574,10 +575,10 @@ class TestPressedInARealBrowser:
                 b.go("about:blank")
                 browser.close_socketio_sessions()
         assert on_page == ["Incidents", "Closed"], on_page
-        # Premise corrected (C3876, the operator, 2026-11-16: the tabs follow the store, so the
-        # rolled-back heal its store closed is on Closed, "Closed, not confirmed", after the
-        # heal Mercury fixed; measured 2026-11-18 in Firefox: the two rows in that order).
-        assert back == [healed, planted["failed"]["page"]], back
+        # Premise corrected (C4084, the operator, 2026-11-18: "'Closed but not confirmed' stays
+        # open and needs a person"; C3876 had put the rolled-back heal its store closed on
+        # Closed after the healed one): Closed holds the heal Mercury fixed alone.
+        assert back == [healed], back
         assert found == [busy["related"]], found
 
 

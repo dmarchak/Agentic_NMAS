@@ -11,12 +11,24 @@ It has two levels:
 
 | Level | What still runs | What is skipped |
 |---|---|---|
-| **Fast lane** | the commit hooks; the touched files' own tests before the deploy; the nightly backup window; the preflight; the smoke check after the restart, with its automatic rollback; full CI on every push to main (after the deploy, not before it) | the gate's full suite before the deploy, and the gate's or CI's verdict the deploy bar asks for |
-| **Skip mode** (inside the fast lane) | the commit hooks; the backup window; the preflight; the smoke check and its rollback; an independent review of code that writes to devices | every test run, every new test, red-green proofs, boards, fidelity records, manual updates |
+| **Fast lane** | the commit hooks; the touched files' own tests before the deploy; the nightly backup window; the smoke check after the restart, with its automatic rollback; full CI on every push to main (after the deploy, not before it) | the gate's full suite before the deploy, and the gate's or CI's verdict the deploy bar asks for |
+| **Skip mode** (inside the fast lane) | the commit hooks; the backup window; the smoke check and its rollback; an independent review of code that writes to devices | every test run, every new test, red-green proofs, boards, fidelity records, manual updates |
+
+`nmas-deploy` runs no preflight in either level. Its smoke check is `nmas-post-deploy-check`
+without C3133's `--expect-local-account-off`, so a deploy is never refused for the local
+account being on (C4075, the operator's ruling 8 of 2026-11-18: the words match the code, and
+the flag is a registered build).
 
 **Why it exists.** With the operator at the keyboard, a change can be needed live in minutes,
 not after an hour of gate. The smoke check and the automatic rollback bound a bad deploy's
 harm, and CI keeps measuring what the change broke.
+
+**A release that is not ready is never rolled back automatically** (the operator's ruling 2,
+2026-11-18, keeping 973952c5, C4006). A fast-lane release that is not confirmed running,
+whose units are not confirmed, or that is not ready returns before the smoke block. The smoke
+check and its automatic revert did not run, so the deploy's verdict says so in so many words,
+and gives the revert to run by hand (`nmas-deploy --revert`). Only a smoke check that ran and
+went red puts the previous release back by itself.
 
 ## The risks it carries (measured on its first use)
 

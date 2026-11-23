@@ -168,6 +168,18 @@ def declined():
     return d["incident"]
 
 
+def declined_and_ended():
+    """`declined`'s incident, ended once its cause was read gone (ruling 18: a decline leaves
+    it standing while its cause stands), as the drift check's clean read ends it
+    (`triggers.clean_ended`, through `decide.end_standing`)."""
+    from modules.heal import decide
+    iid = declined()
+    assert decide.end_standing(NET, iid, "nothing to heal: the drift check read edge-b at its "
+                               "golden", now=T0 + 60, by="the drift check (drift)",
+                               read_words="edge-b read by the drift check: at its golden")
+    return iid
+
+
 def busy():
     """A can't-fix on edge-b that took other devices in: core-a's own incident folded into
     it (edge-b is the far end of core-a's lost adjacency), dist-c attached to it and then
@@ -608,14 +620,41 @@ class TestTheStates:
             ", and it cleared")
 
     def test_cancelled_when_a_person_declined_the_fix(self, client):
-        body = page(client, declined())
+        # Premise corrected (ruling 18, the operator, 2026-11-18: "Decline does not close an
+        # incident whose cause still stands"): Cancelled once its cause ended after the decline.
+        body = page(client, declined_and_ended())
         assert 'data-state="cancelled"' in body and ">Cancelled<" in body
         assert "declined by op" in text_of(cell(body, "decided"))
         # Premise corrected (C3454): the decline is said once, in Decided; TIME TO REPAIR
         # holds its state words, the reason on its hover.
         assert text_of(cell(body, "ttr")).endswith("not repaired")
         assert 'title="Not repaired: the fix was declined."' in cell(body, "ttr")
-        assert fixed_claims(body) == [] and "data-attempt=" not in body
+        # Premise corrected (ruling 18; measured 2026-11-18): its newest decision is the clean
+        # read's "nothing to heal", drawn green as every nothing-to-heal is
+        # (`run_card.DECISION_GOOD`): the one green, never a fix claimed.
+        live = body.split('id="incident-live"', 1)[1]
+        assert fixed_claims(body) == ["a green outcome"] and "data-attempt=" not in body
+        assert ": nothing to heal" in text_of(live.split(
+            'data-outcome-level="ok"', 1)[1].split("</span>", 2)[0] + "</span>")
+
+    def test_a_declined_fix_whose_cause_stands_needs_a_person(self, client):
+        """Ruling 18 (the operator, 2026-11-18): a decline with the departure still on the
+        device closes nothing; the page says a person is needed, never Cancelled."""
+        body = page(client, declined())
+        assert 'data-state="needs_person"' in body and ">Needs a person<" in body, \
+            re.findall(r'data-state="[a-z_]+"', body)[:3]
+        assert ">Cancelled<" not in body and fixed_claims(body) == []
+
+    def test_a_declined_fix_ends_when_its_cause_ended(self, client):
+        """Ruling 18: its end is its close, once its cause was read gone, never the decline's
+        time while it stood."""
+        from modules.heal import incidents as HI
+        iid = declined_and_ended()
+        inc = next(i for i in HI.read(NET)["incidents"] if i["id"] == iid)
+        found = IP.resolve(NET, iid)
+        tl = IP.timeline(found["incident"], found["entry"], found["decisions"], NET)
+        assert inc["closed_at"] == "2026-09-21T14:14:20Z" and tl["ended"] == inc["closed_at"], (
+            tl["ended"], inc["closed_at"], tl["decided"])
 
     def test_a_proposal_waiting_needs_a_person(self, client):
         d = proposed()

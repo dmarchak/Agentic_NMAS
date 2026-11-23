@@ -12,8 +12,9 @@
         (mutmut's configuration: the planned modules and the canary, and the night's tests: for
         a function the drill-down holds at its text tonight, by text hash, the tests it saw
         execute it; for any other, the tests tonight's refresh of the map saw execute it, run
-        once per test over its module, the test files the map's module index says reach it
-        (the whole suite with no index: `refresh`, the default), or it waits in the record
+        once per test over its module, the test files the map's module index says reach it,
+        import it or changed since (its importers with no index; `refresh`, the default,
+        C2353), or it waits in the record
         (`defer`, or a refresh that could not finish)). With nothing to mutate, writes
         "nothing to mutate" to F and S's next record, and DIR/patterns.txt is empty; exit 1
         then when a function it was to mutate was not (C1616: a named one deferred or capped,
@@ -829,7 +830,7 @@ def main(argv=None) -> int:
     p.add_argument("--stale-map", choices=[M.STALE_REFRESH, M.STALE_DEFER],
                    default=M.STALE_REFRESH,
                    help="a function the map does not hold at its text tonight: refresh the map "
-                        "for it tonight (the whole suite, per test; the default) or defer it")
+                        "for it tonight (its module's tests, per test; the default) or defer it")
     p.add_argument("--cap", type=int, default=NIGHT_CAP,
                    help=f"at most this many functions tonight, the oldest first (default "
                         f"{NIGHT_CAP})")

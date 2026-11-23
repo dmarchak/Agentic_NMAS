@@ -1249,3 +1249,64 @@ class TestOnlyThisIncidentsFixClosesIt:
         heal_inc = page_stands_in(monkeypatch, inc())
         got = detect.verified_fix(NET, heal_inc)
         assert got["run"] == rec["id"], got
+
+
+def plan_of(step_run: dict, outcome: str, *, later: str = "refused") -> dict:
+    """An incident's plan engine run (`plan_engine.run`'s record, its fields as that writer
+    sets them) whose step 1 is the catalogue run *step_run* (its receipt naming that run, as
+    `plan_engine._catalog_apply` returns it) and whose step 2 is an intent deploy, the plan
+    ending *outcome*: ``stopped`` with step 2 *later* (``refused``, outcome ``moved``: nothing
+    sent), ``done`` with both steps done, or ``running`` with step 1's receipt not yet kept."""
+    from modules import plan_engine as PE
+    from modules.nsot import reads
+
+    running = outcome == "running"
+    one = {"n": 1, "kind": step_run["key"], "words": "Re-subscribe", "hash": "h1",
+           "params": {"incident": ID, "proposal": "", "device": "r2", "subscriptions": ["101"]},
+           "state": "running" if running else "done",
+           "outcome": "" if running else step_run.get("outcome") or "",
+           "words_said": "", "receipt": {} if running else {"run": step_run["id"],
+                                                            "state": step_run["state"]}}
+    two = {"n": 2, "kind": "intent-deploy", "words": "Deploy r2's intent", "hash": "h2",
+           "params": {"incident": ID, "proposal": "", "device": "r2"},
+           "state": "not_run" if running else "done" if outcome == "done" else later,
+           "outcome": "" if running else "done" if outcome == "done" else "moved",
+           "words_said": "", "receipt": {}}
+    return {"id": reads.new_id(), "key": PE.KEY, "list": NET, "plan": PE.INCIDENT_FIX,
+            "incident": ID, "actor": ACTOR, "actor_verified": "access",
+            "started_at": T0 - 1, "finished_at": None if running else T0 + 120,
+            "state": "running" if running else PE.RECORD_STATE[outcome],
+            "outcome": outcome, "plan_steps": [one, two], "steps": []}
+
+
+class TestEveryStepKindNeedsItsPlanToHaveRunToItsEnd:
+    """Ruling 6 (the operator, 2026-11-18: "'The plan ran to its end' applies to every step
+    kind"): C3995 held it for the plan engine's own steps only (`detect._plan_ran_to_its_end`
+    read a plan engine record's outcome), so a plan's catalogue step (a re-subscribe, a command
+    plan), whose own record names the incident and is its newest attempt, closed the incident
+    "verified" though a later step of its plan was refused and the plan stopped (the device-
+    write review on 029330c1, its LOW). A real Re-subscribe run as the plan's step 1."""
+
+    def test_a_catalogue_step_of_a_plan_that_stopped_closes_nothing(self, lab, monkeypatch):
+        from modules.heal import detect
+        from modules.nsot import privileged
+        rec = carry(a_run(T0, ok=True), {"incident": ID, "attempt": 1, "proposal": ""})
+        privileged.record(NET, plan_of(rec, "stopped"))
+        (attempt,) = F.attempts(inc())["attempts"]
+        assert (attempt["run"], attempt["passed"]) == (rec["id"], True), attempt
+        assert detect.verified_fix(NET, page_stands_in(monkeypatch, inc())) == {}
+
+    def test_a_catalogue_step_of_a_plan_still_running_closes_nothing_yet(self, lab,
+                                                                          monkeypatch):
+        from modules.heal import detect
+        from modules.nsot import privileged
+        rec = carry(a_run(T0, ok=True), {"incident": ID, "attempt": 1, "proposal": ""})
+        privileged.record(NET, plan_of(rec, "running"))
+        assert detect.verified_fix(NET, page_stands_in(monkeypatch, inc())) == {}
+
+    def test_a_catalogue_step_of_a_plan_that_ran_to_its_end_closes_it(self, lab, monkeypatch):
+        from modules.heal import detect
+        from modules.nsot import privileged
+        rec = carry(a_run(T0, ok=True), {"incident": ID, "attempt": 1, "proposal": ""})
+        privileged.record(NET, plan_of(rec, "done"))
+        assert detect.verified_fix(NET, page_stands_in(monkeypatch, inc()))["run"] == rec["id"]

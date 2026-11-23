@@ -9,7 +9,16 @@ Measured on `integrate/gui-kit-main` (overnight/gui with merge/kit-into-main mer
 **Ruled by the operator, 2026-11-23 (evening):**
 - Section 1, C3970: done (cfe043d8).
 - Section 2, test_heal_analysis_never_read: done (bd09416f, C4203).
-- Section 3, C3886: fixed (7d68fbf3), its device-write review under way.
+- Section 3, C3886: **back to you.** The fix (7d68fbf3) was reverted (f68d4f18) before any
+  deploy. Its device-write review found a HIGH (C4204): the engine's masked answers hide a
+  difference only in a secret's value, so a failed save of a healed secret read as held. My
+  measurement had used fixtures that were already masked. Choosing how the save check judges
+  running against startup without a session of its own touches your rule that every read is
+  recorded and masked. The review's three options:
+  1. judge the raw text inside the reads engine, keeping only the verdict;
+  2. compare a digest of each secret line;
+  3. leave the act its own raw read (today's code: right verdict, two sessions).
+  - Recommendation: option 1, a verdict the engine computes on raw text and records masked.
 - Section 4, C4090: **left failing, its row open.** The records it needs live in the host's
   data store, and the agent's reads of it are refused by the config-read hook
   (`scripts/hooks/claude-no-raw-config-reads`). `scripts/nmas-config-read` reads goldens and

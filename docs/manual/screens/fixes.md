@@ -38,7 +38,8 @@ changed or run.
 what it fixes from the problem's own fields (a condition, a cause, a port role, and whether
 Mercury reads the cause as cleared; how many open and closed incidents it would match is said),
 each line one of the shapes known to undo itself in one batch (**Add a line…** adds one; another
-shape is provisional until an admin approves it, and one that would last is refused), each
+shape is provisional until an admin approves it: a person's **Run…** sends it, an Automatic
+fire refuses it, naming the shape, and sends nothing; and one that would last is refused), each
 check before and each verify after one that Mercury's plans hold. The form draws a preview of
 what it would send on an example as a choice changes. Saving it saves the fix as **Manual only**:
 it runs when a person presses **Run…**, and can be set Automatic after its first verified run.

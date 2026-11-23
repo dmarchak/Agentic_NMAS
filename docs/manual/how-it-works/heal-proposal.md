@@ -91,8 +91,11 @@ attention. The job runs as you:
 ## Decline {#decline}
 
 Type a reason, then press **Decline**. Nothing is sent. The decline is recorded with your
-name and reason, the incident is closed, and the row leaves Needs attention. A later check
-may propose again.
+name and reason, and the proposal's row leaves Needs attention. The incident is not closed
+while what the fix would have changed is still on the device: it stays open, needing a person,
+with its own row on Needs attention, and the daily retry does not decide it again. It
+ends once that is read gone (the drift check reads the device at its golden, or its symptom
+clears), and then reads **Cancelled**.
 
 ## A security control: remove it or keep it {#keep}
 

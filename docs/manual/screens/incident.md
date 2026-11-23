@@ -71,9 +71,11 @@ attention and on History, and the email that tells the team. Under it:
   verify failed, a fix a person ran stopped without fixing it, or its telemetry stream is lost
   (that fix changes the device's configuration, so a person approves it). **Fixed**: a fix was
   applied and its verify passed. **Cleared**: it closed with no fix recorded. **Cancelled**: a
-  person declined the fix proposed. **Closed, not confirmed**: its record closed it on a heal
-  that did not heal, before only a healed heal closed an incident, and nothing has confirmed
-  the fix since ([Confirm first](heal#confirm)); never Open, never Fixed.
+  person declined the fix proposed, and what it would have fixed has since gone (until then
+  the declined incident stays open and needs a person). An incident its record closed on a
+  heal that did not heal, before only a healed heal closed an incident, with nothing confirming
+  the fix since, reads **Needs a person**: an incident closes only on a healed outcome
+  ([Confirm first](heal#confirm)); never Fixed.
 - **Drill**, beside the state, when the incident opened inside a declared fault drill
   ([Declare a fault drill](fault-drill)): hover over it for the drill's id (`fd-…`), who
   declared it and the fault it expected. A drill is never drawn as a real incident; its
@@ -251,7 +253,6 @@ out from the incident's own records and from what was tried in Fixing it:
 | The state | When | Fixing it says |
 |---|---|---|
 | Fixed, Cleared, Cancelled | the incident is resolved | Nothing, and why |
-| Closed, not confirmed | its record closed it on a heal that did not heal, with no proof kept | Nothing to press: Mercury confirms it once by reading the device |
 | Mercury working | a heal, a saved fix or the AI's investigation runs on it now, over any earlier state | What it is doing now, its live step |
 | Open | Mercury is still reading the device, or its fix is running | Nothing yet |
 | Open | a fix a person approved is running, or passed its verify | Nothing yet, or Nothing now: the incident closes when its symptom clears |

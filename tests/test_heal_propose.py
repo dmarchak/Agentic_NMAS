@@ -626,11 +626,41 @@ class TestDecline:
             "approval"].split(" at ")[1].split(",")[0],
             "words": f"declined by {PERSON}: not during the course lab"}
         (inc,) = I.read("Default")["incidents"]
-        assert inc["state"] == "closed"
+        # Premise corrected (ruling 18, the operator, 2026-11-18: "Decline does not close an
+        # incident whose cause still stands"): recorded, and its incident stands on the decline
+        # (`test_a_decline_leaves_its_incident_standing_while_its_cause_stands`).
+        assert inc["state"] == "standing"
         (act,) = [r for r in SL.read("Default")["rows"] if r.get("row") == "act"]
         assert act["by"] == PERSON and act["outcome"] == "declined"
         assert DS.proposals("Default") == []
         assert INT.find("Default")["found"] == [], "a declined proposal is never interrupted"
+
+    def test_a_decline_leaves_its_incident_standing_while_its_cause_stands(self, lab,
+                                                                          monkeypatch):
+        """Ruling 18 (the operator, 2026-11-18: "Decline does not close an incident whose cause
+        still stands"; the correctness review's G4-U1): `propose.decline` closed its incident
+        "declined: …" with the departure it proposed to heal still on the device. It stands on
+        the decline now, a person's to resolve, never decided again by the retry, and it ends
+        when its cause does: the drift check reading the device at its golden
+        (`triggers.clean_ended`)."""
+        from modules.heal import retry, triggers
+        d = proposed()
+        P.decline("Default", d["id"], reason="not during the course lab", now=T0 + 2, **WHO)
+        (inc,) = I.read("Default")["incidents"]
+        assert inc["state"] == "standing", inc.get("closed_why")
+        s = inc["standing"]
+        assert (s["decision"], s["outcome"]) == (d["id"], "declined"), s
+        assert s["words"] == f"declined by {PERSON}: not during the course lab"
+        assert retry._in_population("Default", inc, T0 + 3) == ("", None)
+        assert I.ends_at_golden(s), s
+        # The drift run's clean read judged on the golden read now (at intent here).
+        monkeypatch.setattr("modules.heal.decide.Sources", lambda network: Fake(GOLDEN))
+        ended = triggers.clean_ended("Default", {"triggered_by": "drift", "clean_devices": [
+            {"hostname": inc["device"], "read_at": T0 + 60}]}, T0 + 61)
+        assert len(ended) == 1, ended
+        (inc,) = I.read("Default")["incidents"]
+        assert inc["state"] == "closed" and inc["closed_why"].startswith(
+            "nothing: nothing to heal: the drift check (drift) read edge-b at its golden"), inc
 
     def test_only_a_verified_person_declines_with_a_reason(self, lab):
         d = proposed()

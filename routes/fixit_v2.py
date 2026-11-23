@@ -50,16 +50,14 @@ def _found(incident_id: str):
 
 def _ended(found: dict) -> str:
     """How the incident ended, by the page's own rule (`incident_page.state_of`: fixed,
-    cleared or a declined proposal), or ``""`` while it stands."""
+    cleared or a declined proposal), or ``""`` while it stands. One its store closed that the
+    rule does not read resolved has not ended (C4084, the operator, 2026-11-18: "'Closed but
+    not confirmed' stays open and needs a person"), so its AI troubleshooting stays open."""
     from modules import incident_page
 
     state = incident_page.state_of(found["incident"], found["entry"], found["decisions"])
-    if state in ("fixed", "cleared", "cancelled"):
+    if state in incident_page.RESOLVED:
         return state
-    # C3876: closed in the store with its fix never confirmed: ended all the same (its AI
-    # troubleshooting read-only), said as what it is.
-    if (found["incident"] or {}).get("state") == "closed":
-        return incident_page.UNCONFIRMED_WORDS.lower()
     return ""
 
 

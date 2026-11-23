@@ -36,8 +36,10 @@ and verified in 6 min 39 s"): one computation, from the same two records, wherev
 ## When it ended {#when-it-ended}
 
 A fixed incident ends when its fix is verified: the header's span runs from Detected to
-Verified, and the timeline's "the incident closed" is at that time too. A declined fix ends the
-incident when it was declined, and a cleared one when it closed. Self-healing's own store keeps
+Verified, and the timeline's "the incident closed" is at that time too. A declined fix leaves the
+incident open, needing a person, while what it would have fixed is still on the device; it ends
+when that is read gone (the drift check reads the device at its golden, or its symptom clears).
+A declined or cleared incident ends when it closed. Self-healing's own store keeps
 the time its fix's job started as the close; The record shows that as kept, beside the close
 the page draws.
 

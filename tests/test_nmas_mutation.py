@@ -535,7 +535,8 @@ class TestMeasuredReach:
                          "--reach-date", "2026-10-15T08:36:09Z",
                          "--also", "modules/net.py::untouched"]) == 0
         assert refreshed == [["modules/net.py::Box.fill", "modules/net.py::changed"]]
-        assert scopes == [None], "a map without the module index: the whole suite (C1640)"
+        assert scopes == [["tests/test_net.py", "tests/test_net_cli.py"]], \
+            "a map without the module index: the module's importers, never the whole suite (C2353)"
         assert selection() == ("    tests/test_net.py::TestA::test_unit_one\n"
                                "    tests/test_net_cli.py::test_script\n"
                                "    tests/test_other.py::test_caller_of_changed\n"
@@ -2566,9 +2567,12 @@ class TestARunThatMutatesLessIsRed:
 
 class TestTheRefreshIsScoped:
     """C1640 (2026-10-24): run #41's refresh of three stale functions ran the whole suite,
-    3,207 s of its 80 minutes. The refresh runs the test files the map's module index says
-    reached their modules (any phase), those importing them (parsed), those changed since the
-    map, and those reaching a module changed since; without the index, the whole suite."""
+    3,207 s of its 80 minutes. C2353 (the operator, 2026-11-18: "scope each refresh to one
+    module's tests"): the fourteen campaign runs #93 to #106 refreshed 1,113 files, every file
+    reaching any of 137 modules changed since an old map, or the whole suite, and overran. The
+    refresh runs the test files the map's module index says reached the stale functions' own
+    modules (any phase), those importing them (parsed) and those changed since the map; never
+    the tests of the other modules changed since, nor the whole suite."""
 
     SOURCES = {"tests/test_toy.py": "from modules import toy\n",
                "tests/test_via_page.py": "import app\n",
@@ -2579,15 +2583,25 @@ class TestTheRefreshIsScoped:
              "modules/toy_caller.py": ["tests/test_caller.py"],
              "modules/far.py": ["tests/test_unrelated.py"]}
 
-    def test_the_files_that_reach_import_changed_or_reach_a_changed_module_and_no_other(self):
+    def test_the_files_that_reach_its_module_import_it_or_changed_and_no_other(self):
         got = M.refresh_scope(["modules/toy.py::span"], {"module_files": self.INDEX},
                               self.SOURCES, changed_tests=["tests/test_new.py",
                                                            "tests/fixtures/x.txt"],
                               changed_modules=["modules/toy.py", "modules/toy_caller.py"])
-        assert got["files"] == ["tests/test_caller.py", "tests/test_new.py",
-                                "tests/test_toy.py", "tests/test_via_page.py"]
+        assert got["files"] == ["tests/test_new.py", "tests/test_toy.py",
+                                "tests/test_via_page.py"]
         assert "tests/test_unrelated.py" not in got["files"], "reaches only an unchanged module"
-        assert "the 4 test file(s) of 5 that reach 1 module(s)" in got["why"]
+        assert "the 3 test file(s) of 5 that reach 1 module(s)" in got["why"]
+
+    def test_a_changed_modules_tests_are_not_followed(self):
+        """C2353: test_caller.py reached toy_caller.py, changed since the map, and nothing of
+        toy.py by the index or by import: it is not refreshed, and the words say the changed
+        modules' tests are not followed."""
+        got = M.refresh_scope(["modules/toy.py::span"], {"module_files": self.INDEX},
+                              self.SOURCES,
+                              changed_modules=["modules/toy.py", "modules/toy_caller.py"])
+        assert "tests/test_caller.py" not in got["files"], got["files"]
+        assert "the tests of the 2 module(s) changed since are not followed" in got["why"]
 
     def test_a_function_the_map_lacks_falls_back_to_its_importers_and_changed_files(self):
         """A new module: the index names no file for it; its importers and the files changed
@@ -2596,12 +2610,18 @@ class TestTheRefreshIsScoped:
                               changed_tests=["tests/test_new.py"])
         assert got["files"] == ["tests/test_new.py", "tests/test_toy.py"]
 
-    def test_no_index_or_no_usable_map_refreshes_the_whole_suite(self):
-        assert M.refresh_scope(["modules/toy.py::span"], {"module_files": None},
-                               self.SOURCES)["files"] is None
-        got = M.refresh_scope(["modules/toy.py::span"], None, self.SOURCES,
-                              unusable="no coverage drill-down was found")
-        assert got["files"] is None and "no coverage drill-down was found" in got["why"]
+    def test_no_index_or_no_usable_map_refreshes_its_importers_never_the_whole_suite(self):
+        """C2353: five of the campaign's runs had no usable map and refreshed the whole suite
+        (about 5,200 s each, measuring nothing usable). Now: the module's importers and the
+        files changed since, never None (the whole suite)."""
+        got = M.refresh_scope(["modules/toy.py::span"], {"module_files": None}, self.SOURCES,
+                              changed_tests=["tests/test_new.py"])
+        assert got["files"] == ["tests/test_new.py", "tests/test_toy.py"]
+        assert "holds no module index" in got["why"]
+        got = M.refresh_scope(["modules/toy.py::span"], {"module_files": self.INDEX},
+                              self.SOURCES, unusable="no coverage drill-down was found")
+        assert got["files"] == ["tests/test_toy.py"], "an unusable map's index is not read"
+        assert "no coverage drill-down was found" in got["why"]
 
     def test_the_index_is_read_from_the_drilldown_and_absent_from_an_old_one(self, tmp_path):
         old = M.load_reach(_drilldown(str(tmp_path / "old"), {"modules/toy.py::span": []},

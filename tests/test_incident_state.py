@@ -52,10 +52,12 @@ def proposal():
 
 #: Each planted incident, with the state its records alone put it in, written here from what
 #: was planted (a verified heal, a rolled-back one, a can't-fix standing in dry run, a Tier 2
-#: proposal nobody took, an incident only sighted).
+#: proposal nobody took, an incident only sighted, and a proposal a person declined while its
+#: departure stands: ruling 18, the operator, 2026-11-18, "Decline does not close an incident
+#: whose cause still stands").
 PLANTS = {"healed": (T.healed, "fixed"), "rolled_back": (T.rolled_back, "needs_person"),
           "cant_fix": (T.cant_fix, "needs_person"), "proposal": (proposal, "needs_person"),
-          "watching": (watching, "open")}
+          "watching": (watching, "open"), "declined": (T.declined, "needs_person")}
 #: The words only a page that needs nobody may draw, and those only one that needs a person
 #: may: the review's measured contradiction was one of each on one page.
 NOBODY = ("No person needed", "Nothing yet", "Mercury is still reading", "Nothing now:",

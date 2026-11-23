@@ -24,7 +24,7 @@
     <dl class="heal-kv"><dt>Job</dt><dd class="mono">{{ approved.job }}</dd><dt>Proposal hash approved</dt><dd class="mono">{{ approved.hash }}</dd></dl>
   </details>
 {%- elif declined and declined.ok %}
-  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>{{ declined.outcome | capitalize }}:</strong> {{ declined.words }}. {{ 'Nothing was sent' if not declined.sent else 'Lines were sent' }} to {{ declined.device }}; its incident is closed and a later check may propose again.</p></div>
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>{{ declined.outcome | capitalize }}:</strong> {{ declined.words }}. {{ 'Nothing was sent' if not declined.sent else 'Lines were sent' }} to {{ declined.device }}; its incident stays open, needing a person, until what it would have fixed is gone.</p></div>
   <p class="small"><a href="{{ url_for('device_v2.device', name=declined.device, list=declined.network, tab='history') }}">Open {{ declined.device }}'s History</a></p>
   <details class="heal-record"><summary>Details for the record</summary>
     <p class="small">Recorded: {{ declined.records.approval }}; the step log {{ declined.records.step_log or 'not written' }}.</p>
@@ -115,7 +115,7 @@
       {%- if v.security %}
       <a class="btn btn-small btn-outline" data-op="heal-proposal" href="{{ url_for('device_v2.device', name=host, list=list_name, tab='intent', edit=1) }}" title="Opens {{ host }}'s intent editor: add the lines and commit as you; nothing is sent to {{ host }}">Keep it: add it to intent</a>{{ how('heal-proposal', 'keep', compact=True, op='keeping a security change') }}
       {%- endif %}
-      <span class="op-act"><button type="button" class="btn btn-small" data-op="heal-proposal" hx-post="{{ url_for('heal_proposal_v2.decline', list_name=list_name, decision_id=v.decision) }}" hx-include="closest .heal-form" hx-disabled-elt="this" title="Records your reason and closes the incident; nothing is sent"{{ gate('configure') }}><span class="op-idle">Decline</span><span class="op-busy">Declining…</span></button>{{ how('heal-proposal', 'decline', compact=True, op='declining a proposal') }}</span>
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="heal-proposal" hx-post="{{ url_for('heal_proposal_v2.decline', list_name=list_name, decision_id=v.decision) }}" hx-include="closest .heal-form" hx-disabled-elt="this" title="Records your reason and keeps the incident open while its cause stands; nothing is sent"{{ gate('configure') }}><span class="op-idle">Decline</span><span class="op-busy">Declining…</span></button>{{ how('heal-proposal', 'decline', compact=True, op='declining a proposal') }}</span>
       <details class="heal-cmds" data-keep="{{ pid }}-cmds"><summary class="btn btn-small btn-outline">Show the commands</summary>
         {{ program_lines(v.program) }}
         {%- if v.reset %}<p class="small">Then <span class="mono">{{ v.reset.command }}</span>{% if v.reset.measured %}, its prompt measured on {{ v.reset.measured.device }} at {{ clock(v.reset.measured.at) }}{% else %}, not measured{% endif %}.</p>{% endif %}

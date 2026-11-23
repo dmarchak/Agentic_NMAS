@@ -230,6 +230,34 @@ class TestAsPreviewed:
         moved = dict(item, program_hash="0" * 16)
         assert B._as_previewed("Default", inc, moved, self.APPROVAL, time.time()) is None
 
+    def test_a_restore_refused_because_its_program_moved_is_a_failure_r1_starts_on(
+            self, restore):
+        """Ruling 17 (the operator, 2026-11-18: "A program-moved batch-restore refusal is a
+        failure R1 may start on"; the correctness review's G4-D8): `batch._one` refused the
+        restore whose program moved since the batch's preview (decided again, its hash not the
+        one approved; nothing sent), recorded its decision `refused` and stood its incident, but
+        wrote no step-log ``act`` row, so History held no act and `fixit.auto.failures`, which
+        reads the step log, never saw it. The row is written now, and the refusal is a failure
+        R1 starts on."""
+        from modules.fixit import auto
+        from modules.heal import steplog
+
+        inc, item, _full = restore
+        moved = dict(item, program_hash="0" * 16)
+        got = B._one("Default", moved, self.APPROVAL,
+                     act_start=lambda *a: pytest.fail("a moved program starts nothing"),
+                     sources=Fake(GOLDEN + ROUTE4))
+        assert got["outcome"] == "refused" and "its program moved" in got["words"], got
+        rows = [r for r in steplog.read("Default")["rows"]
+                if r.get("row") == "act" and r.get("decision") == got["decision"]]
+        assert len(rows) == 1, "the refusal is the step log's act row"
+        row = rows[0]
+        assert (row["outcome"], row["sent"], row["incident"]) == ("refused", False, inc["id"])
+        assert row["words"] == got["words"]
+        assert [(f["kind"], f["id"], f["outcome"]) for f in
+                auto.failures("Default")["failures"] if f["incident"] == inc["id"]] == [
+            ("act", got["decision"], "refused")]
+
     def test_not_in_auto_is_decided_again(self, restore):
         confirm("Default", now=T0 + 6, heal_mode="dry_run", reason="back to watching")
         assert self.made(restore) is None

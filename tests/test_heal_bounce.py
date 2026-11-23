@@ -713,6 +713,34 @@ class TestTheAct:
         t.join()
         assert out["outcome"] == "refused" and dev.batches == []
 
+    def test_a_policy_with_no_confirming_person_bounces_nothing(self, act_world):
+        """The operator's ruling 4 (2026-11-18, C4043): "an accountable person on the policy".
+        The bounce stands on `act._stops` as the restore does; the independent review of
+        62b82101 found the check pinned only on the restore act (its mutant survived this
+        file), so the bounce's own act is held to it here."""
+        import json
+        clock = Clock()
+        dev = FakeRouter(clock)
+        src = auto_src(dev, clock)
+        d = taken(src)
+        nobody = dict(d, policy=dict(d.get("policy") or {}, by=None))
+        out = B().apply(NET, nobody, sources=src)
+        assert out["outcome"] == "refused" and dev.batches == [] and not dev.bounced, out
+        assert "nobody is accountable" in json.dumps(out), out
+
+    def test_a_policy_moved_since_the_decision_bounces_nothing(self, act_world):
+        """The operator's ruling 4 (2026-11-18, C4043): "the act-time 'policy moved' check" on
+        the bounce's act, as on the restore's (c40b3625; its mutant survived this file)."""
+        import json
+        clock = Clock()
+        dev = FakeRouter(clock)
+        src = auto_src(dev, clock)
+        d = taken(src)
+        src._mode = dict(src._mode, fingerprint="fp-2")
+        out = B().apply(NET, d, sources=src)
+        assert out["outcome"] == "refused" and dev.batches == [] and not dev.bounced, out
+        assert "the policy moved since the decision" in json.dumps(out), out
+
     def test_the_act_runner_takes_a_bounce_to_the_bounce(self, act_world, monkeypatch):
         from modules.heal import act
         seen = []

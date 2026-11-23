@@ -265,6 +265,27 @@ def no_code_fix(record: dict) -> dict:
             "outcome": "no_code_fix", "epoch": epoch, "at": _iso(epoch) if epoch else ""}
 
 
+def attached_tail_failures(record: dict) -> list:
+    """The tail failures attached to the open incident *record* (ruling 17, the operator,
+    2026-11-18: "A tail failure on a device already in an open incident attaches to that
+    incident"; `heal.incidents.reopen`'s ``tails``): each the ``tail`` failure its own step log
+    row is (`failures`), keyed by its decision, so the row read from the closed incident and
+    this one are one failure, on THIS incident."""
+    out = []
+    for t in (record or {}).get("tails") or []:
+        if not isinstance(t, dict) or not t.get("decision"):
+            continue
+        epoch = float(t.get("epoch") or 0)
+        failed = t.get("step") or ""
+        out.append({"key": key_of("tail", t["decision"]), "kind": "tail", "id": t["decision"],
+                    "incident": record.get("id") or "", "device": record.get("device") or "",
+                    "outcome": TAIL_FAILED, "epoch": epoch,
+                    "at": t.get("at") or (_iso(epoch) if epoch else ""), "fix_kind": "",
+                    "step": TAIL_STEP_WORDS.get(failed, failed or "a step after it"),
+                    "flag": t.get("words") or ""})
+    return out
+
+
 def plan_failures(network: str, incident) -> list:
     """*incident*'s approved plans that stopped or failed (the R1 flow's step 7), each a
     failure keyed by its run (`key_of`): read from its record's approve lines and each plan
@@ -360,6 +381,12 @@ def pending(network: str) -> dict:
         again = retry.failures_of(record)
         if again:
             by.setdefault(iid, []).extend(again)
+            by[iid].sort(key=lambda f: f["epoch"])
+        # Ruling 17: a tail failure of a closed incident on its device, attached to it.
+        tails = [f for f in attached_tail_failures(record)
+                 if f["key"] not in {g["key"] for g in by.get(iid, [])}]
+        if tails:
+            by.setdefault(iid, []).extend(tails)
             by[iid].sort(key=lambda f: f["epoch"])
     folder = os.path.join(list_data_path(network), F.STORE_DIR)
     for iid in opened:

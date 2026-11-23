@@ -248,7 +248,7 @@ a non-expert approves, and the checks that prove it.
   hashes, citations, prompt versions, cost breakdowns, guard names or form fields. Everything
   else sits behind ONE "Details" control per card, which opens the full record: logs, the
   AI's reasoning and evidence, attempts, timings, hashes, holds, costs, the full plan record
-  and customise forms. **Budgets, enforced by tests on the demo-path pages:** at most 3 lines
+  and customise forms. **Budgets (their tests on the demo-path pages are to build, C4071):** at most 3 lines
   of default-visible text per card, at most 2 visible buttons per card, and 0 visible form
   fields until "Customize" is pressed. **Acceptance:** the five-second test per screen, in
   which a newcomer can say what's wrong and what to press. Built only from mockups the
@@ -275,10 +275,11 @@ place is named. Where this list and another document disagree, the charter gover
   drift-check lock, C3864).
 - **Proportionality: a plan's disruption never exceeds its problem's impact.** Options are
   ranked least disruptive first; a step whose impact exceeds the problem's (an outage to fix a
-  monitoring-only problem) is never the primary fix. A reload is the last resort, offered only
-  as a separate "schedule a reload" choice, a person's explicit decision in a maintenance
-  window, after the lesser fixes failed. The AI's composing prompt carries this rule, and the
-  preflight compares a step's impact with the problem's (C3837).
+  monitoring-only problem) is never the primary fix. A reload is the last resort, to be offered
+  only as a separate "schedule a reload" choice, a person's explicit decision in a maintenance
+  window, after the lesser fixes failed (to build: no reload is a plan step yet, C3837). The
+  AI's composing prompt carries this rule; the preflight's comparison of a step's impact with
+  the problem's is to build (C3837).
 - **No time-based holds in self-healing: every occurrence is fixed.** A problem that keeps
   coming back is a recurrence finding, a fix something keeps undoing is a fight finding, each
   said to a person; a fight stops a fix only where the network set it to. Guards 4 (the
@@ -303,7 +304,7 @@ place is named. Where this list and another document disagree, the charter gover
   are on, masked.
 - **The AI is an engineer, never an admin.** It changes no setting, cap or switch, approves
   nothing, and acts under its own engineer-role identity (C3596, C3597); a person approves
-  every plan it proposes.
+  every plan, except in AUTO mode, which a person turns on (the operator, 2026-11-18).
 - **Everything the hash binds is shown before Approve:** every step on every system (each
   system's exact actions as its own numbered step, in order), and what the AI saw and said
   beside the button (C3840); and **Fixed shows its proof** (the verify's reads, their output
@@ -319,9 +320,11 @@ place is named. Where this list and another document disagree, the charter gover
 - **One catalog, two uses.** Every capability the AI uses is a Mercury feature a person can use
   too, with its own person-facing home (C3718; e.g. the collector's log, C3836).
 - **Never duplicate what already exists** (CLAUDE.md, "Never duplicate", Reused / New in every
-  report), and **one object for a saved fix**: a saved fix is both the self-heal script and
-  the reusable action, one entry with its match and how it runs (C3849).
-- **On screen, people by display name, never an email or identity** (C3834); a status line is
+  report), and **one object for a saved fix** (to build: two objects today, C3849): a saved fix
+  is to be both the self-heal script and the reusable action, one entry with its match and how
+  it runs.
+- **On screen, people by display name, never an email or identity** (to build for History,
+  which still draws the raw identity under a collapsed "The identity as recorded", C3834); a status line is
   one sentence in an engineer's words, its source a small label (AI / Mercury) shown once.
 - **Deploys and approvals:** the operator is told before every deploy; anything needing the
   operator's words is parked until they are given, and a renamed approved item is a new item

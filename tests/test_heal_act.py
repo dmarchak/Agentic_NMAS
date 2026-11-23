@@ -309,16 +309,19 @@ class TestTheStops:
         assert "only AUTO sends a heal" in got["words"]
 
     def test_a_policy_that_moved_since_the_decision(self, lab):
-        """The act-time "policy moved" check is removed (70e89a47, the operator, 2026-11-17,
-        round 2): only Stop everywhere, Off, a kind no longer allowed and a person's planned
-        window stop the act; a policy confirmed again in Auto since the decision heals."""
+        """The policy's fingerprint is judged again at act time (the operator's ruling 4,
+        2026-11-18, C4043: "Bring back: ... the act-time 'policy moved' check", which 70e89a47
+        had removed): a policy confirmed again since the decision refuses the act, naming the
+        fingerprint decided under and the one now, and nothing is sent."""
         from modules.heal import policy
         d = decided(GOLDEN + ROUTE4)
         auto("Default", now=T0, kinds=("added_line", "missing_line"))
-        assert policy.current("Default", T0 + 5)["fingerprint"] != d["policy"]["fingerprint"]
+        now = policy.current("Default", T0 + 5)["fingerprint"]
+        assert now != d["policy"]["fingerprint"]
         got, src, _d = act(GOLDEN + ROUTE4, decision=d)
-        assert got["outcome"] == "healed" and src.apply_kw is not None, got["words"]
-        assert "the policy moved since the decision" not in got["words"]
+        assert got["outcome"] == "refused" and src.apply_kw is None, got["words"]
+        assert "the policy moved since the decision (decided under" in got["words"]
+        assert d["policy"]["fingerprint"] in got["words"] and now in got["words"], got["words"]
 
     def test_a_kind_no_longer_allowed(self, lab):
         d = decided(GOLDEN + ROUTE4)
@@ -356,14 +359,17 @@ class TestTheStops:
         assert got["outcome"] == "refused" and src.apply_kw is None
 
     def test_no_confirming_person(self, lab):
-        """The act-time "no person confirmed" check is removed (70e89a47, round 2): the policy
-        a person confirmed is the decision's authority, and its apply goes on."""
+        """A heal applies only under a policy with an accountable person (the operator's ruling
+        4, 2026-11-18, C4043: "Bring back: ... an accountable person on the policy", which
+        70e89a47 had removed): a decision whose policy names no confirming person is refused at
+        the act, naming the policy and the missing person, and nothing is sent."""
         d = decided(GOLDEN + ROUTE4)
         nobody = dict(d, policy=dict(d["policy"], by=None))
         src = FakeAct(GOLDEN + ROUTE4)
         got = A.apply_decision("Default", nobody, now=T0 + 5, sources=src)
-        assert got["outcome"] == "healed" and src.apply_kw is not None, got["words"]
-        assert "nobody is accountable" not in got["words"]
+        assert got["outcome"] == "refused" and src.apply_kw is None, got["words"]
+        assert "nobody is accountable" in got["words"], got["words"]
+        assert d["policy"]["fingerprint"] in got["words"], got["words"]
 
     def test_a_failed_read(self, lab):
         got, src, _d = act(GOLDEN + ROUTE4, read_error="timed out")

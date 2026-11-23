@@ -1293,10 +1293,10 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
     if why:
         _step(rec, "approve", "refused", why)
         return _finish(network, rec, "refused", why)
-    # A person's approved plan runs its provisional shapes (the operator, 2026-11-17), and so
-    # does an Automatic saved fix's run (*authority*; round 2 of the speed pass, 2026-11-17:
-    # an approved fix runs, never held for a shape's approval).
-    p = CP.preview(network, key, values, sources=src.model, person_plan=True)
+    # A person's approved plan runs its provisional shapes (the operator, 2026-11-17); an
+    # Automatic saved fix's run (*authority*) runs only shapes an admin approved (the
+    # operator's ruling 4, 2026-11-18, C4043: "the approved shape for Automatic fires").
+    p = CP.preview(network, key, values, sources=src.model, person_plan=authority is None)
     rec.update(params=dict(p["values"]), program=list(p["program"]), title=p["title"])
     if not p["ok"]:
         why = "; ".join(p["refusals"]) + ". Nothing was sent"

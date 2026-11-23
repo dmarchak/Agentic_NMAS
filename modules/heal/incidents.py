@@ -773,8 +773,14 @@ def reopen(network: str, incident_id: str, decision_id: str, words: str, now: fl
     ``standing``, its standing record an act's (``act``) with outcome ``tail_failed``, the
     failing *step* and *words* (the tail's flag), so R1 sees it open. Only an incident closed
     by THAT decision's healed close (its ``fixed`` names *decision_id*, or its ``closed_why``
-    is that close's); anything else is refused, naming both. Its device must be in no other
-    open incident (one incident per device). The close it undoes is kept as ``reopened``."""
+    is that close's); anything else is refused, naming both. The close it undoes is kept as
+    ``reopened``. Returns the incident the failure is on now.
+
+    Its device in another open incident (one incident per device): the failure attaches to
+    that incident instead (ruling 17, the operator, 2026-11-18: "A tail failure on a device
+    already in an open incident attaches to that incident"; G4-D7), kept once on its
+    ``tails``, which R1 reads (`fixit.auto.attached_tail_failures`); the
+    closed incident stays closed, its ``tail_attached`` naming where it went."""
     now = time.time() if now is None else float(now)
     if not (words or "").strip():
         raise Refused("an incident is reopened with why, and none was given")
@@ -792,9 +798,15 @@ def reopen(network: str, incident_id: str, decision_id: str, words: str, now: fl
                 f"closed by decision {decision_id}'s healed close is reopened by its tail")
         other, _m = _where(doc, inc.get("device") or "")
         if other is not None:
-            raise Refused(f"{inc.get('device')} is in open incident {other['id']} now, and a "
-                          f"device is in one open incident at a time, so {incident_id} is not "
-                          "reopened")
+            tails = other.setdefault("tails", [])
+            if not any(t.get("decision") == decision_id for t in tails):
+                tails.append({"incident": incident_id, "decision": decision_id,
+                              "words": (words or "")[:300], "step": step or "",
+                              "at": _iso(now), "epoch": now})
+                other["updated_at"] = _iso(now)
+            inc["tail_attached"] = {"to": other["id"], "decision": decision_id,
+                                    "at": _iso(now)}
+            return other
         inc["reopened"] = {"at": _iso(now), "epoch": now, "decision": decision_id,
                            "closed_at": inc.get("closed_at"), "closed_why": why,
                            "fixed": dict(fixed) if fixed else None}
