@@ -8,8 +8,12 @@ from the response catalogue (`CATALOGUE`), deterministic, through the flow-opera
 flow Mercury changes. Without a confirm it is the preview, writing nothing; with one it is the
 apply. The actions:
 - ``drop_source`` (risk low): one flow on the detection's switch matching the source address
-  (IPv4 or IPv6) with no actions, above every flow not Mercury's (`flow_ops.
-  response_priority`), with the network's hard timeout; its preview says the same host's other
+  (IPv4 or IPv6) with no actions, in table 0 under the lowest flow serving a protected class
+  the source's match meets and above every other flow below it, not Mercury's, that could take
+  the same packets (`flow_ops.response_place`); it meets a class only where the class names
+  ``response`` among its owners (the plan's guard, as for every writer), and its preview says
+  what of each such class it takes (`protected.owned_class_words`, `taken_first`),
+  with the network's hard timeout; its preview says the same host's other
   family is not matched, naming the other addresses the controller's topology lists for the
   host (`drop_gap`, C2148);
 - ``rate_limit_source`` (risk low): one meter with a single drop band (kbps or pktps, with a
@@ -145,14 +149,39 @@ def granularity(match: dict) -> str:
 
 
 def coverage(flows: list) -> dict:
-    """What *flows* can show: ``{"granularity", "by_granularity", "scan_by_ports", "words"}``,
-    the finest granularity found among them."""
+    """What *flows* can show: ``{"granularity", "by_granularity", "scan_by_ports", "words"}``
+    (and ``l4_unsourced`` where it explains the fallback), the finest granularity found. L4
+    only where an L4 flow names one source address (as the scan rule reads it,
+    `detect._address`: a prefix is none): a switch whose L4 flows name none (a DNS punt by its
+    port, as the Lab 9 team's on every switch, 2026-11-20) cannot show one source's
+    destination ports, so it is the finest of its other flows (L3, else L2, else none; L3 when
+    it has none), saying how many such flows it has, and its ports' rates are judged as High
+    packet rate (`detect.scan`'s fallback)."""
+    from modules.sdn.detect import _address
+    from modules.sdn.flow_intent import is_tripwire
+
     counts = {g: 0 for g in GRANULARITIES}
-    for f in flows:
-        counts[granularity(f.get("match"))] += 1
+    sourced = unsourced = 0
+    # Mercury's tripwires (the scan probe) are L4 flows naming a source, written to watch one;
+    # they say nothing of what the network's own flows can show, so they are left out.
+    for f in [f for f in flows if not is_tripwire(f.get("cookie"))]:
+        g = granularity(f.get("match"))
+        counts[g] += 1
+        if g == "L4":
+            if _address(f.get("match") or {}, "src") is not None:
+                sourced += 1
+            else:
+                unsourced += 1
     found = next((g for g in GRANULARITIES if counts[g]), "none")
-    return {"granularity": found, "by_granularity": counts, "scan_by_ports": found == "L4",
-            "words": COVERAGE_WORDS[found]}
+    out = {"granularity": found, "by_granularity": counts, "scan_by_ports": found == "L4",
+           "words": COVERAGE_WORDS[found]}
+    if found == "L4" and not sourced:
+        fell = next((g for g in ("L3", "L2") if counts[g]), "L3")
+        out.update(granularity=fell, scan_by_ports=False, l4_unsourced=unsourced,
+                   words=(f"{COVERAGE_WORDS[fell]}; its {unsourced} L4 flow"
+                          f"{'s name' if unsourced != 1 else ' names'} no source address (a "
+                          "punt by its port, say), so none shows one source's destination ports"))
+    return out
 
 
 def flow_ref(connection: str, dpid: int, flow: dict) -> str:
@@ -1249,16 +1278,22 @@ def answering(rule: str) -> list:
 #: candidate (`detect.flood` held it over the flood's threshold and window, then judged its
 #: packets too large to call a flood), so a person's response to it is the flood rule's, under
 #: the flood rule's response policy. A policy that forbids rate-limiting floods forbids it here.
-PERSON_ANSWERED = {("high_rate", "large_packets"): "flood"}
-#: The one action a person proposes from a watched large-packet stream: a rate limit, its
-#: parameters the catalogue's defaults (`RATE_LIMIT_DEFAULT`), changed in the preview.
+#: A High packet rate itself (basis ``rate``: a port's rate on a switch whose flows name no
+#: transport ports, so no destination ports can be counted) is the scan rule's, under the scan
+#: rule's policy (C4124, the operator's decision of 2026-11-20: proposed by a person in HITL
+#: only; AUTO never acts on it, since only a person makes a watched row a response).
+PERSON_ANSWERED = {("high_rate", "large_packets"): "flood", ("high_rate", "rate"): "scan"}
+#: The one action a person proposes from a watched row: a rate limit, its parameters the
+#: catalogue's defaults (`RATE_LIMIT_DEFAULT`), changed in the preview.
 PERSON_ACTION = "rate_limit_source"
+#: What each watched basis is, in a refusal's and a proposal's words.
+PERSON_WORDS = {"large_packets": "a large-packet stream", "rate": "a High packet rate"}
 
 
 def answered_rule(detection: dict) -> str:
     """The rule a response to *detection* answers, and is checked against the network's response
-    policy as: a watched large-packet stream's is the flood rule (`PERSON_ANSWERED`); every
-    other detection's is its own rule."""
+    policy as: a watched large-packet stream's is the flood rule, a watched High packet rate's
+    the scan rule (`PERSON_ANSWERED`); every other detection's is its own rule."""
     d = detection or {}
     return PERSON_ANSWERED.get((d.get("rule"), d.get("basis")), d.get("rule") or "")
 
@@ -1266,24 +1301,27 @@ def answered_rule(detection: dict) -> str:
 def person_proposal_refusal(network: str, detection: dict, action: str = PERSON_ACTION,
                             pol: dict = None) -> str:
     """Why a person may not propose *action* from the watched *detection* on *network*, or "":
-    it must be a large-packet stream (`PERSON_ANSWERED`), naming a source to act on (or hosts to
-    choose among, or a port whose host the preview looks up), and the network's response policy
-    (*pol*, read when not given) must allow *action* for the flood rule (`policy_refusal`, the
-    one check, naming the action, the rule and the actions the policy allows). Reads nothing
-    but the policy: drawn on the watching row, and checked again by its route."""
+    it must be a large-packet stream or a High packet rate (`PERSON_ANSWERED`), naming a source
+    to act on (or hosts to choose among, or a port whose host the preview looks up), and the
+    network's response policy (*pol*, read when not given) must allow *action* for the rule it
+    is answered as, the flood rule's or the scan rule's (`policy_refusal`, the one check, naming
+    the action, the rule and the actions the policy allows). Reads nothing but the policy:
+    drawn on the watching row, and checked again by its route."""
     d = detection or {}
     rule = PERSON_ANSWERED.get((d.get("rule"), d.get("basis")))
     if rule is None:
-        return (f"only a watched large-packet stream (High packet rate, basis large_packets) is "
-                f"proposed by a person; this one is {d.get('rule') or 'no rule'}, basis "
-                f"{d.get('basis') or 'none'}")
+        return (f"only a watched large-packet stream or High packet rate (High packet rate, "
+                f"basis large_packets or rate) is proposed by a person; this one is "
+                f"{d.get('rule') or 'no rule'}, basis {d.get('basis') or 'none'}")
     choice = source_choice(d)
     if choice["state"] in NOTHING_TO_CHOOSE:
         return (f"the watched stream names no source to rate-limit: "
                 f"{choice['words'] or 'its port has no host to act on'}")
     refusal = policy_refusal(network, rule, action, pol)
     if refusal:
-        return f"a large-packet stream is checked as the flood rule's held candidate: {refusal}"
+        what = PERSON_WORDS.get(d.get("basis"), "a watched row")
+        held = " held candidate" if rule == "flood" else ""
+        return f"{what} is checked as the {rule} rule's{held}: {refusal}"
     return ""
 
 
@@ -1427,7 +1465,67 @@ def save_policy(network: str, value: dict, *, actor: str, actor_verified: str = 
             "unchanged": False, "recorded": entry.get("recorded", False)}
 #: The rate-limit's defaults: NOT measured, a starting point the person changes in the preview.
 RATE_LIMIT_DEFAULT = {"unit": "kbps", "rate": 1000, "burst": 100}
+#: A scan's rate limit is in packets a second (the operator, 2026-11-20: a 1 Mbit/s cap does not
+#: slow a 250 pps SYN scan, whose packets are about 60 bytes): the default for the scan rule and
+#: for a High packet rate answered as the scan rule's (C4124, `answered_rule`), a kbit/s one
+#: refused for it. A large-packet stream is answered as the flood rule's, in kbit/s. NOT
+#: measured either: a starting point the person changes in the preview.
+SCAN_RATE_LIMIT_DEFAULT = {"unit": "pktps", "rate": 20, "burst": 10}
+
+
+def rate_limit_default(rule: str) -> dict:
+    """The rate limit's default parameters for a response answering *rule* (`answered_rule`)."""
+    return dict(SCAN_RATE_LIMIT_DEFAULT if rule == "scan" else RATE_LIMIT_DEFAULT)
+
+
 RATE_UNITS = {"kbps": "KBPS", "pktps": "PKTPS"}
+
+
+def source_drop_refusal(network: str, detection: dict) -> str:
+    """Why the protected set would refuse a drop of *detection*'s source on its switch, or
+    "": `protected.flow_refusal` over the drop's own add (the source's match, the response's
+    writer), the controller's control channel included. A response matches one source's
+    address with every destination, so on a network whose untouchable classes (management,
+    the control channel) it meets and does not own, a drop is refused (the Lab 9 hardware,
+    2026-11-20). Read when a response is proposed, kept with it, never on a page load."""
+    from modules import protected
+    from modules.sdn import connections
+
+    source = detection.get("source")
+    if not source:
+        return ""
+    try:
+        match = _source_match(source)
+    except ResponseRefused as exc:
+        return str(exc)
+    conn = next((c for c in connections.connections(network).get("connections") or []
+                 if c.get("name") == detection.get("connection")), {})
+    change = {"do": "add_flow", "flow": {"table_id": 0, "priority": 0xFFFF, "match": match,
+                                         "actions": [], "idle_timeout": 0, "hard_timeout": 1}}
+    return protected.flow_refusal(protected.for_network(network), [change],
+                                  detection.get("dpid"), conn,
+                                  writer=protected.RESPONSE_WRITER)
+
+
+def response_choices(network: str, detection: dict, proposed: str) -> dict:
+    """The other catalogue actions a person may preview for *detection*'s response beside
+    *proposed*: the network's response policy's for the rule it is answered as
+    (`answered_rule`), each ``{"action", "label"}``, a source drop only where the protected
+    set allows it (`source_drop_refusal`); the ones not offered under ``withheld``, each with
+    its ``why``. ``{"choices", "withheld"}``. Read when the response is proposed."""
+    pol = policy(network)
+    rule = answered_rule(detection)
+    allowed = ((pol.get("rules") or {}).get(rule) or {}).get("allowed") or [] \
+        if pol.get("ok") else []
+    out = {"choices": [], "withheld": []}
+    for action in [a for a in allowed if a != proposed and a in CATALOGUE]:
+        entry = {"action": action, "label": CATALOGUE[action]["label"]}
+        why = source_drop_refusal(network, detection) if action == "drop_source" else ""
+        if why:
+            out["withheld"].append(dict(entry, why=why))
+        else:
+            out["choices"].append(entry)
+    return out
 
 
 class ResponseRefused(ValueError):
@@ -1467,6 +1565,195 @@ def _sources(detection: dict) -> list:
     return list(dict.fromkeys(out))
 
 
+# ───────────────────────────────────────────────────────────────────────── the tripwire (A)
+
+#: The TCP ports a port scan always touches (Lab 9 A, the follow-ups of 2026-11-20, section 3):
+#: one tripwire flow each. 53 is left out (the network's own DNS-over-TCP flows, and the dns-tcp
+#: protected class).
+TRIPWIRE_PORTS = (21, 22, 23, 25, 80, 110, 135, 139, 143, 443, 445, 993, 995, 3306, 3389, 8080)
+#: How long a tripwire stays (its hard timeout): long enough for a scan at 250 pps to touch
+#: most of its ports many times over, short enough that it never stays as configuration.
+TRIPWIRE_SECONDS = 120
+
+
+def recorded_subnet(network: str, source: str):
+    """The subnet NetBox records *source* in (its interface address's prefix, as the committed
+    NSOT export holds it: an interface at ``a.b.c.d/24`` gives ``a.b.c.0/24``), or None
+    where NetBox holds no host with that address and a prefix, or the export cannot be read."""
+    import ipaddress
+
+    from modules.nsot import export as X
+
+    got = X.read(network)
+    if not got.get("ok"):
+        return None
+    try:
+        want = ipaddress.ip_address(str(source).strip())
+    except ValueError:
+        return None
+    for h in X.hosts_of(got["export"]) or []:
+        for i in h.get("interfaces") or []:
+            for a in i.get("ip_addresses") or []:
+                try:
+                    iface = ipaddress.ip_interface(str(a).strip())
+                except ValueError:
+                    continue
+                if iface.ip == want and iface.network.prefixlen < iface.max_prefixlen:
+                    return iface.network
+    return None
+
+
+def _may_meet(a: dict, b: dict) -> bool:
+    """Whether a packet may match both *a* and *b*, by flow_intent's field reading (a masked
+    prefix included, which `flow_ops.disjoint` never separates); True where it cannot tell."""
+    from modules.sdn import flow_intent
+
+    try:
+        return flow_intent._match_meet(flow_intent._fields(a),  # noqa: SLF001 (its reading)
+                                       flow_intent._fields(b)) is not None
+    except flow_intent._CannotTell:                   # noqa: SLF001
+        return True
+
+
+def _same_address(value, addr) -> bool:
+    """Whether a match's address *value* is *addr*, in any spelling (the review of d1cb5b71,
+    5: Ryu may spell an IPv6 address uncompressed)."""
+    import ipaddress
+
+    try:
+        return ipaddress.ip_address(str(value or "").strip()) == addr
+    except ValueError:
+        return False
+
+
+def _edge_switch(network: str, detection: dict, conn: str, stored: dict = None) -> tuple:
+    """Where a tripwire for *detection*'s source goes: the one switch port the controller's
+    topology lists its host on, off a link (`incidents._attachments`, the ingress a flood's
+    response is proposed at), else the detection's own switch, said: ``(dpid, dpid_hex,
+    words)``. A watching row's detection is the switch that saw it first, which may be a
+    transit switch (the review of d1cb5b71, 3)."""
+    from modules.sdn import incidents
+    from modules.sdn.drivers.base import parse_dpid
+
+    own = parse_dpid(detection.get("dpid") if detection.get("dpid") is not None
+                     else detection.get("dpid_hex"))
+    if stored is None:
+        try:
+            from modules.sdn import topology
+            stored = topology.stored(network)
+        except Exception as exc:                      # noqa: BLE001 (said)
+            stored = {"state": "could not read", "why": type(exc).__name__}
+    got = incidents._attachments(stored, incidents._canon(detection.get("source")),  # noqa
+                                 {conn})
+    if len(got["ports"]) == 1:
+        _c, dpid, dpid_hex, port = got["ports"][0]
+        return int(dpid), dpid_hex or f"{int(dpid):016x}", (
+            f"the source's own switch: the controller's topology lists its host on port {port}")
+    why = got["why"] or (f"the controller's topology lists it on {len(got['ports'])} ports"
+                         if got["ports"] else "the controller's topology does not list its host")
+    return own, detection.get("dpid_hex") or f"{own:016x}", (
+        f"the switch that saw it ({why})")
+
+
+def tripwire_ask(network: str, detection: dict, *, driver=None, stored: dict = None) -> dict:
+    """The tripwire for a watched High packet rate (Lab 9 A, the operator's go of 2026-11-20 on
+    the step-4 measurement): on the switch the source enters by, one Mercury flow per
+    `TRIPWIRE_PORTS` port, each ``{eth_type, <family>_src: the source, <family>_dst: the subnet
+    NetBox records the source in, ip_proto 6, tcp_dst: the port}``, going on by the switch's own
+    goto to a later table (`flow_ops.onward`, so forwarding is unchanged), for
+    `TRIPWIRE_SECONDS`, its cookie a tripwire's (`flow_intent.tripwire_cookie`), which coverage
+    and the scan rule's sightings leave out and `detect._tripwire_scans` counts. The destination
+    is the source's own subnet so the flows meet no management class (an untouchable class that
+    matches every destination in the management network): a scan beyond that subnet is not
+    watched, said. A person's flow operation (the flow editor's preview, confirm by hash and
+    Verify), never a response. ``{"ok", "error", "ask", "words"}``."""
+    import ipaddress
+
+    from modules.sdn import flow_intent, flow_ops
+
+    out = {"ok": False, "error": "", "ask": None, "words": ""}
+    source = str(detection.get("source") or "")
+    conn = detection.get("connection") or ""
+    try:
+        addr = ipaddress.ip_address(source)
+        dpid, where, placed = _edge_switch(network, detection, conn, stored)
+    except Exception:                                 # noqa: BLE001 (said)
+        return dict(out, error="the watched row names no one source address and switch, so "
+                               "there is nothing to watch")
+    subnet = recorded_subnet(network, source)
+    if subnet is None or subnet.version != addr.version:
+        return dict(out, error=(f"NetBox records no subnet for {source} (no host's interface "
+                                "holds it with a prefix in the committed NSOT export): the "
+                                "tripwire's destinations are that subnet, so nothing is "
+                                "written; export from NetBox on SDN › Apps"))
+    made = flow_ops._driver(network, conn, driver)    # noqa: SLF001 (the core's own reader)
+    if not made.get("ok"):
+        return dict(out, error=made.get("error") or f"no driver for {conn!r}")
+    read = flow_ops._read_switch(made["driver"], dpid, False)  # noqa: SLF001
+    if not read["ok"]:
+        return dict(out, error=read["error"])
+    fam = "ipv4" if addr.version == 4 else "ipv6"
+    table0 = [f for f in read["flows"] if int(f.get("table_id") or 0) == 0]
+    # One set at a time (the review of 94fa79c8, 2): a second set beside a live one would
+    # count one host's ordinary ports twice toward a scan.
+    if any(flow_intent.is_tripwire(f.get("cookie"))
+           and _same_address((f.get("match") or {}).get(f"{fam}_src"), addr)
+           for f in table0):
+        return dict(out, error=(f"Mercury's tripwires for {source} are already on switch "
+                                f"{where}; they end by their {TRIPWIRE_SECONDS} s hard timeout, "
+                                "and a scan that touches them is called one meanwhile"))
+    changes, onward = [], ""
+    for port in TRIPWIRE_PORTS:
+        match = {"eth_type": 0x0800 if addr.version == 4 else 0x86DD,
+                 f"{fam}_src": addr.compressed, f"{fam}_dst": subnet.compressed,
+                 "ip_proto": 6, "tcp_dst": port}
+        # The lowest priority that still sees the source's traffic: one above the highest of
+        # table 0's flows that are not Mercury's and meet it (the review of 94fa79c8, 1), so
+        # every Mercury response (at least `RESPONSE_PRIORITY_STEP` above those flows, or
+        # placed under a serving flow and still above them) sits above it and is never
+        # shadowed by it; a tripwire takes only what the team's own flows would.
+        meeting = [int(f.get("priority") or 0) for f in table0
+                   if not flow_intent.is_mercury(f.get("cookie"))
+                   and _may_meet(f.get("match") or {}, match)]
+        priority = min(0xFFFF, (max(meeting) if meeting else 0) + 1)
+        held = next((f for f in table0
+                     if flow_intent.is_mercury(f.get("cookie"))
+                     and not flow_intent.is_tripwire(f.get("cookie"))
+                     and int(f.get("priority") or 0) > priority
+                     and _may_meet(f.get("match") or {}, match)
+                     and (not f.get("actions")
+                          or any(a.get("type") == "METER" for a in f.get("actions") or []))),
+                    None)
+        if held is not None:
+            return dict(out, error=(
+                f"Mercury's own flow at priority {held.get('priority')} on switch {where} "
+                f"(cookie {flow_intent.cookie_hex(held.get('cookie'))}) already drops or meters "
+                f"TCP {port} from {source}, above where a tripwire would sit, so a tripwire "
+                "there would see nothing; it is not written"))
+        on = flow_ops.onward(read["flows"], 0, priority, match, {})
+        goto = (on["ok"] and len(on["actions"]) == 1
+                and on["actions"][0].get("type") == "GOTO_TABLE")
+        if not goto:
+            return dict(out, error=(
+                f"a tripwire goes on only by the switch's own goto to a later table, so "
+                f"forwarding is unchanged, and on switch {where} "
+                f"TCP {port} from {source} does not: {on['error'] or on['words']}"))
+        onward = on["words"]
+        changes.append({"do": "add_flow", "flow": {
+            "table_id": 0, "priority": priority, "cookie": flow_intent.tripwire_cookie(),
+            "idle_timeout": 0, "hard_timeout": TRIPWIRE_SECONDS, "match": match,
+            "actions": [dict(a) for a in on["actions"]]}})
+    from modules.sdn.detect import TRIPWIRE_NEED
+    return dict(out, ok=True, ask={"connection": conn, "dpid": dpid, "changes": changes},
+                words=(f"{len(changes)} tripwires on switch {where} ({placed}) "
+                       f"for {source}: TCP {', '.join(map(str, TRIPWIRE_PORTS))} to "
+                       f"{subnet.compressed}, the subnet NetBox records it in, each {onward}, "
+                       f"for {TRIPWIRE_SECONDS} s. A source that touches {TRIPWIRE_NEED} or "
+                       "more of them is called a scan, of high confidence; ordinary traffic "
+                       f"touches one or two. A scan beyond {subnet.compressed} is not "
+                       "watched."))
+
+
 def _forwarding(flows: list, source: str, target: str) -> list:
     """The controller's own forwarding of *source*'s traffic to *target* on the switch: the
     OUTPUT actions of the flows matching that pair, read from the table (one port, or none
@@ -1488,14 +1775,15 @@ def _forwarding(flows: list, source: str, target: str) -> list:
     return sorted(ports, key=str)
 
 
-def _port_hosts(drv, connection: str, dpid: int, port) -> dict:
+def _port_hosts(drv, connection: str, dpid: int, port, hosts: dict = None) -> dict:
     """The host the controller's topology lists on switch *dpid*'s *port*, read from the
     controller now (C2002): `detect.port_source`'s answer over the driver's hosts and links,
     the one resolver a detection uses on the stored read. For a detection kept before the
-    detection named its source, or one whose topology could not be read when it fired."""
+    detection named its source, or one whose topology could not be read when it fired. *hosts*
+    is the controller's hosts already read by this build (`build_response`), else read here."""
     from modules.sdn import detect
 
-    hosts, links = drv.hosts(), drv.links()
+    hosts, links = (drv.hosts() if hosts is None else hosts), drv.links()
     bad = next((g for g in (hosts, links) if not g.get("ok")), None)
     if bad is not None:
         topo = {"state": "could not read", "controllers": [],
@@ -1538,7 +1826,7 @@ def source_choice(detection: dict) -> dict:
     return {"how": "", "state": "", "port": d.get("port"), "hosts": [], "words": ""}
 
 
-def _topology_ports(drv, dpid: int, source: str) -> dict:
+def _topology_ports(drv, dpid: int, source: str, hosts: dict = None) -> dict:
     """Where switch *dpid* sends each host's traffic, from the controller's topology (the
     operator's order for Lab 8's objective 3.1: a scan's L4 flows expire in seconds and leave
     only the controller's L2 pair, so a person's preview cannot read the forwarding from the
@@ -1547,8 +1835,8 @@ def _topology_ports(drv, dpid: int, source: str) -> dict:
     hangs on *dpid*, else out of the first link of the shortest path of links toward its
     switch; a host with no IPv4 address, one listed on an inter-switch link port, or one no
     link reaches is named in *unplaced*. ``ok`` False, with the read's error, when the
-    topology cannot be read."""
-    hosts, links = drv.hosts(), drv.links()
+    topology cannot be read. *hosts* is this build's own read of them, else read here."""
+    hosts, links = (drv.hosts() if hosts is None else hosts), drv.links()
     for got in (hosts, links):
         if not got.get("ok"):
             return {"ok": False, "ports": {}, "unplaced": [],
@@ -1604,17 +1892,26 @@ def _destinations(flows: list, source: str) -> list:
 
 def rate_limit_gap(source: str, params: dict, same_host: dict = None) -> str:
     """What a rate limit leaves unmetered, in words, for its preview's will-not list: the hosts
-    it meters and where their ports came from, what it does not meter and why, no NORMAL, and
-    that the source's other family is not metered (C1997), the host's other addresses the
-    controller's topology lists named (`family_gap`, C2148)."""
+    it meters and where they were found, how its traffic goes on (the switch's own flows below
+    it, `flow_ops.onward`: never a fixed port or NORMAL, C4153), what it does not meter and
+    why, and that the source's other family is not metered (C1997), the host's other addresses
+    the controller's topology lists named (`family_gap`, C2148)."""
     metered = ", ".join(params.get("targets") or [])
     ports_from = params.get("ports_from") or "the switch's flows"
     later = ("a host the controller's topology does not list yet" if
              ports_from == "the controller's topology" else
              "a destination the controller sets up after this response")
+    onward = "; ".join(params.get("onward") or []) or "on as the switch's own flows send it"
+    pinned = any("GOTO_TABLE" not in w for w in params.get("onward") or [])
     words = (f"Traffic from {source} to {later} is not metered: the meter caps {source}'s "
-             f"traffic to {metered}, each out of the port {ports_from} gives for it, and no "
-             "flow here forwards with NORMAL.")
+             f"traffic to {metered} (the hosts {ports_from} gives), each {onward}"
+             + (": where a port is named it is fixed until the response ends, so a reroute "
+                "around a failed link does not move that traffic; and a flow below that sends "
+                "traffic to the controller is taken as forwarding, so what the controller "
+                "then does with it is not followed" if pinned else
+                ": the network's own forwarding table chooses the port, so a reroute around a "
+                "failed link moves it")
+             + "; never NORMAL.")
     if params.get("not_metered"):
         words += f" Not metered now: {'; '.join(params['not_metered'])}."
     return words + family_gap(source, FAMILY_GAP_VERB["rate_limit_source"], same_host)
@@ -1682,14 +1979,26 @@ def family_gap(source: str, verb: str, same_host: dict = None) -> str:
     return words
 
 
-def _same_host(drv, source: str) -> dict:
+def _host_macs(got: dict) -> dict:
+    """``{address: mac}`` of every host in *got*, the controller's hosts as one build read
+    them (`_same_host`'s same read): the destination MAC `flow_ops.onward` follows a pair's
+    packet with where the switch's own forwarding is by destination MAC. ``{}`` when the
+    topology could not be read (onward then follows by the match alone)."""
+    if not got.get("ok"):
+        return {}
+    return {_canon(a): str(h.get("mac") or "").lower() for h in got.get("hosts") or []
+            for a in list(h.get("ipv4") or []) + list(h.get("ipv6") or []) if h.get("mac")}
+
+
+def _same_host(drv, source: str, got: dict = None) -> dict:
     """The host the controller's topology lists with *source* among its addresses, read from
     the controller now (C2148): ``{"state", "mac", "addresses", "why"}``. *state* ``listed``
     (*addresses* its other addresses, IPv4 then IPv6, as the controller learned them, less the
     unspecified ones `base.topo_host` leaves out), ``none`` (listed with no other address),
     ``unlisted`` (no host carries *source*) or ``unread`` (*why* the read's error). Never a
-    refusal: a drop is built whether or not the host's other addresses are known."""
-    got = drv.hosts()
+    refusal: a drop is built whether or not the host's other addresses are known. *got* is
+    the controller's hosts already read by this build, else they are read here."""
+    got = drv.hosts() if got is None else got
     if not got.get("ok"):
         return {"state": "unread", "mac": "", "addresses": [],
                 "why": got.get("error") or "no answer"}
@@ -1727,7 +2036,8 @@ def _flow_by_ref(flows: list, connection: str, dpid: int, ref: str):
     return None
 
 
-def _response_source(drv, connection: str, dpid: int, detection: dict, params: dict) -> tuple:
+def _response_source(drv, connection: str, dpid: int, detection: dict, params: dict,
+                     hosts: dict = None) -> tuple:
     """``(source, sources)``: the address a drop or rate limit of *detection* acts on, and
     every one it could (C2002). The detection's own (its source, or the sources its flows
     name); else, for a port's detection, the hosts on its port (`source_choice`: as kept with
@@ -1754,7 +2064,8 @@ def _response_source(drv, connection: str, dpid: int, detection: dict, params: d
         found = source_choice(detection)
         if found["state"] not in NOTHING_TO_CHOOSE + ("several",):
             # Not read when it fired, or kept before the detection named its source.
-            found, live = _port_hosts(drv, connection, dpid, detection.get("port")), True
+            found, live = _port_hosts(drv, connection, dpid, detection.get("port"),
+                                      hosts=hosts), True
         sources = [h["address"] for h in found.get("hosts") or []]
         if found.get("words"):
             params["source_from"] = found["words"]
@@ -1810,22 +2121,29 @@ def confirm_source_refusal(ask: dict, detection: dict) -> str:
     return ""
 
 
-def auto_source_refusal(ask: dict, detection, action_id: str) -> str:
+def auto_source_refusal(ask: dict, detection, action_id: str, network: str = "") -> str:
     """Why an unattended (AUTO) confirm of *ask* may not act on its source (C2147), naming the
     comparison and both operands; "" otherwise. Refused when the ask's source was found in the
     controller's topology or chosen (`_response_source` keeps how in the ask's detection's
     ``source_from``), or when *detection* (when handed in) names no source the flows name
-    (`modes.source_refusal`)."""
+    (`modes.source_refusal`): unless *network*'s NetBox declares that source on its port
+    (`modes.declared_source`, read again here on *detection*, the loop's own, and the ask's
+    source the same)."""
     from modules.sdn import modes
 
     if action_id not in modes.SOURCE_ACTIONS:
         return ""
-    how = ((ask or {}).get("detection") or {}).get("source_from")
-    if how:
+    asked = (ask or {}).get("detection") or {}
+    how = asked.get("source_from")
+    declared = ""
+    if isinstance(detection, dict) and network and detection.get("source_from") \
+            and asked.get("source") == detection.get("source"):
+        declared = modes.declared_source(network, detection)
+    if how and not declared:
         return (f"AUTO refused: {modes.INFERRED_WORDS} ({modes.FLOWS_RULE}, and this one's "
                 f"source was not: {how})")
     if isinstance(detection, dict):
-        why = modes.source_refusal(detection, action_id)
+        why = modes.source_refusal(detection, action_id, declared)
         if why:
             return f"AUTO refused: {why}"
     return ""
@@ -1885,26 +2203,60 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
         recorded = [r.get("cookie") for r in intent["flows"]]
         changes = []
         if action_id in ("drop_source", "rate_limit_source"):
-            source, _seen = _response_source(drv, conn, dpid, detection, out["params"])
+            hosts = drv.hosts()               # the controller's hosts, read once for this build
+            source, _seen = _response_source(drv, conn, dpid, detection, out["params"],
+                                             hosts=hosts)
             hard = _hard_timeout(network, out["params"])
-            priority = flow_ops.response_priority(read["flows"], own, recorded,
-                                                  match=_source_match(source))
+            # Below the flows serving each protected class the source's match meets, in table
+            # 0, and above the rest it meets under them (Lab 9 Part B, 2026-11-20), so the
+            # network's own DNS and DHCP flows keep what they match, the dropped host's
+            # included. Whether it may meet a class at all is the class's owners' (the plan's
+            # guard), and its preview says what of each class it takes.
+            from modules import protected
+            pset = protected.for_network(network)
+            met = [c for c in (pset.get("classes") or [])
+                   if protected.overlap(_source_match(source), c)]
+            priority = flow_ops.response_place(read["flows"], own, recorded,
+                                               match=_source_match(source), table_id=0,
+                                               classes=met)
+            # Mercury's tripwires for the source sit one above the team's flows they meet
+            # (`tripwire_ask`), so a response is above them; where placing it under a serving
+            # flow left it level with or under one, the two would tie or the tripwire would
+            # carry its ports past the response (the review of 94fa79c8, 1): refused, naming it.
+            wire = next((f for f in read["flows"]
+                         if flow_intent.is_tripwire(f.get("cookie"))
+                         and int(f.get("table_id") or 0) == 0
+                         and int(f.get("priority") or 0) >= priority
+                         and not flow_ops.disjoint(f.get("match") or {}, _source_match(source))),
+                        None)
+            if wire is not None:
+                raise ResponseRefused(
+                    f"Mercury's tripwire for {source} on switch {dpid} sits at priority "
+                    f"{wire.get('priority')}, at or above where this response would go "
+                    f"({priority}), so it would carry TCP {(wire.get('match') or {}).get('tcp_dst')} "
+                    "past the response; it ends by its hard timeout, after which preview again")
             out["params"].update(source=source, hard_timeout=hard, priority=priority)
             # The host's other addresses, as the controller's topology lists them (C2148):
             # the flow matches the one address, and the preview names what it leaves.
-            out["same_host"] = _same_host(drv, source)
+            out["same_host"] = _same_host(drv, source, hosts)
             if action_id == "drop_source":
                 changes.append({"do": "add_flow", "flow": {
                     "table_id": 0, "priority": priority, "cookie": flow_intent.new_cookie(),
                     "idle_timeout": 0, "hard_timeout": hard, "match": _source_match(source),
                     "actions": []}})
             else:
-                unit = str(out["params"].get("unit") or RATE_LIMIT_DEFAULT["unit"]).lower()
+                answers = answered_rule(detection)
+                base = rate_limit_default(answers)
+                unit = str(out["params"].get("unit") or base["unit"]).lower()
                 if unit not in RATE_UNITS:
                     raise ResponseRefused(f"a rate is in {' or '.join(RATE_UNITS)}, not {unit!r}")
+                if answers == "scan" and unit != "pktps":
+                    raise ResponseRefused(
+                        f"a scan's rate limit is in packets a second (pktps), not {unit}: a "
+                        "scan's packets are small, so a bit-rate cap does not slow it")
                 try:
-                    rate = int(out["params"].get("rate", RATE_LIMIT_DEFAULT["rate"]))
-                    burst = int(out["params"].get("burst", RATE_LIMIT_DEFAULT["burst"]))
+                    rate = int(out["params"].get("rate", base["rate"]))
+                    burst = int(out["params"].get("burst", base["burst"]))
                 except (TypeError, ValueError):
                     raise ResponseRefused("a rate and a burst are whole numbers") from None
                 if rate < 1 or burst < 0:
@@ -1927,7 +2279,7 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                 # seconds, and a person's preview comes later). An IPv6 source takes the
                 # flows: the topology's ports are used for an IPv4 source (C1997).
                 v4 = ipaddress.ip_address(source).version == 4
-                topo = (_topology_ports(drv, dpid, source) if v4 else
+                topo = (_topology_ports(drv, dpid, source, hosts=hosts) if v4 else
                         {"ok": False, "ports": {}, "unplaced": [],
                          "error": "the source is IPv6, and the topology's ports are used for "
                                   "an IPv4 source only"})
@@ -1955,15 +2307,126 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                         f"no forwarding port for {source}'s traffic is known on switch "
                         f"{dpid}: {ports_from} give none, so there is nothing to meter: drop "
                         "it instead")
+                # Each pair through the meter, then on as the switch's own flows below it send
+                # it (C4153, the Lab 9 hardware, 2026-11-20: a pair flow's OUTPUT to the port
+                # the topology gave at the preview held a host's traffic on a dead link while
+                # forwarding.py rerouted everyone else's). On a pipeline that is a goto to the
+                # forwarding table, which decides the port each time; the port above only says
+                # the host is reached from here.
+                # A single table (a reactive fabric's learning flows by port and MAC, Lab 8)
+                # has no instruction that defers the port: there the port above, the
+                # forwarding as read now, is sent, and the preview says it is fixed.
+                macs = _host_macs(hosts)
+                ingress = detection.get("port")
+                onward_words, pairs, live_only = [], [], []
                 for target, port in found.items():
+                    m = _pair_match(source, target)
+                    mac = macs.get(_canon(target))
+                    # What is known of the pair's packets: the destination's MAC, and the port
+                    # the source's traffic enters by (the detection's), for a table that
+                    # forwards by MAC or by in_port. Built here, apart from B2's
+                    # `policy_intent._hint`, since a response has the controller's live hosts
+                    # and the port the threat entered by, and a policy has NetBox's hosts and
+                    # where NetBox cables its source (the review of 5d7799f0, D).
+                    hint = dict({"eth_dst": mac} if mac else {},
+                                **({"in_port": ingress, "in_phy_port": ingress}
+                                   if isinstance(ingress, int) else {}))
+                    on = flow_ops.onward(read["flows"], 0, priority, m, hint)
+                    if on.get("reason") in ("drops", "meters", "may_drop", "may_meter",
+                                            "cannot_follow", "split_tables"):
+                        # The network's own flows below drop or meter it, all of it or some
+                        # (a person's flow, a permanent policy, the table's default), or do
+                        # what Mercury cannot follow: a rate limit above would undo that, so
+                        # this pair is not metered, said for what the flows hold, no more (the
+                        # reviews of 5d7799f0, 3bb37445 and 69e36e6c).
+                        held = {"drops": "all of it is dropped below it by",
+                                "meters": "all of it is metered below it by",
+                                "may_drop": "some of it may be dropped below it by",
+                                "may_meter": "some of it may be metered below it by",
+                                "cannot_follow": "some of it is sent below it where Mercury "
+                                                 "cannot follow, by",
+                                "split_tables": "its packets go on to different tables below "
+                                                "it, one by"}[on["reason"]]
+                        if on.get("mercury_live"):
+                            held = held.replace("below it by", "below it, until it ends, by "
+                                                "Mercury's own response,")
+                            # Only a pair Mercury's response holds whole needs nothing more
+                            # (the review of 94fa79c8, 5): one it may drop or meter in part
+                            # is said as such, never "nothing more is needed".
+                            if on["reason"] in ("drops", "meters"):
+                                live_only.append(target)
+                        not_metered.append(f"{target} ({held} {on['taker']}; none of "
+                                           f"{source}'s traffic to it is limited by this "
+                                           "response)")
+                        continue
+                    goto = (on["ok"] and len(on["actions"]) == 1
+                            and on["actions"][0].get("type") == "GOTO_TABLE")
+                    if on["ok"] and not goto and any(a.get("type") == "GOTO_TABLE"
+                                                       for a in on["actions"]):
+                        # The flow below goes on to a later table with more than the goto (it
+                        # writes metadata, sets a field): a fixed port would skip that table and
+                        # what it does, and the meter's flow may carry only the goto (the shape
+                        # check), so the pair is not metered (the review of bcea1999, 3).
+                        not_metered.append(f"{target} (the flow its traffic takes below it, "
+                                           f"{on['taker']}, does more than go on to a later "
+                                           "table, which a rate limit cannot carry; none of "
+                                           f"{source}'s traffic to it is limited by this "
+                                           "response)")
+                        continue
+                    # A single table's own forwarding flow is used only when it is one OUTPUT to a
+                    # numbered port, and with that port (C4159: its rewrite, IN_PORT or another
+                    # port than the topology's were replaced by the topology's); anything else
+                    # it does is not carried, so the pair is not metered.
+                    own = [a for a in on["actions"]] if on["ok"] and not goto else []
+                    if own == [{"type": "OUTPUT", "port": "CONTROLLER"}]:
+                        # A reactive table's miss to its controller (Lab 8): the controller
+                        # decides each packet, its learned flows expiring in seconds, so the
+                        # topology's port stands, its preview saying what is not followed.
+                        own = []
+                    if own and not (len(own) == 1 and own[0].get("type") == "OUTPUT"
+                                    and isinstance(own[0].get("port"), int)
+                                    and not isinstance(own[0].get("port"), bool)
+                                    and 1 <= own[0]["port"] <= 0xFFFFFF00):
+                        not_metered.append(f"{target} (the flow its traffic takes below it, "
+                                           f"{on['taker']}, does more than send it out one "
+                                           "port, which a rate limit cannot carry; none of "
+                                           f"{source}'s traffic to it is limited by this "
+                                           "response)")
+                        continue
+                    if own:
+                        port = own[0]["port"]
+                    then = on["actions"] if goto else [{"type": "OUTPUT", "port": port}]
+                    # Why the port is fixed, and which: onward's own refusal (a split table it
+                    # cannot follow), or a single table's flow, named with what it does (it may
+                    # send it to the controller, or out another port than the topology's).
+                    why = (on["error"] if not on["ok"] else
+                           f"the flow its traffic takes below it, {on['taker']}, sends it out "
+                           "that port itself")
+                    said = on["words"] if goto else (
+                        f"out port {port}, " + ("the switch's own" if own else
+                                                f"the port {ports_from} gives")
+                        + f", fixed: {why}")
+                    if said not in onward_words:
+                        onward_words.append(said)
+                    pairs.append(target)
                     changes.append({"do": "add_flow", "flow": {
                         "table_id": 0, "priority": priority, "cookie": flow_intent.new_cookie(),
-                        "idle_timeout": 0, "hard_timeout": hard,
-                        "match": _pair_match(source, target),
-                        "actions": [{"type": "METER", "meter_id": meter_id},
-                                    {"type": "OUTPUT", "port": port}]}})
-                out["params"].update(targets=list(found), not_metered=not_metered,
-                                     ports_from=ports_from)
+                        "idle_timeout": 0, "hard_timeout": hard, "match": m,
+                        "actions": [{"type": "METER", "meter_id": meter_id}] + then}})
+                if not pairs and live_only and len(live_only) == len(found):
+                    # Every pair is held by Mercury's own response still in force (C4159).
+                    raise ResponseRefused(
+                        f"nothing of {source}'s traffic is left to meter on switch {dpid}: "
+                        f"{'; '.join(not_metered)}. Mercury's own response already holds it "
+                        "until its hard timeout: nothing more is needed now")
+                if not pairs:
+                    raise ResponseRefused(
+                        f"nothing of {source}'s traffic is left to meter on switch {dpid}: "
+                        f"{'; '.join(not_metered)}. The network's own flows already take it: "
+                        "drop the source instead to hold the rest of its traffic, or change "
+                        "those flows on SDN › Flows")
+                out["params"].update(targets=pairs, not_metered=not_metered,
+                                     ports_from=ports_from, onward=onward_words)
         else:
             ref = (detection.get("subject") or {}).get("value")
             found = _flow_by_ref(read["flows"], conn, dpid, ref)
@@ -2025,6 +2488,120 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
     return out
 
 
+def _whole(value) -> bool:
+    """An int, never a bool (a carried ask's JSON true is not table 1)."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def response_shape_refusal(ask: dict, action_id: str) -> str:
+    """Why a confirm's carried *ask* is not in the shape `build_response` makes for
+    *action_id*, or ``""``. The confirm plans it as the closed loop's writer
+    (`protected.RESPONSE_WRITER`), whom a network may name among a protected class's owners, and
+    a person's confirm carries its ask back from the page: so only a response's own shape may
+    take that writer (Lab 9 Part B, 2026-11-20; the independent review of b3bb6079, A).
+
+    - ``drop_source``: one add in table 0 matching the EtherType and one source address alone,
+      with no actions, a hard timeout and Mercury's cookie;
+    - ``rate_limit_source``: one meter, then adds in table 0, each matching the EtherType, that
+      source and one destination, through that meter, then a goto to a later table or one
+      numbered port (`flow_ops.onward`, C4153), each with a hard timeout and
+      Mercury's cookie;
+    - ``remove_flow``: one delete-strict, and Mercury's own flows put back (``reinstall``)."""
+    from modules import protected
+    from modules.sdn import flow_intent
+    from modules.sdn.match_rules import ETH_IPV4, ETH_IPV6
+
+    changes = ask.get("changes") if isinstance(ask.get("changes"), list) else None
+    if not changes or not all(isinstance(c, dict) for c in changes):
+        return "the confirm's ask carries no changes"
+    words = f"the confirm's ask is not in the shape {action_id} makes"
+
+    def objects(c):
+        # A carried ask is a page's, so any part may be the wrong type: refused, never raised
+        # (the review of 5d7799f0, E).
+        f, meter = c.get("flow", {}), c.get("meter", {})
+        return (isinstance(f, dict) and isinstance(meter, dict)
+                and isinstance(f.get("match", {}), dict)
+                and isinstance(f.get("actions", []), list)
+                and all(isinstance(a, dict) for a in f.get("actions") or []))
+
+    if not all(objects(c) for c in changes):
+        return f"{words}: a flow, its match, its actions or a meter is not an object"
+
+    def mercury(flow):
+        return flow_intent.is_mercury(protected.cookie_number(flow.get("cookie")))
+
+    def timed(flow):
+        hard = flow.get("hard_timeout")
+        return isinstance(hard, int) and not isinstance(hard, bool) and hard > 0
+
+    def source_of(match, extra=()):
+        # Each address one string (a carried list was unhashable and raised, the review of
+        # 3bb37445): anything else is not the shape.
+        fam = {"ipv4_src": ETH_IPV4, "ipv6_src": ETH_IPV6}
+        keys = set(match)
+        for src, eth in fam.items():
+            want = {"eth_type", src} | {k.replace("_src", "_dst") for k in extra if k == src}
+            if (keys == want and match.get("eth_type") == eth
+                    and all(isinstance(match[k], str) for k in want - {"eth_type"})):
+                return match[src]
+        return None
+
+    if action_id == "drop_source":
+        if len(changes) != 1 or changes[0].get("do") != "add_flow" or changes[0].get("reinstall"):
+            return f"{words}: one flow added, not {len(changes)} change(s)"
+        f = changes[0].get("flow") or {}
+        if (f.get("table_id") != 0 or f.get("actions") or not timed(f) or not mercury(f)
+                or source_of(f.get("match") or {}) is None or not ask.get("response")):
+            return f"{words}: a drop of one source address in table 0, with a hard timeout"
+        return ""
+    if action_id == "rate_limit_source":
+        meter, flows = changes[0], changes[1:]
+        if meter.get("do") != "add_meter" or not flows:
+            return f"{words}: one meter, then its flows"
+        meter_id = (meter.get("meter") or {}).get("meter_id")
+        sources = set()
+        for c in flows:
+            f = c.get("flow") or {}
+            m = f.get("match") or {}
+            src_key = "ipv4_src" if "ipv4_src" in m else "ipv6_src"
+            acts = f.get("actions") or []
+            # Through the meter, then on as the switch's own flows send it (C4153,
+            # `flow_ops.onward`): a goto to a later table (a pipeline's forwarding table), or,
+            # on a single table, its forwarding flow's one numbered port. Never NORMAL, a
+            # reserved port or anything else a carried ask could add.
+            then = acts[1] if len(acts) == 2 else {}
+            # A real port only: OpenFlow's reserved ports are numbers too (NORMAL 0xfffffffa,
+            # CONTROLLER 0xfffffffd, …), above OFPP_MAX (0xffffff00), and 0 is no port; a
+            # table is 1 to 254 (OFPTT_MAX), never back to table 0 (the review of ce2318df).
+            onward_ok = (
+                (then.get("type") == "GOTO_TABLE" and _whole(then.get("table_id"))
+                 and 0 < then["table_id"] <= 0xFE)
+                or (then.get("type") == "OUTPUT" and _whole(then.get("port"))
+                    and 1 <= then["port"] <= 0xFFFFFF00))
+            ok = (c.get("do") == "add_flow" and not c.get("reinstall") and f.get("table_id") == 0
+                  and timed(f) and mercury(f) and source_of(m, extra=(src_key,)) is not None
+                  and len(acts) == 2 and acts[0].get("type") == "METER"
+                  and acts[0].get("meter_id") == meter_id and onward_ok)
+            if not ok:
+                return (f"{words}: each flow in table 0 from the source to one destination, "
+                        "through the meter, then a goto to a later table or one numbered "
+                        "port, with a hard timeout")
+            sources.add(m.get(src_key))
+        if len(sources) != 1 or not ask.get("response"):
+            return f"{words}: one source"
+        return ""
+    if action_id == "remove_flow":
+        removes = [c for c in changes if c.get("do") == "remove_flow"]
+        rest = [c for c in changes if c.get("do") != "remove_flow"]
+        if len(removes) != 1 or changes[0] is not removes[0] or not all(
+                c.get("do") == "add_flow" and c.get("reinstall") and mercury(c.get("flow") or {})
+                for c in rest):
+            return f"{words}: one flow removed, and only Mercury's own put back"
+        return ""
+    return f"{action_id!r} is not in the response catalogue ({', '.join(CATALOGUE)})"
+
+
 def respond_to_threat(network: str, detection: dict, action_id: str = None,
                       params: dict = None, *, confirm: dict = None, actor: str = "",
                       actor_verified: str = "", mode: str = "hitl", autonomous: dict = None,
@@ -2046,7 +2623,9 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
         built = build_response(network, detection, action_id, params, driver=driver)
         if not built["ok"]:
             return dict(built, plan=None)
-        p = flow_ops.plan(network, built["ask"], driver=driver)
+        from modules import protected
+        p = flow_ops.plan(network, built["ask"], driver=driver,
+                          writer=protected.RESPONSE_WRITER)
         source = built["params"].get("source") or (detection or {}).get("source") or ""
         if p["ok"] and built["action"] == "rate_limit_source":
             p["will_not"].append(rate_limit_gap(source, built["params"], built.get("same_host")))
@@ -2072,6 +2651,10 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
             f"the confirm names {action_id} and its preview {previewed}: nothing was sent; "
             "preview again")}
     action_id = previewed
+    # Only a response's own shape is planned as the closed loop's writer (C4130).
+    refusal = response_shape_refusal(ask, action_id)
+    if refusal:
+        return {"ok": False, "outcome": "refused", "error": f"{refusal}: nothing was sent"}
     refusal = policy_refusal(network, answered_rule(ask.get("detection") or {}), action_id)
     if refusal:
         return {"ok": False, "outcome": "refused", "error": f"{refusal}: nothing was sent"}
@@ -2084,7 +2667,7 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
     # was found in the topology or chosen (its ``source_from``), or whose detection's source
     # the flows do not name, sends nothing; the loop's `modes.decide` hands it to a person first.
     if mode == "auto":
-        refusal = auto_source_refusal(ask, detection, action_id)
+        refusal = auto_source_refusal(ask, detection, action_id, network)
         if refusal:
             return {"ok": False, "outcome": "refused", "error": f"{refusal}: nothing was sent"}
     # The control-plane guard and B again at the confirm, on the ask carried back (C2022,
@@ -2092,9 +2675,11 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
     response = {"kind": "response", "action": action_id, "risk": CATALOGUE.get(
         action_id or "", {}).get("risk", ""), "detection": ask.get("detection") or {},
         "classified_by": classified_by or DEFAULT_WORDS}
+    from modules import protected
     return flow_ops.apply(network, ask, (confirm or {}).get("hash", ""), actor=actor,
                           actor_verified=actor_verified, mode=mode, autonomous=autonomous,
-                          response=response, driver=driver, **apply_kwargs)
+                          response=response, driver=driver, writer=protected.RESPONSE_WRITER,
+                          **apply_kwargs)
 
 
 #: The meter's unit as a response's log line says it, from its flags.
@@ -2188,7 +2773,7 @@ def response_words(done: dict, *, action: str, who: str, switch: str) -> str:
 
 
 def log_response(network: str, done: dict, *, action: str, who: str, ask: dict = None,
-                 now: float = None, response_id: str = "") -> dict:
+                 now: float = None, response_id: str = "", basis: str = "") -> dict:
     """Write a response's line to the loop's log (`loop.say`, step ``respond``): the one
     writer, for AUTO's apply in a pass and a person's confirm on SDN › Responses
     (`response_words` says what it holds). Never raises: a line that could not be written is
@@ -2205,9 +2790,15 @@ def log_response(network: str, done: dict, *, action: str, who: str, ask: dict =
         switch = dpid_hex(parse_dpid(dpid))
     except Exception:                                 # noqa: BLE001 (said as given)
         switch = str(dpid or "unknown")
-    name = _switch_name(network, conn, dpid) if dpid is not None else ""
+    from modules.sdn import known
+
+    # NetBox's name, else the switch's own description, never Open vSwitch's "None" (queue 16).
+    name = known.name_of(network, conn, dpid)
     shown = f"{switch} ({name})" if name else switch
     words = response_words(done, action=action, who=who, switch=shown)
+    if basis:
+        # AUTO's basis for the source it acted on (C4154): NetBox's declaration, or the flows.
+        words += f"; its source: {basis}"
     extra = {"operation": done.get("id") or "", "action": action, "actor": who,
              "dpid": switch, "outcome": done.get("outcome") or "refused",
              "read_back": (done.get("verify") or {}).get("read_back") or []}

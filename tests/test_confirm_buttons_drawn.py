@@ -2075,8 +2075,9 @@ class TestSdnOperationCards(_Cards):
     networks, lab = hosted(_sc.networks), hosted(_so.lab)
 
     CASES = {
-        "form": ("_sdn_flow_form.html", "Preview the {{ 'removal' if f.do == 'remove' else "
-                 "('change' if f.do == 'edit' else 'flow') }}", r"Preview the flow", "viewer"),
+        "form": ("_sdn_flow_form.html", "Preview the {{ 'removal' if f.do in ('remove', "
+                 "'remove_meter') else ('change' if f.do == 'edit' else 'flow') }}",
+                 r"Preview the flow", "viewer"),
         "send": ("_sdn_op.html", "Send {{ d.count }} request{{ 's' if d.count != 1 }} to "
                  "{{ d.connection }}", r"Send 1 request to lab-controller",
                  "data: the match lacks the field its prerequisite needs (tcp_dst without "
@@ -2090,6 +2091,16 @@ class TestSdnOperationCards(_Cards):
                           r"Rate-limit this source…",
                           "data: the network's response policy allows the flood rule no rate "
                           "limit"),
+        # Lab 9 A: Watch its ports… on a watched High packet rate (and on a flood incident of
+        # one source, the same control), drawn from the real watching row; blocked by a row
+        # naming no one source address.
+        "tripwire": ("_sdn_responses.html", "Watch its ports…", r"Watch its ports…",
+                     "data: the watched row names no one source address"),
+        # The policy's other action for the rule (the operator, 2026-11-20): the scan's drop
+        # proposed, its rate limit beside it; blocked by a verified service, as the
+        # proposal's own Preview is.
+        "choice": ("_sdn_responses.html", "Preview the {{ c.label | lower }} instead…",
+                   r"Preview the rate-limit the source instead…", "viewer"),
     }
     FORM = "/v2/sdn/flow/form?list=Default&do=add&connection=lab-controller&dpid=0000000000000001"
     ADD = {"list": "Default", "do": "add", "connection": "lab-controller",
@@ -2164,6 +2175,39 @@ class TestSdnOperationCards(_Cards):
                        actor="op@example.com", actor_verified="access")
         html = self._watching(request)
         assert "outside Default&#39;s response policy for flood" in html, \
+            "floor: the refusal is drawn"
+        return html
+
+    def _rate(self, request, source):
+        """The Lab 8 walk's High packet rate walk-fp-6 (a rate on s1 port 2, the scan rule's
+        fallback), its source edited to *source*, watched on Default."""
+        from modules.sdn import loop as LP
+        from tests.test_sdn_high_rate import walk
+        lab = request.getfixturevalue("lab")
+        d = walk("walk-fp-6")
+        assert (d["rule"], d["basis"]) == ("high_rate", "rate"), "floor: a rate"
+        LP.watch("Default", dict(d, network="Default", connection="lab-controller",
+                                 source=source),
+                 {"key": f"high_rate|{source}", "rule": "high_rate", "source": source or "",
+                  "window_s": 30, "window_setting": "sdn_flood_window_seconds",
+                  "window_words": "within 30 s", "seen_also": []})
+        html = _text(lab["client"].get("/v2/sdn/responses?list=Default"))
+        assert "1 watching" in html, "floor: the watching row is drawn"
+        return html
+
+    def drawn_choice(self, request):
+        return self._responses(request)
+
+    def blocked_choice(self, request, monkeypatch):
+        as_service(monkeypatch)
+        return self._responses(request)
+
+    def drawn_tripwire(self, request):
+        return self._rate(request, "198.51.100.11")
+
+    def blocked_tripwire(self, request, monkeypatch):
+        html = self._rate(request, None)
+        assert "the row names no one source address to watch" in html, \
             "floor: the refusal is drawn"
         return html
 
@@ -2894,9 +2938,12 @@ class TestThePopulation:
         the operator's decision 9, 2026-11-18, C3959; 100 until a fix's page's four, Set
         Automatic, Delete this fix, Run on <port> and Edit's Save, drawn from their previews by
         the fast-lane catch-up, 2026-11-18; 104 until R5's saved line's Promote <script>, the
-        same day)."""
+        same day; 105 until Lab 9 A's Watch its ports…, on a watched High packet rate and a
+        flood incident, one site, 2026-11-20, and a response's other actions, each Preview the
+        <action> instead…, the same day; both joined here when the Lab 9 kit's hotfix branch
+        merged forward onto overnight/gui)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 105, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 107, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

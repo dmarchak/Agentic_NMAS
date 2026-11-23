@@ -9,7 +9,11 @@ never the checkout's. Prints names and states, never a value that could be a sec
                                           kept), the lab9 network if missing, made the
                                           installation's current one if none was set, and
                                           lab9's code repository (the kit's bare one) if
-                                          none is set; run again by `kit repin`
+                                          none is set; run again by `kit repin`. With
+                                          KIT_NETBOX_URL set (kit.env), netbox_url is
+                                          that URL, written over a stored one
+    kit_settings.py netbox-test           Mercury's NetBox connection test (the NetBox
+                                          card's Test), one PASS/FAIL line
     kit_settings.py exception-on UNTIL [--reveal]
                                           the identity exception, recorded in History;
                                           --reveal opens reveal too, for the S1 sitting only
@@ -122,17 +126,28 @@ def init() -> None:
     it again): an installation setting is written only when its key is ABSENT from the stored
     settings file (not from the schema's defaults), so a value the operator set (NetBox's URL,
     token and auth scheme, the heal mode, anything stored) is kept; lab9 is created only when
-    missing, and made current only when no current network was set."""
+    missing, and made current only when no current network was set. The one exception:
+    KIT_NETBOX_URL, when kit.env sets it, is written as netbox_url over a stored value."""
     from modules import network_admin
     from modules.config import load_user_settings
 
     stored = load_user_settings()
-    added = {k: v for k, v in INSTALLATION.items() if k not in stored}
-    kept = sorted(k for k in INSTALLATION if k in stored)
-    if added:
-        _write(added)
+    # An external NetBox declared in kit.env (KIT_NETBOX_URL) is the one exception: the
+    # declaration wins for netbox_url, so the kit runs on the NetBox it names.
+    declared = os.environ.get("KIT_NETBOX_URL", "").strip()
+    wanted = dict(INSTALLATION, **({"netbox_url": declared} if declared else {}))
+    added = {k: v for k, v in wanted.items() if k not in stored}
+    replaced = bool(declared) and "netbox_url" in stored and stored["netbox_url"] != declared
+    kept = sorted(k for k in wanted if k in stored and not (replaced and k == "netbox_url"))
+    if added or replaced:
+        _write(dict(added, **({"netbox_url": declared} if replaced else {})))
     print("installation settings: added " + (", ".join(sorted(added)) or "none")
           + "; kept " + (", ".join(kept) or "none") + " (already set, never overwritten)")
+    if declared:
+        print("netbox_url: KIT_NETBOX_URL's (kit.env), "
+              + ("written over the stored value" if replaced else
+                 "added" if "netbox_url" in added else "already stored")
+              + "; the declared external NetBox wins over a stored one")
     current = _current_is_set()
     pv = network_admin.create_preview(NETWORK)
     if pv.get("refused"):
@@ -310,6 +325,21 @@ def last_exception() -> None:
     print(f"identity exception: last {state} at {r.get('at_iso')} ({r.get('reason', '')})")
 
 
+def netbox_test(client=None) -> int:
+    """Mercury's own NetBox connection test, the one Settings › Installation › Connections ›
+    NetBox connection's Test runs (`installation_settings.test_card`), with what is saved: one
+    PASS or FAIL line with Mercury's reason, masked; never the token. Run by `kit preflight`
+    when kit.env declares an external NetBox (KIT_NETBOX_URL). 0 on PASS, 1 on FAIL."""
+    from modules import installation_settings as IS
+    from modules.redact import redact_text
+
+    got = IS.test_card("netbox", client=client, actor=ACTOR)
+    said = redact_text(str((got.get("message") if got["ok"] else got.get("error")) or ""))
+    print(f"{'PASS' if got['ok'] else 'FAIL'} NetBox connection (Mercury's Test)"
+          + (f": {said}" if said else ""))
+    return 0 if got["ok"] else 1
+
+
 def safety() -> int:
     from modules.settings_schema import get_setting
     from modules.sdn import modes
@@ -359,5 +389,7 @@ if __name__ == "__main__":
         last_exception()
     elif cmd == "safety":
         sys.exit(safety())
+    elif cmd == "netbox-test":
+        sys.exit(netbox_test())
     else:
         sys.exit(__doc__)

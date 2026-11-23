@@ -347,3 +347,222 @@ def test_an_ipv6_source_drop_renders_eth_type_86dd(ctl):
     assert json.loads(p["steps"][0]["request"]["body"])["match"] == {
         "eth_type": 34525, "ipv6_src": "2001:db8::7"}
     assert out["outcome"] == "verified"
+
+
+def _metered(ctl, response):
+    """Meter 2 and its flow (hard timeout 60) applied at 1000 s: ``(flow change, outcome)``."""
+    meter = {"do": "add_meter", "meter": {"meter_id": 2, "flags": ["KBPS", "STATS"],
+                                          "bands": [{"type": "DROP", "rate": 5000}]}}
+    flow = drop(hard=60)
+    flow["flow"]["actions"] = [{"type": "METER", "meter_id": 2},
+                               {"type": "GOTO_TABLE", "table_id": 2}]
+    _p, out = run(ctl, ask(meter, flow, response=response), now=lambda: 1000.0)
+    assert out["outcome"] == "verified", out["error"]
+    return flow, out
+
+
+def test_the_meter_keeper_removes_a_policy_s_expired_meter_with_no_sdn_loop(ctl, monkeypatch):
+    """C4150 (the Lab 9 hardware, 2026-11-20): a policy's meter outlived its flows, since the
+    one cleanup ran only inside the SDN loop, and a policy needs no loop. The keeper runs it
+    on every network: kept while a flow points at it, removed once the flows expired."""
+    from modules import invalidation
+    said = []
+    monkeypatch.setattr(invalidation, "announce", lambda keys, who: said.append((keys, who)))
+    flow, _out = _metered(ctl, response=False)
+    kept = O.keep_meters_once([NET], driver=ctl.driver, now=lambda: 2000.0)
+    assert kept[NET]["removed"] == [] and "still point at meter 2" in kept[NET]["kept"][0]["why"]
+    assert said == []
+    ctl.table[1] = [f for f in ctl.table[1] if f["cookie"] != flow["flow"]["cookie"]]
+    gone = O.keep_meters_once([NET], driver=ctl.driver, now=lambda: 2000.0)
+    assert gone[NET]["removed"] == [2] and ctl.meter[1] == {}, gone
+    assert F.meters(NET)["meters"] == []
+    assert said == [(["sdn"], "job:meter-keeper")]
+
+
+def test_the_meter_keeper_says_a_network_that_raised_and_goes_on(ctl, monkeypatch):
+    def boom(network, **kw):
+        if network == "Broken":
+            raise OSError("the store is locked")
+        return {"ok": True, "removed": [], "kept": [], "errors": []}
+    monkeypatch.setattr(O, "expire_meters", boom)
+    got = O.keep_meters_once(["Broken", NET])
+    assert got["Broken"]["errors"] == ["OSError: the store is locked"]
+    assert got[NET]["ok"] is True
+
+
+def test_the_meter_keeper_starts_with_the_app_and_not_on_import():
+    import ast
+    import os
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, "app.py"), encoding="utf-8").read()
+    fn = next(n for n in ast.walk(ast.parse(src))
+              if isinstance(n, ast.FunctionDef) and n.name == "_start_background_daemons")
+    assert "start_meter_keeper" in ast.unparse(fn)
+    assert O._meter_keeper["thread"] is None             # importing app started nothing
+
+
+def test_a_mercury_meter_no_flow_uses_is_removed_from_its_form(ctl):
+    """C4150: SDN › Flows' Remove… on Mercury's meter no flow uses: the form's ask, previewed,
+    confirmed, verified gone, and its record closed; one a flow still uses is refused."""
+    from modules.sdn import flow_form
+    flow, _out = _metered(ctl, response=False)
+    form = {"do": "remove_meter", "connection": "lab", "dpid": "0000000000000001",
+            "meter_id": "2"}
+    a = flow_form.ask_from_form(form)
+    assert a["changes"] == [{"do": "remove_meter", "meter_id": 2}]
+    p = O.plan(NET, a, driver=ctl.driver)
+    assert not p["ok"] and "still point at meter 2" in p["error"]
+    ctl.table[1] = [f for f in ctl.table[1] if f["cookie"] != flow["flow"]["cookie"]]
+    p, out = run(ctl, flow_form.ask_from_form(form))
+    assert out["outcome"] == "verified", out["error"]
+    assert ctl.meter[1] == {} and F.meters(NET)["meters"] == []
+    assert "meter 2 read back gone" in " ".join(p["checks"])
+    with pytest.raises(flow_form.FormRefused, match="names no meter"):
+        flow_form.ask_from_form(dict(form, meter_id="two"))
+
+
+ONWARD_PAIRS = {4: {"eth_type": 0x0800, "ipv4_src": "192.0.2.62", "ipv4_dst": "192.0.2.61"},
+                6: {"eth_type": 0x86DD, "ipv6_src": "2001:db8::62", "ipv6_dst": "2001:db8::61"}}
+
+
+def _f(priority, match, actions, cookie=0x9A00000000000001, hard=0, table=0):
+    return {"table_id": table, "priority": priority, "cookie": cookie, "match": match,
+            "actions": actions, "hard_timeout": hard}
+
+
+@pytest.mark.parametrize("family", [4, 6], ids=["ipv4", "ipv6"])
+def test_onward_takes_the_network_s_forwarding_never_a_mercury_flow_that_ends(family):
+    """C4153 and the independent review of ce2318df: `onward` follows the flows that stay. A
+    response's or a policy's flow (Mercury's, with a hard timeout) ends, so it is skipped; a
+    person's permanent flow from SDN › Flows' editor (Mercury's cookie, hard timeout 0) is the
+    network's forwarding as it stands and decides; an other-family flow meets nothing."""
+    pair = ONWARD_PAIRS[family]
+    miss = _f(0, {}, [{"type": "GOTO_TABLE", "table_id": 1}])
+    other = _f(50, ({"eth_type": 0x86DD} if family == 4 else {"eth_type": 0x0800}),
+               [{"type": "OUTPUT", "port": 9}])
+    # A Mercury flow that ends and forwards (a policy's allow) is skipped; one that ends and
+    # drops is a live drop, and counts (the review of bcea1999: below).
+    ending = _f(20, {"eth_type": pair["eth_type"]}, [{"type": "OUTPUT", "port": 5}],
+                cookie=F.new_cookie(), hard=600)
+    got = O.onward([miss, other, ending], 0, 300, pair)
+    assert got["ok"] and got["actions"] == [{"type": "GOTO_TABLE", "table_id": 1}], got
+    editor = _f(10, {"eth_type": pair["eth_type"]}, [{"type": "OUTPUT", "port": 3}],
+                cookie=F.new_cookie(), hard=0)
+    got = O.onward([miss, other, ending, editor], 0, 300, pair)
+    assert got["ok"] and got["actions"] == [{"type": "OUTPUT", "port": 3}], \
+        "the person's permanent flow is the forwarding the pair's traffic takes"
+
+
+@pytest.mark.parametrize("family", [4, 6], ids=["ipv4", "ipv6"])
+def test_onward_follows_the_source_s_port_where_table_0_splits_by_in_port(family):
+    """The review of ce2318df, then C4159 (the review of f7441016): a table 0 that hands each
+    ingress port to the forwarding table by its own flow splits the pair's traffic by port.
+    Where every flow that may take it goes to the same table as the miss, the pair goes on
+    there; where they go to different places (a port's goto beside a miss to the controller),
+    the pair's packets from another port (spoofed ones) would be sent where the network does
+    not send them, so it is refused (``split_tables``), whatever the source's own port."""
+    pair = ONWARD_PAIRS[family]
+    same = [_f(100, {"in_port": 10}, [{"type": "GOTO_TABLE", "table_id": 2}]),
+            _f(100, {"in_port": 3}, [{"type": "GOTO_TABLE", "table_id": 2}]),
+            _f(0, {}, [{"type": "GOTO_TABLE", "table_id": 2}])]
+    got = O.onward(same, 0, 300, pair, {"in_port": 10, "in_phy_port": 10})
+    assert got["ok"] and got["actions"] == [{"type": "GOTO_TABLE", "table_id": 2}], got
+    assert O.onward(same, 0, 300, pair)["ok"], "the same with no hint at all"
+    apart = same[:2] + [_f(0, {}, [{"type": "OUTPUT", "port": "CONTROLLER"}])]
+    refused = O.onward(apart, 0, 300, pair, {"in_port": 10, "in_phy_port": 10})
+    assert not refused["ok"] and refused["reason"] == "split_tables", refused
+    assert "sends some of it on to a later table" in refused["error"]
+
+
+@pytest.mark.parametrize("family", [4, 6], ids=["ipv4", "ipv6"])
+def test_onward_says_a_pair_the_flows_below_drop_in_part_or_by_the_table_s_default(family):
+    """The review of 3bb37445: where the pair cannot be followed as one flow and a flow below
+    that meets it drops (or meters) what it takes, part of the pair's traffic is dropped there
+    already (``may_drop``), so sending the pair on would undo it; and a pair no flow takes, in
+    a table with no miss entry, is dropped by the table's default (``drops``)."""
+    pair = ONWARD_PAIRS[family]
+    v = "ipv4" if family == 4 else "ipv6"
+    proto = {"eth_type": pair["eth_type"], f"{v}_src": pair[f"{v}_src"], "ip_proto": 6,
+             "tcp_dst": 22}
+    whole = _f(100, {"eth_type": pair["eth_type"], f"{v}_src": pair[f"{v}_src"]}, [],
+               cookie=F.new_cookie(), hard=0)
+    part = _f(150, proto, [], cookie=F.new_cookie(), hard=0)
+    got = O.onward([part, whole, _f(0, {}, [{"type": "GOTO_TABLE", "table_id": 2}])], 0, 300,
+                   pair)
+    assert not got["ok"] and got["reason"] == "may_drop", got
+    assert "the flow at priority 150" in got["taker"] and "drops what it matches" in got["error"]
+    alone = O.onward([part], 0, 300, pair)
+    assert alone["reason"] == "may_drop", "a partial drop alone is still a drop of part of it"
+    nothing = O.onward([_f(10, {"eth_type": 0x0806}, [{"type": "OUTPUT", "port": 1}])], 0, 300,
+                       pair)
+    assert nothing["reason"] == "drops" and "table 0's default" in nothing["taker"], nothing
+
+
+@pytest.mark.parametrize("family", [4, 6], ids=["ipv4", "ipv6"])
+def test_a_hint_never_hides_a_drop_the_pair_s_own_match_meets(family):
+    """The review of 69e36e6c (1): the hint (the source's port, the destination's MAC) narrowed
+    the packet step, so a person's anti-spoofing drop on another ingress port was passed over
+    and the pair's flow, which takes every port's packets, would have undone it. A drop that
+    the pair's own match meets is found before any hint is used."""
+    pair = ONWARD_PAIRS[family]
+    v = "ipv4" if family == 4 else "ipv6"
+    spoof = _f(150, {"in_port": 3, "eth_type": pair["eth_type"], f"{v}_src": pair[f"{v}_src"]},
+               [], cookie=F.new_cookie(), hard=0)
+    miss = _f(0, {}, [{"type": "GOTO_TABLE", "table_id": 2}])
+    got = O.onward([spoof, miss], 0, 300, pair, {"in_port": 1, "in_phy_port": 1,
+                                                 "eth_dst": "02:00:00:00:00:61"})
+    assert not got["ok"] and got["reason"] == "may_drop", got
+    assert "the flow at priority 150" in got["taker"]
+    by_mac = _f(150, {"eth_dst": "02:00:00:00:00:77"}, [])
+    assert O.onward([by_mac, miss], 0, 300, pair,
+                    {"eth_dst": "02:00:00:00:00:61"})["reason"] == "may_drop"
+
+
+@pytest.mark.parametrize("family", [4, 6], ids=["ipv4", "ipv6"])
+@pytest.mark.parametrize("actions,whole,part", [
+    ([], "drops", "may_drop"),
+    ([{"type": "CLEAR_ACTIONS"}], "drops", "may_drop"),
+    ([{"type": "WRITE_ACTIONS", "actions": []}], "drops", "may_drop"),
+    ([{"type": "METER", "meter_id": 7}, {"type": "GOTO_TABLE", "table_id": 2}], "meters",
+     "may_meter"),
+    ([{"type": "GROUP", "group_id": 1}], "cannot_follow", "cannot_follow"),
+], ids=["no-actions", "clear-actions", "empty-write", "meter", "group"])
+def test_what_a_flow_below_does_is_read_by_its_actions_never_by_an_empty_list(family, actions,
+                                                                             whole, part):
+    """The review of 69e36e6c (2, 4): a flow whose instructions only clear its action set, or
+    write an empty one, drops what it takes; one through a meter meters it; one to a group goes
+    where Mercury cannot follow. Covering the pair, or taking part of it, each is said, and the
+    pair is never sent on past it."""
+    pair = ONWARD_PAIRS[family]
+    v = "ipv4" if family == 4 else "ipv6"
+    covering = _f(100, {"eth_type": pair["eth_type"], f"{v}_src": pair[f"{v}_src"]}, actions,
+                  cookie=F.new_cookie(), hard=0)
+    assert O.onward([covering], 0, 300, pair)["reason"] == whole
+    partial = _f(100, {"eth_type": pair["eth_type"], f"{v}_src": pair[f"{v}_src"],
+                       "ip_proto": 6, "tcp_dst": 22}, actions, cookie=F.new_cookie(), hard=0)
+    got = O.onward([partial, _f(0, {}, [{"type": "GOTO_TABLE", "table_id": 2}])], 0, 300, pair)
+    assert got["reason"] == part and not got["ok"], got
+
+
+@pytest.mark.parametrize("family", [4, 6], ids=["ipv4", "ipv6"])
+def test_the_review_of_bcea1999_s_cases(family):
+    """The review of bcea1999: (1) a table with no table-miss drops what no flow takes, which
+    a hint on a port allow-list must not hide; (2) Mercury's own live drop of the source (a
+    response with a hard timeout) holds until it ends, so a rate limit above it may not send
+    its traffic on; (4) a flow shadowed by a covering flow above it takes none of the pair."""
+    pair = ONWARD_PAIRS[family]
+    v = "ipv4" if family == 4 else "ipv6"
+    allow = _f(10, {"in_port": 1}, [{"type": "GOTO_TABLE", "table_id": 2}])
+    got = O.onward([allow], 0, 300, pair, {"in_port": 1, "in_phy_port": 1})
+    assert not got["ok"] and got["reason"] == "may_drop", got
+    assert "table 0's default" in got["taker"]
+    miss = _f(0, {}, [{"type": "GOTO_TABLE", "table_id": 2}])
+    live = _f(100, {"eth_type": pair["eth_type"], f"{v}_src": pair[f"{v}_src"]}, [],
+              cookie=F.new_cookie(), hard=600)
+    assert O.onward([live, miss], 0, 300, pair)["reason"] == "drops", "the live drop holds"
+    partial = _f(150, {"eth_dst": "02:00:00:00:00:77"}, [{"type": "OUTPUT", "port": 4}])
+    covering = _f(100, {"eth_type": pair["eth_type"]}, [{"type": "GOTO_TABLE", "table_id": 2}])
+    shadowed = _f(50, {"eth_type": pair["eth_type"]}, [])
+    got = O.onward([partial, covering, shadowed, miss], 0, 300, pair)
+    assert got["reason"] not in ("may_drop", "drops"), "the flow at 50 takes none of it"

@@ -10,12 +10,29 @@ the network's thresholds and flow intent, then one line a pass with
 `closed_loop.collect_threat_data`'s answer and the SDN reader's stored topology; the operator's
 captures under tests/fixtures/sdn/recorded/ are of this shape), or read now from a network
 (`read_live`, read-only: the loop's own collection, with link status, `--passes` times,
-`--interval` apart). Each run is one series; several runs are several series.
+`--interval` seconds between one pass's last read and the next pass's first). Each run is one
+series; several runs are several series.
+
+**The declared external flow owners** (C3930) are the loop's too: the one lookup it makes,
+`protected.external_for_network` (the committed NSOT export's config contexts
+``mercury.external_flow_owners``), recorded in the series' head as ``external`` (`read_live`
+when it starts; `declare` for a recorded series that carries none). A declared owner's flow is
+never an unauthorised flow, as in the loop; owners that cannot be read are said in the run's
+summary (`owners_words`), and every foreign flow is then judged unauthorised, a declared
+owner's included (the Lab 9 hardware, 2026-11-20: 228 of 260 false positives were the team's
+own flows, judged with no owners).
+
+**Times are measured, never the interval assumed:** each live pass records its start and end
+(``started``, ``ended``), and each run says its UTC window and how long a pass took, start to
+start and its reads (`timing`; a recorded series from its collections' own ``collected_at``).
+The rules' windows and rates are the collections' own (``collected_at``, each sample's
+``elapsed_s``), so nothing judged depends on ``--interval`` (on the Lab 9 hardware a pass was
+about 15 s, about 5 s of reads and the 10 s gap).
 
 **The rules** are the loop's, replayed pass by pass as `detect.observe` carries their state
 (`replay`): scan, flood (with its baseline and hold), unauthorised flow against the flow intent
-the run recorded, the replies marked, and link down over the links the run held; with no store
-read or written.
+the run recorded and its declared external owners, the replies marked, and link down over the
+links the run held; with no store read or written.
 
 **What is done with each** (`handled`), in the loop's order: High packet rate is watched and
 nothing proposed; a link down is its card (the reroute verified in AUTO); a detection code
@@ -26,7 +43,7 @@ proposed for a person, and in AUTO an action runs only where the network is mark
 **The log** (`write`): ``false_positives.csv`` (one row per false positive: the run, pass,
 time, rule, switch, port, source, words, evidence ids, the measurement against its threshold,
 what was done) and ``summary.json`` (runs, passes, detections fired, false positives by rule
-and per pass).
+and per pass, and ``by_run``: each run's window, pass times, owners and counts by rule).
 
 **The network's record** (`keep`, C2946): each run's summary and its false positives are also
 kept in the network's own record of evaluation runs (modules/sdn/evaluations.py), under the
@@ -67,23 +84,95 @@ def load(path: str) -> dict:
 
 
 def read_live(network: str, passes: int, interval: float, *, collect=None, sleep=time.sleep,
-              topology=None) -> dict:
-    """*passes* collections of *network* read now, *interval* seconds apart, as a series:
-    read-only (the loop's collection with link status); *collect* and *topology* replace the
-    reads (tests). The head carries the network's thresholds and flow intent."""
+              topology=None, clock=time.time) -> dict:
+    """*passes* collections of *network* read now, *interval* seconds between one pass's end
+    and the next's start, as a series: read-only (the loop's collection with link status);
+    *collect*, *topology* and *clock* replace the reads and the clock (tests). The head carries
+    the network's thresholds, flow intent and declared external flow owners (`protected.
+    external_for_network`, the loop's lookup); each pass its measured ``started`` and
+    ``ended`` (epoch seconds)."""
+    from modules import protected
     from modules.sdn import closed_loop, detect, flow_intent, topology as T
 
     th = detect.thresholds(network)
     head = {"kind": "head", "label": f"live-{network}", "network": network,
-            "thresholds": th, "intent": flow_intent.intent(network)}
+            "thresholds": th, "intent": flow_intent.intent(network),
+            "external": protected.external_for_network(network), "interval_s": interval}
     out = []
     for n in range(1, int(passes) + 1):
+        started = clock()
         c = collect() if collect else closed_loop.collect_threat_data(network, links=True)
-        out.append({"kind": "pass", "n": n, "collected": c,
-                    "topology": topology() if topology else T.stored(network)})
+        topo = topology() if topology else T.stored(network)
+        out.append({"kind": "pass", "n": n, "collected": c, "topology": topo,
+                    "started": started, "ended": clock()})
         if n < passes:
             sleep(interval)
     return {"label": head["label"], "head": head, "passes": out, "unparsed": 0}
+
+
+def declare(series: dict, network: str) -> dict:
+    """*series* with its head's declared external flow owners: those it recorded, else
+    *network*'s read now through the loop's lookup (`protected.external_for_network`, the
+    committed NSOT export), marked ``read_for_the_run``. Answers *series*, changed in place."""
+    from modules import protected
+
+    head = series.get("head") or {}
+    series["head"] = head
+    if head.get("external") is None:
+        head["external"] = dict(protected.external_for_network(network), read_for_the_run=True)
+    return series
+
+
+def owners_words(external) -> str:
+    """How a run's declared external flow owners (its head's ``external``) are said."""
+    if not isinstance(external, dict):
+        return ("not read: the run records no declared external flow owners, so every foreign "
+                "flow was judged unauthorised, a declared owner's included")
+    state = external.get("state")
+    if state == "ok":
+        refused = len(external.get("refused") or [])
+        return (f"{len(external.get('owners') or [])} from {external.get('source')}, their "
+                "flows never counted"
+                + (f"; {refused} declared entr{'y' if refused == 1 else 'ies'} refused, so the "
+                   "flows they would cover are judged as any other" if refused else ""))
+    if state == "none":
+        return (f"none declared ({external.get('source') or 'no source'}), so every foreign "
+                "flow is judged unauthorised")
+    return (f"could not be read ({external.get('error') or 'no answer'}), so every foreign flow "
+            "was judged unauthorised, a declared owner's included")
+
+
+def _iso(epoch):
+    return None if epoch is None else time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
+def _spread(values):
+    if not values:
+        return None
+    s = sorted(values)
+    mid = len(s) // 2
+    median = s[mid] if len(s) % 2 else (s[mid - 1] + s[mid]) / 2
+    return {"min": round(s[0], 3), "median": round(median, 3), "max": round(s[-1], 3)}
+
+
+def timing(series: dict) -> dict:
+    """*series*' window and pass times, measured: ``{"start", "end"`` (UTC), ``"times_from",
+    "pass_s"`` (start to start), ``"read_s"}`` (each pass's reads; None where not recorded).
+    From each pass's ``started`` and ``ended`` where a live run recorded them, else from the
+    collections' own ``collected_at``."""
+    ps = series.get("passes") or []
+    if ps and all(isinstance(p.get("started"), (int, float))
+                  and isinstance(p.get("ended"), (int, float)) for p in ps):
+        starts = [p["started"] for p in ps]
+        return {"start": _iso(starts[0]), "end": _iso(ps[-1]["ended"]),
+                "times_from": "each pass's measured start and end",
+                "pass_s": _spread([b - a for a, b in zip(starts, starts[1:])]),
+                "read_s": _spread([p["ended"] - p["started"] for p in ps])}
+    ats = [a for a in (_epoch((p.get("collected") or {}).get("collected_at")) for p in ps)
+           if a is not None]
+    return {"start": _iso(ats[0]) if ats else None, "end": _iso(ats[-1]) if ats else None,
+            "times_from": "the collections' own times (collected_at)",
+            "pass_s": _spread([b - a for a, b in zip(ats, ats[1:])]), "read_s": None}
 
 
 def _epoch(text):
@@ -104,12 +193,16 @@ def replay(series: dict) -> list:
     head = series.get("head") or {}
     values = dict(detect.THRESHOLDS, **((head.get("thresholds") or {}).get("values") or {}))
     intent = head.get("intent")
+    # The declared external flow owners the loop passes (`detect.observe`, C3930); none where
+    # the run read none or they could not be read (said by `owners_words`).
+    external = (head.get("external") or {}).get("owners") or None
     seen, baseline, over, links, out = {}, {}, {}, {}, []
     for p in series.get("passes") or []:
         c, topo = rejudge(p["collected"]), p.get("topology")
         scanned = detect.scan(c, values, seen, topo=topo)
         flooded = detect.flood(c, baseline, values, over, topo=topo)
-        unauth = (detect.unauthorised(c, intent, now=_epoch(c.get("collected_at")), topo=topo)
+        unauth = (detect.unauthorised(c, intent, now=_epoch(c.get("collected_at")), topo=topo,
+                                      external=external)
                   if intent is not None else {"detections": []})
         linked = link_failure.rule(c, links, topo=topo)
         out.append({"n": p.get("n"), "at": c.get("collected_at"), "collected": c,
@@ -144,18 +237,23 @@ def handled(d: dict, collected: dict) -> str:
 
 def judge(series_list: list) -> dict:
     """Every false positive over *series_list* (each `load`'s or `read_live`'s): ``{"runs",
-    "passes", "fired", "false_positives": [row], "by_rule", "per_pass"}``, a row per detection
-    that fired (new in its pass), with `COLUMNS`."""
-    rows, passes, fired = [], 0, 0
+    "passes", "fired", "false_positives": [row], "by_rule", "per_pass", "by_run"}``, a row per
+    detection that fired (new in its pass), with `COLUMNS`; ``by_run`` each run's ``{"run",
+    "passes", "fired", "false_positives", "by_rule", "owners"`` (its declared external owners:
+    ``state``, ``declared``, ``refused``, ``source``, ``error``, ``words``), and `timing`'s
+    fields``}``."""
+    rows, passes, fired, by_run = [], 0, 0, []
     for series in series_list:
-        before = set()
+        before, first, run_passes, run_fired = set(), len(rows), 0, 0
         for r in replay(series):
             passes += 1
+            run_passes += 1
             keys = {d["key"] for d in r["detections"]}
             for d in r["detections"]:
                 if d["key"] in before:
                     continue
                 fired += 1
+                run_fired += 1
                 m, t = d.get("measurement") or {}, d.get("threshold") or {}
                 rows.append({
                     "run": series["label"], "pass": r["n"], "at": r["at"], "rule": d["rule"],
@@ -166,12 +264,40 @@ def judge(series_list: list) -> dict:
                     "threshold": f"{t.get('value')} {t.get('unit', '')}".strip(),
                     "done": handled(d, r["collected"])})
             before = keys
-    by_rule = {}
-    for row in rows:
-        by_rule[row["rule"]] = by_rule.get(row["rule"], 0) + 1
+        ext = (series.get("head") or {}).get("external")
+        ext = ext if isinstance(ext, dict) else {}
+        by_run.append(dict({
+            "run": series["label"], "passes": run_passes, "fired": run_fired,
+            "false_positives": len(rows) - first, "by_rule": _by_rule(rows[first:]),
+            "owners": {"state": ext.get("state") or "not_read",
+                       "declared": len(ext.get("owners") or []),
+                       "refused": len(ext.get("refused") or []),
+                       "source": ext.get("source") or "", "error": ext.get("error") or "",
+                       "words": owners_words(ext or None)}}, **timing(series)))
     return {"runs": [s["label"] for s in series_list], "passes": passes, "fired": fired,
-            "false_positives": rows, "by_rule": by_rule,
-            "per_pass": round(len(rows) / passes, 4) if passes else 0.0}
+            "false_positives": rows, "by_rule": _by_rule(rows),
+            "per_pass": round(len(rows) / passes, 4) if passes else 0.0, "by_run": by_run}
+
+
+def _by_rule(rows) -> dict:
+    out = {}
+    for row in rows:
+        out[row["rule"]] = out.get(row["rule"], 0) + 1
+    return out
+
+
+def run_words(run: dict) -> str:
+    """One run of `judge`'s ``by_run`` in words: its UTC window, its measured pass times, its
+    declared external owners and its false positives by rule."""
+    def secs(spread):
+        return (f"{spread['min']:g} to {spread['max']:g} s (median {spread['median']:g} s)"
+                if spread else "not measured (one pass)")
+    reads = f"; reads {secs(run['read_s'])}" if run.get("read_s") else ""
+    rules = ", ".join(f"{k} {v}" for k, v in sorted(run["by_rule"].items())) or "none"
+    return (f"{run['run']}: {run['start']} to {run['end']} UTC, {run['passes']} passes, a pass "
+            f"{secs(run['pass_s'])} start to start{reads}, measured from {run['times_from']}; "
+            f"by rule: {rules}"
+            f"\n{run['run']}: declared external flow owners: {run['owners']['words']}")
 
 
 def keep(network: str, series: dict, *, by: str, now: float = None) -> dict:
@@ -187,9 +313,12 @@ def keep(network: str, series: dict, *, by: str, now: float = None) -> dict:
     base = {"script": evaluations.FALSE_POSITIVES, "run_id": run_id, "run": series["label"],
             "network": network, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
             "by": by}
+    (run,) = got["by_run"]
     rows = [dict(base, kind="run", passes=got["passes"], fired=got["fired"],
                  false_positives=len(got["false_positives"]), by_rule=got["by_rule"],
-                 per_pass=got["per_pass"], unparsed=series.get("unparsed") or 0)]
+                 per_pass=got["per_pass"], unparsed=series.get("unparsed") or 0,
+                 start=run["start"], end=run["end"], times_from=run["times_from"],
+                 pass_s=run["pass_s"], read_s=run["read_s"], owners=run["owners"])]
     rows += [dict(base, kind="false_positive", detection=row) for row in got["false_positives"]]
     evaluations.keep(network, rows)
     return {"run_id": run_id, "false_positives": len(got["false_positives"])}

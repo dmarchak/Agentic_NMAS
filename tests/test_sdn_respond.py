@@ -51,6 +51,17 @@ def switch_with(ryu_flows):
     return fake
 
 
+#: The capture's own Mercury response: a drop of 192.0.2.0/24 at priority 100, hard timeout 300
+#: (Lab 8's run). It is live, so a rate limit above it would undo it for its sources, which
+#: Mercury now refuses (the review of bcea1999, 2); a test about the rate limit's own path
+#: builds over the switch without it.
+LIVE_DROP = 0x4D45524300000001
+
+
+def without_live_drop(flows):
+    return [f for f in flows if f.get("cookie") != LIVE_DROP]
+
+
 def scan_detection(flows):
     (d,) = D.scan(collect(T0, flows=flows), VALUES)["detections"]
     return d
@@ -95,7 +106,7 @@ def test_a_flood_is_answered_by_one_meter_and_the_source_s_flows_through_it():
     observe(T0 + 70, second=rx(10000), **kw)
     out = observe(T0 + 80, second=rx(10000), **kw)
     (d,) = [x for x in out["detections"] if x["rule"] == "flood"]
-    fake = switch_with(without("v6"))
+    fake = switch_with(without_live_drop(without("v6")))
     preview = CL.respond_to_threat("Default", d, driver=fake.driver)
     assert preview["ok"], preview["error"]
     meter, *flows = preview["plan"]["steps"]
@@ -113,6 +124,218 @@ def test_a_flood_is_answered_by_one_meter_and_the_source_s_flows_through_it():
     assert confirm(fake, preview)["outcome"] == "verified"
     (m,) = F.meters("Default")["meters"]
     assert m["meter_id"] == 2 and m["expires_at"] is not None
+
+
+def _flood_on(monkeypatch, table, dst="192.0.2.99", mac="02:00:00:00:00:99"):
+    """The flood detection, its rate limit's one destination *dst* placed by the topology out
+    port 2, over a switch holding *table*: ``(detection, fake, preview)``."""
+    kw = {"flows": without("v6")}
+    baseline_runs(5, **kw)
+    observe(T0 + 50, second=rx(10000), **kw)
+    observe(T0 + 70, second=rx(10000), **kw)
+    out = observe(T0 + 80, second=rx(10000), **kw)
+    (d,) = [x for x in out["detections"] if x["rule"] == "flood"]
+    monkeypatch.setattr(CL, "_topology_ports", lambda drv, dpid, source, hosts=None: {
+        "ok": True, "error": "", "ports": {dst: 2}, "unplaced": []})
+    monkeypatch.setattr(CL, "_host_macs", lambda hosts: {dst: mac})
+    fake = FakeRyu(BASE, flows={1: table})
+    fake.driver = lambda network, name: C.driver_for(network, name, session=fake,
+                                                     sleep=lambda s: None)
+    return d, fake, CL.respond_to_threat("Default", d, "rate_limit_source", driver=fake.driver)
+
+
+@pytest.mark.usefixtures("lab")
+def test_a_table_0_split_by_ingress_port_is_followed_through_the_detection_s_port(monkeypatch):
+    """The review of 5d7799f0 (F): a pipeline whose table 0 hands each ingress port to the
+    forwarding table by its own flow splits the pair's traffic; the build follows it through
+    the port the threat entered by (the detection's), so the pair goes on by the goto."""
+    team = 0x9A00000000000001
+    kw = {"flows": without("v6")}
+    # The pipeline's own table-miss to its forwarding table, under the per-port flows (a table
+    # with none drops what no flow takes, which Mercury now refuses: the review of bcea1999, 1).
+    miss = {"dpid": 1, "table_id": 0, "priority": 0, "cookie": team + 3, "match": {},
+            "actions": [{"type": "GOTO_TABLE", "table_id": 2}], "idle_timeout": 0,
+            "hard_timeout": 0}
+    baseline_runs(5, **kw)
+    observe(T0 + 50, second=rx(10000), **kw)
+    observe(T0 + 70, second=rx(10000), **kw)
+    flood = [x for x in observe(T0 + 80, second=rx(10000), **kw)["detections"]
+             if x["rule"] == "flood"][0]
+    assert isinstance(flood["port"], int), "premise: the detection names its port"
+    table = [
+        {"dpid": 1, "table_id": 0, "priority": 100, "cookie": team,
+         "match": {"in_port": flood["port"]}, "actions": [{"type": "GOTO_TABLE", "table_id": 2}],
+         "idle_timeout": 0, "hard_timeout": 0},
+        {"dpid": 1, "table_id": 0, "priority": 100, "cookie": team + 1,
+         "match": {"in_port": flood["port"] + 1}, "actions": [{"type": "OUTPUT", "port": 7}],
+         "idle_timeout": 0, "hard_timeout": 0},
+        {"dpid": 1, "table_id": 2, "priority": 1000, "cookie": team + 2,
+         "match": {"eth_dst": "02:00:00:00:00:99"}, "actions": [{"type": "OUTPUT", "port": 2}],
+         "idle_timeout": 0, "hard_timeout": 0}, miss]
+    # C4159: the port's own flow out port 7 beside the gotos sends some of the pair's packets
+    # (from that port) elsewhere than table 2: refused, never a fixed port. With every per-port
+    # flow going to table 2, as the miss does, the pair goes on by the goto.
+    _d, _fake, preview = _flood_on(monkeypatch, table)
+    assert not preview["ok"] and "go on to different tables" in preview["error"], preview
+    table[1]["actions"] = [{"type": "GOTO_TABLE", "table_id": 2}]
+    _d, _fake, preview = _flood_on(monkeypatch, table)
+    assert preview["ok"], preview["error"]
+    _meter, *flows = preview["plan"]["steps"]
+    (body,) = [json.loads(s["request"]["body"]) for s in flows]
+    assert body["actions"][1:] == [{"type": "GOTO_TABLE", "table_id": 2}], body
+
+
+@pytest.mark.usefixtures("lab")
+def test_a_pair_whose_flow_below_does_more_than_a_goto_is_not_metered(monkeypatch):
+    """The review of bcea1999 (3): a covering flow that sets a field and goes on to table 2
+    can be carried by no rate limit (the meter's flow takes only a goto), and a fixed port would
+    skip table 2: the pair is not metered, said, and with none left nothing is sent."""
+    table = [{"dpid": 1, "table_id": 0, "priority": 0, "cookie": 0x9A00000000000001,
+              "match": {}, "actions": [{"type": "SET_FIELD", "field": "vlan_vid",
+                                         "value": 4196},
+                                        {"type": "GOTO_TABLE", "table_id": 2}],
+              "idle_timeout": 0, "hard_timeout": 0}]
+    _d, fake, preview = _flood_on(monkeypatch, table)
+    assert not preview["ok"], preview
+    assert "does more than go on to a later table" in preview["error"]
+    assert fake.writes == []
+
+
+def _row(priority, match, actions, cookie=0x9A00000000000005, hard=0, table=0):
+    return {"dpid": 1, "table_id": table, "priority": priority, "cookie": cookie,
+            "match": match, "actions": actions, "idle_timeout": 0, "hard_timeout": hard}
+
+
+@pytest.mark.usefixtures("lab")
+def test_c4159_a_pipeline_split_between_tables_is_not_metered(monkeypatch):
+    """C4159 (the review of f7441016): a priority-0 goto to table 2 beside a team flow sending
+    TCP to table 1 (a firewall table): the pair's packets go to two tables, which no one flow of
+    Mercury's follows, so the pair is not metered, never sent out a fixed port past both."""
+    table = [_row(0, {}, [{"type": "GOTO_TABLE", "table_id": 2}]),
+             _row(10, {"eth_type": 0x0800, "ip_proto": 6},
+                  [{"type": "GOTO_TABLE", "table_id": 1}])]
+    _d, fake, preview = _flood_on(monkeypatch, table)
+    assert not preview["ok"] and "go on to different tables" in preview["error"], preview
+    assert fake.writes == []
+
+
+@pytest.mark.usefixtures("lab")
+@pytest.mark.parametrize("actions,port,metered", [
+    ([{"type": "OUTPUT", "port": 5}], 5, True),
+    ([{"type": "SET_FIELD", "field": "eth_dst", "value": "02:00:00:00:00:05"},
+      {"type": "OUTPUT", "port": 3}], None, False),
+    ([{"type": "OUTPUT", "port": "IN_PORT"}], None, False),
+], ids=["its-own-port", "a-rewrite", "in-port"])
+def test_c4159_a_single_table_s_own_flow_is_used_only_as_one_numbered_port(monkeypatch, actions,
+                                                                           port, metered):
+    """C4159: a single table's covering flow decides: one OUTPUT to a numbered port is sent with
+    that port, not the topology's (2); a rewrite or a reserved port is not carried, so the pair
+    is not metered, said."""
+    _d, _fake, preview = _flood_on(monkeypatch, [_row(5, {}, actions)])
+    if metered:
+        assert preview["ok"], preview["error"]
+        _meter, *flows = preview["plan"]["steps"]
+        (body,) = [json.loads(st["request"]["body"]) for st in flows]
+        assert body["actions"][1:] == [{"type": "OUTPUT", "port": port}], body
+    else:
+        assert not preview["ok"]
+        assert "does more than send it out one port" in preview["error"], preview["error"]
+
+
+@pytest.mark.usefixtures("lab")
+def test_c4159_mercury_s_own_live_drop_is_named_as_mercury_s(monkeypatch):
+    """C4159: where every pair is held by Mercury's own response still in force, the refusal
+    names it as Mercury's and asks nothing more, never "the network's own flows" and never
+    "drop the source instead" (a drop already in force)."""
+    from modules.sdn import flow_intent as FI
+    table = [_row(0, {}, [{"type": "GOTO_TABLE", "table_id": 2}]),
+             _row(100, {"eth_type": 0x0800}, [], cookie=FI.new_cookie(), hard=600)]
+    _d, _fake, preview = _flood_on(monkeypatch, table)
+    assert not preview["ok"]
+    assert "until it ends, by Mercury's own response" in preview["error"], preview["error"]
+    assert "Mercury's own response already holds it" in preview["error"]
+    assert "drop the source instead" not in preview["error"]
+
+
+@pytest.mark.usefixtures("lab")
+def test_a_pair_the_network_drops_below_is_not_metered_and_never_forwarded(monkeypatch):
+    """The review of 5d7799f0 (A): a permanent drop below the response (a person's flow from
+    SDN › Flows, a duration-0 block policy) takes the pair's traffic; a rate limit above it
+    would send that traffic on. The pair is left unmetered, named with the flow that drops it,
+    and with nothing left to meter the response is refused before any request."""
+    from modules.sdn import flow_intent as FI
+    table = [
+        {"dpid": 1, "table_id": 0, "priority": 0, "cookie": 0x9A00000000000001, "match": {},
+         "actions": [{"type": "GOTO_TABLE", "table_id": 2}], "idle_timeout": 0,
+         "hard_timeout": 0},
+        {"dpid": 1, "table_id": 0, "priority": 120, "cookie": FI.new_cookie(),
+         "match": {"eth_type": 0x0800, "ipv4_dst": "192.0.2.99"}, "actions": [],
+         "idle_timeout": 0, "hard_timeout": 0}]
+    _d, fake, preview = _flood_on(monkeypatch, table)
+    assert not preview["ok"]
+    assert "nothing of" in preview["error"] and "left to meter" in preview["error"]
+    assert ("192.0.2.99 (all of it is dropped below it by the flow at priority 120"
+            in preview["error"])
+    assert "is limited by this response" in preview["error"]
+    assert "drop the source instead" in preview["error"], "the refusal says what to do"
+    assert fake.writes == []
+
+
+@pytest.mark.usefixtures("lab")
+def test_a_rate_limit_follows_the_pipeline_s_forwarding_through_a_reroute_and_back(monkeypatch):
+    """C4153 (the Lab 9 hardware, 2026-11-20): a rate limit's pair flow sent its traffic out
+    the port the topology gave at the preview (OUTPUT:2, L3), so when forwarding.py rerouted
+    around L3 down, the rate-limited host's traffic stayed on the dead port. On a pipeline whose
+    table 0 misses to its forwarding table, each pair flow is the meter then that goto: moving
+    the forwarding table's flow (the reroute) moves the rate-limited traffic, and putting it
+    back puts it back."""
+    from modules.sdn import trace
+    kw = {"flows": without("v6")}
+    baseline_runs(5, **kw)
+    observe(T0 + 50, second=rx(10000), **kw)
+    observe(T0 + 70, second=rx(10000), **kw)
+    out = observe(T0 + 80, second=rx(10000), **kw)
+    (d,) = [x for x in out["detections"] if x["rule"] == "flood"]
+    dst, mac = "192.0.2.99", "02:00:00:00:00:99"
+    monkeypatch.setattr(CL, "_topology_ports", lambda drv, dpid, source, hosts=None: {
+        "ok": True, "error": "", "ports": {dst: 2}, "unplaced": []})
+    monkeypatch.setattr(CL, "_host_macs", lambda hosts: {dst: mac})
+    team = 0x9A00000000000001
+    table = [
+        {"dpid": 1, "table_id": 0, "priority": 0, "cookie": team, "match": {},
+         "actions": [{"type": "GOTO_TABLE", "table_id": 2}], "idle_timeout": 0,
+         "hard_timeout": 0},
+        {"dpid": 1, "table_id": 2, "priority": 1000, "cookie": team + 1,
+         "match": {"eth_dst": mac}, "actions": [{"type": "OUTPUT", "port": 2}],
+         "idle_timeout": 0, "hard_timeout": 0}]
+    fake = FakeRyu(BASE, flows={1: table})
+    fake.driver = lambda network, name: C.driver_for(network, name, session=fake,
+                                                     sleep=lambda s: None)
+    preview = CL.respond_to_threat("Default", d, "rate_limit_source", driver=fake.driver)
+    assert preview["ok"], preview["error"]
+    _meter, *flows = preview["plan"]["steps"]
+    (body,) = [json.loads(s["request"]["body"]) for s in flows]
+    assert body["match"] == {"eth_type": 0x0800, "ipv4_src": d["source"], "ipv4_dst": dst}
+    assert [a["type"] for a in body["actions"]] == ["METER", "GOTO_TABLE"]
+    assert body["actions"][1]["table_id"] == 2 and "NORMAL" not in json.dumps(body)
+    assert confirm(fake, preview)["outcome"] == "verified"
+
+    def leaves():
+        flows = fake.driver("Default", preview["ask"]["connection"])["driver"].flows(1)["flows"]
+        packet = {"eth_src": "02:00:00:00:00:01", "eth_dst": mac, "vlan_vid": 0,
+                  "eth_type": 0x0800, "ip_dscp": 0, "ip_ecn": 0, "ipv4_src": d["source"],
+                  "ipv4_dst": dst, "ip_proto": 17, "udp_src": 40000, "udp_dst": 9}
+        went = trace.through_switch({"flows": flows, "ports": None}, 1, packet)
+        assert went["end"] is None, went["end"]
+        assert any("meter" in n for n in went["notes"]), "it is still metered"
+        return [p for p, *_rest in went["emits"]]
+
+    assert leaves() == [2]
+    forward = next(f for f in fake.table[1] if f.get("table_id") == 2)
+    forward["actions"] = [{"type": "OUTPUT", "port": 1}]            # the reroute around port 2
+    assert leaves() == [1]
+    forward["actions"] = [{"type": "OUTPUT", "port": 2}]            # the link back: restored
+    assert leaves() == [2]
 
 
 def _to(flow, dst, port):
@@ -144,7 +367,7 @@ def test_a_scan_s_rate_limit_meters_all_the_source_s_forwarding_on_the_switch():
     d = scan_detection(flows)
     # The premise: the evidence names only the scan's target, not the other destinations.
     assert not {"192.0.2.9", "192.0.2.10"} & set(d["targets"])
-    fake = switch_with(flows)
+    fake = switch_with(without_live_drop(flows))
     preview = CL.respond_to_threat("Default", d, "rate_limit_source", driver=fake.driver)
     assert preview["ok"], preview["error"]
     meter, *metered = preview["plan"]["steps"]
@@ -171,7 +394,9 @@ def test_a_scan_s_rate_limit_meters_all_the_source_s_forwarding_on_the_switch():
     (gap,) = [w for w in preview["plan"]["will_not"] if "not metered" in w]
     assert (f"Traffic from {d['source']} to a destination the controller sets up after this "
             "response is not metered") in gap
-    assert "no flow here forwards with NORMAL" in gap and "Not metered now: 192.0.2.10" in gap
+    assert "never NORMAL" in gap and "Not metered now: 192.0.2.10" in gap
+    assert "where a port is named it is fixed until the response ends" in gap, "a single table"
+    assert "taken as forwarding, so what the controller then does with it is not followed" in gap
     assert f"Only {d['source']}'s IPv4 traffic is metered" in gap
     assert confirm(fake, preview)["outcome"] == "verified"
 

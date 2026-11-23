@@ -233,6 +233,234 @@ def response_priority(flows: list, own_cookies=(), intent_cookies=(), match=None
     return min(0xFFFF, max(RESPONSE_PRIORITY_FLOOR, top + RESPONSE_PRIORITY_STEP))
 
 
+def _under(priority: int, flows, own_cookies, intent_cookies, match, ceiling) -> int:
+    """*priority* (`response_priority`'s over *flows*) kept under *ceiling* where a whole number
+    fits between the highest of *flows* it must win against and the ceiling: so it never ties a
+    serving flow's priority (OpenFlow leaves which of two overlapping flows at one priority wins
+    undefined). Unchanged where none fits."""
+    if ceiling is None or priority < ceiling:
+        return priority
+    top = response_priority(flows, own_cookies, intent_cookies, match=match) \
+        - RESPONSE_PRIORITY_STEP
+    return ceiling - 1 if top < ceiling - 1 and ceiling - 1 >= RESPONSE_PRIORITY_FLOOR \
+        else priority
+
+
+def response_place(flows: list, own_cookies=(), intent_cookies=(), *, match: dict,
+                   table_id: int = 0, classes=()) -> int:
+    """The priority a closed-loop response's flow takes in table *table_id* of a switch whose
+    live *flows* these are, so it takes what it answers and leaves the flows serving the
+    protected *classes* its match meets above it, to take what they match first (whether it may
+    meet those classes at all is their owners', asked by the plan's guard).
+
+    Only that table's flows decide, since a flow in it is matched before any later table's.
+    Its flows serving one of *classes* (`protected.serving_flows`) set a ceiling, the lowest of
+    their priorities; the priority is `response_priority` over the other flows below that
+    ceiling: above the forwarding it must win against, and below the classes' own flows. A flow
+    above the ceiling that serves no class (the Lab 9 team's drop of DNS over TCP at 1200, say)
+    keeps taking what it matches first, and the preview names it (`protected.taken_first`).
+    Where no priority fits under the ceiling, it takes the next above the flows below it and
+    its preview says the class's flows it then sits above (`protected.owned_class_words`)."""
+    from modules import protected
+
+    here = [f for f in flows or [] if int(f.get("table_id") or 0) == int(table_id)]
+    serving = [f for c in classes or () for f in protected.serving_flows(c, here, match)]
+    ids = {id(f) for f in serving}
+    ceiling = min((int(f.get("priority") or 0) for f in serving), default=None)
+    rest = [f for f in here if id(f) not in ids
+            and (ceiling is None or int(f.get("priority") or 0) < ceiling)]
+    return _under(response_priority(rest, own_cookies, intent_cookies, match=match), rest,
+                  own_cookies, intent_cookies, match, ceiling)
+
+
+def onward(flows: list, table_id: int, priority: int, match: dict, hint: dict = None) -> dict:
+    """Where a flow Mercury writes sends its traffic after its meter, or for an allow: on as
+    the switch's own flows would send it, never to OpenFlow's NORMAL port and never out a port
+    fixed when it was written (C4126, B2's policies; C4153, B3's rate limit). On a proactive
+    fabric NORMAL is forwarding outside the flow tables (the Lab 9 hardware, 2026-11-20: Open
+    vSwitch's NORMAL had learned no MAC and flooded the source's frames to the bridge's
+    internal port alone), and a port fixed at the preview does not move when the network's own
+    forwarding reroutes around a failed link (the same night: a rate limit's OUTPUT:2 held a host's
+    traffic on a dead link while forwarding.py had moved everyone else's).
+
+    The flows of *table_id* under *priority* decide (a flow there is matched before any later
+    table's): the first priority at which a flow meets *match*, where every such flow covers it
+    with the same instructions, gives them (an Open vSwitch pipeline's table-0 miss to its
+    forwarding table: GOTO_TABLE, so the forwarding table decides the port each time). Where
+    the flows there split the traffic (a single table forwarding by destination MAC), the
+    packet is followed (`trace.select`) with *match*'s exact values and what *hint* knows (the
+    destination's learned MAC, the source's port), and the flow that takes it gives its
+    instructions. ``{"ok", "actions", "words", "error", "reason", "taker"}``: refused, naming
+    the flows compared, when no flow takes the traffic, the one that does drops or meters it,
+    or the packet cannot be followed; *reason* says which (``drops``, a flow or the table's
+    default; ``meters``; ``may_drop``, ``may_meter`` or ``cannot_follow``, where no one flow
+    takes all of it and a flow below that may take some drops, meters or does what Mercury
+    cannot follow; ``split``), *taker* the flow that takes it and what it does, where one
+    does. A hint only chooses among flows that forward: it never hides a drop."""
+    from modules.sdn import flow_intent, trace
+
+    hint = dict(hint or {})
+    # The network's forwarding, the flows that stay: a Mercury flow with a hard timeout (a
+    # response's, a policy's) ends, and the traffic then goes on as the network's own flows
+    # send it, so it is skipped; a permanent one (a person's flow from SDN › Flows' editor,
+    # hard timeout 0) is the network's forwarding as it stands, and decides like any other.
+    def meets_covers(other):
+        try:
+            mine, theirs = flow_intent._fields(match), flow_intent._fields(other)
+        except flow_intent._CannotTell:
+            return True, False
+        return (flow_intent._match_meet(mine, theirs) is not None,
+                flow_intent._match_covers(theirs, mine))
+
+    def does(acts) -> str:
+        # What a flow's instructions do with what it takes, by flow_intent's own reading
+        # (`_does`), never by an empty list alone (the review of 69e36e6c: CLEAR_ACTIONS,
+        # SET_FIELD alone or an empty WRITE_ACTIONS drop too): ``meters``, ``cannot`` (a
+        # group, or an action Mercury could not read), ``drops`` (no output and nothing
+        # onward), or ``""`` (it forwards, out a port or on to a later table).
+        d = flow_intent._does([a for a in acts or [] if isinstance(a, dict)])
+        if d["meters"]:
+            return "meters"
+        if any(not w.startswith("continues to table") for w in d["onward"]):
+            return "cannot"
+        return "" if d["out"] or d["onward"] else "drops"
+
+    def taken(f):
+        return f"{trace._ref(f)}: {flow_intent.action_words(f.get('actions') or [])}"
+
+    # The flows that decide: a Mercury flow with a hard timeout that forwards (a policy's
+    # allow) ends, and the traffic then goes on as the network's own flows send it, so it is
+    # skipped; one that drops or meters (a response's drop, a rate limit) holds until it ends,
+    # so it counts (the review of bcea1999: a rate limit above a live drop of the same source
+    # undid it); a permanent one is the network's forwarding as it stands.
+    below = [f for f in flows or [] if int(f.get("table_id") or 0) == int(table_id)
+             and int(f.get("priority") or 0) < int(priority)
+             and not (flow_intent.is_mercury(f.get("cookie"))
+                      and int(f.get("hard_timeout") or 0) > 0
+                      and not does(f.get("actions")))]
+
+    def refused(reason, taker, error, flow=None):
+        # *mercury_live*: the taker is Mercury's own response, holding until its hard timeout
+        # (C4159: a refusal then names it as Mercury's, never "the network's own flows").
+        live = bool(flow) and flow_intent.is_mercury(flow.get("cookie")) and \
+            int(flow.get("hard_timeout") or 0) > 0
+        return {"ok": False, "actions": [], "words": "", "reason": reason,
+                "taker": taker, "error": error, "mercury_live": live}
+
+    def given(f, how):
+        said, kind = taken(f), does(f.get("actions"))
+        if kind == "drops":
+            return refused("drops", said, f"its traffic is taken below it by {said}, which "
+                                          "drops it, so there is nothing to send on", f)
+        if kind == "meters":
+            return refused("meters", said, f"its traffic is taken below it by {said}, which "
+                                           "meters it already", f)
+        if kind == "cannot":
+            return refused("cannot_follow", said, f"its traffic is taken below it by {said}, "
+                                                  "which Mercury cannot follow", f)
+        return {"ok": True, "actions": [dict(a) for a in f.get("actions") or []],
+                "error": "", "reason": "", "taker": said,
+                "words": f"then on as {said} ({how})"}
+
+    # 1. One flow takes every packet of the pair: the first priority at which any flow meets
+    # it, where every such flow covers it with the same instructions. Anything below that
+    # priority is shadowed by it, so it alone decides.
+    for p in sorted({int(f.get("priority") or 0) for f in below}, reverse=True):
+        meets = [(f, got) for f in below if int(f.get("priority") or 0) == p
+                 for got in [meets_covers(f.get("match") or {})] if got[0]]
+        if not meets:
+            continue
+        acts = {json.dumps(f.get("actions") or [], sort_keys=True) for f, _g in meets}
+        if all(got[1] for _f, got in meets) and len(acts) == 1:
+            return given(meets[0][0], "every packet it matches would be taken there")
+        break
+    # 2. No one flow takes it all: the pair's packets go several ways. Where ANY flow below
+    # that may take some of them (judged on the pair's own match, never narrowed by the hint;
+    # one the arithmetic cannot read counts as meeting) drops, meters or sends to something
+    # Mercury cannot follow, sending the pair on would undo that for those packets: refused,
+    # naming the flow (the reviews of 3bb37445 and 69e36e6c: the shape, not its members).
+    # The scan stops at the first priority where a flow covers the pair: everything below it
+    # is shadowed and takes none of it (the review of bcea1999, 4). Where no flow below
+    # covers it, the packets no flow takes are dropped by the table's default (OpenFlow 1.3.5
+    # 5.4), which a hint must not hide (the review of bcea1999, 1: a port allow-list with no
+    # table-miss).
+    covered, meeting = False, []
+    for p in sorted({int(f.get("priority") or 0) for f in below}, reverse=True):
+        level = [f for f in below if int(f.get("priority") or 0) == p]
+        for f in level:
+            got = meets_covers(f.get("match") or {})
+            kind = does(f.get("actions"))
+            if kind and got[0]:
+                reason = {"drops": "may_drop", "meters": "may_meter",
+                          "cannot": "cannot_follow"}[kind]
+                return refused(reason, taken(f), (
+                    f"the switch's flows below it take its traffic several ways, and "
+                    f"{trace._ref(f)}, which "
+                    + {"drops": "drops", "meters": "meters",
+                       "cannot": "Mercury cannot follow for"}[kind]
+                    + " what it matches, may take some of it"), f)
+            if got[0]:
+                meeting.append(f)
+        if any(meets_covers(f.get("match") or {})[1] for f in level):
+            covered = True
+            break
+    if not covered and not any(meets_covers(f.get("match") or {})[0] for f in below):
+        # No flow below takes any of it: all of it is dropped by the table's default.
+        return refused("drops", f"table {table_id}'s default (no flow under priority "
+                                f"{priority} takes it, and no table-miss entry)",
+                       f"no flow under priority {priority} in table {table_id} takes it, so "
+                       "the switch drops it by the table's default")
+    if not covered:
+        return refused("may_drop", f"table {table_id}'s default (no flow under priority "
+                                   f"{priority} takes every packet of it, and no table-miss "
+                                   "entry: what none takes is dropped)",
+                       f"no flow under priority {priority} in table {table_id} takes every "
+                       "packet of it, so the switch drops what none takes by the table's "
+                       "default")
+    # 2b. Every flow that may take some of it, down to the covering one, does the same: that
+    # is where all of it goes (C4159: a priority-0 goto beside a per-port goto to the same
+    # table). Where they differ and any goes on to a later table, the pair's packets go to
+    # different tables, which no one flow of Mercury's can follow: refused, never a fixed port
+    # that would skip them all.
+    shared = {json.dumps(f.get("actions") or [], sort_keys=True) for f in meeting}
+    if len(shared) == 1:
+        return given(meeting[0], "every flow below that may take it does the same")
+    to_tables = [f for f in meeting if any(isinstance(a, dict) and a.get("type") == "GOTO_TABLE"
+                                           for a in f.get("actions") or [])]
+    if to_tables:
+        return refused("split_tables", taken(to_tables[0]), (
+            f"the switch's flows below it take its traffic several ways, and "
+            f"{trace._ref(to_tables[0])} sends some of it on to a later table: one flow of "
+            "Mercury's cannot follow the pair to each"))
+    # 3. Every flow below that may take some of it forwards it: the hint (the destination's
+    # MAC, the source's port) picks the one its packets take, among forwarding flows only.
+    exact = all("/" not in str(v) for v in match.values())
+    packet = dict(match, **hint) if exact else {}
+    if packet:
+        packet.setdefault("vlan_vid", trace.OFPVID_NONE)
+        packet.setdefault("metadata", 0)
+        flow, why = trace.select(below, int(table_id), packet)
+        if flow is not None:
+            return given(flow, "followed for "
+                         + (f"the destination's learned MAC {hint['eth_dst']}"
+                            if hint.get("eth_dst") else "its own match"))
+        if why is None:
+            # Nothing takes its packets as the hint knows them, and no table-miss: those are
+            # dropped by the table's default (all of it, where no flow meets it at all).
+            whole = not any(meets_covers(f.get("match") or {})[0] for f in below)
+            return refused("drops" if whole else "may_drop",
+                           f"table {table_id}'s default (no flow under priority {priority} "
+                           "takes " + ("it" if whole else "its packets as Mercury knows them")
+                           + ", and no table-miss entry)",
+                           f"no flow under priority {priority} in table {table_id} takes "
+                           + ("it" if whole else "its packets as Mercury knows them")
+                           + ", so the switch drops "
+                           + ("it" if whole else "them") + " by the table's default")
+    else:
+        why = "its match is not one packet's (a subnet), so it cannot be followed"
+    return refused("split", "", f"the switch's flows below it split its traffic and {why}")
+
+
 def free_meter_id(meters: list, features: dict = None, taken=(), flows=()) -> int:
     """The lowest meter id not on the switch, not pointed at by any of its *flows* (a meter
     there would limit that flow too), nor *taken* by an earlier step, within its
@@ -339,8 +567,8 @@ def plan(network: str, ask: dict, *, driver=None, writer: str = None) -> dict:
     """The preview of *ask*, reading the switch and writing nothing. See the module's
     docstring. ``{"ok", "error", ...}``: on a refusal ``ok`` is False and ``error`` names the
     comparison made and both operands. *writer* is who writes, for B's owners (an internal
-    caller's own name, never read from the ask); given none, ``response`` for a response's ask
-    and ``person`` otherwise."""
+    caller's own name, never read from the ask: the closed loop and the re-apply pass
+    ``response``); given none, ``person``."""
     from modules.sdn import flow_intent
     from modules.sdn.drivers.base import SpecError, dpid_hex, parse_dpid
 
@@ -399,6 +627,12 @@ def plan(network: str, ask: dict, *, driver=None, writer: str = None) -> dict:
                               "no meter can be told Mercury's")
             recorded_meters = {m.get("meter_id"): m for m in got["meters"]
                                if m.get("connection") == conn_name and m.get("dpid") == dpid}
+        # B, the protected set (C2379), read once before the changes are planned: its declared
+        # external flow owners (C3930) are refused in each change's own plan below (no Mercury
+        # writer removes, changes or replaces another owner's flow), its classes after.
+        from modules import protected
+        pset = protected.for_network(network)
+        external = (pset.get("external") or {}).get("owners") or []
         for change in changes:
             do = change["do"]
             if do == "add_meter":
@@ -409,20 +643,25 @@ def plan(network: str, ask: dict, *, driver=None, writer: str = None) -> dict:
                                                 out))
             elif do == "add_flow":
                 steps.append(_plan_add_flow(drv, dpid, change, table, recorded, meter_ids,
-                                            response, limits["values"], out))
+                                            response, limits["values"], out, external))
             elif do == "remove_flow":
                 steps.append(_plan_remove_flow(drv, dpid, change, table, recorded, own, ask,
-                                               before, out))
+                                               before, out, external))
             elif do == "edit_flow":
                 steps += _plan_edit_flow(drv, dpid, change, table, recorded, meter_ids,
-                                         before, out)
+                                         before, out, external)
         # B, the protected set (C2379): the one guard every flow writer reaches, here in the
         # write path they share; the controller connection's control channel first (C2022),
         # then NetBox's protected classes and objects. The set's hash is bound with the plan.
-        from modules import protected
-        who = writer or ("response" if ask.get("response") or ask.get("action") else "person")
-        pset = protected.for_network(network)
-        refused = protected.flow_refusal_detail(pset, changes, dpid, conn, writer=who)
+        # The writer is the caller's, never the ask's: a person's confirm carries its ask back
+        # from the page, so a field in it cannot make the write a response's (Lab 9 Part B,
+        # 2026-11-20). The closed loop and the re-apply pass `protected.RESPONSE_WRITER`.
+        who = writer or "person"
+        # What a response takes of a class it owns is said in its preview, read on this read
+        # of the switch (`protected.owned_class_words`, `taken_first`).
+        refused = protected.flow_refusal_detail(pset, changes, dpid, conn, writer=who,
+                                                switch_flows=flows)
+        out["warnings"] += refused.get("notes") or []
         if refused["words"]:
             # What of the protected set refused it, for the record a refused press keeps
             # (`keep_refusal`, C2944). The plan writes nothing: it is every preview's.
@@ -455,7 +694,25 @@ def plan(network: str, ask: dict, *, driver=None, writer: str = None) -> dict:
     return out
 
 
-def _plan_add_flow(drv, dpid, change, table, recorded, meter_ids, response, limits, out):
+def _external_refusal(external, flow: dict, dpid, verb: str):
+    """Refuse a change that would *verb* (remove, change or replace) a flow a declared external
+    owner holds (C3930), naming the flow, the owner and where it is declared; else nothing."""
+    from modules import protected
+    from modules.sdn import flow_intent
+
+    owner = None if flow_intent.is_mercury(flow.get("cookie")) else \
+        protected.external_owner_of(external, flow.get("cookie"), dpid)
+    if owner is not None:
+        raise Refused(f"the flow at table {flow.get('table_id', 0)}, priority "
+                      f"{flow.get('priority', 0)}, match {match_words(flow.get('match'))} "
+                      f"(cookie {flow_intent.cookie_hex(flow.get('cookie'))}) is declared "
+                      f"{protected.external_words(owner)}. No Mercury writer may {verb} a flow "
+                      "another owner declared: to override it, Mercury adds its own flow at a "
+                      "higher priority (as a response does). Nothing is sent (C3930)")
+
+
+def _plan_add_flow(drv, dpid, change, table, recorded, meter_ids, response, limits, out,
+                   external=()):
     from modules.sdn import flow_intent
 
     flow = _spec(dpid, change.get("flow"))
@@ -478,6 +735,8 @@ def _plan_add_flow(drv, dpid, change, table, recorded, meter_ids, response, limi
     held = _find(table, {"table_id": flow.table_id, "priority": flow.priority,
                          "match": flow.match})
     if held is not None:
+        # An add at a held place replaces what is there: never another owner's (C3930).
+        _external_refusal(external, held, dpid, "replace")
         raise Refused(f"the switch already holds a flow at table {flow.table_id}, priority "
                       f"{flow.priority} with this match (cookie "
                       f"{flow_intent.cookie_hex(held.get('cookie'))}); an add would replace it "
@@ -504,7 +763,8 @@ def _plan_add_flow(drv, dpid, change, table, recorded, meter_ids, response, limi
             "expect": {"present": spec}, "reinstall": reinstall}
 
 
-def _plan_remove_flow(drv, dpid, change, table, recorded, own, ask, before, out):
+def _plan_remove_flow(drv, dpid, change, table, recorded, own, ask, before, out,
+                      external=()):
     from modules.sdn import flow_intent
     from modules.sdn.match_rules import is_table_miss, normalise
 
@@ -515,6 +775,8 @@ def _plan_remove_flow(drv, dpid, change, table, recorded, own, ask, before, out)
         raise Refused(f"no flow at {_target_said(target)} is in switch {dpid}'s table "
                       f"({len(table)} flows read): nothing to remove")
     cookie = found.get("cookie", 0)
+    if cookie not in recorded and cookie not in own:
+        _external_refusal(external, found, dpid, "remove")
     if is_table_miss(found):
         out["needs_typed"] = TABLE_MISS_WORDS
         out["warnings"].append(
@@ -549,7 +811,7 @@ def _plan_remove_flow(drv, dpid, change, table, recorded, own, ask, before, out)
             "expect": {"absent": spec}, "owner": owner}
 
 
-def _plan_edit_flow(drv, dpid, change, table, recorded, meter_ids, before, out):
+def _plan_edit_flow(drv, dpid, change, table, recorded, meter_ids, before, out, external=()):
     from modules.sdn import flow_intent
     from modules.sdn.match_rules import normalise
 
@@ -560,6 +822,7 @@ def _plan_edit_flow(drv, dpid, change, table, recorded, meter_ids, before, out):
         raise Refused(f"no flow at {_target_said(target)} is in switch {dpid}'s table "
                       f"({len(table)} flows read): nothing to edit")
     if found.get("cookie") not in recorded:
+        _external_refusal(external, found, dpid, "change")
         raise Refused(f"edit is for Mercury's own recorded flows, and cookie "
                       f"{flow_intent.cookie_hex(found.get('cookie'))} is not one: remove it "
                       "instead")
@@ -1242,3 +1505,61 @@ def expire_meters(network: str, *, driver=None, now=time.time, actor: str = "Mer
             m["meter_id"] if done["ok"] else done["error"])
     out["ok"] = not out["errors"]
     return out
+
+
+#: How often the meter keeper looks for a recorded meter past its expiry (the SDN reader's own
+#: cadence): a meter outlives its flows by at most this, plus the remove's own seconds.
+METER_KEEPER_S = 30.0
+
+_meter_keeper = {"thread": None}
+
+
+def keep_meters_once(networks=None, *, driver=None, now=time.time) -> dict:
+    """One keeper pass (C4150): `expire_meters` on every network, so a meter whose flows have
+    expired is removed whether or not the SDN loop is running (a policy's meter on SDN ›
+    Policies needs no loop, and a loop runs only while a person has started it, for a bounded
+    time). It reads each network's flow intent only, and asks a switch only for a meter past
+    its expiry. ``{network: expire_meters' answer}``, a network that raised said in its
+    ``errors``; announces ``sdn`` for a network where one was removed."""
+    from modules import invalidation
+    from modules.nsot import listref
+
+    out = {}
+    for network in (listref.names() if networks is None else networks):
+        try:
+            got = expire_meters(network, driver=driver, now=now)
+        except Exception as exc:                          # noqa: BLE001 (said, never raised)
+            log.error("meter keeper: %s raised %s", network, type(exc).__name__)
+            got = {"ok": False, "removed": [], "kept": [],
+                   "errors": [f"{type(exc).__name__}: {exc}"]}
+        out[network] = got
+        if got["removed"]:
+            log.info("meter keeper: removed expired meter(s) %s on %s", got["removed"], network)
+            try:
+                invalidation.announce(["sdn"], "job:meter-keeper")
+            except Exception as exc:                      # noqa: BLE001 (logged)
+                log.warning("meter keeper: announcing sdn failed (%s)", type(exc).__name__)
+        for e in got["errors"]:
+            log.warning("meter keeper: %s: %s", network, e)
+    return out
+
+
+def start_meter_keeper(sleep=time.sleep) -> None:
+    """Start the meter keeper in this process (the app's `_start_background_daemons`), every
+    `METER_KEEPER_S` seconds; importing this module starts nothing."""
+    import threading
+
+    if _meter_keeper["thread"] is not None:
+        return
+
+    def run():
+        while True:
+            try:
+                keep_meters_once()
+            except Exception as exc:                      # noqa: BLE001 (logged, kept going)
+                log.error("meter keeper: the pass raised %s", type(exc).__name__)
+            sleep(METER_KEEPER_S)
+
+    t = threading.Thread(target=run, daemon=True, name="sdn-meter-keeper")
+    _meter_keeper["thread"] = t
+    t.start()

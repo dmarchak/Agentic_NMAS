@@ -174,7 +174,7 @@ def flow_form():
     return _strict(render_template("v2/_sdn_flow_form.html", f={
         "do": request.args.get("do", "add"), "connection": request.args.get("connection", ""),
         "dpid": request.args.get("dpid", ""), "target": request.args.get("target", ""),
-        "list": _list_name()}))
+        "meter_id": request.args.get("meter_id", ""), "list": _list_name()}))
 
 
 def _refusal_kept(network: str, plan: dict, what: str) -> dict:
@@ -390,6 +390,42 @@ def watch_propose(wid):
     return _strict(render_template("v2/_sdn_view.html", **ctx))
 
 
+@bp.route("/watch/<wid>/tripwire", methods=["POST"])
+def watch_tripwire(wid):
+    """Watch its ports… on a watched High packet rate (Lab 9 A, the operator's go of 2026-11-20
+    after the step-4 measurement): the preview of Mercury's tripwire for the row's source
+    (`closed_loop.tripwire_ask`: one flow per TCP port a scan touches, to the subnet NetBox
+    records the source in, going on by the switch's own goto, for 120 s), drawn as a person's
+    flow change on SDN › Flows' card: the exact requests and their hash, read from the switch
+    now; Send is the flow editor's confirm (`flow_confirm`), verified and recorded. A source
+    touching six or more of them is then called a scan of high confidence
+    (`detect._tripwire_scans`). Writes nothing but, for a verified person, the record of a
+    preview the protected set refused (`_refusal_kept`)."""
+    from modules import sdn_ops_page
+    from modules.sdn import closed_loop, flow_ops, loop
+
+    network = _network_of_form()
+    # A watching row, or a flood incident awaiting a person (a scan over 50 pps meets the
+    # flood rule after its 30 s hold, so its watching row has joined the flood by then).
+    row = next((r for r in loop.watching(network)["rows"] + loop.awaiting(network)["rows"]
+                if r.get("id") == wid), None)
+    if row is None or not sdn_ops_page._tripwire_offer(  # noqa: SLF001 (the page's own offer)
+            row.get("detection") or {})["offered"]:
+        return _op_card(sdn_ops_page.refused(
+            network, "flow", f"no watched row or flood incident {wid} is open on {network}: "
+                             "it ended, joined an incident or was dismissed, or is not one a "
+                             "tripwire answers"), 409)
+    got = closed_loop.tripwire_ask(network, row.get("detection") or {})
+    if not got["ok"]:
+        return _op_card(sdn_ops_page.refused(network, "flow", got["error"]), 409)
+    p = flow_ops.plan(network, got["ask"])
+    if p["ok"]:
+        p = dict(p, words=[got["words"]] + list(p["words"]))
+    return _op_card(sdn_ops_page.preview(network, "flow", got["ask"], p,
+                                         refusal=_refusal_kept(network, p, "flow")),
+                    200 if p["ok"] else 409)
+
+
 @bp.route("/response/<rid>/dismiss", methods=["POST"])
 def response_dismiss(rid):
     """Dismiss a response awaiting a person, with their reason; nothing is sent."""
@@ -409,9 +445,11 @@ def response_dismiss(rid):
 
 @bp.route("/link/<lid>/verify", methods=["POST"])
 def link_verify(lid):
-    """Verify the reroute on a link-failure card (board F; `link_failure.verify`): the trace
-    over the controller's stored flow tables, every host pair; its outcome kept on the card
-    as the person's. Reads the stored read only: nothing is sent to a controller or switch."""
+    """Verify the reroute on a link-failure card (board F; `link_failure.verify_now`): the
+    trace over the controller's flow tables, every host pair; its outcome kept on the card as
+    the person's. The stored read, or, when that read is from before the failure, the SDN
+    reader's own read again now, bounded (a person's press, never a page load). Reads only:
+    nothing is sent to a controller or switch but the reader's reads."""
     from modules import identity
     from modules.sdn import link_failure
 
@@ -419,7 +457,8 @@ def link_verify(lid):
     row = next((r for r in link_failure.open_rows(network)["rows"] if r.get("id") == lid), None)
     if row is None:
         return _refused_beside(f"no link-failure card {lid!r} is open on {network}")
-    got = link_failure.verify(network, row.get("detection") or {})
+    got = link_failure.verify_now(network, row.get("detection") or {},
+                                  by=identity.request_actor())
     link_failure.record_verify(network, lid, got, actor=identity.request_actor())
     return _strict(render_template("v2/_sdn_view.html", **_ctx("responses")))
 

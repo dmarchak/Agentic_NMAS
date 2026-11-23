@@ -101,14 +101,24 @@ def ask():
 def ask_tools():
     """Analyse with the trace tool (Lab 9 B4): at most two recorded, capped AI calls over the
     snapshot the region drew, the model asking for reads Mercury answers from that kept
-    snapshot alone, as the person who pressed it (`sdn_analyst_tools.analyse`)."""
+    snapshot alone, as the person who pressed it (`sdn_analyst_tools.analyse`). The card's
+    *prompts* choice is the pair in use (empty) or a candidate's number
+    (`sdn_analyst_tools.TOOLS_CANDIDATES`), for a live measurement; anything else is refused in
+    place, before any call."""
     from modules import identity
     from modules.ai import sdn_analyst_tools, triggers
 
     network = _network()
     actor = identity.request_actor()
+    chosen = (request.form.get("prompts") or "").strip()
+    tools = None
+    if chosen:
+        try:
+            tools = int(chosen)
+        except ValueError:
+            tools = -1
     got = sdn_analyst_tools.analyse(network, (request.form.get("snapshot") or "").strip(),
-                                actor=actor, trigger=triggers.person(actor))
+                                    actor=actor, trigger=triggers.person(actor), tools=tools)
     return _region(network, {"ask_tools": got})
 
 

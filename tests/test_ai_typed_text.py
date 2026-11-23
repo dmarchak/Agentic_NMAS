@@ -466,6 +466,8 @@ FIELDS = {
     # reads Mercury answered from it; nothing typed.
     "sdn_analyse_v2.ask_tools": {
         "form.snapshot": "a snapshot's id Mercury drew (the latest collected)",
+        "form.prompts": "one of the card's Prompts choices, a trace-tool candidate's number "
+                        "(C4155), checked against TOOLS_CANDIDATES and never sent",
         "request.<passed to submitted_list>": "the network's name (routes.list_param)",
         "request.<passed to named_list>": "the network's name (routes.list_param)"},
     "sdn_v2.loop_set": {

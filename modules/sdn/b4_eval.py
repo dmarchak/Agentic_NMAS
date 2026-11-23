@@ -596,6 +596,26 @@ def _role_summary(cases: list) -> dict:
                                              - per["baseline"]["cost_usd"], 6)}}
 
 
+def issue_counts(results: dict) -> list:
+    """Each threat case's planted issues, each found by how many of each technique's runs that
+    answered (C4151): a case with several issues is correct only when a run finds every one, so
+    the case's count alone hides which were found. Read from each run's ``missed_issues``, so a
+    kept report's JSON gives it again. ``[{"case", "issue", "runs": {t: n},
+    "found": {t: n}}]``."""
+    out = []
+    for c in results.get("cases") or []:
+        if c.get("kind") != "threat":
+            continue
+        for name in c.get("planted") or []:
+            runs = {t: [r for r in c["runs"][t] if r.get("ok")] for t in TECHNIQUES}
+            out.append({"case": c["key"], "issue": name,
+                        "runs": {t: len(runs[t]) for t in TECHNIQUES},
+                        "found": {t: sum(1 for r in runs[t]
+                                         if name not in (r.get("missed_issues") or []))
+                                  for t in TECHNIQUES}})
+    return out
+
+
 def summary(results: dict) -> dict:
     """The measures by role (recorded, held_out, blind, hardware) and over all, and the pass
     rule's verdict on the blind role alone (19.13), with its power said."""
@@ -625,7 +645,7 @@ def summary(results: dict) -> dict:
                              f"{round(100 / max(1, blind['cases']))} points, so the power is low")}
     return {"roles": roles, "all": every, "pass_rule": verdict,
             "not_converted": NOT_CONVERTED, "stopped": results.get("stopped") or "",
-            "hardware": results.get("hardware") or {}}
+            "hardware": results.get("hardware") or {}, "issues": issue_counts(results)}
 
 
 def report_markdown(results: dict, meta: dict) -> str:
@@ -672,7 +692,7 @@ def report_markdown(results: dict, meta: dict) -> str:
             f"95% {d['share_interval']}; McNemar exact p {d['mcnemar_p']}, "
             f"{d['flipped_to_reliable']} up, {d['flipped_from_reliable']} down) |",
             f"| Findings kept | {b['findings']} | {t['findings']} | |",
-            f"| Runs finding the planted issue | {b['found']} | {t['found']} | |",
+            f"| Runs finding every planted issue | {b['found']} | {t['found']} | |",
             f"| Misses (runs) | {b['misses']} | {t['misses']} | {t['misses'] - b['misses']:+d} |",
             f"| False positives (findings, by code's rule) | {b['false_positives']} | "
             f"{t['false_positives']} | {d['false_positives']:+d} |",
@@ -691,6 +711,18 @@ def report_markdown(results: dict, meta: dict) -> str:
         cells = [f"{sum(1 for r in c['runs'][t] if r['correct'])} of {len(c['runs'][t])}"
                  for t in TECHNIQUES]
         lines.append(f"| {c['key']} | {c['role']} | {c['kind']} | {cells[0]} | {cells[1]} |")
+    if any(len(c.get("planted") or []) > 1 for c in results.get("cases") or []):
+        # A run is correct only when it finds every planted issue (C4151): each issue's own
+        # count, so a case missing one of three is not read as missing them all.
+        lines += ["", "## Each planted issue", "",
+                  "A run is correct only when it finds every planted issue; each one's own "
+                  "count of the runs that answered:", "",
+                  "| Case | Planted issue | Without tools: found | With the trace tool: found |",
+                  "|---|---|---|---|"]
+        for x in s["issues"]:
+            lines.append(f"| {x['case']} | {x['issue']} | "
+                         + " | ".join(f"{x['found'][t]} of {x['runs'][t]}" for t in TECHNIQUES)
+                         + " |")
     lines += ["", "False positive: a kept finding that cites no planted issue's evidence and no "
               "fact the code measures as abnormal (a port down, a link not up, a drop flow, a "
               "port dropping packets or at 80% or more of its speed), and is not info "
@@ -698,17 +730,18 @@ def report_markdown(results: dict, meta: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def estimate(cases: list, network: str, runs: int) -> dict:
+def estimate(cases: list, network: str, runs: int, tools: int = None) -> dict:
     """What a run would spend, before it does, by each arm's own estimate of each case's
     snapshot: ``{"calls", "usd", "cases", "hardware"}`` (the trace tool counted at its two
-    calls; *hardware* how many of the cases are the lab hardware's snapshots)."""
+    calls, its candidate *tools*' prompt and input where one is asked; *hardware* how many of
+    the cases are the lab hardware's snapshots)."""
     from modules.ai import sdn_analyst_tools as AT
     from modules.sdn import analyst as AN
 
     usd, calls = 0.0, 0
     for case in cases:
         snap = case_snapshot(case, network)
-        usd += runs * (AN.estimate(snap)["usd"] + AT.estimate(snap)["usd"])
+        usd += runs * (AN.estimate(snap)["usd"] + AT.estimate(snap, tools=tools)["usd"])
         calls += runs * (1 + 2)
     return {"calls": calls, "usd": round(usd, 4), "cases": len(cases),
             "hardware": sum(1 for c in cases if c.get("role") == HARDWARE)}
@@ -771,6 +804,10 @@ def main(argv, *, arms: dict, root: str, send=None, now=None, clock=time.monoton
                     help="ask both arms with this version of the analyst's prompt (and the "
                          "trace tool's two built on it) in place of the ones in use: a "
                          "candidate measured before it is adopted")
+    ap.add_argument("--tools-prompt", type=int, default=0,
+                    help="ask the trace tool's own candidate (sdn_analyst_tools."
+                         "TOOLS_CANDIDATES) in place of its pair in use, the baseline as it "
+                         "is: a candidate measured before it is adopted")
     ap.add_argument("--actor", default="")
     ap.add_argument("--yes-spend", action="store_true",
                     help="spend: without it, the run says what it would spend and stops")
@@ -804,9 +841,25 @@ def main(argv, *, arms: dict, root: str, send=None, now=None, clock=time.monoton
     if why_not:
         out(f"nmas-sdn-b4-eval: --prompt {args.prompt}: {why_not}; nothing was asked")
         return 2
+    if args.prompt and args.tools_prompt:
+        out("nmas-sdn-b4-eval: --prompt and --tools-prompt each name what the trace tool asks; "
+            "give one; nothing was asked")
+        return 2
     if args.prompt:
         # Each arm handed the candidate's version; an arm asked without it asks the one in use.
         arms = {t: functools.partial(fn, prompt=args.prompt) for t, fn in arms.items()}
+    if args.tools_prompt:
+        from modules.ai import sdn_analyst_tools as AT
+        try:
+            AT.tools_loop(args.tools_prompt)
+        except ValueError as exc:
+            out(f"nmas-sdn-b4-eval: --tools-prompt {args.tools_prompt}: {exc}; nothing was "
+                "asked")
+            return 2
+        p1, p2, _b1 = AT.TOOLS_CANDIDATES[args.tools_prompt]
+        asked = dict(asked, in_use=False,
+                     tools_prompts=f"{p1[0]}.v{p1[1]} and v{p2[1]} (with the traces list)")
+        arms = dict(arms, tools=functools.partial(arms["tools"], tools=args.tools_prompt))
     actor, refusal = AIC.evaluation_actor(args.actor, "sdn-b4-eval", now)
     network, why = AIC.run_network(args.list) if not refusal else ("", "")
     if refusal or why:
@@ -832,7 +885,7 @@ def main(argv, *, arms: dict, root: str, send=None, now=None, clock=time.monoton
     if not picked:
         out("nmas-sdn-b4-eval: no case matches --roles and --cases")
         return 2
-    est = estimate(picked, network, args.runs)
+    est = estimate(picked, network, args.runs, tools=args.tools_prompt or None)
     out(f"nmas-sdn-b4-eval: {est['cases']} cases ({est['hardware']} of them the lab hardware's "
         f"snapshots) x {args.runs} runs x 2 techniques: at most "
         f"{est['calls']} calls, about ${est['usd']:.4f} by the over-estimate (the tool arm at "

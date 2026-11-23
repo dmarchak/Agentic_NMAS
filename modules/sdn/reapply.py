@@ -342,7 +342,8 @@ def preview(network: str, connection: str, dpid, key: str, *, driver=None,
     built = build(network, connection, dpid, key, driver=driver, now=now)
     if not built["ok"]:
         return dict(built, plan=None)
-    p = flow_ops.plan(network, built["ask"], driver=driver)
+    from modules import protected
+    p = flow_ops.plan(network, built["ask"], driver=driver, writer=protected.RESPONSE_WRITER)
     if p["ok"]:
         p["will_not"].append(
             f"Nothing it puts back outlives the response's own hard timeout, "
@@ -421,6 +422,7 @@ def confirm(network: str, ask: dict, confirmed_hash: str, *, actor: str,
                 "detection": ((flows or meters)[0].get("response") or {}).get("detection") or {},
                 "cookies": list(ask["reapply"].get("cookies") or []),
                 "meters": list(ask["reapply"].get("meters") or [])}
+    from modules import protected
     return flow_ops.apply(network, ask, confirmed_hash, actor=actor,
                           actor_verified=actor_verified, response=response, driver=driver,
-                          now=now, **apply_kwargs)
+                          now=now, writer=protected.RESPONSE_WRITER, **apply_kwargs)

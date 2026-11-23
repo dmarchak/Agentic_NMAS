@@ -1132,8 +1132,19 @@ def read(source=None, population=None, clock=time.time, previous=None, expected=
     from modules.readers.adjacencies import lists
     from modules.sdn import topology as SDN
 
-    configured, results, up = (source or (lambda: IG.merged("prometheus",
-                                                            prometheus_series)))()
+    try:
+        configured, results, up = (source or (lambda: IG.merged("prometheus",
+                                                                prometheus_series)))()
+    except RuntimeError as exc:
+        # Prometheus configured and not answering (the Lab 9 kit behind a VPN client,
+        # 2026-11-20): the controller's layer needs no Prometheus, so it is still read and
+        # drawn, saying why the routed map is not; with no controller layer to draw, the
+        # failure is the reader's, as before.
+        out = _controllers_only(population or lists, sdn or SDN.stored, clock, netbox)
+        if not out.get("networks"):
+            raise
+        why = str(exc)[:300]
+        return dict(out, prometheus_unread=why, errors=list(out.get("errors") or []) + [why])
     if not configured:
         # C1928: with no Prometheus there is no routed map, and a network's controller layer
         # (the SDN reader's stored value, which needs no Prometheus) is still read and drawn.

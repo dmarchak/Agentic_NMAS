@@ -27,9 +27,10 @@ log = logging.getLogger(__name__)
 #: enough that a controller moved since is tested again.
 RECEIPT_SECONDS = 1800
 OWNER_WORDS = {"mercury": "Mercury's", "mercury_differs": "Mercury's, not as recorded",
-               "controller_own": "the controller's own", "unauthorised": "unauthorised"}
+               "controller_own": "the controller's own", "external": "external",
+               "unauthorised": "unauthorised"}
 OWNER_KIND = {"mercury": "ok", "mercury_differs": "warn", "controller_own": "muted",
-              "unauthorised": "danger"}
+              "external": "muted", "unauthorised": "danger"}
 STATE_WORDS = {"connected": ("connected", "ok"), "partial": ("partly read", "warn"),
                "not_answering": ("not answering", "danger"),
                "not_built": ("driver not built", "muted"),
@@ -242,7 +243,8 @@ def _timeouts(flow: dict) -> str:
 
 
 #: The order a switch's flows are drawn in: what is wrong first.
-OWNER_ORDER = {"unauthorised": 0, "mercury_differs": 1, "mercury": 2, "controller_own": 3}
+OWNER_ORDER = {"unauthorised": 0, "mercury_differs": 1, "mercury": 2, "external": 3,
+               "controller_own": 4}
 
 
 def _flow_row(f: dict) -> dict:
@@ -257,8 +259,12 @@ def _flow_row(f: dict) -> dict:
                          "match": f.get("match") or {}, "cookie": f.get("cookie")},
                         sort_keys=True, default=str)
     slot = "sdn-op-" + hashlib.sha256(f"{f.get('dpid')}|{target}".encode()).hexdigest()[:12]
+    words = OWNER_WORDS.get(owner, "not classified")
+    if owner == "external":
+        # A declared external owner's flow (C3930): "external: <owner>", and no Remove….
+        words = f"external: {(f.get('external') or {}).get('owner') or 'a declared owner'}"
     return {"target": target, "slot": slot,
-            "owner": owner or "none", "owner_words": OWNER_WORDS.get(owner, "not classified"),
+            "owner": owner or "none", "owner_words": words,
             "owner_kind": OWNER_KIND.get(owner, "muted"), "words": f.get("words", ""),
             "priority": f.get("priority"), "match": _match_words(f.get("match")),
             "actions": flow_intent.action_words(f.get("actions")),
@@ -342,8 +348,14 @@ def flows_view(network: str, values=None, now: float = None) -> dict:
            "intent_error": ((got.get("value") or {}).get("intent") or {}).get("error", "")
            if ((got.get("value") or {}).get("intent") or {}).get("state") == "unreadable"
            else ""}
+    # The declared external flow owners the reader judged by (C3930): each entry NetBox holds
+    # that was refused is said with why, since its flows are then drawn as unauthorised.
+    ext = (got.get("value") or {}).get("external") or {}
+    out["external"] = {"refused": [{"error": r.get("error", "")}
+                                   for r in ext.get("refused") or []],
+                       "error": ext.get("error", "") if ext.get("state") == "unreadable" else ""}
     counts = {"switches": 0, "flows": 0, "mercury": 0, "mercury_differs": 0,
-              "controller_own": 0, "unauthorised": 0, "missing": 0,
+              "controller_own": 0, "external": 0, "unauthorised": 0, "missing": 0,
               "meters": 0, "unclassified": 0}
     supported = known = 0
     # NetBox's names for the switches, read once for the page (the committed NSOT export).
@@ -406,12 +418,20 @@ def flows_view(network: str, values=None, now: float = None) -> dict:
                 counts["meters"] += 1
                 band = (m.get("bands") or [{}])[0]
                 owner = m.get("owner")
+                # Mercury's meter no flow uses (its flows expired, C4150): Remove… on it, the
+                # flow editor's preview and confirm with the one meter's delete.
                 out["meters"].append({
                     "dpid_hex": sw.get("dpid_hex"), "meter_id": m.get("meter_id"),
                     "rate": _meter_words(m), "packets": band.get("packet_band_count"),
-                    "owner_words": {**OWNER_WORDS, "unused": "no flow uses it"}.get(
+                    "owner_words": {**OWNER_WORDS, "unused": "no flow uses it",
+                                    "mercury_unused": "Mercury's, no flow uses it"}.get(
                         owner, "not known"),
-                    "owner_kind": {**OWNER_KIND, "unused": "muted"}.get(owner, "muted")})
+                    "owner_kind": {**OWNER_KIND, "unused": "muted",
+                                   "mercury_unused": "warn"}.get(owner, "muted"),
+                    "removable": owner == "mercury_unused", "connection": c["name"],
+                    "slot": "sdn-m-" + hashlib.sha256(
+                        f"{c['name']}|{sw.get('dpid_hex')}|{m.get('meter_id')}".encode()
+                    ).hexdigest()[:12]})
     out["counts"] = counts
     out["meter_support"] = {"supported": supported, "known": known,
                             "switches": counts["switches"]}

@@ -332,6 +332,44 @@ class TestFlows:
         assert "meters supported on 1 of 1 switch" in meters
         assert "1,000 kbit/s, drop above" in meters and "1,200" in meters
         assert "Mercury&#39;s" in meters
+        assert "Remove…" not in meters, "a meter a flow uses offers no Remove…"
+
+    def test_mercury_s_meter_no_flow_uses_is_said_and_offers_remove(self, lab):
+        """C4150 (the Lab 9 hardware, 2026-11-20): the policy's meter its flows' expiry left
+        behind was listed with no way to remove it. Mercury's meter no flow uses reads as
+        Mercury's and unused, with Remove… opening the editor's meter removal."""
+        flows = [f for f in json.loads(next(e for e in WITH_PEER if e["path"] ==
+                                             "/stats/flow/1")["body"])["1"]
+                 if not any(str(a).startswith("METER") for a in f["actions"])]
+        lab["sessions"]["session"] = Captured(flows=flows)
+        F.record_meter("Default", connection="lab-controller", dpid=1,
+                       meter={"meter_id": 1, "flags": ["KBPS", "STATS"],
+                              "bands": [{"type": "DROP", "rate": 1000}]},
+                       actor="op@example.com", response={"kind": "policy"}, at=T0,
+                       expires_at=T0 + 5)
+        store_read()
+        _r, html = get(lab, "/v2/sdn/flows")
+        meters = re.search(r'<section class="card sdn-meters".*?</section>', html, re.S).group(0)
+        assert "Mercury&#39;s, no flow uses it" in meters
+        link = re.search(r'hx-get="([^"]*do=remove_meter[^"]*)"', meters).group(1)
+        q = parse_qs(urlsplit(html_unescape(link)).query)
+        # The control names the meter the reader stored as Mercury's and unused.
+        sw = value()["controllers"][0]["switches"][0]
+        assert [(m["meter_id"], m["owner"]) for m in sw["meters"]] == [
+            (int(q["meter_id"][0]), "mercury_unused")]
+        assert (q["connection"], q["dpid"]) == (["lab-controller"], [sw["dpid_hex"]])
+        _r, form = get(lab, html_unescape(link))
+        assert '<input type="hidden" name="do" value="remove_meter">' in form
+        assert '<input type="hidden" name="meter_id" value="1">' in form
+        assert "Remove Mercury&#39;s meter" in form and "Preview the removal" in form
+        # Pressed: the preview reads the switch, names the one delete, and removes nothing.
+        fields = dict(re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)">', form))
+        r = lab["client"].post("/v2/sdn/flow/preview", data=fields)
+        card = r.get_data(as_text=True)
+        assert r.status_code == 200, card
+        assert "Remove meter 1 on 0000000000000001." in html_unescape(card)
+        assert 'name="hash"' in card
+        assert [m["meter_id"] for m in F.meters("Default")["meters"]] == [1]
 
     def test_the_granularity_note_where_flows_cannot_show_a_scan(self, lab):
         flows = [f for f in json.loads(next(e for e in WITH_PEER if e["path"] ==

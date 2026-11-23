@@ -172,3 +172,25 @@ def test_a_switch_is_named_by_netbox_then_by_itself_and_never_by_a_placeholder(o
     names = known.labels_of(fabric, {"names": netbox})
     assert known.switch_words(3, names) == words
     assert known.switch_words("0000000000000003", names) == words
+
+
+@pytest.mark.parametrize("own,netbox,said", [
+    ("None", {3: "switch3"}, "switch3"),        # the Lab 9 hardware: OVS reports "None"
+    ("ovs-edge", {}, "ovs-edge"),
+    ("None", {}, ""),                           # nothing names it: the caller says its DPID
+])
+def test_a_switch_given_by_dpid_is_said_by_its_name(networks, monkeypatch,  # noqa: F811
+                                                    own, netbox, said):
+    """`name_of` (queue 16, the Lab 9 hardware, 2026-11-20: "switch 0000000000000003
+    (None)"): NetBox's name by datapath id, else the description the SDN reader kept, never
+    "None"; read by NetBox's names once when handed them."""
+    from modules.sdn import known, topology
+
+    monkeypatch.setattr(topology, "stored", lambda network, **kw: {"controllers": [
+        {"name": "lab-controller", "names": {3: own}}]})
+    monkeypatch.setattr(known, "names_for", lambda network: dict(netbox))
+    assert known.name_of("Default", "lab-controller", 3) == said
+    assert known.name_of("Default", "lab-controller", "0000000000000003") == said
+    monkeypatch.setattr(known, "names_for", lambda network: pytest.fail("read again"))
+    assert known.name_of("Default", "lab-controller", 3, names=netbox) == said
+    assert known.name_of("Default", "lab-controller", None) == ""

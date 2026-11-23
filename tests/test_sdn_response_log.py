@@ -257,6 +257,26 @@ def test_a_switch_s_reported_name_is_beside_its_dpid(networks, monkeypatch):  # 
                              "nothing was sent (planted)")
 
 
+@pytest.mark.parametrize("nb,reported,shown", [
+    ({3: "switch3"}, "None", "0000000000000003 (switch3)"),
+    ({}, "None", "0000000000000003"),
+    ({}, "ovs-edge", "0000000000000003 (ovs-edge)")], ids=["netbox", "none", "own"])
+def test_the_line_names_the_switch_by_netbox_never_none(networks, monkeypatch, nb,  # noqa: F811
+                                                        reported, shown):
+    """The Lab 9 hardware, 2026-11-20 (queue 16): "applied rate_limit_source on switch
+    0000000000000003 (None)": the switch is named as NetBox names it, else as it describes
+    itself, never Open vSwitch's "None"."""
+    from modules.sdn import known, topology
+    monkeypatch.setattr(known, "names_for", lambda network: dict(nb))
+    monkeypatch.setattr(topology, "stored", lambda network, **kw: {"controllers": [
+        {"name": "lab-controller", "names": {3: reported}}]})
+    done = {"outcome": "refused", "error": "planted", "plan": None}
+    line = CL.log_response(NET, done, action="rate_limit_source", who="p",
+                           ask={"connection": "lab-controller", "dpid": 3})
+    assert line["words"] == (f"p's rate_limit_source on switch {shown} was refused: "
+                             "nothing was sent (planted)")
+
+
 # ── a pass with no new threat ─────────────────────────────────────────────────────────────────
 
 def _quiet(networks, collected, seen):  # noqa: F811

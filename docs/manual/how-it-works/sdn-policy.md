@@ -21,11 +21,19 @@ them, and **Add flow…** on SDN › Flows stays as usable as ever (see
 ## What a policy can say
 
 - **block** (block, deny, drop, isolate): the traffic is dropped;
-- **allow** (allow, permit): the traffic is sent to the switch's own forwarding (OpenFlow's
-  NORMAL port), above every flow that could match it;
+- **allow** (allow, permit): the traffic is taken above every flow that could match it and sent
+  on as the switch's own flows below it would send it: on a switch whose first table hands
+  traffic to a forwarding table (an Open vSwitch pipeline's goto), to that table; on a single
+  table that forwards by destination, as that destination's forwarding flow does (followed for
+  the MAC the controller learned for it). It is never sent to OpenFlow's NORMAL port, the
+  switch's forwarding outside its flow tables, which on a fabric the controller programs ahead
+  of traffic has learned nothing and floods or drops. Where the flows below cannot be read as
+  one path (they split the traffic and the destination's MAC is not known, or they drop it),
+  the request is refused, naming the flows compared;
 - **rate-limit** (limit, throttle, cap): one meter on the switch, a drop band at the rate in
-  kbit/s, and the traffic sent through it to the switch's own forwarding. Only a switch that
-  reports meters can hold one.
+  kbit/s, and the traffic sent through it, then on the same way as an allow. Only a switch that
+  reports meters can hold one. **Where it applies** in the preview names the flow the traffic
+  goes on as.
 
 Each part names a **source** (a host, a NetBox tag such as `web`, an address or a subnet), a
 **destination** (the same, or any), a **protocol** (tcp, udp, icmp or any), a destination
@@ -55,7 +63,8 @@ no redirect: a redirect needs a port to send to, and no name says one.
    - **not a policy**: a name the sentence did not resolve to, a rate on a rule that is not a
      rate limit, a rate limit with no rate;
    - **impossible**: a source of any, a source on no OpenFlow port (NetBox records no cable to
-     a switch port with an `openflow_port`, and the controller has not learned it), a source
+     a switch port with an `openflow_port`, from the end host or from the device interface
+     holding the address, and the controller has not learned it), a source
      whose hosts enter at more than one switch, the same host at both ends, a port without tcp
      or udp, a duration past 65,535 s, no address family both ends share, and a rate limit
      where the source's switch reports no meters. That last one offers **Drop instead…** and
@@ -81,7 +90,10 @@ no redirect: a redirect needs a port to send to, and no name says one.
    A policy that passes is drawn as **Checked against NetBox and the network**: the hosts named,
    where it applies (the switch, its platform and how the source was placed), the conflicts
    with installed flows, the committed policies and the protected flows.
-5. `compile`: the policy becomes flows on the source's ingress switch, one per source and
+5. `compile`: the policy becomes flows on the source's ingress switch (an end host's by its
+   NetBox cable, else where the controller learned it; an address no end host holds, such as a
+   router's, where NetBox cables the device interface holding it to a switch's OpenFlow port),
+   one per source and
    destination address of one family (IPv4 and IPv6 alike), each with the duration as its hard
    timeout and {{product}}'s cookie.
 

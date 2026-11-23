@@ -11,9 +11,15 @@ does with it. No AI call; nothing is written to a switch or to Mercury's detecti
     nmas-host nmas -- <checkout>/scripts/nmas-sdn-false-positives --list <network> \\
         --passes 30 --interval 10 --runs 3 --out /tmp/sdn-fp
 
-`--runs` repeats a live read that many times (each its own run). `--out` (not inside the
-checkout, 2) gets ``false_positives.csv`` and ``summary.json``. It prints one line per false
-positive and the summary: runs, passes, detections fired, false positives by rule and per
+`--runs` repeats a live read that many times (each its own run). `--interval` is the gap
+between one pass's last read and the next pass's first, not a pass's length: each pass's start
+and end are measured and said (on the Lab 9 hardware, 2026-11-20, a pass was about 15 s: about
+5 s of reads and the 10 s gap); the rules judge on the collections' own times, never on the
+interval. `--out` (not inside the checkout, 2) gets ``false_positives.csv`` and
+``summary.json``. It prints one line per false positive, then per run its UTC window, its
+measured pass and read times, its counts by rule and its declared external flow owners (C3930,
+the loop's own lookup: a declared owner's flow is never counted, and owners that cannot be read
+are said), then the summary: runs, passes, detections fired, false positives by rule and per
 pass. Exit 0 with none, 1 with any (a false positive is reported, never refused away).
 
 **Each run is also kept in its network's record** (C2946; `false_positives.keep`,
@@ -34,8 +40,10 @@ sys.path.insert(0, ROOT)
 from modules.app_interpreter import adopt  # noqa: E402
 adopt(__name__)
 
-#: The most passes one live run reads (about 2.5 times the 10-minute run of 60 passes at the
-#: loop's 10 s interval): a run is bounded, never left reading.
+#: The most passes one live run reads (2.5 times a run of 60 passes): a run is bounded, never
+#: left reading. A pass is its reads plus --interval, measured on the Lab 9 hardware
+#: (2026-11-20) at about 15 s (about 5 s of reads and the 10 s gap), so 60 passes are about
+#: 15 minutes and 150 about 38; each run says its own measured times.
 MAX_PASSES = 150
 
 
@@ -46,7 +54,9 @@ def main(argv=None) -> int:
     ap.add_argument("--series", action="append", default=[], help="a recorded run (JSONL)")
     ap.add_argument("--list", default="", help="a network to read live, read-only")
     ap.add_argument("--passes", type=int, default=30)
-    ap.add_argument("--interval", type=float, default=10.0)
+    ap.add_argument("--interval", type=float, default=10.0,
+                    help="seconds between one pass's last read and the next pass's first "
+                         "(a pass's own length is measured and said)")
     ap.add_argument("--runs", type=int, default=1)
     ap.add_argument("--out", required=True)
     ap.add_argument("--network", default="",
@@ -88,11 +98,17 @@ def main(argv=None) -> int:
         runs[-1]["label"] = f"{runs[-1]['label']}-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
     if args.list:
         homes = homes * len(runs)
+    # The declared external flow owners (C3930), the loop's own lookup: a live run read them
+    # as it started; a recorded series that carries none has its network's read now.
+    for series, network in zip(runs, homes):
+        FP.declare(series, network)
     got = FP.judge(runs)
     for row in got["false_positives"]:
         print(f"{row['run']} pass {row['pass']} {row['at']}: {row['rule']} on {row['switch']}"
               f"{' port ' + str(row['port']) if row['port'] is not None else ''}: "
               f"{row['words']}; done: {row['done']}")
+    for run in got["by_run"]:
+        print(FP.run_words(run))
     paths = FP.write(got, out)
     for series, network in zip(runs, homes):
         kept = FP.keep(network, series, by="nmas-sdn-false-positives")

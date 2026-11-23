@@ -27,6 +27,11 @@ captures: s1 and s2 joined by port 3), the failed link s1:3 to s2:3, each case a
   and IPv6 alike;
 - **pending:** a stored read from before the failure, or one still listing the link, is never
   judged.
+- **a person's press** (the operator's report from the Lab 9 hardware, 2026-11-20): on a stored
+  read older than the failure it has the SDN reader read again (its own run, stored) and answers
+  from that read, naming it; on a newer one it reads nothing again; a read again that fails is
+  said in place ("Couldn't read the flow tables now: …"), the older read labelled as older than
+  the failure; one that does not answer in its bound names the bound and the run.
 
 **The modes:** in HITL the loop keeps a card awaiting a person and verifies nothing; in AUTO
 (on a network marked lab) it verifies at each pass until rerouted, records each outcome as
@@ -34,6 +39,7 @@ Mercury's, and after `VERIFY_WINDOW_S` leaves a reroute it never saw to a person
 listed and up again closes its card; no AI call is made for a link down.
 """
 import copy
+import time
 
 import pytest
 
@@ -393,6 +399,133 @@ def test_responses_draws_the_card_and_its_verify_and_dismiss_act(client, monkeyp
                     data={"list": NET, "reason": "the cable is moved"})
     assert r.status_code == 200 and LF.open_rows(NET)["rows"] == []
     assert "Link failures" not in r.get_data(as_text=True)
+
+
+# ───────────────────────────── a press on a stored read older than the failure (2026-11-20)
+#
+# The operator's report from the Lab 9 hardware, 2026-11-20: a card's Verify the reroute sat on
+# "verifying" until it was pressed a second time, because the SDN reader's stored read (every
+# 30 s) predated the failure. These run the press through the real route and the reader's own
+# run (`reader_job.request_run`, its store written under the temporary data folder); only the
+# reader's `read` is a test's, answering the captures above with the read's time moved.
+
+def _value_at(store, read_at):
+    """The reader's value in *store* (`cached`'s) as read at *read_at* (its topology's time,
+    the controller's read time the trace judges by)."""
+    value = copy.deepcopy(store["doc"]["last_good"]["value"])
+    for c in value["controllers"]:
+        c["topology"]["read_at"] = read_at
+    return value
+
+
+def _reads(monkeypatch, answer):
+    """The SDN reader with *answer* as its read (a value, or an exception it raises), each call
+    counted. The reader's own run stores it, as its schedule would."""
+    import dataclasses
+
+    from modules.readers import sdn_controllers as R
+    calls = []
+
+    def read():
+        calls.append(time.time())
+        if isinstance(answer, Exception):
+            raise answer
+        return copy.deepcopy(answer)
+    monkeypatch.setattr(R, "READER", dataclasses.replace(R.READER, read=read,
+                                                         read_for=lambda _l: read()))
+    return calls
+
+
+def _stored(value):
+    """The reader's store holding *value*, by the reader's own run."""
+    import dataclasses
+
+    from modules import reader_job
+    from modules.readers import sdn_controllers as R
+    reader_job.run_once(dataclasses.replace(R.READER, read=lambda: copy.deepcopy(value),
+                                            per_group=(), read_for=None))
+
+
+def _iso(epoch):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
+def _pressed(client, at):
+    from html import unescape
+
+    row = LF.open_down(NET, dict(_detection(at=_iso(at)), network=NET), mode="hitl",
+                       why="HITL: the default")
+    r = client.post(f"/v2/sdn/link/{row['id']}/verify", data={"list": NET})
+    (kept,) = LF.open_rows(NET)["rows"]
+    return r, unescape(r.get_data(as_text=True)), kept["verify"]
+
+
+@pytest.mark.usefixtures("reader_stores_in_tmp")
+def test_a_press_on_a_stored_read_older_than_the_failure_reads_again_and_answers_from_it(
+        client, monkeypatch):
+    now = time.time()
+    rerouted = _store(_rerouted, moved=True)
+    _stored(_value_at(rerouted, _iso(now - 20)))
+    calls = _reads(monkeypatch, _value_at(rerouted, _iso(now)))
+    r, drawn, kept = _pressed(client, now - 10)
+    assert r.status_code == 200 and len(calls) == 1, calls
+    assert kept["outcome"] == "rerouted" and kept["read_at"] == _iso(now), kept
+    assert kept["judged_on"].startswith(
+        f"judged on the flow tables read again on this press at {_iso(now)}"), kept
+    assert "rerouted, verified" in drawn and kept["judged_on"] in drawn
+
+
+@pytest.mark.usefixtures("reader_stores_in_tmp")
+def test_a_press_on_a_stored_read_newer_than_the_failure_reads_nothing_again(
+        client, monkeypatch):
+    now = time.time()
+    rerouted = _store(_rerouted, moved=True)
+    _stored(_value_at(rerouted, _iso(now - 5)))
+    calls = _reads(monkeypatch, AssertionError("read again on a read newer than the failure"))
+    r, drawn, kept = _pressed(client, now - 10)
+    assert r.status_code == 200 and calls == []
+    assert kept["outcome"] == "rerouted" and kept["read_at"] == _iso(now - 5)
+    assert kept.get("judged_on", "").startswith(
+        f"judged on the SDN reader's stored read at {_iso(now - 5)} ("), kept
+    assert f"after the failure detected at {_iso(now - 10)}" in kept["judged_on"]
+    assert kept["judged_on"] in drawn and not kept.get("read_error")
+
+
+@pytest.mark.usefixtures("reader_stores_in_tmp")
+def test_a_fresh_read_that_fails_is_said_in_place_and_the_older_read_labelled(
+        client, monkeypatch):
+    now = time.time()
+    rerouted = _store(_rerouted, moved=True)
+    _stored(_value_at(rerouted, _iso(now - 20)))
+    calls = _reads(monkeypatch, ConnectionError("the controller did not answer on :8080"))
+    r, drawn, kept = _pressed(client, now - 10)
+    assert r.status_code == 200 and len(calls) == 1, calls
+    assert kept["outcome"] == "pending" and kept["read_at"] == _iso(now - 20)
+    assert kept.get("read_error", "").startswith("Couldn't read the flow tables now: ") and \
+        "the controller did not answer on :8080" in kept["read_error"], kept
+    assert kept["judged_on"].startswith(f"the SDN reader's stored read at {_iso(now - 20)} ("), \
+        kept
+    assert f"older than the failure detected at {_iso(now - 10)}" in kept["judged_on"]
+    assert kept["read_error"] in drawn and kept["judged_on"] in drawn
+    assert "couldn't read now" in drawn and ">verifying<" not in drawn
+
+
+def test_a_fresh_read_that_does_not_answer_within_its_bound_names_the_bound(
+        networks, monkeypatch):  # noqa: F811
+    from modules import reader_job
+    calls = []
+    monkeypatch.setattr(reader_job, "request_run", lambda reader, by, **kw: (
+        calls.append(reader.name), {"run": "r1", "started": True})[1])
+    monkeypatch.setattr(reader_job, "request_in_flight", lambda name: {"run": "r1"})
+    monkeypatch.setattr(reader_job, "answer_bound", lambda name: {
+        "seconds": 4, "basis": "2.5x the slowest of its last 3 run(s), 1.5 s"})
+    clock = iter([0.0, 1.0, 5.0])
+    got = LF.read_flows_again(NET, "op@example.com", sleep=lambda s: None,
+                              clock=lambda: next(clock))
+    assert calls == ["sdn-controllers"] and not got["ok"]
+    assert got["why"] == ("the SDN reader's read of Default's controllers (run r1) did not "
+                          "answer within 4 s (2.5x the slowest of its last 3 run(s), 1.5 s); "
+                          "it is stored when it lands"), got
 
 
 def test_a_card_is_dismissed_only_with_a_reason(networks):  # noqa: F811

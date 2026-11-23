@@ -306,10 +306,110 @@ class TestTheFourIntents:
         adds = _added(lab, OVS1)
         assert sorted(a["match"].get("ipv4_dst") or a["match"]["ipv6_dst"] for a in adds) == [
             "198.51.100.21", "2001:db8:c8::21"]
-        assert all(a["actions"] == [{"type": "OUTPUT", "port": "NORMAL"}] and
+        # On as the table's own flow below would send it (here Ryu's table-miss to the
+        # controller), never NORMAL (C4126).
+        assert all(a["actions"] == [{"type": "OUTPUT", "port": "CONTROLLER"}] and
                    a["hard_timeout"] == 0 for a in adds)
         rows = [r for r in F.intent(NET)["flows"] if r["dpid"] == OVS1]
         assert {r["response"]["kind"] for r in rows} == {"policy"}
+
+    def test_a_rate_limit_on_an_ovs_pipeline_goes_on_to_its_forwarding_table_and_is_forwarded(
+            self, lab):
+        """The Lab 9 hardware, 2026-11-20 (C4126): a rate limit sent its traffic to NORMAL,
+        which on the team's proactive Open vSwitch had learned no MAC and flooded h2's frames
+        to the bridge's internal port alone, so iperf3 could not connect. On a pipeline whose
+        table 0 misses to its forwarding table, the meter's flow goes there too, and the
+        packet is delivered out the destination's port, not only metered."""
+        from modules.sdn import trace
+        web2 = "02:00:00:00:00:05"
+        lab.fake.table[OVS1] = [
+            {"dpid": OVS1, "table_id": 0, "priority": 0, "cookie": 0x9A00000000000001,
+             "match": {}, "actions": [{"type": "GOTO_TABLE", "table_id": 2}],
+             "idle_timeout": 0, "hard_timeout": 0},
+            {"dpid": OVS1, "table_id": 0, "priority": 1200, "cookie": 0x9A00000000000002,
+             "match": {"eth_type": 0x0800, "ip_proto": 17, "udp_dst": 53},
+             "actions": [{"type": "OUTPUT", "port": "CONTROLLER"}],
+             "idle_timeout": 0, "hard_timeout": 0},
+            {"dpid": OVS1, "table_id": 2, "priority": 1000, "cookie": 0x9A00000000000003,
+             "match": {"eth_dst": web2}, "actions": [{"type": "OUTPUT", "port": 7}],
+             "idle_timeout": 0, "hard_timeout": 0}]
+        lab.answer = answer(rule("rate_limit", "h1", "web-2", "tcp", 5201, rate=5000,
+                                 duration=600))
+        got = draft(lab, "Rate-limit TCP 5201 from h1 to web-2 to 5 Mbit/s for 10 minutes")
+        assert got["state"] == "checked", got["words"]
+        assert ("then on as the flow at priority 0 in table 0 (cookie 0x9a00000000000001): "
+                "GOTO_TABLE:2") in got["rows"][1]["words"], got["rows"][1]["words"]
+        _pv, done = applied(lab, got["policy"])
+        assert done["outcome"] == "verified", done["error"]
+        (add,) = _added(lab, OVS1)
+        meter = add["actions"][0]["meter_id"]
+        assert add["actions"] == [{"type": "METER", "meter_id": meter},
+                                  {"type": "GOTO_TABLE", "table_id": 2}]
+        assert "NORMAL" not in json.dumps(add)
+        flows = lab.driver(NET, CONN)["driver"].flows(OVS1)["flows"]
+        packet = {"eth_src": "02:00:00:00:00:01", "eth_dst": web2, "vlan_vid": 0,
+                  "eth_type": 0x0800, "ip_dscp": 0, "ip_ecn": 0, "ipv4_src": "198.51.100.11",
+                  "ipv4_dst": "198.51.100.22", "ip_proto": 6, "tcp_src": 40000,
+                  "tcp_dst": 5201}
+        went = trace.through_switch({"flows": flows, "ports": None}, 4, packet)
+        assert went["end"] is None, went["end"]
+        assert [p for p, *_rest in went["emits"]] == [7]
+        assert [f["table_id"] for f in went["flows"]] == [0, 2]
+        assert any(f"meter {meter}" in n for n in went["notes"])
+
+    def test_a_single_table_forwarding_by_destination_mac_is_followed_for_the_learned_host(
+            self, lab):
+        """C4126: where the table's own forwarding splits the traffic by destination MAC, the
+        flow is sent on as the forwarding flow for the destination's learned MAC sends it."""
+        # A single table forwarding by destination MAC, its table-miss to the controller (a table
+        # with no miss drops what no flow takes, which Mercury refuses: the review of bcea1999).
+        lab.fake.table[OVS1] = [
+            {"dpid": OVS1, "table_id": 0, "priority": 0, "cookie": 0x9A00000000000007,
+             "match": {}, "actions": [{"type": "OUTPUT", "port": "CONTROLLER"}],
+             "idle_timeout": 0, "hard_timeout": 0},
+            {"dpid": OVS1, "table_id": 0, "priority": 1000, "cookie": 0x9A00000000000004,
+             "match": {"eth_dst": "02:00:00:00:00:40"},
+             "actions": [{"type": "OUTPUT", "port": 3}], "idle_timeout": 0, "hard_timeout": 0},
+            {"dpid": OVS1, "table_id": 0, "priority": 1000, "cookie": 0x9A00000000000005,
+             "match": {"eth_dst": "02:00:00:00:00:05"},
+             "actions": [{"type": "OUTPUT", "port": 7}], "idle_timeout": 0, "hard_timeout": 0}]
+        lab.answer = answer(rule("allow", "h1", "198.51.100.40", "tcp", 80))
+        got = draft(lab, "Allow h1 to reach 198.51.100.40 on tcp 80")
+        assert got["state"] == "checked", got["words"]
+        assert "followed for the destination's learned MAC 02:00:00:00:00:40" in \
+            got["rows"][1]["words"]
+        _pv, done = applied(lab, got["policy"])
+        assert done["outcome"] == "verified", done["error"]
+        (add,) = _added(lab, OVS1)
+        assert add["actions"] == [{"type": "OUTPUT", "port": 3}]
+
+    def test_an_onward_path_that_cannot_be_read_as_one_flow_is_refused_never_normal(self, lab):
+        """C4126: the destination's MAC unknown where the forwarding splits by MAC, or the
+        flow below dropping the traffic: refused naming what was compared; nothing sent."""
+        split = [
+            {"dpid": OVS1, "table_id": 0, "priority": 0, "cookie": 0x9A00000000000007,
+             "match": {}, "actions": [{"type": "OUTPUT", "port": "CONTROLLER"}],
+             "idle_timeout": 0, "hard_timeout": 0},
+            {"dpid": OVS1, "table_id": 0, "priority": 1000, "cookie": 0x9A00000000000004,
+             "match": {"eth_dst": "02:00:00:00:00:40"},
+             "actions": [{"type": "OUTPUT", "port": 3}], "idle_timeout": 0, "hard_timeout": 0},
+            {"dpid": OVS1, "table_id": 0, "priority": 1000, "cookie": 0x9A00000000000005,
+             "match": {"eth_dst": "02:00:00:00:00:05"},
+             "actions": [{"type": "OUTPUT", "port": 7}], "idle_timeout": 0, "hard_timeout": 0}]
+        lab.fake.table[OVS1] = split
+        lab.answer = answer(rule("rate_limit", "h1", "web-2", "tcp", 5201, rate=5000))
+        got = draft(lab, "Rate-limit TCP 5201 from h1 to web-2 to 5 Mbit/s")
+        assert got["state"] == "refused" and got["kind"] == "impossible", got["words"]
+        assert "the switch's flows below it split its traffic" in got["words"]
+        assert "never to NORMAL" in got["words"]
+        lab.fake.table[OVS1] = [
+            {"dpid": OVS1, "table_id": 0, "priority": 0, "cookie": 0x9A00000000000006,
+             "match": {}, "actions": [], "idle_timeout": 0, "hard_timeout": 0}]
+        lab.answer = answer(rule("allow", "h1", "web-1", "tcp", 80))
+        got = draft(lab, "Allow h1 to reach web-1 on tcp 80")
+        assert got["state"] == "refused" and got["kind"] == "impossible", got["words"]
+        assert "which drops it, so there is nothing to send on" in got["words"]
+        assert lab.fake.writes == []
 
     def test_a_block_with_a_duration(self, lab):
         lab.answer = answer(rule("block", "h1", "web-2", "udp", 5001, duration=600))
@@ -477,4 +577,81 @@ class TestTheModelIsNeverTrusted:
         done = P.confirm(NET, got["policy"], ask, pv["plan"]["hash"], actor=ACTOR,
                          driver=lab.driver, sleep=lambda s: None)
         assert done["outcome"] == "refused" and "not what this policy compiles" in done["error"]
+        assert lab.fake.writes == []
+
+
+# ───────────────────────────────────────────────────── a source NetBox cables to a vendor switch
+
+def _with_router(lab, monkeypatch, filters, address="198.51.100.254/24"):
+    """The records with a router, gw-1 (role router, no end host's tag), whose GigabitEthernet0/1
+    holds *address* and is cabled to arista-sw1's Ethernet17 (OpenFlow port 17), as the lab's
+    router is to its access switch; exported under the list's *filters*."""
+    records = lab9_records()
+    records["devices"].append({
+        "id": 950, "name": "gw-1", "role": {"slug": "router"}, "status": {"value": "active"},
+        "site": {"id": 1, "slug": "lab"}, "custom_fields": {}, "platform": None, "tags": []})
+    port = copy.deepcopy(next(i for i in records["interfaces"]
+                              if (i["device"]["name"], i["name"]) == ("arista-sw1", "Ethernet18")))
+    port.update(id=9501, name="Ethernet17", custom_fields={"openflow_port": 17})
+    records["interfaces"] += [port, {
+        "id": 9500, "device": {"id": 950, "name": "gw-1"}, "name": "GigabitEthernet0/1",
+        "type": {"value": "1000base-t"}, "enabled": True, "mgmt_only": False, "mode": None,
+        "untagged_vlan": None, "tagged_vlans": [], "tags": [], "custom_fields": {},
+        "primary_mac_address": {"mac_address": "02:00:00:00:00:fe"}}]
+    records["ip_addresses"].append({"id": 9600, "address": address,
+                                    "assigned_object": {"id": 9500}})
+    records["cables"].append({
+        "a_terminations": [{"object": {"device": {"name": "gw-1"}, "name": "GigabitEthernet0/1"}}],
+        "b_terminations": [{"object": {"device": {"name": "arista-sw1"}, "name": "Ethernet17"}}],
+        "status": {"value": "connected"}, "label": ""})
+    monkeypatch.setattr("modules.inventory.source_config.load",
+                        lambda name: {"source": "netbox", "filters": filters})
+    get, _calls = fake_netbox(records)
+    built = X.build(NET, get=get, version=lambda: records["netbox_version"])
+    assert built["ok"], built["error"]
+    doc = X.parse(built["bytes"])
+    monkeypatch.setattr(X, "read", lambda network, rev="HEAD": {
+        "ok": True, "export": doc, "sha256": doc["sha256"], "error": ""})
+
+
+class TestASourceNetBoxCablesToAVendorSwitch:
+    """Lab 9 Part B (2026-11-20): every end host of the lab is on an Open vSwitch server, and the
+    one end behind a vendor switch is the router, a device that is not an end host. A policy
+    from its address lands where NetBox cables the interface holding it."""
+
+    def test_a_policy_from_the_router_s_address_lands_on_its_arista(self, lab, monkeypatch):
+        _with_router(lab, monkeypatch, {})
+        lab.answer = answer(rule("block", "198.51.100.254", "h1", "tcp", 22))
+        got = draft(lab, "Block 198.51.100.254 from reaching h1 on tcp 22")
+        assert got["state"] == "checked", got["words"]
+        assert got["dpid"] == ARISTA1
+        where = got["rows"][1]["words"]
+        assert "arista-sw1 (an Arista EOS switch" in where and "port 17" in where
+        assert "NetBox: gw-1's GigabitEthernet0/1 is cabled to arista-sw1 Ethernet17" in where
+        _pv, done = applied(lab, got["policy"])
+        assert done["outcome"] == "verified", done["error"]
+        (add,) = _added(lab, ARISTA1)
+        assert add["table_id"] == 0 and add["actions"] == []
+        assert (add["match"]["ipv4_src"], add["match"]["ipv4_dst"], add["match"]["tcp_dst"]) == (
+            "198.51.100.254", "198.51.100.11", 22)
+
+    def test_a_subnet_holding_a_cabled_address_enters_where_it_is_cabled_too(self, lab,
+                                                                             monkeypatch):
+        """198.51.100.8/30 holds h1 (on ovs1) and the router's .10 (cabled to arista-sw1): two
+        switches, refused, never policed at ovs1 alone."""
+        _with_router(lab, monkeypatch, {}, address="198.51.100.10/24")
+        lab.answer = answer(rule("block", "198.51.100.8/30", "h2", "tcp", 22))
+        got = draft(lab, "Block 198.51.100.8/30 from reaching h2 on tcp 22")
+        assert got["state"] == "refused", got["words"]
+        assert "enter the fabric at 2 switches" in got["words"]
+        assert "NetBox: gw-1's GigabitEthernet0/1 is cabled to arista-sw1 Ethernet17" in got["words"]
+        assert lab.fake.writes == []
+
+    def test_a_router_outside_the_list_s_export_is_still_on_no_openflow_port(self, lab,
+                                                                             monkeypatch):
+        _with_router(lab, monkeypatch, {"role": "openflow-switch"})
+        lab.answer = answer(rule("block", "198.51.100.254", "h1", "tcp", 22))
+        got = draft(lab, "Block 198.51.100.254 from reaching h1 on tcp 22")
+        assert got["state"] == "refused"
+        assert "198.51.100.254 is on no OpenFlow port" in got["words"]
         assert lab.fake.writes == []

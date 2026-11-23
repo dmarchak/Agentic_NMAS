@@ -359,6 +359,13 @@ def port_source(topo, connection: str, dpid, port) -> dict:
         out.update(state="named", source=hosts[0]["address"], words=(
             f"from the controller's topology: the one host on port {port}, "
             f"{_host_words(hosts[0])}{also}"))
+        # Every other MAC the topology lists on the port, an address or none (a second MAC
+        # claiming the same address is kept here too): kept only where there is one, so AUTO's
+        # NetBox declaration cannot pass a port another device shares (`modes.declared_source`;
+        # the re-review of 60eff5ea, 1).
+        others = sorted({str(h.get("mac") or "").lower() for h in on} - {hosts[0]["mac"]})
+        if others:
+            out["other_macs"] = others
     else:
         out.update(state="several", words=(
             f"not named: the controller's topology lists {len(hosts)} hosts on port {port} ("
@@ -386,7 +393,8 @@ def _port_detection_source(entering: list, topo, connection: str, dpid, port) ->
         return None, sources, {}
     found = port_source(topo, connection, dpid, port)
     extra = {"source_from": {
-        k: found[k] for k in ("how", "state", "port", "hosts", "read_at", "words")}}
+        k: found[k] for k in ("how", "state", "port", "hosts", "read_at", "words", "other_macs")
+        if k in found}}
     if found["state"] == "link":
         # C2106: a link port names no source, but its flows say whose traffic arrives on it;
         # what `incidents` joins the incident of that host's own port by (never sent: the
@@ -439,6 +447,67 @@ def _detection(rule: str, collected: dict, ctl: dict, sw: dict, *, subject: tupl
 
 # ───────────────────────────────────────────────────────────────────────────── scan
 
+#: How many of a source's tripwires (Lab 9 A: Mercury's flows, one a TCP port a scan touches,
+#: `closed_loop.TRIPWIRE_PORTS`) must have taken a packet for it to be called a scan: ordinary
+#: traffic touches one or two, a port scan most of them in seconds.
+TRIPWIRE_NEED = 6
+#: OpenFlow 1.3's counter value for "not supported" (all ones, 64 bits).
+UNSUPPORTED_COUNT = (1 << 64) - 1
+
+
+def _tripwire_scans(collected: dict, ctl: dict, sw: dict, conn: str, dh: str) -> list:
+    """The scans Mercury's tripwires on switch *sw* show (Lab 9 A, the operator's go of
+    2026-11-20 after the step-4 measurement): per source, the tripwires (`is_tripwire`) that
+    have taken a packet since they were written; `TRIPWIRE_NEED` or more is a scan, of high
+    confidence, its source the flows' own (never inferred)."""
+    from modules.sdn.flow_intent import is_tripwire
+
+    by_src = {}
+    for f in sw.get("flows") or []:
+        if not is_tripwire(f.get("cookie")):
+            continue
+        match = f.get("match") or {}
+        src, port = _address(match, "src"), _dst_port(match)
+        if src is None or port is None:
+            continue
+        entry = by_src.setdefault(src, {"set": [], "hit": []})
+        entry["set"].append(f)
+        # A switch that keeps no flow counters answers all ones (OpenFlow 1.3's "not
+        # supported"): unknown, never a hit (the review of 94fa79c8, 7).
+        count = int(f.get("packet_count") or 0)
+        if 0 < count < UNSUPPORTED_COUNT:
+            entry["hit"].append((port, f))
+    out = []
+    for src, e in sorted(by_src.items()):
+        # Distinct ports, never flows (the review of 94fa79c8, 2): two flows of one port are
+        # one port touched.
+        ports = sorted({p for p, _f in e["hit"]}, key=_port_order)
+        if len(ports) < TRIPWIRE_NEED:
+            continue
+        # The tripwires' destination is a subnet, never one host: the detection names no
+        # target (a response's targets are host addresses), the subnet watched said beside.
+        watched = len({_dst_port(f.get("match") or {}) for f in e["set"]})
+        nets = sorted({str((f.get("match") or {}).get(k) or "") for f in e["set"]
+                       for k in ("ipv4_dst", "ipv6_dst")} - {""})
+        out.append(_detection(
+            "scan", collected, ctl, sw, subject=("source", src),
+            scope=flows_scope(conn, dh), source=src, targets=[],
+            words=(f"{src} touched {len(ports)} of the {watched} ports Mercury's "
+                   f"tripwires watch on switch {dh} ({conn}) toward {', '.join(nets)}, at or "
+                   f"above {TRIPWIRE_NEED}: {', '.join(ports)}"),
+            measurement={"what": "tripwire ports a source touched", "value": len(ports),
+                         "unit": "ports", "of": watched, "ports": ports,
+                         "watched": nets},
+            threshold={"what": "the tripwire ports a scan touches", "value": TRIPWIRE_NEED,
+                       "unit": "ports"},
+            confidence="high",
+            confidence_why=("Mercury's tripwires each watch one TCP port from this source; "
+                            "ordinary traffic touches one or two, a scan most of them"),
+            evidence=sorted(f.get("id") for _p, f in e["hit"] if f.get("id")),
+            basis="tripwire"))
+    return out
+
+
 def scan(collected: dict, values: dict, seen: dict = None, topo: dict = None) -> dict:
     """The scan rule over one collection: ``{"detections", "judged", "seen", "notes"}``.
     *values* the thresholds (`thresholds`' ``values``); *seen* the sightings kept from earlier
@@ -446,20 +515,26 @@ def scan(collected: dict, values: dict, seen: dict = None, topo: dict = None) ->
     "dst"}}}}``), answered updated and pruned to the window; *topo* the controllers' stored
     topology (`topology.stored`), where a fallback's port names its source when its flows name
     none (`port_source`); None names none from it."""
+    from modules.sdn.flow_intent import is_tripwire
+
     at = _epoch(collected.get("collected_at"))
     need, window = values["sdn_scan_ports"], values["sdn_scan_window_seconds"]
     pps = values["sdn_scan_fallback_pps"]
+    max_mean = values.get("sdn_flood_max_mean_bytes", THRESHOLDS["sdn_flood_max_mean_bytes"])
     seen = copy.deepcopy(seen or {})
     detections, judged, notes = [], set(), []
     by_ports = {}
     for ctl, sw in _switches(collected):
         conn, dh = ctl.get("connection") or "", sw["dpid_hex"]
+        detections += _tripwire_scans(collected, ctl, sw, conn, dh)
         cov = sw.get("coverage")
         if cov and cov.get("scan_by_ports"):
             judged.add(flows_scope(conn, dh))
             by_ports[(conn, dh)] = (ctl, sw)
             unsourced = 0
             for f in sw.get("flows") or []:
+                if is_tripwire(f.get("cookie")):
+                    continue                # Mercury's own probe, judged apart below
                 match = f.get("match") or {}
                 port = _dst_port(match)
                 if port is None:
@@ -484,6 +559,19 @@ def scan(collected: dict, values: dict, seen: dict = None, topo: dict = None) ->
                 continue
             judged.add(p["id"])
             if p["rx_pps"] < pps:
+                continue
+            # A scan's packets are small (C4167, measured on the Lab 9 hardware 2026-11-20:
+            # nmap's SYNs 58 B a packet at 251 pps; iperf3 at 5 Mbit/s about 1,500 B at about
+            # 430 pps on the physical link): a port whose packets average over the flood's
+            # size (`sdn_flood_max_mean_bytes`, 200 B) is not a High packet rate, said; a large
+            # stream held 30 s is the flood rule's to watch (C2313). A port whose bytes were
+            # not read is judged by its rate alone, as before.
+            mean = _port_mean(p)
+            if mean is not None and mean > max_mean:
+                notes.append(f"port {p['port_no']} of switch {dh} ({conn}) received "
+                             f"{p['rx_pps']:g} packets a second averaging {mean:,.0f} B, over "
+                             f"{max_mean:g} B (sdn_flood_max_mean_bytes): large packets are no "
+                             "scan's, so it is not a High packet rate")
                 continue
             entering = _entering(sw, p["port_no"])
             source, _sources, named = _port_detection_source(entering, topo, conn, sw["dpid"],
@@ -960,6 +1048,35 @@ def mark_replies(detections: list, collected: dict) -> list:
                            f"({where}): what its port sends is its replies")) +
                 ". Mercury proposes no response against a flood's destination"}
             break
+    # A scan Mercury's tripwires confirmed names no destination host (only the subnet it
+    # watched), so its target's replies pair with nothing above (the Lab 9 hardware,
+    # 2026-11-20: the scan target's RSTs to the scanner, 250 pps at 54 B, opened its own Flood
+    # incident): `scan_replied` marks them.
+    scans = [s for s in detections
+             if s.get("rule") == "scan" and s.get("basis") == "tripwire" and s.get("source")]
+    found = []
+    for d in [x for x in rate if id(x) not in marks] if scans else []:
+        s = scan_replied(d, scans, _mean_packet(collected, d), peers=rate)
+        if s is not None:
+            found.append((d, s))
+    # A scan of one host has one target: where nothing names their destinations, two or more
+    # hosts mirroring one scan are not all its replies, so none is taken for them (the review
+    # of 7437d140): each stays its own, answered as any is.
+    unnamed = {}
+    for d, s in found:
+        if not (_destinations(d) - {""}):
+            unnamed.setdefault(_canon_addr(s["source"]), []).append(id(d))
+    for d, s in found:
+        several = unnamed.get(_canon_addr(s["source"])) or []
+        if len(several) > 1 and id(d) in several:
+            continue
+        marks[id(d)] = {
+            "source": s["source"], "rule": "scan", "port": s.get("port"),
+            "dpid_hex": s.get("dpid_hex"), "neither": False,
+            "words": (f"{d['source']} is in the subnet {s['source']}'s scan was watched in by "
+                      f"Mercury's tripwires, its packets small, so what its port sends is its "
+                      f"replies to the scan's probes. Mercury proposes no response against a "
+                      "scan's target")}
     out = []
     for d in detections:
         m = marks.get(id(d))
@@ -969,6 +1086,60 @@ def mark_replies(detections: list, collected: dict) -> list:
         out.append(dict(d, source=None, sources=[], replying_hosts=_sources_of(d),
                         replying_to=m, words=f"{d.get('words', '')}; {m['words']}"))
     return out
+
+
+#: How far a target's reply rate may be from its scanner's own before they are not called
+#: one exchange (a target answers each probe once, an RST or a SYN-ACK).
+REPLY_RATE_RATIO = 2.0
+
+
+def _rate_of(d: dict):
+    v = (d.get("measurement") or {}).get("value")
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0         else None
+
+
+def mirrors(reply_pps, scanner_pps) -> bool:
+    """Whether a reply rate mirrors its scanner's: each within `REPLY_RATE_RATIO` of the other."""
+    if not reply_pps or not scanner_pps:
+        return False
+    return 1 / REPLY_RATE_RATIO <= reply_pps / scanner_pps <= REPLY_RATE_RATIO
+
+
+def scan_replied(d: dict, scans: list, mean, max_mean: float = None, peers=()):
+    """The scan among *scans* (Mercury's tripwires confirmed each) that rate detection *d* is
+    the replies to, or None: *d*'s source is not the scanner, lies in a subnet the scan's
+    tripwires watched (its ``measurement.watched``), sends small packets (*mean*, its port's
+    mean received packet, at most the flood's size, `sdn_flood_max_mean_bytes`; unread: None,
+    never taken as replies), and its destinations include the scanner, where its flows or the
+    topology name any. Where they name none, the scanner's own rate detection among *peers*
+    (the same pass's) must be there, its rate mirroring *d*'s (`mirrors`): a target answers
+    each probe once, and a second host of the subnet flooding at its own rate is its own (the
+    review of 37e377db, 1). A flood from that subnet to another host is no reply."""
+    max_mean = THRESHOLDS["sdn_flood_max_mean_bytes"] if max_mean is None else max_mean
+    src = _canon_addr(d.get("source"))
+    if not src or mean is None or mean > max_mean:
+        return None
+    try:
+        addr = ipaddress.ip_address(src)
+    except ValueError:
+        return None
+    dests = _destinations(d) - {""}
+    for s in scans:
+        scanner = _canon_addr(s.get("source"))
+        if not scanner or scanner == src or (dests and scanner not in dests):
+            continue
+        if not dests and not any(_canon_addr(p.get("source")) == scanner
+                                 and mirrors(_rate_of(d), _rate_of(p)) for p in peers):
+            continue
+        nets = []
+        for n in (s.get("measurement") or {}).get("watched") or []:
+            try:
+                nets.append(ipaddress.ip_network(str(n), strict=False))
+            except ValueError:
+                continue
+        if any(addr.version == n.version and addr in n for n in nets):
+            return s
+    return None
 
 
 def _canon_addr(value) -> str:
@@ -984,12 +1155,15 @@ def _sources_of(d: dict) -> list:
 
 # ───────────────────────────────────────────────────────────────────────────── unauthorised
 
-def unauthorised(collected: dict, intent: dict, now: float = None, topo: dict = None) -> dict:
+def unauthorised(collected: dict, intent: dict, now: float = None, topo: dict = None,
+                 external=None) -> dict:
     """The unauthorised-flow rule: ``{"detections", "judged", "error"}``, each flow
     `flow_intent.classify` calls unauthorised on a switch whose table was read; *intent*
     `flow_intent.intent`'s answer. An unreadable intent judges nothing, and says so. *topo* the
     controllers' stored topology, whose hosts bind an IP-only destination to its MAC in the
-    flow's effect (`flow_intent.bindings_of`); None binds nothing."""
+    flow's effect (`flow_intent.bindings_of`); None binds nothing. *external*: the declared
+    external flow owners (`protected.external_for_network`'s ``owners``, C3930), whose flows
+    are theirs and never detected."""
     from modules.sdn import flow_intent
 
     if (intent or {}).get("state") != "ok":
@@ -1005,7 +1179,7 @@ def unauthorised(collected: dict, intent: dict, now: float = None, topo: dict = 
         judged.add(flows_scope(conn, dh))
         connection = {"name": conn, "own_cookies": ctl.get("own_cookies") or []}
         got = flow_intent.classify(sw.get("flows") or [], connection, intent,
-                                   read_switches=[sw["dpid"]], now=now)
+                                   read_switches=[sw["dpid"]], now=now, external=external)
         records = len([r for r in intent.get("flows") or [] if r.get("connection") == conn])
         for f in got["flows"]:
             if f["owner"] != "unauthorised":
@@ -1295,6 +1469,14 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
     out["thresholds"] = dict(values)
     if intent is None:
         intent = flow_intent.intent(network)
+    # The declared external flow owners (C3930): their flows are theirs, never detected; an
+    # entry refused is noted, and the flows it would have covered are judged as before.
+    from modules import protected
+    external = protected.external_for_network(network)
+    if external["refused"]:
+        out["notes"].append(
+            f"{len(external['refused'])} declared external flow owner(s) refused, so the flows "
+            "they would cover are judged as any other (SDN › Flows names each and why)")
     if topo is None:
         topo = _stored_topology(network)
     try:
@@ -1310,7 +1492,8 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
                               f"one last judged ({net['collected_at']}): nothing was judged")
             scanned = scan(collected, values, net.get("seen"), topo=topo)
             flooded = flood(collected, net.get("baseline"), values, net.get("over"), topo=topo)
-            unauth = unauthorised(collected, intent, now=at, topo=topo)
+            unauth = unauthorised(collected, intent, now=at, topo=topo,
+                                  external=external["owners"])
             # The link-down rule (Lab 9 B3): the links the topology held, judged on the
             # collection's link status (`link_failure.rule`).
             linked = link_failure.rule(collected, net.get("links"), topo=topo)

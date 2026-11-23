@@ -104,8 +104,12 @@ nothing listens on.
 Each switch's flow table, Mercury's expected flows beside what is installed.
 
 - **The summary**, for every switch whatever you filter: how many switches and flows, how many
-  are Mercury's, how many the controller's own, how many unauthorised, how many of Mercury's
-  are missing, and how many meters, with the controllers read and the read's age.
+  are Mercury's, how many the controller's own, how many external (a declared external flow
+  owner's, drawn **external: <owner>** with no **Remove…**:
+  [Declared external flow owners](sdn-flows#external)), how many unauthorised,
+  how many of Mercury's are missing, and how many meters, with the controllers read and the
+  read's age. A declared owner NetBox holds that was refused is said above the switches, with
+  why.
 - **The granularity note**, once per switch where it limits what can be seen: a switch whose
   flows match only Ethernet fields and the switch port (L2), or IP addresses and no transport
   port (L3), cannot show a port scan as distinct destination ports; a port's high packet rate
@@ -135,8 +139,11 @@ Each switch's flow table, Mercury's expected flows beside what is installed.
   checked and answered from the snapshot alone, then answering. Under its findings, **Tool
   calls** lists each read with what it returned; when both have answered the same snapshot, a
   table compares their findings, found, missed, false positives, calls and cost. Its own
-  **Check this answer again** does the same for its answer, with no AI call. How it works:
-  [Analyse with the trace tool](sdn-analyse-tools).
+  **Check this answer again** does the same for its answer, with no AI call. **Prompts**,
+  beside the button, is the prompts in use or a candidate (for example candidate v6, whose
+  traces list carries each read ready to ask), asked for that press only, so a candidate can be
+  measured live before it is adopted; the answer names the prompts it was asked with. How it
+  works: [Analyse with the trace tool](sdn-analyse-tools).
 - **Trace a packet…**, beside the filter, opens Topology › Path… on this network with the Flow
   tables layer chosen and its form open: the trace has one home ([A flow-table
   trace](sdn-trace)).
@@ -179,7 +186,12 @@ Each switch's flow table, Mercury's expected flows beside what is installed.
   that response, and nothing is sent.
 - **Meters**: each switch's meters (its id, its rate and what happens above it, the packets
   counted in that band) and whose each is, by the flows that use it; and on how many switches
-  meters are supported, from each switch's meter features.
+  meters are supported, from each switch's meter features. A meter Mercury added (a policy's or
+  a response's) is removed by Mercury within about 30 seconds of its flows' expiry, whether or
+  not the loop is running. One still on a switch with no flow using it reads **Mercury's, no
+  flow uses it**, with **Remove…**: its preview reads the switch again and names the one meter
+  delete (refused if a flow points at the meter by then), you confirm it by its hash, and
+  verify reads the meter back gone.
 
 ## Add, edit and remove a flow {#flow-operations}
 
@@ -312,12 +324,17 @@ mode and whether the loop is running.
   packet rate threshold (100 packets a second by default) on a switch whose flows name no
   transport ports. A rate alone cannot tell a scan from a flood's first seconds or other heavy
   traffic, so it is not called either: nothing is proposed and no AI call is made. Its row
-  reads **Watching**, with **not asked** and **nothing: a rate alone names no threat**; opened,
+  reads **Watching**, with **not asked** and **nothing yet: yours to rate-limit (open it)** where
+  you may (**nothing: a rate alone names no threat** where you may not); opened,
   it says **Why it is not called a scan or a flood** and **What happens next**. Mercury closes
   it itself: when the flood rule fires for the same port or source, it joins that incident,
   whose row then reads **Flood · began as High packet rate** and says since when; when the
-  rate falls below the threshold, it ends as "ended, never more than a rate". The same source
-  on several switches is one row. You may dismiss it with a reason. It also watches what the
+  rate falls below the threshold, it ends as "ended, never more than a rate"; and when the loop
+  stops (by itself, by **Stop** or at the app's restart) it closes, its log saying so, since
+  nothing watches it once the loop is stopped (a rate still firing opens a new row at the next
+  start). The same source on several switches is one row. You may dismiss it with a reason, or press **Rate-limit this
+  source…** to make it an incident awaiting you, answered as the scan rule's; AUTO never acts
+  on it (C4124). It also watches what the
   flood rule holds but does not call a flood:
   - **a TCP transfer**, its data with its ACKs returning;
   - **one large-packet stream**, whose packets average more than the flood's size (200 B by
@@ -340,6 +357,43 @@ mode and whether the loop is running.
     allow `rate_limit_source` for floods, or the stream names no source to act on (a link
     port), the control is drawn disabled and says why.
 
+  A rate answered as the scan rule's is limited in **packets a second** (20 a second, a burst
+  of 10, by default): a scan's packets are about 60 bytes, so a cap in kbit/s does not slow
+  it, and one is refused for it. A large-packet stream's rate limit stays in kbit/s.
+
+  **Watch its ports…** on a High packet rate row (a switch whose flows name no transport
+  ports, so no scan can be counted), or on a flood incident of small packets from one source,
+  previews Mercury's **tripwire** for the source. A scan over 50 packets a second meets the
+  flood rule after its 30 s hold, so by the time you open it, its watching row has usually
+  joined a flood incident: the control is there too.
+  - **What it writes:** one flow per TCP port a port scan touches (21, 22, 23, 25, 80, 110,
+    135, 139, 143, 443, 445, 993, 995, 3306, 3389 and 8080; 53 is left out), each from the
+    source to the subnet NetBox records it in, going on by the switch's own goto to its later
+    table, so where the traffic goes is unchanged. They go on the source's own switch, where
+    the controller's topology lists its host (else the switch that saw it, said). Each sits
+    one priority above the switch's own flows it meets, so any response Mercury sends later is
+    above it. Each stays two
+    minutes (its hard timeout). One set per source at a time.
+  - **What it tells:** a source whose traffic touches six or more of its ports is called a
+    **scan**, of high confidence, and answered as any scan is; ordinary traffic touches one or
+    two. A scan beyond that subnet is not watched.
+  - **The scan wins over the flood:** a flood incident awaiting you for the same source joins
+    the scan's incident (seen also there), and a flood seen afterwards, within the scan's
+    window (60 s by default) of its last sighting, joins it too, so the
+    traffic is answered once, as a scan, in packets a second. A flood whose response you
+    already sent is left as it is; with its meter in force, a tripwire for that source is
+    refused, since Mercury's own response already holds its traffic.
+  - **From there:** it is SDN › Flows' preview of a flow change: the exact sixteen requests
+    and their hash; **Send** applies them holding the switch, verifies them by reading the
+    table back, and records them. The tripwires are left out of the switch's coverage and of
+    the scan rule's own count.
+  - **When it is refused:** NetBox records no subnet for the source, or the switch's own flow
+    for that traffic does not go on by a goto (a single-table switch, or one sending to the
+    controller), named with the flow; a set for the source is already on the switch; or
+    Mercury's own flow already drops or meters that traffic. It is drawn disabled where the row
+    names no one source address. A response to the source that would sit level with a live
+    tripwire is refused, naming it, until the tripwire ends.
+
   Large packets from two or more sources to one host are one attack on that host, and are
   called a flood. How it works: [High packet rate](sdn-flows#high-rate).
 - **An incident, opened**: the detection (the rule, the source, the switch, its confidence
@@ -353,7 +407,9 @@ mode and whether the loop is running.
   recommends, the devices it names, the evidence ids it cites, and the model, cost and call),
   else who chose the
   action (the catalogue's default, chosen in code), and the action proposed from the catalogue
-  with its risk and the switch it acts on. **Ingress:** names that switch and the port the
+  with its risk and the switch it acts on. That switch, here and in the table's **Proposed**
+  column, is named as NetBox names it, else as it describes itself (never Open vSwitch's
+  "None"), its datapath id on hover and shown only where nothing names it. **Ingress:** names that switch and the port the
   controller lists the source's host on; when the ingress cannot be told (no source named, the
   topology not read now, no host or several ports listing the source, or the source on a switch
   that has not fired) the line reads **Proposed at:**, says why, and the switch that saw it
@@ -372,13 +428,29 @@ mode and whether the loop is running.
   [Classify a detection with AI](sdn-flows#classify).
   Its preview button, named for the action ("Preview the drop traffic from the source…"), builds its card as Flows' changes are (the action's parameters checked
   against the evidence: the source is the detection's, the hard timeout within the network's
-  ceiling); **Send** applies it as you. **Dismiss with this reason** closes it, sending nothing
+  ceiling); **Send** applies it as you. Each other action the network's response policy allows
+  for the rule has its own **Preview the <action> instead…** beside it (a rate limit's fields
+  at the rule's default). A drop of the source is offered only where the protected set allows
+  it, checked when the response was proposed; where it meets a class no response owns (on the
+  Lab 9 fabric, the management and control-channel classes), the card says **Not offered**
+  and why. A scan Mercury's tripwires confirmed is proposed as a rate limit in packets a second
+  (20 a second, a burst of 10); its target's replies to the probes (from the watched subnet,
+  small packets, sent to the scanner, or where nothing names their destination at a rate
+  within twice the scanner's own and beginning with it, and then only one such host) join its
+  incident, never a flood of their own. Where the loop has logged the threat as no longer active,
+  the preview says **No longer active**, when, and that no switch has shown it since, above
+  **Send**: sending is still your choice. **Dismiss with this reason** closes it, sending nothing
   (on an incident seen on several switches, **Dismiss the incident (N switches) with this
   reason**, which closes the incident with all its switches).
   An incident stays until you approve or dismiss it: when no switch shows it any longer, its row
   is marked **Inactive** and the opened incident says **Threat no longer active since** the
   collection that stopped showing it, its classification kept, and the line goes if it fires
-  again. When the AI's answer was
+  again. **One exception:** an incident of its own on an inter-switch link port whose flows
+  name no source (a transit switch seeing a flood on its way) is closed by the loop once no
+  switch shows it, its log saying so, since nothing names whose traffic it was; and when the
+  flood's ingress fires after it, within the rule's window and with no other incident of its
+  rule naming a source open, it joins that incident, seen also there, so one flood is one
+  incident whichever switch fired first. When the AI's answer was
   refused by the check (or no classification could be made), the card says so ("AI
   classification refused: why; proposed by the catalogue default") with **The refused answer
   in History**, and the rule's catalogue default awaits you, even in AUTO.
@@ -459,8 +531,9 @@ mode and whether the loop is running.
 - **The loop stops by itself.** **Start** takes **run for** (5, 20 or 60 minutes, 20 by
   default; a loop is never left running unattended, so an hour is the most), and the loop
   also stops after its **pass cap**, the passes its run-for holds at its interval and one
-  more. While it runs, the card says **Stops by itself** at what time, after how many passes
-  (and how many so far), or on Stop. When it ends itself its log says **stopped by itself**,
+  more. While it runs, the card says **Stops by itself at** its end time (in your time zone,
+  UTC on hover), after how many passes (and how many so far), or on Stop. When it stops,
+  each High packet rate row it left open closes, its log saying so. When it ends itself its log says **stopped by itself**,
   naming which bound ended it and how many passes ran; start it again for another run. The
   five-minute demonstration is the 5-minute choice.
 - **Link failures** ([how it works](#link-failure)): a card for each link the topology held
@@ -521,11 +594,20 @@ the response is to **verify** that reroute:
    - **cannot tell**, naming what the trace could not follow;
    - **verifying**, while the stored read is from before the failure or still lists the link.
      Mercury never judges the old tables as the new.
+4. Under it, the card names the read it judged on and its age: the stored read, or the flow
+   tables read again on your press, each against the time the failure was detected.
 
 **Each host pair traced** opens to every pair's outcome. In **AUTO**, on a network marked lab,
 Mercury verifies at every pass until the link is rerouted. If it has not seen a reroute after
 75 seconds, the card says so and leaves it to you. In **HITL**, press **Verify the reroute**.
 Nothing was written, so nothing is rolled back.
+
+**Your press answers at once.** The SDN reader reads the flow tables every 30 seconds. If its
+stored read is from before the failure, **Verify the reroute** has the reader read them again
+now and judges on that read. The button stays busy until the answer arrives, for at most 2.5
+times the reader's slowest recent read. If that read fails or does not answer in time, the card
+says **Couldn't read the flow tables now** and why. Its state reads **couldn't read now**, and
+the stored read's answer is labelled as older than the failure. Nothing is sent to a switch.
 
 The card closes by itself once the controller lists the link again and both its ports report
 up. **Dismiss with this reason** closes it sooner; the link stays on the Alerts tab until it

@@ -34,6 +34,7 @@ def _load(name, rel):
 def check(monkeypatch):
     monkeypatch.setenv("KIT_NMAS_LAN", LAN)
     monkeypatch.setenv("KIT_NMAS_TUNNEL", TUNNEL)
+    monkeypatch.delenv("KIT_NETBOX_URL", raising=False)     # the kit's own NetBox unless a test says
     return _load("kit_check", "lab/sdn-laptop/kit_check.py")
 
 
@@ -886,12 +887,16 @@ _PLANT = ("import os, sys; sys.path.insert(0, os.getcwd()); "
           "sys.exit(0 if got.get('ok') else 1)")
 
 
-def _plant_operator(data, cwd=ROOT):
+def _plant(data, values, cwd=ROOT):
     r = subprocess.run([sys.executable, "-c", _PLANT], cwd=cwd, capture_output=True, text=True,
-                       env=dict(os.environ, NMAS_DATA_DIR=str(data), PLANT=json.dumps(OPERATOR),
+                       env=dict(os.environ, NMAS_DATA_DIR=str(data), PLANT=json.dumps(values),
                                 PLANT_TOKEN=TOKEN, PYTHONDONTWRITEBYTECODE="1"))
     assert r.returncode == 0, "the operator's values could not be planted"
     return json.loads((data / "user_settings.json").read_text())
+
+
+def _plant_operator(data, cwd=ROOT):
+    return _plant(data, OPERATOR, cwd)
 
 
 def _assert_kept(before, data):
@@ -1080,3 +1085,304 @@ class TestNmasDeployRefusesTheKit:
         nd = _load("nmas_deploy", "scripts/nmas-deploy")
         src = open(os.path.join(ROOT, "lab", "sdn-laptop", "kit"), encoding="utf-8").read()
         assert f'"$WT/{nd.LAB_KIT_MARKER}"' in src
+
+
+#: An external NetBox declared in kit.env (KIT_NETBOX_URL; the operator, 2026-11-19: a shared
+#: NetBox reached through an SSH tunnel), planted as a documentation address.
+DECLARED = "http://192.0.2.60:8000"
+
+
+class TestTheCheckAcceptsTheDeclaredNetBoxOnly:
+    """kit_check accepts a non-loopback `netbox_url` only when it is exactly KIT_NETBOX_URL (a
+    trailing slash and the scheme's and host's case aside), and checks the NMAS host's names
+    and GitHub in the declared URL itself, naming the key, never the value."""
+
+    @pytest.mark.parametrize("declared,stored", [
+        (DECLARED, DECLARED), (DECLARED, DECLARED + "/"), (DECLARED + "/", DECLARED),
+        (DECLARED, "HTTP://192.0.2.60:8000"),
+        ("http://netbox.example.net:8000", "http://NetBox.Example.NET:8000/"),
+    ])
+    def test_the_declared_url_passes(self, check, tmp_path, monkeypatch, declared, stored):
+        monkeypatch.setenv("KIT_NETBOX_URL", declared)
+        top = {"flask_host": "127.0.0.1", "netbox_url": stored}
+        assert check.problems(_data(tmp_path, top=top)) == []
+
+    @pytest.mark.parametrize("other", [
+        "http://192.0.2.61:8000",               # another host
+        "http://192.0.2.60:8001",               # another port
+        "https://192.0.2.60:8000",              # another scheme
+        "http://192.0.2.60:8000/netbox",        # another path
+        "http://netbox.example.net:8000",       # a name, not the declared address
+    ])
+    def test_any_other_non_loopback_url_is_still_refused(self, check, tmp_path, monkeypatch,
+                                                         other):
+        monkeypatch.setenv("KIT_NETBOX_URL", DECLARED)
+        assert check.problems(_data(tmp_path / "declared", top={
+            "flask_host": "127.0.0.1", "netbox_url": DECLARED})) == []
+        got = check.problems(_data(tmp_path / "other", top={"flask_host": "127.0.0.1",
+                                                             "netbox_url": other}))
+        assert len(got) == 1 and got[0].startswith("user_settings.json: netbox_url ")
+        assert "not the kit's own NetBox" in got[0]
+        assert other not in got[0] and DECLARED not in got[0]
+
+    @pytest.mark.parametrize("declared", [f"http://{LAN}:8000", "http://netbox.example.org:8000",
+                                          "https://github.com/someone/netbox"])
+    def test_the_hosts_names_and_github_are_refused_in_it(self, check, tmp_path, monkeypatch,
+                                                          declared):
+        monkeypatch.setenv("KIT_NETBOX_URL", declared)
+        got = check.problems(_data(tmp_path))       # the stored URL is the kit's own here
+        assert got == ["kit.env: KIT_NETBOX_URL points at the NMAS host's services or GitHub"]
+        assert declared not in " ".join(got)
+
+    @pytest.mark.parametrize("declared", ["ftp://192.0.2.60/", "192.0.2.60:8000", "http://"])
+    def test_a_declared_value_that_is_no_http_url_is_refused(self, check, tmp_path,
+                                                              monkeypatch, declared):
+        monkeypatch.setenv("KIT_NETBOX_URL", declared)
+        assert check.problems(_data(tmp_path)) == [
+            "kit.env: KIT_NETBOX_URL is not an http or https URL with a host"]
+
+
+class TestInitStoresTheDeclaredNetBox:
+    """`kit_settings.py init` with KIT_NETBOX_URL set stores it as `netbox_url`, written over a
+    stored URL (the one key the declaration wins) and saying so by name; every other stored
+    value is kept as before. Unset, init is as it was."""
+
+    def _init(self, data, declared=None):
+        env = {k: v for k, v in os.environ.items() if k != "KIT_NETBOX_URL"}
+        if declared is not None:
+            env["KIT_NETBOX_URL"] = declared
+        return subprocess.run([sys.executable, os.path.join(ROOT, "lab", "sdn-laptop",
+                                                            "kit_settings.py"), "init"],
+                              cwd=ROOT, capture_output=True, text=True,
+                              env=dict(env, NMAS_DATA_DIR=str(data)))
+
+    def test_a_fresh_kit_stores_it(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        r = self._init(data, DECLARED)
+        assert r.returncode == 0, r.stderr
+        assert json.loads((data / "user_settings.json").read_text())["netbox_url"] == DECLARED
+        assert "netbox_url: KIT_NETBOX_URL's (kit.env), added" in r.stdout
+
+    def test_it_is_written_over_a_stored_url_and_the_rest_is_kept(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        before = _plant_operator(data)
+        r = self._init(data, DECLARED)
+        assert r.returncode == 0, r.stderr
+        after = json.loads((data / "user_settings.json").read_text())
+        assert after["netbox_url"] == DECLARED
+        assert "netbox_url: KIT_NETBOX_URL's (kit.env), written over the stored value" in r.stdout
+        line = next(ln for ln in r.stdout.splitlines() if ln.startswith("installation settings"))
+        assert "netbox_url" not in line.split("; kept ", 1)[1]
+        for key in ("netbox_auth_scheme", "heal_mode"):
+            assert after[key] == OPERATOR[key], f"{key} was overwritten"
+        unchanged = after["netbox_token"] == before["netbox_token"]
+        assert unchanged is True, "the stored token was changed"
+        printed = TOKEN in r.stdout + r.stderr or DECLARED in r.stdout + r.stderr
+        assert printed is False, "a value was printed"
+
+    def test_unset_the_kits_own_netbox_is_stored_as_before(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        r = self._init(data)
+        assert r.returncode == 0, r.stderr
+        stored = json.loads((data / "user_settings.json").read_text())["netbox_url"]
+        assert stored == "http://127.0.0.1:8001" and "KIT_NETBOX_URL" not in r.stdout
+
+
+class _NetBoxStub:
+    """A NetBox answering on loopback: every GET answered *status* with *body*."""
+
+    def __init__(self, status, body):
+        import http.server
+        import threading
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):                                   # noqa: N802
+                raw = json.dumps(body).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+class TestNetBoxTestIsMercurysOwn:
+    """`kit_settings.py netbox-test`: the NetBox connection card's Test
+    (`installation_settings.test_card`), with what is saved, as one PASS or FAIL line with
+    Mercury's reason; the token is never printed. Run as the kit runs it."""
+
+    def _test(self, data):
+        return subprocess.run([sys.executable, os.path.join(ROOT, "lab", "sdn-laptop",
+                                                            "kit_settings.py"), "netbox-test"],
+                              cwd=ROOT, capture_output=True, text=True,
+                              env=dict(os.environ, NMAS_DATA_DIR=str(data),
+                                       NO_PROXY="127.0.0.1", no_proxy="127.0.0.1"))
+
+    @pytest.mark.parametrize("status,body,code,words", [
+        (200, {"netbox-version": "4.6.0", "results": []}, 0,
+         "PASS NetBox connection (Mercury's Test): Connected to NetBox (version 4.6.0)"),
+        (403, {"detail": "Invalid v1 token"}, 1,
+         "FAIL NetBox connection (Mercury's Test): NetBox refused the token (HTTP 403"),
+    ])
+    def test_one_line_with_mercurys_reason_and_no_token(self, tmp_path, status, body, code,
+                                                        words):
+        stub = _NetBoxStub(status, body)
+        try:
+            data = tmp_path / "data"
+            data.mkdir()
+            _plant(data, {"netbox_url": stub.url, "netbox_auth_scheme": "Bearer"})
+            r = self._test(data)
+        finally:
+            stub.close()
+        assert r.returncode == code, r.stderr
+        lines = [ln for ln in r.stdout.splitlines() if "NetBox connection" in ln]
+        assert len(lines) == 1 and lines[0].startswith(words), r.stdout
+        printed = TOKEN in r.stdout + r.stderr
+        assert printed is False, "the token was printed"
+
+    def test_no_token_fails_saying_so(self, tmp_path):
+        data = tmp_path / "data"
+        data.mkdir()
+        (data / "user_settings.json").write_text(json.dumps({"netbox_url": DECLARED}))
+        r = self._test(data)
+        assert r.returncode == 1
+        assert r.stdout.strip() == ("FAIL NetBox connection (Mercury's Test): API token is "
+                                    "not set")
+
+
+_FAKES = {
+    # Every outside command the kit's start, stop, status and preflight run, each logged.
+    # `container inspect` of kit-prometheus fails as Docker's does when no such container
+    # exists (the ordinary case `prom_not_ours` passes), so a start reaches its stack.
+    "docker": 'case "$*" in *version*) echo 27.0.0 ;; *"container inspect"*) exit 1 ;; esac',
+    "systemctl": 'case "$*" in *is-active*) exit 3 ;; *show*) echo 4242 ;; esac',
+    "systemd-run": "",
+    "sudo": "cat >/dev/null",
+    "ip": "",
+    "curl": 'case "$*" in *health*) echo \'{"ready": true}\' ;; *http_code*) printf 200 ;; esac',
+    "nmcli": "",
+    "ss": "",
+    "timeout": "",
+}
+
+
+class TestTheKitWithAnExternalNetBox:
+    """`kit start`, `stop`, `status` and `preflight` with KIT_NETBOX_URL set leave the local
+    NetBox stack alone (never `docker compose up`, never its pepper read) and say so; the
+    preflight runs Mercury's NetBox test in their place, counted. Unset, they run the stack as
+    before. Run as the operator runs them, on a planted kit: a throwaway repository holding the
+    kit's scripts and the product's code by link, a worktree of it, a stand-in `nmas-host`
+    giving the planted names, and every outside command a logging fake."""
+
+    @pytest.fixture
+    def kit(self, tmp_path):
+        import shutil
+
+        git_env = dict(os.environ, **TestRepinRunsInitAndKeepsTheOperatorsValues.GIT)
+
+        def git(*args):
+            r = subprocess.run(["git", "-c", "commit.gpgsign=false", *args], capture_output=True,
+                               text=True, env=git_env)
+            assert r.returncode == 0, r.stderr
+            return r.stdout.strip()
+
+        repo = tmp_path / "repo"
+        shutil.copytree(os.path.join(ROOT, "lab", "sdn-laptop"), repo / "lab" / "sdn-laptop")
+        (repo / "scripts").mkdir()
+        (repo / "scripts" / "nmas-host").write_text(
+            f'#!/bin/sh\ncase "$3" in lan) echo {LAN} ;; tunnel) echo {TUNNEL} ;; esac\n')
+        (repo / "scripts" / "nmas-host").chmod(0o755)
+        for name in ("modules", "routes"):
+            os.symlink(os.path.join(ROOT, name), repo / name)
+        git("init", "-q", str(repo))
+        git("-C", str(repo), "add", "-A")
+        git("-C", str(repo), "commit", "-q", "-m", "one")
+        home = tmp_path / "kit"
+        (home / "data").mkdir(parents=True)
+        (home / "run").mkdir()
+        git("-C", str(repo), "worktree", "add", "-q", "--detach", str(home / "mercury"), "HEAD")
+        fake = tmp_path / "bin"
+        fake.mkdir()
+        calls = tmp_path / "calls.log"
+        for name, body in _FAKES.items():
+            (fake / name).write_text(f'#!/bin/sh\necho "{name} $*" >> "$KIT_CALLS"\n{body}\n'
+                                     "exit 0\n")
+            (fake / name).chmod(0o755)
+
+        def run(cmd, declared):
+            lines = ["PIN_SHA=x", "LAB_IF=enp9s0"] + ([f"KIT_NETBOX_URL={declared}"]
+                                                     if declared else [])   # unset: absent
+            (home / "kit.env").write_text("\n".join(lines) + "\n")
+            if declared:
+                (home / "data" / "user_settings.json").write_text(json.dumps(
+                    {"flask_host": "127.0.0.1", "netbox_url": declared}))
+            calls.write_text("")
+            env = {k: v for k, v in os.environ.items() if k != "KIT_NETBOX_URL"}
+            r = subprocess.run([str(repo / "lab" / "sdn-laptop" / "kit"), cmd],
+                               capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                               env=dict(env, KIT_HOME=str(home), KIT_PYTHON=sys.executable,
+                                        KIT_CALLS=str(calls), PATH=f"{fake}:{env['PATH']}"))
+            return r, calls.read_text()
+        return run
+
+    def test_start_skips_the_local_stack(self, kit):
+        r, calls = kit("start", DECLARED)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert ("netbox: KIT_NETBOX_URL is set in" in r.stdout
+                and "so the local NetBox stack is not started" in r.stdout)
+        assert "compose" not in calls, calls
+        assert "mercury: ready at" in r.stdout
+
+    def test_unset_start_brings_the_local_stack_up(self, kit):
+        r, calls = kit("start", "")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert any(ln.startswith("docker compose") and ln.endswith(" up -d")
+                   for ln in calls.splitlines()), calls
+
+    def test_stop_and_status_leave_the_local_stack_alone(self, kit):
+        r, calls = kit("stop", DECLARED)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "there is no local NetBox stack to stop" in r.stdout
+        assert "compose" not in calls, calls
+        r, calls = kit("status", DECLARED)
+        assert f"netbox: external, {DECLARED} (KIT_NETBOX_URL in kit.env)" in r.stdout
+        assert "compose" not in calls, calls
+
+    def _fails(self, r):
+        said = [ln for ln in r.stdout.splitlines() if ln.startswith("kit preflight: ")]
+        assert len(said) == 1, r.stdout
+        total = int(said[0].split()[2])
+        assert total == sum(ln.startswith("FAIL ") for ln in r.stdout.splitlines()), r.stdout
+        assert r.returncode == total
+        return total
+
+    def test_preflight_skips_the_local_stacks_checks_and_runs_mercurys_test(self, kit):
+        r, calls = kit("preflight", DECLARED)
+        for name in ("Docker up", "NetBox answers", "NetBox can save a v2 token"):
+            assert f"SKIP {name}: KIT_NETBOX_URL is set" in r.stdout, name
+        assert "docker" not in calls and "manage.py" not in calls, calls
+        assert ("FAIL NetBox connection (Mercury's Test): API token is not set"
+                in r.stdout.splitlines()), r.stdout
+        assert "PASS settings check" in r.stdout, "the declared URL is the check's to accept"
+        assert self._fails(r) >= 1
+
+    def test_unset_preflight_reads_the_local_stack(self, kit):
+        r, calls = kit("preflight", "")
+        assert "docker info" in calls and "manage.py" in calls, calls
+        assert "NetBox connection (Mercury's Test)" not in r.stdout
+        assert "SKIP" not in r.stdout
+        self._fails(r)

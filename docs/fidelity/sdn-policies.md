@@ -17,7 +17,19 @@ step of this record.
 Templates compared: templates/v2/sdn_policies.html, templates/v2/_sdn_policies.html, templates/v2/_sdn_policy_answer.html, templates/v2/_sdn_op.html, templates/v2/_sdn_tabs.html
 Compared again 2026-11-13 (C3290, the words Python builds): `_sdn_op.html` is drawn under `{% filter times %}` (routes/v2.py), so each instant an SDN operation's words carry (a flow's hard timeout, a refusal's time) is `_macros.clock`'s, in the viewer's kept zone with the UTC instant on hover; its request line is marked `data-verbatim` (the request as sent). No element moves and no region's verdict moved; compared by the template's diff and the walk's render (tests/test_no_utc_drawn.py), not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times: the words Python builds"). Templates sha256 before: `44de5b7ad9a63298de43ea7b7eabd7734d1dfb568cf865f02df56b8358d835c0`.
 Compared again 2026-11-13 (the operator's approved rule, "money shown as $"): `_sdn_policies.html` draws the pinned model's per-call cap ("at most … a call") and `_sdn_policy_answer.html` an answer's cost ("One AI call, …") through the `usd` filter (`modules.money.usd`, an exact amount), in place of a "$" typed before the number. No element moves and no region's verdict moved; compared by the templates' diff, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Money through one formatter"). Templates sha256 before: `4eccdcc695bdfc18ddd29eb78730b30af14c7c6070b725bd536af6bff184ee86`.
-Templates sha256: `3894edfb5841d59908c2c56202fb91257d4e73df9e572c244bdc39b3f1d9b389`
+Hashed again 2026-11-20 for the Lab 9 hardware's Responses items (the shared operation card):
+`_sdn_op.html`'s response preview gains a warning above Send where the loop logged its threat no
+longer active (docs/fidelity/sdn.md); a policy's preview is never a response's, so nothing drawn
+on Policies changes (the templates before it hashed
+`f38387ec38228e6b4dffce1eab5d3d2f8a82566f75aca79612dcd1301b1d1e30`).
+Hashed again 2026-11-20 for C4138 (the shared operation card): `_sdn_op.html` no longer holds the
+live redraw once its result is verified; nothing drawn on Policies changes (the templates before
+it hashed `3eae1be550a87e4c038cb416c543f1aaf5f194a50789cea9c6386127b3b92d78`).
+Hashed again 2026-11-22 for the merge of the Lab 9 kit's hotfix branch into main: main's
+templates with the two `_sdn_op.html` changes above; nothing drawn on Policies changes (the
+templates before it, main's, hashed
+`3894edfb5841d59908c2c56202fb91257d4e73df9e572c244bdc39b3f1d9b389`).
+Templates sha256: `22f2f4f4dd4dea5c1cbbf8a53bbe6b4660cd5d624b3df0e0d1c3ebc0174bb295`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_sdn_policies.html`, the policies table's "by" column

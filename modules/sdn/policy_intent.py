@@ -30,7 +30,8 @@ resolved names only. The model may only answer a policy, one question back, or w
 - **malformed**: a rule naming a name the sentence did not resolve to, a rate on a rule that is
   not a rate limit, a rate limit with no rate, a negative number;
 - **impossible**: a source of ``any`` (a policy is placed where its source enters the fabric),
-  a source on no OpenFlow port (NetBox records none and the controller has not learned it), a
+  a source on no OpenFlow port (NetBox records none for the end host, or for the device
+  interface holding the address, and the controller has not learned it), a
   source whose hosts enter at more than one switch, the same host at both ends, a port without
   tcp or udp, a duration past `DURATION_MAX`, a rate past `RATE_MAX_KBPS`, no address family
   both ends share, and a rate limit where the ingress switch reports no meters (offering Drop
@@ -47,10 +48,13 @@ resolved names only. The model may only answer a policy, one question back, or w
 
 **Compile** (STEP ``compile``): on the source's ingress switch, one flow per source and
 destination address of one family, at `flow_ops.response_priority` (above every flow not
-Mercury's that could match it): ``block`` drops (no action); ``allow`` sends to ``NORMAL``, the
-switch's own forwarding (the fabric is one table, so no goto); ``rate_limit`` adds one meter
-(a DROP band at the rate, kbit/s) and each flow goes through it to ``NORMAL``. The duration is
-each flow's hard timeout.
+Mercury's that could match it): ``block`` drops (no action); ``allow`` sends the traffic on as
+the switch's own flows below it would (`flow_ops.onward`: an Open vSwitch pipeline's goto to its
+forwarding table, a single table's forwarding flow for the destination), never to ``NORMAL``,
+the forwarding outside the flow tables, which on a proactive fabric floods or drops (C4126);
+``rate_limit`` adds one meter (a DROP band at the rate, kbit/s) and each flow goes through it,
+then on the same way. A flow whose onward path cannot be read as one is refused, naming the
+flows compared. The duration is each flow's hard timeout.
 
 **Preview, confirm, apply, record** (STEPS ``preview``, ``confirm``, ``record``): the compiled
 operation is `flow_ops.plan`'s (the effect in words, every request and its undo, the hash); the
@@ -114,8 +118,9 @@ STEPS = (
               "the request and against committed policies), conflicts with installed flows "
               "and protected flows, each refusal naming what it compared"),
     ("compile", "the checked policy compiled to flows on the source's ingress switch: drop, "
-                "NORMAL forward, or a meter and NORMAL, each with the duration as its hard "
-                "timeout, above every flow not Mercury's that could match it"),
+                "allow, or a meter, each allow and meter then on as the switch's own flows "
+                "below it would send the traffic (never NORMAL), each with the duration as "
+                "its hard timeout, above every flow not Mercury's that could match it"),
     ("preview", "the flow-operation core's preview: the effect in words, every REST body and "
                 "its undo, and the hash; nothing is sent"),
     ("confirm", "the person confirms the hash; every check runs again and the policy is "
@@ -238,6 +243,16 @@ def world(network: str) -> dict:
                                    "addresses": addrs,
                                    "ports": [r for r in rows if r["host"] == h["name"]]}
     out["devices"] = sorted(d["name"] for d in (doc.get("body") or {}).get("devices") or [])
+    # An address an interface of a device that is not a switch holds, where NetBox cables that
+    # interface to a switch's OpenFlow port (the router's on its access switch; Lab 9 Part B,
+    # 2026-11-20): where its traffic enters the fabric, by the trace's own reading of NetBox.
+    from modules.sdn import known
+    out["cabled"] = [{"address": a, "name": r["name"], "interface": r["interface"],
+                      "dpid": r["dpid"], "port_no": r["port_no"], "switch": r["switch"],
+                      "switch_interface": r["switch_interface"]}
+                     for r in known.rows_of(doc) if r["kind"] == "device"
+                     and r["dpid"] is not None and r["port_no"] is not None
+                     for a in r["ipv4"] + r["ipv6"]]
     for d in (doc.get("body") or {}).get("devices") or []:
         raw = str((d.get("custom_fields") or {}).get("openflow_datapath_id") or "")
         if not raw:
@@ -344,6 +359,12 @@ def resolve(w: dict, key: str) -> dict:
         if seen:
             return {"key": key, "kind": "learned", "hosts": [], "addresses": [addr],
                     "learned": seen, "label": f"{addr} (the controller has learned it)"}
+        cabled = [r for r in w.get("cabled") or [] if r["address"] == addr]
+        if cabled:
+            return {"key": key, "kind": "cabled", "hosts": [], "addresses": [addr],
+                    "learned": [], "cabled": cabled,
+                    "label": f"{addr} = {cabled[0]['name']}'s {cabled[0]['interface']} (NetBox, "
+                             "a device that is not an end host)"}
         return {"key": key, "kind": "address", "hosts": [], "addresses": [addr], "learned": [],
                 "label": f"{addr} (an address no host of NetBox's or the controller's holds)"}
     names = sorted(h["name"] for h in w["hosts"].values()
@@ -351,9 +372,14 @@ def resolve(w: dict, key: str) -> dict:
                           if ipaddress.ip_address(a).version == net.version))
     seen = [r for r in w["learned"] if ipaddress.ip_address(r["address"]).version ==
             net.version and ipaddress.ip_address(r["address"]) in net]
+    # A device interface NetBox cables in the subnet is a source too, so a subnet that also
+    # enters where the router is cabled is placed at two switches and refused, never policed at
+    # one while the router's traffic enters at the other.
+    cabled = [r for r in w.get("cabled") or [] if ipaddress.ip_address(r["address"]).version ==
+              net.version and ipaddress.ip_address(r["address"]) in net]
     return {"key": net.compressed, "kind": "subnet", "hosts": names, "addresses": [net.compressed],
-            "learned": seen, "label": f"subnet {net.compressed}"
-                                      + (f": {', '.join(names)} (NetBox)" if names else "")}
+            "learned": seen, "cabled": cabled, "label": f"subnet {net.compressed}"
+            + (f": {', '.join(names)} (NetBox)" if names else "")}
 
 
 def _tokens(text: str) -> list:
@@ -705,6 +731,11 @@ def _place(w: dict, src: dict) -> tuple:
         places.setdefault(r["dpid"], []).append(
             f"{r['address']} on {switch_words(w, r['dpid'])} port {r['port_no']} (the "
             "controller learned it)")
+    for r in src.get("cabled") or []:
+        places.setdefault(r["dpid"], []).append(
+            f"{r['address']} on {switch_words(w, r['dpid'])} port {r['port_no']} (NetBox: "
+            f"{r['name']}'s {r['interface']} is cabled to {r['switch']} "
+            f"{r['switch_interface']})")
     if missing and not places:
         raise Refused("; ".join(missing))
     if src["kind"] == "address" and not places:
@@ -768,6 +799,30 @@ def _overlap(a: dict, b: dict) -> tuple:
         return True, False, False
     return (F._match_meet(fa, fb) is not None, F._match_covers(fa, fb),
             F._match_covers(fb, fa))
+
+
+def _hint(w: dict, dpid: int, match: dict) -> dict:
+    """What is known of a policy flow's packets beyond its match, for `flow_ops.onward`'s packet step:
+    the destination's MAC where the controller has learned the destination address, and the
+    source's MAC and ingress port where it has learned the source on *dpid* (else the port
+    NetBox cables the source's host to there)."""
+    fam = "ipv4" if match.get("ipv4_src") else "ipv6"
+    src, dst = match.get(f"{fam}_src"), match.get(f"{fam}_dst")
+    out = {}
+    for r in w.get("learned") or []:
+        if dst and r["address"] == dst and r.get("mac"):
+            out["eth_dst"] = r["mac"]
+        if r["address"] == src and r["dpid"] == dpid:
+            out.update({"in_port": r["port_no"], "in_phy_port": r["port_no"]},
+                       **({"eth_src": r["mac"]} if r.get("mac") else {}))
+    if "in_port" not in out:
+        for h in (w.get("hosts") or {}).values():
+            if src in h["addresses"]:
+                ports = [p["port_no"] for p in h["ports"] if p["dpid"] == dpid
+                         and p["port_no"] is not None]
+                if len(ports) == 1:
+                    out.update(in_port=ports[0], in_phy_port=ports[0])
+    return out
 
 
 def committed(network: str, now: float = None) -> dict:
@@ -1041,7 +1096,7 @@ def check(network: str, policy: dict, *, w: dict = None, driver=None, draws: dic
     draws = dict(draws or {})
     cookies = list(draws.get("cookies") or [])
     priorities = list(draws.get("priorities") or [])
-    changes, effects = [], []
+    changes, effects, onward = [], [], []
     meter_id = None
     if needs_meter:
         meter_id = draws.get("meter_id") or flow_ops.free_meter_id(meters, features, flows=flows)
@@ -1067,19 +1122,38 @@ def check(network: str, policy: dict, *, w: dict = None, driver=None, draws: dic
             priority = (priorities[k] if k < len(priorities) else
                         flow_ops.response_priority(flows, own, (), match=m))
             k += 1
-            actions = ([] if r.kind is Kind.block else
-                       [{"type": "OUTPUT", "port": "NORMAL"}] if r.kind is Kind.allow else
-                       [{"type": "METER", "meter_id": meter_id},
-                        {"type": "OUTPUT", "port": "NORMAL"}])
+            metered = ([{"type": "METER", "meter_id": meter_id}] if r.kind is Kind.rate_limit
+                       else [])
+            # On as the switch's own flows send it, never NORMAL (C4126).
+            on = (flow_ops.onward(flows, 0, priority, m, _hint(w, dpid, m))
+                  if r.kind is not Kind.block
+                  else {"ok": True, "actions": [], "words": ""})
             flow = {"table_id": 0, "priority": priority, "cookie": cookie, "idle_timeout": 0,
-                    "hard_timeout": r.duration_s, "match": m, "actions": actions}
-            eff =flow_intent.effect(dict(flow, owner="mercury"), classified)
+                    "hard_timeout": r.duration_s, "match": m,
+                    "actions": metered + on["actions"] if r.kind is not Kind.block else []}
+            # Whether it lifts or shadows a flow of Mercury's is judged with it forwarding, as
+            # an allow or a meter does: `effect` judges nothing past a goto, and the onward
+            # path is the switch's own, read by `flow_ops.onward`.
+            judged = flow if r.kind is Kind.block else dict(
+                flow, actions=metered + [{"type": "OUTPUT", "port": "NORMAL"}])
+            eff = flow_intent.effect(dict(judged, owner="mercury"), classified)
             if eff["class"] in ("lifts", "shadows"):
                 return refuse("conflict", (
                     f"part {n + 1} ({rule_words(r)}) {eff['words']}. Compared: its match "
                     f"({flow_ops.match_words(m)}) against the {len(flows)} flows of "
                     f"{switch_words(w, dpid)}. Remove that flow on SDN › Flows first, or ask "
                     "again"))
+            if not on["ok"]:
+                return refuse("impossible", (
+                    f"part {n + 1} ({rule_words(r)}): {on['error']}. Compared: its match "
+                    f"({flow_ops.match_words(m)}) against the flows under priority "
+                    f"{priority} in table 0 of {switch_words(w, dpid)}. Mercury sends a "
+                    "policy's traffic on as the switch's own flows would, never to "
+                    "NORMAL, the forwarding outside its flow tables"))
+            if on["words"] and on["words"] not in onward:
+                onward.append(on["words"])
+            if r.kind is not Kind.block:
+                eff = flow_intent.effect(dict(flow, owner="mercury"), classified)
             said = f"part {n + 1}: it {eff['words']}"
             if said not in effects:
                 effects.append(said)
@@ -1087,7 +1161,8 @@ def check(network: str, policy: dict, *, w: dict = None, driver=None, draws: dic
     out["rows"].insert(1, {"check": "Where it applies", "words": (
         f"{switch_words(w, dpid)}, the source's ingress: {where}"
         + (f"; its meter {meter_id}, the switch reports meters" if needs_meter else
-           "; drop flows, no meter needed" if all(r.kind is Kind.block for r in rules) else ""))})
+           "; drop flows, no meter needed" if all(r.kind is Kind.block for r in rules) else "")
+        + "".join(f"; {o}" for o in onward))})
     out["rows"].insert(2, {"check": "Conflicts with installed flows", "words": (
         f"none: it sits above every flow that could match it, and shadows or lifts no flow of "
         f"Mercury's ({len(flows)} flow{'s' if len(flows) != 1 else ''} read). "

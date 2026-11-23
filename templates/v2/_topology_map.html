@@ -63,7 +63,7 @@
 {%- else %}
 {#- C1928: no Prometheus, and a controller connection: the controller's layer is drawn, and the
     routed map is said not to be, in place. -#}
-{%- if t.no_prometheus %}<div class="notice notice-warn" role="status" id="topo-no-prometheus">{{ icon('info', 16) }}<p><strong>The routed map is not drawn: Prometheus is not configured.</strong> No LLDP link, no routing neighbourship and no device's state is read (Settings › Prometheus), so each managed device is "not scraped", never an island. What is drawn is the controller's layer, from the SDN reader: its switches, their links and the hosts it learned; Path… traces through their flow tables.</p></div>{% endif %}
+{%- if t.no_prometheus %}<div class="notice notice-warn" role="status" id="topo-no-prometheus">{{ icon('info', 16) }}<p><strong>The routed map is not drawn: {% if t.prometheus_unread %}Prometheus could not be read ({{ t.prometheus_unread }}).{% else %}Prometheus is not configured.{% endif %}</strong> No LLDP link, no routing neighbourship and no device's state is read (Settings › Prometheus), so each managed device is "not scraped", never an island. What is drawn is the controller's layer, from the SDN reader: its switches, their links and the hosts it learned; Path… traces through their flow tables.</p></div>{% endif %}
 {%- if t.failed %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The reader's last attempt failed ({{ t.failed }}); this is its last good read, {{ stamp(t.value_at) }}.</p></div>{% endif %}
 {%- for e in t.errors %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>{{ e }}</p></div>{% endfor %}
 {#- S14 (board F): a network with an SDN controller says each source of the map, the

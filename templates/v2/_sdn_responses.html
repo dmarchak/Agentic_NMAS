@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, clock, how -%}
 {%- import "v2/_ai.html" as ai -%}
 {#- SDN › Responses (board SdnResponses, signed off 2026-10-27 under the Phase 7 mode): what to
     act on first (a response awaiting a person), then the mode, the loop and the rules.
@@ -43,7 +43,7 @@
 {%- set fw = g.thresholds['values'].sdn_flood_window_seconds if g.thresholds.ok else 30 %}
 {%- for w in g.watching %}
 <details class="sdn-inc sdn-watch" id="sdn-i-{{ w.id }}" data-keep="inc-{{ w.id }}"{% if ic.open == w.id %} open{% endif %}>
-  <summary class="sdn-inc-row"><span>{{ badge('Watching', 'muted') }}</span><span>{{ w.rule_label }}</span><span class="mono">{{ w.source or '—' }}</span><span>{{ w.switches }}<span class="sdn-inc-unit"> switch{{ 'es' if w.switches != 1 }}</span></span><span title="Since {{ w.at }} UTC; last seen {{ w.last_seen }} UTC">{{ stamp(w.at) }}</span><span>not asked</span><span>nothing: a rate alone names no threat</span></summary>
+  <summary class="sdn-inc-row"><span>{{ badge('Watching', 'muted') }}</span><span>{{ w.rule_label }}</span><span class="mono">{{ w.source or '—' }}</span><span>{{ w.switches }}<span class="sdn-inc-unit"> switch{{ 'es' if w.switches != 1 }}</span></span><span title="Since {{ w.at }} UTC; last seen {{ w.last_seen }} UTC">{{ stamp(w.at) }}</span><span>not asked</span><span>{% if w.propose.offered and not w.propose.refusal %}nothing yet: yours to rate-limit (open it){% else %}nothing: a rate alone names no threat{% endif %}</span></summary>
 <div class="sdn-resp" role="region" aria-labelledby="sdn-r-{{ w.id }}">
   <div class="sdn-ctl-hd"><h3 id="sdn-r-{{ w.id }}" class="sdn-h3">{{ w.rule_label }}{% if w.source %} from <span class="mono">{{ w.source }}</span>{% endif %} on <span class="mono">{{ w.dpid_hex }}</span></h3> {{ badge((w.confidence or 'lower') ~ ' confidence', 'muted', title="The detection rule's confidence, not a threat's severity") }}</div>
   <p class="small">Detected {{ stamp(w.at) }} on <span class="mono">{{ w.dpid_hex }}</span>{% if w.port is not none %} port {{ w.port }}{% endif %}: {% if w.rate is not none %}{{ '{:,.0f}'.format(w.rate) }}{% else %}?{% endif %} packets a second (threshold {{ w.threshold }}), <span title="{{ w.coverage_words }}">from flows that name no transport ports</span> · an alert with its evidence pack</p>
@@ -52,7 +52,7 @@
   {%- elif w.large_words %}
   <p class="small"><strong>Why it is not called a flood:</strong> {{ w.large_words }} (C2313). A large-packet flood is left to you: it is watched, and nothing is proposed unless you press Rate-limit this source… below. If another source sends to the same host, it is called one attack.</p>
   {%- else %}
-  <p class="small"><strong>Why it is not called a scan or a flood:</strong> its switch's flows name no transport ports, so no destination ports can be counted (a scan), and the flood rule has not fired for this port or source (its {{ fw }} s hold). It may be either, or a burst that ends.</p>
+  <p class="small"><strong>Why it is not called a scan or a flood:</strong> its switch's flows name no transport ports, so no destination ports can be counted (a scan), and the flood rule has not fired for this port or source (its {{ fw }} s hold). It may be either, or a burst that ends.{% if w.propose.offered %} It is left to you: nothing is proposed unless you press Rate-limit this source… below, answered as the {{ w.propose.rule }} rule's; AUTO never acts on it (C4124).{% endif %}</p>
   {%- endif %}
   <p class="small"><strong>What happens next:</strong> if the flood rule fires for the same port or source, this incident joins it ("began as High packet rate") and its response is proposed there; if the rate falls below {{ w.threshold }} a second, it ends as "ended, never more than a rate".</p>
   {%- if w.seen_also %}
@@ -69,7 +69,16 @@
     {%- if w.propose.offered %}
     <form class="op-act sdn-propose" hx-post="{{ url_for('sdn_v2.watch_propose', wid=w.id) }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="list" value="{{ g.network }}">
-      <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{% if w.propose.refusal %} disabled aria-disabled="true" data-refused="Not available: {{ w.propose.refusal }}"{% else %}{{ gate('approve') }}{% endif %} title="Makes this stream a response awaiting a person: the flood rule's rate limit at the catalogue's defaults, which you preview and confirm by hash. Nothing is sent by this, and no AI is asked"><span class="op-idle">Rate-limit this source…</span><span class="op-busy">Proposing…</span></button>{{ how('sdn', 'responses', compact=True, op='Rate-limit this source') }}
+      <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{% if w.propose.refusal %} disabled aria-disabled="true" data-refused="Not available: {{ w.propose.refusal }}"{% else %}{{ gate('approve') }}{% endif %} title="Makes this a response awaiting a person: the {{ w.propose.rule }} rule's rate limit at the catalogue's defaults, which you preview and confirm by hash. Nothing is sent by this, and no AI is asked"><span class="op-idle">Rate-limit this source…</span><span class="op-busy">Proposing…</span></button>{{ how('sdn', 'responses', compact=True, op='Rate-limit this source') }}
+    </form>
+    {%- endif %}
+    {#- Lab 9 A (the operator's go of 2026-11-20): Mercury's tripwire for the row's source, one
+        flow per TCP port a scan touches, previewed on SDN › Flows' card and sent by its
+        confirm; six or more ports touched is then a scan of high confidence. -#}
+    {%- if w.tripwire.offered %}
+    <form class="op-act sdn-tripwire" hx-post="{{ url_for('sdn_v2.watch_tripwire', wid=w.id) }}" hx-target="#sdn-tw-{{ w.id }}" hx-swap="innerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="list" value="{{ g.network }}">
+      <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{% if w.tripwire.refusal %} disabled aria-disabled="true" data-refused="Not available: {{ w.tripwire.refusal }}"{% else %}{{ gate('confirm') }}{% endif %} title="Previews Mercury's tripwire for this source: one flow per TCP port a scan touches, to the subnet NetBox records it in, going on by the switch's own goto, for two minutes. Nothing is sent until you confirm by hash"><span class="op-idle">Watch its ports…</span><span class="op-busy">Reading the switch…</span></button>{{ how('sdn', 'responses', compact=True, op='Watch its ports') }}
     </form>
     {%- endif %}
     <form class="op-act sdn-dismiss" hx-post="{{ url_for('sdn_v2.response_dismiss', rid=w.id) }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
@@ -79,13 +88,16 @@
       <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Dismiss with this reason</span><span class="op-busy">Dismissing…</span></button>{{ how('sdn', 'responses', compact=True, op='Dismiss') }}
     </form>
   </div>
+  {%- if w.tripwire.offered %}
+  <div class="sdn-op-slot" id="sdn-tw-{{ w.id }}" role="region" aria-live="polite"></div>
+  {%- endif %}
   <p class="faint small">One Needs attention row for the incident, a warning, until it joins a flood, ends, or is dismissed.</p>
 </div>
 </details>
 {%- endfor %}
 {%- for r in g.awaiting %}
 <details class="sdn-inc" id="sdn-i-{{ r.id }}" data-keep="inc-{{ r.id }}"{% if ic.open == r.id %} open{% endif %}>
-  <summary class="sdn-inc-row"><span>{{ badge(r.severity_words, r.severity_tone) }}</span><span>{{ r.rule_label }}{% if r.began_as %} · began as High packet rate{% endif %}</span>{% if r.pick.state == 'several' %}<span title="{{ r.pick.words }}">one of {{ r.pick.hosts | length }}</span>{% else %}<span class="mono"{% if r.pick.words %} title="{{ r.pick.words }}"{% endif %}>{{ r.source or '—' }}</span>{% endif %}<span>{{ r.switches }}<span class="sdn-inc-unit"> switch{{ 'es' if r.switches != 1 }}</span></span><span title="Since {{ r.at }} UTC; last seen {{ r.last_seen }} UTC">{{ stamp(r.at) }}</span><span>{% if r.ai and r.ai.by_code %}{{ badge('Code', 'muted', title='Decided in code with no AI call (C2305)') }} {% elif r.ai %}{{ badge('AI', 'info', title='Classified by AI; checked in code') }} {% endif %}{{ r.verdict }}</span><span>{% if r.action %}{{ r.label }} at <span class="mono">{{ r.dpid_hex }}</span>{% else %}none{% endif %}{% if r.inactive_since %} {{ badge('Inactive', 'muted') }}{% endif %}</span></summary>
+  <summary class="sdn-inc-row"><span>{{ badge(r.severity_words, r.severity_tone) }}</span><span>{{ r.rule_label }}{% if r.began_as %} · began as High packet rate{% endif %}</span>{% if r.pick.state == 'several' %}<span title="{{ r.pick.words }}">one of {{ r.pick.hosts | length }}</span>{% else %}<span class="mono"{% if r.pick.words %} title="{{ r.pick.words }}"{% endif %}>{{ r.source or '—' }}</span>{% endif %}<span>{{ r.switches }}<span class="sdn-inc-unit"> switch{{ 'es' if r.switches != 1 }}</span></span><span title="Since {{ r.at }} UTC; last seen {{ r.last_seen }} UTC">{{ stamp(r.at) }}</span><span>{% if r.ai and r.ai.by_code %}{{ badge('Code', 'muted', title='Decided in code with no AI call (C2305)') }} {% elif r.ai %}{{ badge('AI', 'info', title='Classified by AI; checked in code') }} {% endif %}{{ r.verdict }}</span><span>{% if r.action %}{{ r.label }} at <span class="mono" title="{{ r.dpid_hex }}">{{ r.switch or r.dpid_hex }}</span>{% else %}none{% endif %}{% if r.inactive_since %} {{ badge('Inactive', 'muted') }}{% endif %}</span></summary>
 <div class="sdn-resp" role="region" aria-labelledby="sdn-r-{{ r.id }}">
   <div class="sdn-ctl-hd"><h3 id="sdn-r-{{ r.id }}" class="sdn-h3">{{ r.title }}{% if r.source %} from <span class="mono">{{ r.source }}</span>{% endif %}, seen on {{ r.switches }} switch{{ 'es' if r.switches != 1 }}</h3>{% if r.confidence %} {{ badge('confidence ' ~ r.confidence, 'danger' if r.confidence == 'high' else 'warn', title="The detection rule's confidence, not the threat's severity") }}{% endif %}</div>
   <p class="small">Detected {{ stamp(r.at) }} on <span class="mono">{{ r.dpid_hex }}</span>: {{ r.words }} · an alert with its evidence pack</p>
@@ -131,7 +143,7 @@
   <p class="small faint">{{ r.classified }}.{% if r.refused_call %} <a href="{{ url_for('v2.history_page', call=r.refused_call) }}" title="The prompt as sent and the answer the check refused">The refused answer in History</a>.{% endif %}</p>
   {%- endif %}
   {%- if r.action %}
-  <p class="small"><strong>Proposed:</strong> {{ r.label }} on <span class="mono">{{ r.dpid_hex }}</span> (catalogue action <span class="mono">{{ r.action }}</span>, risk {{ r.risk }}): {{ r.action_words }}.{% if r.why %} <span class="faint">{{ r.why }}.</span>{% endif %}</p>
+  <p class="small"><strong>Proposed:</strong> {{ r.label }} on <span class="mono" title="{{ r.dpid_hex }}">{{ r.switch or r.dpid_hex }}</span> (catalogue action <span class="mono">{{ r.action }}</span>, risk {{ r.risk }}): {{ r.action_words }}.{% if r.why %} <span class="faint">{{ r.why }}.</span>{% endif %}</p>
   {%- else %}
   <p class="small notice notice-warn"><strong>No action is proposed:</strong> the network's response policy could not be read when this was detected. Set it in the rules below, then preview the rule's default.</p>
   {%- endif %}
@@ -150,11 +162,39 @@
       {%- elif r.params.source %}<input type="hidden" name="source" value="{{ r.params.source }}">{% endif %}
       <label class="small">for <input type="number" name="hard_timeout" min="1" max="{{ g.limits['values'].sdn_response_max_seconds if g.limits.ok else 3600 }}" value="{{ r.params.hard_timeout or (g.limits['values'].sdn_response_hard_timeout_seconds if g.limits.ok else 600) }}"> s</label>
       {%- if r.action == 'rate_limit_source' %}
-      <label class="small">above <input type="number" name="rate" min="1" value="{{ r.params.rate or 1000 }}"></label>
-      <label class="small"><select name="unit"><option value="kbps"{% if r.params.unit == 'kbps' %} selected{% endif %}>kbit/s</option><option value="pktps"{% if r.params.unit == 'pktps' %} selected{% endif %}>packets/s</option></select></label>
-      <label class="small">burst <input type="number" name="burst" min="0" value="{{ r.params.burst if r.params.rate else 100 }}"></label>
+      <label class="small">above <input type="number" name="rate" min="1" value="{{ r.params.rate or r.rate_default.rate }}"></label>
+      <label class="small"><select name="unit"><option value="kbps"{% if (r.params.unit or r.rate_default.unit) == 'kbps' %} selected{% endif %}>kbit/s</option><option value="pktps"{% if (r.params.unit or r.rate_default.unit) == 'pktps' %} selected{% endif %}>packets/s</option></select></label>
+      <label class="small">burst <input type="number" name="burst" min="0" value="{{ r.params.burst if r.params.rate else r.rate_default.burst }}"></label>
       {%- endif %}
       <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="sdn-flows"{{ gate('confirm') }}><span class="op-idle">Preview the {{ r.label | lower }}…</span><span class="op-busy">Reading the switch…</span></button>{{ how('sdn-flows', compact=True, op='Preview a response') }}
+    </form>
+    {#- The policy's other actions for the rule (the operator, 2026-11-20: a scan's card offered
+        only its proposal), each its own Preview naming it; a source drop only where the
+        protected set allows it, checked when the response was proposed. -#}
+    {%- for c in r.choices %}
+    <form class="op-act sdn-choice" hx-post="{{ url_for('sdn_v2.response_preview', rid=r.id) }}" hx-target="#sdn-rp-{{ r.id }}" hx-swap="innerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="list" value="{{ g.network }}">
+      <input type="hidden" name="action" value="{{ c.action }}">
+      {%- if pk.state == 'several' %}
+      <label class="small">source <select name="source" required><option value="" disabled selected>one of the {{ pk.hosts | length }} hosts on port {{ pk.port }}…</option>{% for h in pk.hosts %}<option value="{{ h.address }}">{{ h.label }}</option>{% endfor %}</select></label>
+      {%- elif r.params.source %}<input type="hidden" name="source" value="{{ r.params.source }}">{% endif %}
+      <label class="small">for <input type="number" name="hard_timeout" min="1" max="{{ g.limits['values'].sdn_response_max_seconds if g.limits.ok else 3600 }}" value="{{ g.limits['values'].sdn_response_hard_timeout_seconds if g.limits.ok else 600 }}"> s</label>
+      {%- if c.action == 'rate_limit_source' %}
+      <label class="small">above <input type="number" name="rate" min="1" value="{{ r.rate_default.rate }}"></label>
+      <label class="small"><select name="unit"><option value="kbps"{% if r.rate_default.unit == 'kbps' %} selected{% endif %}>kbit/s</option><option value="pktps"{% if r.rate_default.unit == 'pktps' %} selected{% endif %}>packets/s</option></select></label>
+      <label class="small">burst <input type="number" name="burst" min="0" value="{{ r.rate_default.burst }}"></label>
+      {%- endif %}
+      <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn-flows"{{ gate('confirm') }}><span class="op-idle">Preview the {{ c.label | lower }} instead…</span><span class="op-busy">Reading the switch…</span></button>{{ how('sdn-flows', compact=True, op='Preview a response') }}
+    </form>
+    {%- endfor %}
+    {%- endif %}
+    {%- for w in r.withheld %}
+    <p class="small faint sdn-withheld">Not offered: {{ w.label }}, since {{ w.why }}.</p>
+    {%- endfor %}
+    {%- if r.tripwire.offered %}
+    <form class="op-act sdn-tripwire" hx-post="{{ url_for('sdn_v2.watch_tripwire', wid=r.id) }}" hx-target="#sdn-rp-{{ r.id }}" hx-swap="innerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="list" value="{{ g.network }}">
+      <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{% if r.tripwire.refusal %} disabled aria-disabled="true" data-refused="Not available: {{ r.tripwire.refusal }}"{% else %}{{ gate('confirm') }}{% endif %} title="A flood of small packets from one source may be a port scan: previews Mercury's tripwire for this source, one flow per TCP port a scan touches, to the subnet NetBox records it in, going on by the switch's own goto, for two minutes. Six or more touched makes it a scan, which this incident then joins. Nothing is sent until you confirm by hash"><span class="op-idle">Watch its ports…</span><span class="op-busy">Reading the switch…</span></button>{{ how('sdn', 'responses', compact=True, op='Watch its ports') }}
     </form>
     {%- endif %}
     <form class="op-act sdn-dismiss" hx-post="{{ url_for('sdn_v2.response_dismiss', rid=r.id) }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
@@ -196,7 +236,9 @@
     <dl class="kv small">
       <dt>Seen</dt><dd>{{ stamp(c.at) }}: {{ c.words }} <span class="faint">(confidence {{ c.confidence }})</span></dd>
       <dt>Hosts behind it</dt><dd>{% if c.affected %}{% for h in c.affected %}<span class="mono">{{ h.address or h.mac }}</span> <span class="faint">on {{ h.dpid_hex }} port {{ h.port_no }}</span>{% if not loop.last %}, {% endif %}{% endfor %}{% else %}<span class="faint">none the controller lists on either switch</span>{% endif %}</dd>
-      <dt>Reroute</dt><dd>{% if c.verify %}{{ c.verify.words }} <span class="faint">({{ c.verify.actor | people }}, {{ stamp(c.verify.at) }}; {{ c.verifies }} check{{ 's' if c.verifies != 1 }})</span>{% if c.verify.pairs %}
+      <dt>Reroute</dt><dd>{% if c.verify %}{{ c.verify.words }} <span class="faint">({{ c.verify.actor | people }}, {{ stamp(c.verify.at) }}; {{ c.verifies }} check{{ 's' if c.verifies != 1 }})</span>{% if c.verify.read_error %}
+        <p class="small notice notice-warn" role="alert">{{ c.verify.read_error }}.</p>{% endif %}{% if c.verify.judged_on %}
+        <p class="faint small">{{ c.verify.judged_on }}</p>{% endif %}{% if c.verify.pairs %}
         <details class="sdn-also" data-keep="link-{{ c.id }}-pairs"><summary class="small">Each host pair traced ({{ c.verify.checked }} of {{ c.verify.total }})</summary>
           <ul class="sdn-also-list small">{% for p in c.verify.pairs %}<li><span class="mono">{{ p.source }}</span> to <span class="mono">{{ p.destination }}</span>: {{ p.state | replace('_', ' ') }}: {{ p.words }}</li>{% endfor %}</ul>
         </details>{% endif %}{% else %}not verified yet: the forwarding app reroutes by itself on a port down, and Mercury sends nothing{% endif %}</dd>
@@ -205,7 +247,7 @@
     <div class="sdn-acts">
       <form class="op-act" hx-post="{{ url_for('sdn_v2.link_verify', lid=c.id) }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
         <input type="hidden" name="list" value="{{ g.network }}">
-        <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }} title="Traces every pair of hosts over the controller's stored flow tables; sends nothing"><span class="op-idle">Verify the reroute</span><span class="op-busy">Tracing…</span></button>{{ how('sdn', 'link-failure', compact=True, op='Verify the reroute') }}
+        <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }} title="Traces every pair of hosts over the controller's flow tables, read again now when the stored read is from before the failure; sends nothing"><span class="op-idle">Verify the reroute</span><span class="op-busy">Tracing…</span></button>{{ how('sdn', 'link-failure', compact=True, op='Verify the reroute') }}
       </form>
       <form class="op-act sdn-dismiss" hx-post="{{ url_for('sdn_v2.link_dismiss', lid=c.id) }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
         <input type="hidden" name="list" value="{{ g.network }}">
@@ -264,7 +306,7 @@
     </form></div>
   <p class="small faint">{% if g.loop.running %}Started by {{ g.loop.by | people }} {{ stamp(g.loop.since) }}: detect, classify (an AI call only where an admin turned its background feature on for this network, in Settings › AI; otherwise the catalogue's default), respond in the mode.{% elif g.loop.stopped %}{{ g.loop.stopped.words | people | capitalize }}, {{ stamp(g.loop.stopped.at) }}.{% else %}Not started on this network.{% endif %}</p>
   {%- if g.loop.running and g.loop.until %}
-  <p class="small sdn-loop-bound"><strong>Stops by itself</strong> {{ stamp(g.loop.until) }} (run for {{ (g.loop.run_for_s / 60) | int }} minutes), or after {{ g.loop.max_passes }} passes ({{ g.loop.passes }} so far), or on Stop.</p>
+  <p class="small sdn-loop-bound"><strong>Stops by itself</strong> at {{ clock(g.loop.until) }} (run for {{ (g.loop.run_for_s / 60) | int }} minutes), or after {{ g.loop.max_passes }} passes ({{ g.loop.passes }} so far), or on Stop.</p>
   {%- else %}
   <p class="small faint sdn-loop-bound">A loop is never left running unattended: it stops by itself at its run-for bound (at most {{ g.run_for.max }} minutes) or its pass cap, and its log says which.</p>
   {%- endif %}

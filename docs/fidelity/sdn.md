@@ -189,6 +189,107 @@ and its restart sentence names the two measured bounds with "measured" chips whe
 placeholder chips were; nothing else moves. Compared by reading the template against artboard
 C, with no new shot (the templates then hashed
 `e75d957ea9190c37324a555591e6bb491c340eeb4c93f1187637d7a72aad0960` before it).
+Hashed again 2026-11-20 for the Lab 9 hardware's step 5 (the operator: the Scan card offered only
+the drop): a response awaiting a person gains, after its own Preview, one Preview the <action>
+instead… for each other action the network's response policy allows for its rule (its own
+fields; a rate limit's at the rule's default), and a faint "Not offered: <action>, since
+<why>." for a source drop the protected set refuses, checked when the response was proposed.
+The proposal's Preview, its fields and everything else draw as before; a deviation only there
+(log: "Board SdnResponses built for the scan's response choice"). Compared by reading the
+templates, with no new shot; the states are drawn by tests/test_sdn_scan_over_flood.py and
+tests/v2_context.py's SDN operations provider (the templates before hashed
+`5979afcf5dcea6904b0de16cca44b4c7493dc68873353fd2886589e453b8a4ec`).
+Hashed again 2026-11-20 for the review of 94fa79c8 and the scan over the flood: a flood
+incident of small packets from one source gains the same Watch its ports… beside its Preview,
+drawing its card into the incident's own slot; a response's rate-limit fields start at the
+answered rule's default (20 packets a second, a burst of 10, for a scan; 1,000 kbit/s, a burst
+of 100, otherwise) where they started at kbit/s for every rule. No other region moves; a
+deviation only there (log: "Board SdnResponses built for the scan tripwire, 2"). Compared by
+reading the templates, with no new shot; the states are drawn by
+tests/test_sdn_tripwire_route.py and tests/test_sdn_scan_over_flood.py (the templates before
+hashed `117994ad38f96359eb7d15d4e791374de36f97fb5e44292f23b526fd8c9aeda9`).
+Hashed again 2026-11-20 for the scan tripwire (Lab 9 A, the operator's go of 2026-11-20): a
+watched High packet rate row (basis a rate, its switch's flows naming no transport ports)
+gains Watch its ports… beside Rate-limit this source…, busy on itself ("Reading the switch…"),
+drawn disabled with why where the row names no one source address, and under the row's
+actions a slot its preview draws into: SDN › Flows' own operation card ("Preview: 16 requests
+on <DPID>", What it does led by the tripwire's words, Exactly these requests, Verify, Send bound
+to the hash), unchanged. A large-packet stream's row draws no such control. No other region
+moves; a deviation only there (log: "Board SdnResponses built for the scan tripwire"). Compared
+by reading the templates, with no new shot; the states are drawn by
+tests/test_sdn_tripwire_route.py (the templates before hashed
+`8b267eaf510e1ac8beb33ef8531949d50b1a0e8e52be11bf1ab21224c24adfcb`).
+Hashed again 2026-11-20 for the Lab 9 hardware run's Responses items (the operator's queue 16,
+17 and the preview's warning): `_sdn_responses.html`'s Proposed column and an opened incident's
+Proposed line name the switch by its name (NetBox's, else the one it describes itself by, never
+Open vSwitch's "None"), its datapath id on hover and drawn only where nothing names it; "Stops
+by itself" names its time, "at <time>" in the viewer's zone with UTC on hover, where it drew an
+age of a time still ahead ("just now"), as board F draws it; `_sdn_op.html`'s response preview
+gains, above Send, a warning where the loop logged the threat no longer active: "No longer
+active: the loop logged this threat as no longer active at <time>: no switch has shown it
+since. Sending is still your choice; Dismiss on its row closes it without sending." No other
+region moves; a deviation only in those (log: "The Lab 9 hardware's Responses items, the
+switch's name and the inactive warning"); compared by reading the templates, no new shot; the
+states are drawn by tests/test_sdn_ops_v2.py through the real routes (the templates before it
+hashed `649b65de2275c883966604da2d9c2f0c56630b1b31f42cdde8fc53b3d2c69150`).
+Hashed again 2026-11-20 for C4155 (the operator's B4 live run): `_sdn_analyse_tools.html`'s bar
+gains **Prompts**, a select of the prompts in use and each trace-tool candidate, inside the
+press's form, and the answer's head names the prompts it was asked with ("asked candidate v6
+…"). No other region moves; a deviation only in those (log: "C4155, the trace tool's prompts
+chosen on the card"); compared by reading the template, no new shot (the templates before it
+hashed `45565be79d7722b3901824e6802205ff69b705f584eba7d604a51bd9cc035a84`).
+Hashed again 2026-11-20 for the link card's Verify the reroute answering on the first press (the
+operator's report from the Lab 9 hardware: it sat on "verifying" until pressed again):
+`_sdn_responses.html`'s link card's Reroute line gains, under the verify's words, the read it was
+judged on and its age ("judged on the flow tables read again on this press at <time> …", "judged
+on the SDN reader's stored read at <time> …", or "the SDN reader's stored read at <time> … is N s
+older than the failure detected at <time>, so it was not judged"), and, where the press's read
+again failed, "Couldn't read the flow tables now: <why>." in place (warn), the card's chip then
+"couldn't read now"; Verify the reroute's title names the read again. No other region moves; a
+deviation only in those (log: "Board lab9-sdn F built on for the reroute's read again"); compared
+by reading the template, no new shot; the states are drawn by tests/test_sdn_link_failure.py
+through the real route (the templates before it hashed
+`b836ec2534ca648a6154d153c019dd71359026d44de31565844117efb05c350f`).
+Hashed again 2026-11-20 for C4150 (the operator's report from the Lab 9 hardware: a policy's
+meter outlived its flows, listed with no way to remove it): `_sdn_view.html`'s Meters table gains
+an unlabelled actions column, with Remove… only on a meter that reads "Mercury's, no flow uses
+it" (warn), opening its editor in a row beneath as the Flows rows do; `_sdn_flow_form.html` gains
+the `remove_meter` kind ("Remove Mercury's meter", one sentence, "Preview the removal"). No other
+region moves; a deviation only in those (log: "C4150, Mercury's meter no flow uses"); compared
+by reading the templates, no new shot (the templates before it hashed
+`4e5ccbef173b2b2a9798eb88d0f9e21d4b0a1a9281e566c3711694b28d4dbc54`).
+Hashed again 2026-11-20 for the hardware smoke test's follow-ups (C4124 and C4138, the operator's
+reports from the Lab 9 hardware): `_sdn_responses.html`'s closed watching row says "nothing yet:
+yours to rate-limit (open it)" where Rate-limit this source… is offered inside it, and "nothing:
+a rate alone names no threat" as before where it is not; `_sdn_op.html`'s card no longer holds the
+live redraw once its result is verified, so the region redraws by itself after a person's own
+Send (a preview, a refusal and a result not verified still hold). No other region moves; a
+deviation only in those words (log: "C4124 and C4138, the hardware follow-ups"); compared by
+reading the templates, no new shot (the templates before it hashed
+`1f109f105792d7dd9490cbee2a375b4901dc0c06a839862f30ba9507a313dc76`).
+Hashed again 2026-11-20 for C4124 (the operator's decision: a High packet rate proposed by a
+person): `_sdn_responses.html`'s watching row draws Rate-limit this source… on a High packet rate
+of basis `rate` too, the control as board S-HR's large-packet row already draws it (C2313); its
+"Why it is not called a scan or a flood" paragraph gains one sentence saying it is left to the
+person, answered as the scan rule's, and that AUTO never acts on it; the button's title names the
+rule it is answered as. No other region moves. A deviation only in that sentence (log: "Board
+S-HR built on for C4124"); compared by reading the template, no new shot; the states are drawn
+by tests/test_sdn_watch_propose.py through the real route (the templates before it hashed
+`58c57f09341bff2f12975d1bdc0ae3436c202080810a6cf8a2f6d984e42211c2`).
+Hashed again 2026-11-19 for C3930 (declared external flow owners): `_sdn_view.html`'s Flows
+table gains a fourth owner, "external: <owner>", drawn as the others (a badge, its declaration
+in the row's small line) with no Remove… in its row; the summary and each switch's counts add
+"· N external" after the controller's own; one warning notice above the switches, only while a
+declared owner is refused, names each with why. A deviation from board SdnFlows, which draws
+three owners (log: "Board SdnFlows built for C3930"); compared by reading the template, no new
+shot; the states are drawn by tests/test_sdn_external_owners.py through the real route (the
+templates before it hashed `ac1bc68272fc8b90983b1762324f388faff233e7debe4fa581251c078cffe60e`).
+Hashed again 2026-11-19 on the Lab 9 kit's hotfix branch (from 54cc732e), for 2ed6bd5b cherry-picked
+there: every template above is byte for byte 2ed6bd5b's on main but `_sdn_app_deploy.html`,
+which lacks 6a7d61f1's change (a controller taken as it is; not on this branch), so the
+comparison 2ed6bd5b records below (C3001, by reading the templates) is that branch's tree's
+too, and `_sdn_app_deploy.html` is as it was when last compared. Merged into main on 2026-11-22,
+where 6a7d61f1's change is present.
 Hashed again 2026-11-10 for C2905 (board authoring-from-words G, self-signed,
 docs/STANDING_APPROVAL_LOG.md "C2905 W 1"): `_sdn_app_draft.html`'s preview draws a new version
 of a registered app (the badge "a new version", The folder as the registered version's content
@@ -690,7 +791,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Phone width | each tab stacked: summary, cards, a flow row a block, tables scrolling in their box | the same; a controller's card keeps its whole list, stacked, where SdnPhone draws a one-line card | **deviation** (log: SDN S11: the phone's controller card keeps its fields) |
 | Responses' summary | revised for C1999: "4 awaiting approval · 4 incidents seen on 56 switches · mode HITL · the loop running every 10 s" | "2 awaiting approval · 2 incidents seen on 4 switches · mode HITL · the loop stopped", counted from the shot's two incidents | **same** |
 | Incidents awaiting a person (C1999) | a card headed "Incidents awaiting a person" with "by severity, then the longest waiting · one response each, at the switch the source enters by"; severity counts as filter chips, a search and Show; a table: Severity, Rule, Source, Switches, Age, AI verdict, Proposed; rows by severity then age | the same card, words and columns (1440 and 1280); the chips link to the filtered tab and redraw the region; each row a closed `<details>` whose summary is the row, opened by a click; at 390 the header row is hidden and each row wraps, its switch count saying "3 switches" | **same** |
-| An incident, opened (C1999) | the detail under its row: "SDN scan from <source>, seen on 50 switches", the detection line "Detected … on <dpid>: …", "Ingress: the ingress switch is <dpid>: the controller's topology (read …) lists <source>'s host on its port 1. Grouped within 60 s, …", "▸ Seen also on 49 other switches · nothing is proposed there; …", the AI box, "Proposed: … on <dpid> …", the actions | the same lines in the same order, opened by `?incident=<id>` (Needs attention's link) in the shot; the seen-also list opens to one line per switch (its DPID, port, controller, time and words) in a box that scrolls; the AI box as the row above | **same** |
+| An incident, opened (C1999) | the detail under its row: "SDN scan from <source>, seen on 50 switches", the detection line "Detected … on <dpid>: …", "Ingress: the ingress switch is <dpid>: the controller's topology (read …) lists <source>'s host on its port 1. Grouped within 60 s, …", "▸ Seen also on 49 other switches · nothing is proposed there; …", the AI box, "Proposed: … on <dpid> …", the actions | the same lines in the same order, opened by `?incident=<id>` (Needs attention's link) in the shot; the seen-also list opens to one line per switch (its DPID, port, controller, time and words) in a box that scrolls; the AI box as the row above; the Proposed line, and the row's Proposed column, name the switch by its name (NetBox's, else its own description, never "None"), its DPID on hover and drawn only where nothing names it | **deviation** (log: The Lab 9 hardware's Responses items, the switch's name and the inactive warning, 1) |
 | An awaiting response's head | revised for C1999: the incident's title with "seen on N switches" and a red severity chip "high" | the title as the board's; the chip beside it is the detection rule's confidence, labelled "confidence high" (its hover says it is not the threat's severity), since the severity is the row's first column and an unclassified incident has none | **deviation** (log: SDN C1999: the opened incident's chip names the rule's confidence) |
 | The AI's classification | an AI-marked box: threat, severity, model and cost, evidence ids, the recommendation | when a classification is kept (S7, 2026-10-27): a box marked AI with the threat or "No threat", its kind and severity, by whom (the loop or a person) and when, the model and cost (the call's id on hover), the reasoning, the recommendation with its catalogue action, the devices named and the evidence ids cited; with none, one line naming who chose the action (the catalogue's default, chosen in code, and why no AI classification was made). Compared by reading the template against the board's list, not yet shot: the harness's `sdn-responses` shot plants no classification | **later** a shot with a kept classification (tests/test_board_shots.py) |
 | A severity the effect's floor raised (C2021) | not drawn: the box's severity is the model's | after "severity high", "(raised in code from the model's medium: the flow's effect sets the floor)", the floor's words ("at least high: the flow diverts (its effect, decided in code from the switch's table)") on its hover; nothing added when the model's rating stands. Read from the template and tests/test_sdn_classify.py's rendered card, not shot | **deviation** (log: SDN C2021: a severity the effect's floor raised is said on the AI box) |
@@ -712,7 +813,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Needs attention | revised for C1999: the states section's row, one per incident: "SDN scan from 192.0.2.31 on Default, seen on 50 switches, awaits a person.", its incident, severity and ingress, and Open the incident | built (`attention.sdn_responses_source`) in the same words, DANGER when classified high or critical; compared by reading the row tests/test_sdn_responses_attention.py renders against the board's, not shot (no board-shot test renders Needs attention with SDN data) | **later** a landing shot with an SDN incident (tests/test_board_shots.py) |
 | A port's source (C2002) | revised for C2002: the states section's four: "Source: 192.0.2.2, from the controller's topology: the one host on port 2, …" with no picker; "Source: not named: the controller's topology lists 2 hosts on port 2 (…). Choose which one beside Preview below; the preview refuses any other." with a required select "one of the 2 hosts on port 2…" listing exactly them, the Source column "one of 2"; "No source to act on: …" (amber) with no Preview and no hours field; "Source: not named: the controller's topology could not be read (…); the preview looks up the host on port 2 in the controller's topology now." | the same words, places and controls, compared by reading `_sdn_responses.html` against the board (the rendered page held by tests/test_sdn_source_from_topology.py); the preview card's source followed by "(chosen from the 2 hosts …)" or "(from the controller's topology: …)", as the board's note on state 2 draws it | **later** a shot of an opened port's detection in each state (tests/test_board_shots.py plants none) |
 | Ingress not told, a filtered subset (C1999) | the states section: "Proposed at: the ingress switch cannot be told: …; proposed at <dpid>, the switch that saw it first."; "Showing 1 of 4 incidents, severity high. Show all" | the same words (`incidents.ingress`; the template's subset line); the shot's flood is an incident whose ingress was not told, drawn closed; neither state is shot opened or filtered | **later** shots of an opened ingress-not-told incident and a filtered table |
-| The response's preview and result (SdnResponse) | the card in place: what it does, exactly these requests, what will not happen, Verify, checks, bound hash, Send N requests | drawn in place by a click: what it does, the detection and its checked parameters, exactly these requests, what will not happen, the warnings, Verify (its limit said), the bound hash, Send N requests; the result: outcome, what was sent, Verify, counters, rollback, the record | **later** a click-driven shot (the harness shoots pages) |
+| The response's preview and result (SdnResponse) | the card in place: what it does, exactly these requests, what will not happen, Verify, checks, bound hash, Send N requests | drawn in place by a click: what it does, the detection and its checked parameters, exactly these requests, what will not happen, the warnings, Verify (its limit said), where the loop logged the threat no longer active a warning above Send naming when ("No longer active: … at <time>: no switch has shown it since. Sending is still your choice …"; log: The Lab 9 hardware's Responses items, the switch's name and the inactive warning, 2), the bound hash, Send N requests; the result: outcome, what was sent, Verify, counters, rollback, the record | **later** a click-driven shot (the harness shoots pages) |
 | The flow editor (SdnFlowEdit) | the form, the prerequisite refusal, the preview, Edit's and Remove's words, Explain this flow table (AI) | the form, the refusal naming the field, the preview card; Edit's and Remove's words; no Explain (S19, after cost safety) | **later** a click-driven shot; Explain is S19 |
 | Responses at phone width | stacked | the card's fields and buttons wrap inside it (390 shot) | **same** |
 
@@ -721,13 +822,13 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Region | Board | Built | Verdict |
 |---|---|---|---|
 | Link failures' place | F: the link card in the left column, the loop card beside it | its own card, "Link failures", under the incidents, full width; drawn only while a card is open (or the store cannot be read) | **deviation** (log: Board lab9-sdn F built, 7) |
-| The card's head | "Link down: of-eos-1 port 3 to of-eos-2 port 3" and "awaiting approval" | "Link down: <dpid> port 3 (<name>) to <dpid> port 3 (<name>)" and its state chip (awaiting a person, verifying, rerouted, verified, not rerouted, cannot tell) | **deviation** (log: Board lab9-sdn F built, 1) |
+| The card's head | "Link down: of-eos-1 port 3 to of-eos-2 port 3" and "awaiting approval" | "Link down: <dpid> port 3 (<name>) to <dpid> port 3 (<name>)" and its state chip (awaiting a person, verifying, rerouted, verified, not rerouted, cannot tell, couldn't read now) | **deviation** (log: Board lab9-sdn F built, 1) |
 | Seen | the time, the port reported down and the link no longer listed, the reads | the time and the detection's words (the end that reported it and how, the controller listing it or not, the reads gone), its confidence | **same** |
 | Traffic on it before, Backup | the rate and host pairs before; the backup path and no fast-failover group | Hosts behind it (each end switch's hosts by address, IPv4 and IPv6) and Reroute (the verify's words, who and when, Each host pair traced opening to every pair) | **deviation** (log: Board lab9-sdn F built, 2) |
 | Proposed, Mode | a reroute of 6 flows; HITL with AUTO's network and expiry | no Proposed line (Mercury installs no reroute); Mode: HITL and its words, or AUTO verifying at each pass for at most 75 s | **deviation** (log: Board lab9-sdn F built, 1) |
 | The card's actions | Preview the reroute…, Dismiss…, How does this work? | Verify the reroute (busy "Tracing…"), a reason and Dismiss with this reason, each with its (i); "Nothing is sent by either" under them | **deviation** (log: Board lab9-sdn F built, 1) |
 | The fast-failover note | "On a switch with fast-failover groups … failed over in the data plane" | not built: no driver reads group features | **deviation** (log: Board lab9-sdn F built, 2) |
-| The loop | Every, Stops by itself (at its time, run for N min, or at the AI day cap, or on Stop), Started | Started by whom and when; "Stops by itself <time> (run for N minutes), or after M passes (K so far), or on Stop" while it runs; stopped, the bound's line | **deviation** (log: Board lab9-sdn F built, 3) |
+| The loop | Every, Stops by itself (at its time, run for N min, or at the AI day cap, or on Stop), Started | Started by whom and when; "Stops by itself at <time> (run for N minutes), or after M passes (K so far), or on Stop" while it runs, the time the board's "at 14:20 UTC" (the viewer's zone, UTC on hover; it drew an age, "just now", until 2026-11-20); stopped, the bound's line | **deviation** (log: Board lab9-sdn F built, 3) |
 | Run for | 20 minutes, 5 minutes, 1 hour, Until stopped (at most 24 h) | 5, 20 (selected) and 60 minutes, beside every N s and Start | **deviation** (log: Board lab9-sdn F built, 3) |
 | Stop, Download the run's log | both | Stop, and Download log on the log panel, as built before | **same** |
 | Rules | in the loop card, with Answered by, Link down "new": "port down, or a link gone for 2 reads", "reroute; verify failover" | the Detection rules card's row: "a link the topology held: a port reports its link down, or the controller no longer lists it", "at once on a port down; 2 reads gone", "port descriptions and the controller's links; a fact, never classified", "the reroute verified (Mercury sends nothing)" | **deviation** (log: Board lab9-sdn F built, 4) |
