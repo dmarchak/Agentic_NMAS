@@ -1,12 +1,23 @@
-# Handoff: the waiting patches as one stack, now 35 (2026-11-24, from 01:00 Denver)
+# Handoff: the waiting patches as one stack, now 36 (2026-11-24, from 01:00 Denver)
 
 ## 0000000000. The 09:34 session (2026-11-24): read this first
 
 - **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
 - **The stack's trees:** `~/mercury-runs/tree-stack-33.txt` (with c3601-pathtrace),
-  `tree-stack-34.txt` (with c3601-fleetchange) and `tree-stack-35.txt` (with c3601-rotation).
-  Make the next patch against tree-stack-35; the worktree `~/nmas-worktrees/c2820-sdn` holds
-  it staged. land_all.sh now ends `c3601-pathtrace c3601-fleetchange c3601-rotation` (35).
+  `tree-stack-34.txt` (c3601-fleetchange), `tree-stack-35.txt` (c3601-rotation) and
+  `tree-stack-36.txt` (c3601-save). Make the next patch against tree-stack-36; the worktree
+  `~/nmas-worktrees/c2820-sdn` holds it staged. land_all.sh now ends
+  `c3601-fleetchange c3601-rotation c3601-save` (36).
+- **C3601's Save slice BUILT as a patch**, `~/mercury-runs/c3601-save.patch` and `.msg`:
+  Save's job passes `page=` (Devices › Save, `job`), the page draws `save_page.job_card`, and
+  Save's answer says its end in words. Device-write review SAFE
+  (`~/Documents/nmas-reports/review-devicewrite-2026-11-24-c3601-save.md`); its two low
+  findings fixed (a heading with no count, 200 for a refused job). Red first, four controls;
+  aimed 189 files, C4090's loops the one red. **C4236** (new, C): three fidelity records end
+  with stray `</content>` / `</invoke>` lines.
+- **The opened mark is not missing:** In progress's Open the result posts `seen_run`
+  (C3081) before it opens a page job's link, for a verified viewer; reviews keep raising
+  it, it is kept.
 - **C3601's scheduled rotation slice BUILT as a patch**, `~/mercury-runs/c3601-rotation.patch`
   and `.msg`: Rotate due devices now's job passes `page=` (Profiles, `rot_job` / `rot_run`),
   the tab draws the run's card (`_rotate_op`, lifted from the card route), and the answer
@@ -34,9 +45,10 @@
   "leaves the network", stopped "N of M branches not delivered", failed). Its answer was the
   trace's id only, the same red-"no reason" trap. Red first, three controls; aimed 195 files, 6,045 passed, 66 skipped, none red
   (541 s at -n 4).
-- **Next:** land the 35 once session-namespace is answered; meanwhile C3601's next caller
-  (Save of many devices, `modules/nsot/save_op.py:491`; then the golden capture batch,
-  `routes/golden.py:361`), or C4235's measurement, each as a patch against tree-stack-35.
+- **Next:** land the 36 once session-namespace is answered; meanwhile C3601's next caller
+  (the golden capture batch, `routes/golden.py:361`; then the logging path,
+  `modules/nsot/logging_path.py:386`), or C4235's measurement, each as a patch against
+  tree-stack-36.
 
 ## 000000000. The 09:06 session (2026-11-24): read this first
 
