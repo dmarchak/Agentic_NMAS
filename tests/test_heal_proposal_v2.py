@@ -228,6 +228,10 @@ def test_while_a_run_holds_its_device_the_cards_approve_is_disabled_naming_it(
     _r, html = _card(app_client, d)
     approve = html.split("Approve and run on edge-b")[0].rsplit("<button", 1)[1]
     assert " disabled " not in approve and 'data-held="edge-b"' not in html, "free: offered"
+    # Free, the Approve it offers again is pressed and starts the heal.
+    r = app_client.post(_base(d) + "/approve",
+                        data={"hash": _hidden(html, "hash"), "reason": REASON}, headers=HX)
+    assert r.status_code == 200 and len(app_client.started) == 1
 
 
 def test_a_proposal_no_longer_held_says_so_in_place(app_client):

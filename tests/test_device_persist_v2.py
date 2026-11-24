@@ -95,6 +95,10 @@ class TestThePreview:
         assert lead < effect < nothing < cmds, (lead, effect, nothing, cmds)
         assert what.index("write memory") > cmds, "the commands inside the collapsed part"
         assert "<details class=\"op-cmds\" open" not in what
+        # The collapsed commands are what the confirm sends: pressed, it saves once.
+        _confirm(lab, html)
+        assert lab["sent"] == [{"ip": "192.0.2.12", "held": True, "type": "cisco_xe",
+                                "password_ok": True}]
 
     def test_a_device_with_no_driver_fails_its_check(self, lab):  # noqa: F811
         html = _card(lab, device="s9")
