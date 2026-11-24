@@ -465,7 +465,7 @@ class TestTheCaps:
             # start too (C3872: a refused start spends no key, so it is pressed again).
             line = F.starts(inc_of(iid))["starts"][-1]
             assert (line["state"], line["which"]) == ("capped", "day")
-            assert f"today's AI spend ${spent:.2f}" in line["words"], line["words"]
+            assert f"today's AI spend {money.usd(spent, exact=True)} plus" in line["words"], line["words"]
             assert f"would pass the day cap of ${DAY_CAP:.2f}" in line["words"]
             assert "held by the investigations started with it" in line["words"]
 

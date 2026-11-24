@@ -462,3 +462,12 @@ class TestTheScreens:
         assert "turned on by admin@example.com" in on["words"]
         assert "$0.50 a day, $10.00 a month" in on["words"]
         assert heal_page._analysis("Branch")["state"] == "off", "on for Default only"
+
+    def test_the_tabs_caps_are_said_as_money_writes_them_c4247(self, ai, monkeypatch):
+        """C4247: a cap under a cent keeps four places and a large one is grouped, as every
+        other amount on a screen is (`money.usd`), never "$0.00" or "$2400.00"."""
+        from modules import heal_page
+        from modules.ai import background
+        turn_on()
+        monkeypatch.setattr(background, "caps_of", lambda entry: {"day": 0.004, "month": 2400})
+        assert "caps $0.0040 a day, $2,400.00 a month;" in heal_page._analysis("Default")["words"]

@@ -332,7 +332,8 @@ def _analysis(network: str, now: float = None) -> dict:
                 "words": (f"{who}; its {background.APPROVAL_DAYS}-day approval has ended, so "
                           "nothing is analysed until an admin turns it on again")}
     caps = background.caps_of(entry)
-    cap_words = ", ".join(f"${v:.2f} a {k}" for k, v in (("day", caps["day"]),
+    from modules.money import usd
+    cap_words = ", ".join(f"{usd(v)} a {k}" for k, v in (("day", caps["day"]),
                                                         ("month", caps["month"])) if v)
     ends = background.approval_ends(entry)
     tail = (f"{who}; caps {cap_words or 'not readable (it refuses)'}; approval ends "

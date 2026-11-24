@@ -494,14 +494,16 @@ def _fixit_state(inc, trigger: dict, now: float, reserved_usd: float = 0.0, *,
             return "capped", "day", (f"today's AI spend cannot be read ({spent.get('error')}), "
                                      "so it cannot be compared with the day cap")
         if float(spent["usd"]) + flying["usd"] + held + worst > cap:
+            # Each amount as money writes it (C4247): a spend under a cent is never "$0.00".
+            from modules.money import exact_usd as usd
             return "capped", "day", (
-                f"today's AI spend ${float(spent['usd']):.2f}"
-                + (f" plus ${flying['usd']:.2f} reserved by {flying['calls']} call(s) in flight"
+                f"today's AI spend {usd(float(spent['usd']))}"
+                + (f" plus {usd(flying['usd'])} reserved by {flying['calls']} call(s) in flight"
                    if flying["calls"] else "")
-                + (f" plus ${held:.2f} held by the investigations started with it" if held
+                + (f" plus {usd(held)} held by the investigations started with it" if held
                    else "")
-                + f" plus the least one of its calls costs, ${worst:.2f}, would pass the day "
-                f"cap of ${cap:.2f}")
+                + f" plus the least one of its calls costs, {usd(worst)}, would pass the day "
+                f"cap of {usd(cap)}")
     return "started", "", ""
 
 

@@ -447,9 +447,11 @@ def calls(network: str, start: str, end: str, now: float = None, ledger: dict = 
 
 
 def calls_words(summary: dict) -> str:
-    """The board's line: "412 calls · $0.3800 · 3 refused by validation · …"."""
+    """The board's line: "412 calls · $0.38 · 3 refused by validation · …", its cost as money
+    writes an exact amount (C4247: "$0.0120", never "$0.3800")."""
+    from modules.money import exact_usd
     parts = [f"{summary['calls']} call{'' if summary['calls'] == 1 else 's'}",
-             f"${summary['usd']:.4f}"]
+             exact_usd(summary["usd"])]
     parts += [f"{summary[k]} {OUTCOMES[k]}" for k in ("validation", "cap", "gate", "failed")
               if summary.get(k)]
     if summary.get("joined"):

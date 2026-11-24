@@ -854,7 +854,7 @@ def test_an_empty_range_says_so_and_its_file_says_none(page):
            "2020-01-01 to 2020-01-07 (UTC)" in html
     r = page["client"].get("/v2/history/export/calls/csv?start=2020-01-01&end=2020-01-07")
     rows = _rows(r.get_data(as_text=True))
-    assert ["# in the range", "0 calls · $0.0000"] in rows
+    assert ["# in the range", "0 calls · $0.00"] in rows
     assert rows[rows.index(list(X.CALL_COLUMNS)) + 1] == []
     assert X.calls("Lab", "2020-01-01", "2020-01-07")["rows"] == []
 
