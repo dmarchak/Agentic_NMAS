@@ -1,12 +1,21 @@
-# Handoff: the waiting patches as one stack, now 34 (2026-11-24, from 01:00 Denver)
+# Handoff: the waiting patches as one stack, now 35 (2026-11-24, from 01:00 Denver)
 
 ## 0000000000. The 09:34 session (2026-11-24): read this first
 
 - **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
-- **The stack's trees:** `~/mercury-runs/tree-stack-33.txt` (with c3601-pathtrace) and
-  `tree-stack-34.txt` (with c3601-fleetchange). Make the next patch against tree-stack-34; the
-  worktree `~/nmas-worktrees/c2820-sdn` holds it staged. land_all.sh now ends
-  `c3601-coverage c3601-pathtrace c3601-fleetchange` (34 patches).
+- **The stack's trees:** `~/mercury-runs/tree-stack-33.txt` (with c3601-pathtrace),
+  `tree-stack-34.txt` (with c3601-fleetchange) and `tree-stack-35.txt` (with c3601-rotation).
+  Make the next patch against tree-stack-35; the worktree `~/nmas-worktrees/c2820-sdn` holds
+  it staged. land_all.sh now ends `c3601-pathtrace c3601-fleetchange c3601-rotation` (35).
+- **C3601's scheduled rotation slice BUILT as a patch**, `~/mercury-runs/c3601-rotation.patch`
+  and `.msg`: Rotate due devices now's job passes `page=` (Profiles, `rot_job` / `rot_run`),
+  the tab draws the run's card (`_rotate_op`, lifted from the card route), and the answer
+  carries `scheduled_rotation.outcome` (it said `ok` whatever the run did: a stopped run would
+  have been green). Device-write review SAFE
+  (`~/Documents/nmas-reports/review-devicewrite-2026-11-24-c3601-rotation.md`); its medium
+  finding (a skipping run green) fixed in the patch. Red first, four controls; aimed 295
+  files, C4090's loops the one red. **A UI test must press the control**
+  (tests/test_presence_only.py): drive the POST, never the module's start function.
 - **C3601's fleet change slice BUILT as a patch**, `~/mercury-runs/c3601-fleetchange.patch`
   and `.msg`: the plan's and both runs' jobs pass `page=` (`fleet_change.job_page`, the intent
   page with `plan_job` or `run_job`), the page draws that job's card above the layers (the
@@ -25,9 +34,9 @@
   "leaves the network", stopped "N of M branches not delivered", failed). Its answer was the
   trace's id only, the same red-"no reason" trap. Red first, three controls; aimed 195 files, 6,045 passed, 66 skipped, none red
   (541 s at -n 4).
-- **Next:** land the 34 once session-namespace is answered; meanwhile C3601's next caller
-  (scheduled rotation, `modules/nsot/scheduled_rotation.py:1081`, list "": check what page
-  reopens it), or C4235's measurement, each as a patch against tree-stack-34.
+- **Next:** land the 35 once session-namespace is answered; meanwhile C3601's next caller
+  (Save of many devices, `modules/nsot/save_op.py:491`; then the golden capture batch,
+  `routes/golden.py:361`), or C4235's measurement, each as a patch against tree-stack-35.
 
 ## 000000000. The 09:06 session (2026-11-24): read this first
 
