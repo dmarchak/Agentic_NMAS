@@ -1,5 +1,33 @@
 # Handoff: every waiting patch run together as one stack; its failures fixed in the patches (2026-11-24, 01:00 to 02:30 Denver)
 
+## 000. The 03:35 session (2026-11-24): read this first
+
+- **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
+- **C4226's fix BUILT as a patch**, `~/mercury-runs/c4226.patch` and `.msg`, now based on
+  c4229 + c4228 (the tree `~/mercury-runs/tree-c4229-c4228.txt`, a `git write-tree`, no
+  commit): `pressedUnit`, `fresh` in `morph`, `loaded` (htmx:load on the drawn unit). Red
+  first (4 of 5; the fifth guards the merge), three controls bite. Aimed on c4228 alone: the
+  199 files reading the v2 script or serving a browser, 6,428 passed.
+- **c4229.patch had a defect, fixed in it** (worktree `~/nmas-worktrees/c4229` staged, patch
+  and .msg refreshed): the focused control counted as a person's work, so the update page's
+  Check again kept "Still no answer" after the check answered
+  (test_update_button's test_a_check_that_hangs_…, red with c4229, green on main and now).
+  `holdsWork` skips `ctx.pointed`.
+- **C4230 cause 6 and C4223 measured (UNKNOWN to B); cause 6 fixed as a patch**,
+  `~/mercury-runs/c4230.patch` and `.msg` (worktree `~/nmas-worktrees/c4230` = c4229 + c4228 +
+  c4226 + c4230, the last staged against `tree-c4226.txt`): `keptRevisited` for every kept
+  part but the pointer's, `drawnAlike` so a marker never restarts a component. Red first, two
+  controls bite. The pointer's keep is left out: revisited, it moved C2841's Right 80 to
+  182 px (test_live_marks, the same incident held), so C4223 stays open, measured, needing
+  its own design.
+  Cause 5 measured: no shift in Firefox (scroll anchoring). Causes 7, 8 unmeasured.
+- **The four together (c4229 + c4228 + c4226 + c4230) over the 199 files that read the v2
+  script or serve a browser: 6,432 passed, 0 failed** (`~/mercury-runs/c4230-stack-aimed2.log`).
+- land_all.sh's order now ends `c4229 c4228 c4226 c4230`. The scratch measurements are
+  `~/mercury-runs/c4226_*.sh`, `c4230_*_measure_test.py`, `c4230_controls.sh`.
+- **Next:** the plan's Stage 5 item 1 (one shared progress component) or the human-readable
+  pass; everything test-changing stays a patch.
+
 ## 00. The 02:11 session (2026-11-24): the 02:30 handover only
 
 - Started at 02:11 Denver, 19 minutes before the handover: no full suite, deploy or patch
