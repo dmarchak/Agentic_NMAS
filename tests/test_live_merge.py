@@ -232,6 +232,37 @@ class TestTheMerge:
                      " n[1].textContent, n[2].textContent]; }")
         assert got == [True, False, False, "two, changed", "starting"], got
 
+    def test_a_component_holding_a_person_s_choices_keeps_them_when_a_row_changes(self, page):
+        # C4229: Devices' selection form is a component (`x-data`) holding its rows; one row's
+        # change restarted it whole and cleared every tick. A component holding what a person
+        # did is merged in place; one they left alone still starts again (the test above).
+        rows = "".join(
+            f'<div data-key="r{i}"><span>row {i}</span><input type="checkbox" value="{i}">'
+            f'<input type="radio" name="one" value="{i}">'
+            f'<select><option>a</option><option>b</option></select></div>' for i in range(3))
+        before = f'<form data-key="f" x-data="{{}}">{rows}</form>'
+        after = before.replace("row 2", "row 2, changed")
+        pick = ("var c = box.querySelectorAll('input[type=checkbox]'); c[0].checked = true;"
+                " c[2].checked = true; box.querySelectorAll('input[type=radio]')[1].checked = true;"
+                " box.querySelectorAll('select')[2].value = 'b'; window.__f = box.firstChild;"
+                " window.__check = function (box) {"
+                " var c = box.querySelectorAll('input[type=checkbox]');"
+                " var r = box.querySelectorAll('input[type=radio]');"
+                " return {same: box.firstChild === window.__f,"
+                " ticks: [c[0].checked, c[1].checked, c[2].checked],"
+                " radio: [r[0].checked, r[1].checked, r[2].checked],"
+                " select: box.querySelectorAll('select')[2].value,"
+                " text: box.querySelectorAll('span')[2].textContent}; }")
+        got = _merge(page, before, after, pick)
+        assert got == {"same": True, "ticks": [True, False, True], "radio": [False, True, False],
+                       "select": "b", "text": "row 2, changed"}, got
+        # Untouched, the same component starts again from what the server drew, as before.
+        left = _merge(page, before, after,
+                      "window.__f = box.firstChild; window.__check = function (box) {"
+                      " return {same: box.firstChild === window.__f,"
+                      " text: box.querySelectorAll('span')[2].textContent}; }")
+        assert left == {"same": False, "text": "row 2, changed"}, left
+
     def test_an_attribute_the_server_left_alone_keeps_what_the_page_made_of_it(self, page):
         before = '<div data-key="a" class="x"><button class="b" style="">Go</button></div>'
         after = '<div data-key="a" class="x y"><button class="b">Go</button></div>'

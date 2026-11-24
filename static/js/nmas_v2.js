@@ -825,6 +825,31 @@
     return a !== b && /(^|[\s,])(load|revealed|intersect)([\s,]|$)/.test(b);
   }
 
+  /* PURE over the DOM: whether *node* holds something a person did that its drawing does not:
+     a checkbox or radio whose tick differs from the drawn one, a select whose choice differs
+     from the drawn one (the first option when none is drawn selected), or a part being edited
+     (`editingIn`: typed text, a focused field, `data-editing="true"`). */
+  function personsIn(node) {
+    if (!node || !node.querySelectorAll) return false;
+    if (editingIn(node)) return true;
+    var ticks = node.querySelectorAll('input[type=checkbox], input[type=radio]');
+    for (var i = 0; i < ticks.length; i++) {
+      if (!ticks[i].disabled && ticks[i].checked !== ticks[i].defaultChecked) return true;
+    }
+    var sels = node.querySelectorAll('select');
+    for (var j = 0; j < sels.length; j++) {
+      var s = sels[j], drawn = s.multiple ? -1 : 0;
+      for (var k = 0; k < s.options.length; k++) {
+        if (s.options[k].selected !== s.options[k].defaultSelected) {
+          if (s.multiple) return true;
+        }
+        if (!s.multiple && s.options[k].defaultSelected) drawn = k;
+      }
+      if (!s.multiple && s.options.length && s.selectedIndex !== drawn) return true;
+    }
+    return false;
+  }
+
   /* Returns the node that stands for *next* afterwards: *live* itself, or what replaced it. */
   function morph(live, next, ctx) {
     var was = drawnFrom.get(live);
@@ -841,7 +866,13 @@
     // came with. One the server left alone keeps its state (an open menu, a form's choices).
     // So does an element whose new triggers fire as it is drawn (`load`, `revealed`): htmx
     // fires those on an element's first wiring only.
-    if (live !== ctx.root && (live.hasAttribute('x-data') || startsAgain(was, next)) && live.parentNode) {
+    // A component holding what a person did (a tick, a radio or an option they changed, text
+    // they typed, or a kept part) is merged in place instead, so their work survives a redraw
+    // they did not ask for (C4229: one Devices row's change cleared every tick). The control
+    // under the pointer or focused is not such work (`holdsWork`).
+    var restart = startsAgain(was, next) ||
+        (live.hasAttribute('x-data') && !holdsWork(live, ctx) && !personsIn(live));
+    if (live !== ctx.root && restart && live.parentNode) {
       var made = root.document.importNode(next, true);
       live.parentNode.replaceChild(made, live);
       remember(made, next);
@@ -870,6 +901,20 @@
   function holdsPart(node, ctx) {
     for (var i = 0; i < ctx.keep.length; i++) {
       if (node === ctx.keep[i] || (node.contains && node.contains(ctx.keep[i]))) return true;
+    }
+    return false;
+  }
+
+  /* Whether *node* holds a kept part other than the control under the pointer or focused
+     (`ctx.pointed`, C2841's keep). That keep is about where a press lands, and a component
+     started again is drawn in the same place; its state belongs to its drawing. Counted as
+     work, it kept the update page's Check again saying "Still no answer" after the check had
+     answered and the server had drawn it anew (the pressed button keeps the focus). */
+  function holdsWork(node, ctx) {
+    for (var i = 0; i < ctx.keep.length; i++) {
+      var k = ctx.keep[i];
+      if (k === ctx.pointed) continue;
+      if (node === k || (node.contains && node.contains(k))) return true;
     }
     return false;
   }
@@ -1076,7 +1121,7 @@
   }
 
   function mergeInto(outer, target, fragment, hold) {
-    var ctx = {hold: hold !== false, keep: heldParts(target), root: target};
+    var ctx = {hold: hold !== false, keep: heldParts(target), root: target, pointed: pointedAt(target)};
     var kept = focusIn(target);
     var els = Array.prototype.filter.call(fragment.childNodes, function (n) { return n.nodeType === 1; });
     var next = els.length === 1 ? els[0] : null;
