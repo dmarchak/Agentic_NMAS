@@ -266,3 +266,56 @@ class TestTheRunOnTheStepper:
         assert "run-step-failed" in rows[1][2] and "a sent line was not read back" in rows[1][2]
         assert '<tr data-outcome="deployed"><td>batch 1</td><td>r3</td>' in html, \
             "the rows table stays the answer"
+
+
+# ── C3601: In progress lists a plan and a run, and their page reopens them ────────────────────
+
+class TestInProgressReopensThem:
+    """C3601's fleet change: a plan or a run started and left is listed by In progress with the
+    intent page opened on its job as the link, and that page draws the job's card above the
+    layers; never only the job's id."""
+
+    @staticmethod
+    def _rows(which, href):
+        from modules import in_flight
+        return [x for x in in_flight.chip([], "test-person@example.invalid")[which]
+                if x.get("href") == href]
+
+    def test_a_plan_is_listed_and_its_page_draws_the_plan(self, page, monkeypatch):
+        monkeypatch.setattr("modules.nsot.device_ops.in_flight", lambda name, now: [])
+        monkeypatch.setattr("modules.seen_runs.is_seen", lambda viewer, job: False)
+        html = _plan(page, "tag-blind-lab", "ntp_servers", "(absent)", "[192.0.2.123]") \
+            .get_data(as_text=True)
+        job = html.split("/v2/intent/change/job/", 1)[1].split("?", 1)[0]
+        assert capture_job.wait(job, 30)
+        href = f"/v2/intent?list=Lab&layer=tag-blind-lab&plan_job={job}"
+        (done,) = self._rows("finished", href)
+        assert (done["level"], done["words"]) == ("ok", "ready to read"), done
+        html = page.get(href).get_data(as_text=True)
+        assert 'action="/v2/intent/change/approve' in html, "the plan's card, its approval"
+        assert "Intent · layers · Lab" in html, "on the intent page, above the layers"
+
+    def test_a_run_is_listed_running_and_paused_and_its_page_draws_the_run(self, page,
+                                                                           monkeypatch):
+        from modules.nsot import fleet_change as F
+        monkeypatch.setattr("modules.nsot.device_ops.in_flight", lambda name, now: [])
+        monkeypatch.setattr("modules.seen_runs.is_seen", lambda viewer, job: False)
+        at, go = stepping(monkeypatch, TestTheRunOnTheStepper()._deployed(), block_at="r2")
+        plan = _plan_of(["r2", "r3"], monkeypatch)
+        plan["layer"]["key"] = "tag-blind-lab"
+        try:
+            job = F.run_start("Lab", plan, "abc123", [["r2"], ["r3"]], after_canary="pause",
+                              actor="op", actor_kind="person")
+            href = f"/v2/intent?list=Lab&layer=tag-blind-lab&run_job={job}"
+            assert at.wait(10), "r2's turn came"
+            assert len(self._rows("running", href)) == 1
+            html = page.get(href).get_data(as_text=True)
+            assert html.count("data-run-stepper") == 1, "the running run's stepper"
+        finally:
+            go.set()
+        assert capture_job.wait(job, 30)
+        (done,) = self._rows("finished", href)
+        assert (done["level"], done["words"]) == (
+            "warn", "paused after the canary: waits for your Go on"), done
+        html = page.get(href).get_data(as_text=True)
+        assert "data-fc-paused" in html and "Go on: the 1 left" in html, html

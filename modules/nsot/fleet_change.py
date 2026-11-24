@@ -398,7 +398,17 @@ def plan_start(list_name: str, target, steps: list, actor: str) -> str:
         return mask_payload(plan_target(list_name, target, steps))
     return capture_job.start(list_name, f"Plan {named(target)}'s change", actor, work,
                              kind="fleet change plan", announce_keys=ANNOUNCE_KEYS,
-                             announcer=ANNOUNCER)
+                             announcer=ANNOUNCER, page=job_page(list_name, target, "plan_job"))
+
+
+def job_page(list_name: str, target, which: str) -> str:
+    """The intent page opened on a change's job, *which* ``plan_job`` or ``run_job``: In
+    progress's link to it (C3601), so a plan or run started and left is never reachable only by
+    its id. *target* is a layer's key or ``{"devices": [...]}`` (no layer: the page's own)."""
+    from urllib.parse import quote
+
+    layer = f"&layer={quote(target)}" if isinstance(target, str) and target else ""
+    return f"/v2/intent?list={quote(list_name)}{layer}&{which}={{job}}"
 
 
 # ---------------------------------------------------------------------------
@@ -773,7 +783,8 @@ def approve_and_run_start(list_name: str, target, steps: list, confirmed_hash: s
                     actor=actor, actor_kind=actor_kind, start_at=0, job=job)
     return capture_job.start(list_name, f"Approve and run {named(target)}'s change", actor, work,
                              kind="fleet change run", announce_keys=RUN_KEYS,
-                             announcer=RUN_ANNOUNCER)
+                             announcer=RUN_ANNOUNCER,
+                             page=job_page(list_name, target, "run_job"))
 
 
 def _run(list_name: str, plan: dict, commit: str, batches: list, *, after_canary: str,
@@ -798,7 +809,11 @@ def _run(list_name: str, plan: dict, commit: str, batches: list, *, after_canary
                     start_at=start_at, label=f"{label_of(plan)}'s change",
                     link=f"/v2/intent?list={list_name}", key=plan.get("hash") or commit,
                     on_wave=on_wave)
-    return mask_payload({"state": got["state"], "commit": commit, "plan": plan,
+    # In progress's row (`in_flight.page_finished_row`) in the card's own words: its paused
+    # run waits for Go on, the card's button.
+    words = ({"words": "paused after the canary: waits for your Go on"}
+             if got["state"] == "paused" else {})
+    return mask_payload({"state": got["state"], **words, "commit": commit, "plan": plan,
                          "batches": batches, "next": got["next"],
                          "results": got["results"], "stopped": got["stopped"],
                          "told": got["told"], "actor": actor})
@@ -815,6 +830,7 @@ def run_start(list_name: str, plan: dict, commit: str, batches: list, *, after_c
     def work(job):
         return _run(list_name, plan, commit, batches, after_canary=after_canary, actor=actor,
                     actor_kind=actor_kind, start_at=start_at, job=job)
+    layer = (plan.get("layer") or {}).get("key") or ""
     return capture_job.start(list_name, f"Run {label_of(plan)}'s change", actor, work,
                              kind="fleet change run", announce_keys=RUN_KEYS,
-                             announcer=RUN_ANNOUNCER)
+                             announcer=RUN_ANNOUNCER, page=job_page(list_name, layer, "run_job"))

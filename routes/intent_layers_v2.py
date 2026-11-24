@@ -34,10 +34,19 @@ def _ctx() -> dict:
 
 @bp.route("", methods=["GET"])
 def page():
-    """FC2: the network's layers and the chosen one's values."""
+    """FC2: the network's layers and the chosen one's values; opened on a change's plan or run
+    (``plan_job``, ``run_job``: In progress's link, C3601), that job's card above them."""
     from routes.v2 import _page
 
-    return _page("v2/intent_layers.html", active_nav="intent", **_ctx())
+    ctx = _ctx()
+    layer = (request.args.get("layer") or "").strip()
+    plan_job = (request.args.get("plan_job") or "").strip()
+    run_job = (request.args.get("run_job") or "").strip()
+    if ctx["known"] and run_job:
+        ctx["r"] = _run_of_job(run_job, ctx["list_name"], layer)
+    elif ctx["known"] and plan_job:
+        ctx["p"] = _plan_of_job(plan_job, ctx["list_name"], layer)
+    return _page("v2/intent_layers.html", active_nav="intent", **ctx)
 
 
 @bp.route("/region", methods=["GET"])
@@ -201,22 +210,27 @@ def change_plan():
 def change_job(job):
     """The plan's card for its job: still planning, the plan, its refusal, or why there is
     none. Re-read when the job announces `fleet_change`."""
+    return _plan_card(_plan_of_job(job, (request.args.get("list") or "").strip(),
+                                   (request.args.get("layer") or "").strip()))
+
+
+def _plan_of_job(job: str, name: str, layer: str) -> dict:
+    """The plan card's ``p`` for *job*: its card route's, and the page's opened on the job
+    (``plan_job``; In progress's link, C3601)."""
     from modules.nsot import capture_job
 
     got = capture_job.get(job)
-    name = (request.args.get("list") or "").strip()
-    layer = (request.args.get("layer") or "").strip()
     if got is None:
-        return _plan_card({"state": "unknown", "list": name, "layer": layer, "job": job})
+        return {"state": "unknown", "list": name, "layer": layer, "job": job}
     if got["state"] == "running":
-        return _plan_card({"state": "planning", "list": name, "layer": layer, "job": job})
+        return {"state": "planning", "list": name, "layer": layer, "job": job}
     if got["state"] == "failed":
-        return _plan_card({"state": "refused", "list": name, "layer": layer,
-                           "error": f"the plan did not finish: {got['error']}"})
+        return {"state": "refused", "list": name, "layer": layer,
+                "error": f"the plan did not finish: {got['error']}"}
     plan = got["payload"] or {}
     if not plan.get("ok"):
-        return _plan_card({"state": "refused", "list": name, "layer": layer,
-                           "error": plan.get("error", "")})
+        return {"state": "refused", "list": name, "layer": layer,
+                "error": plan.get("error", "")}
     # What the card draws, and nothing else (every carried field is drawn).
     import yaml
 
@@ -245,8 +259,8 @@ def change_job(job):
                          plan["layer"]["before"] != plan["layer"]["after"]),
              "pending": [{"device": d["device"], "pending": d["pending"]}
                          for d in plan["devices"] if d["pending"]]}
-    return _plan_card({"state": "plan", "list": name, "layer": layer, "job": job, "plan": drawn,
-                       "elapsed_s": got.get("elapsed_s")})
+    return {"state": "plan", "list": name, "layer": layer, "job": job, "plan": drawn,
+            "elapsed_s": got.get("elapsed_s")}
 
 
 def _held(step: dict, side: str):
@@ -330,14 +344,19 @@ def change_run(job):
     why there is none. Re-read when the run announces `fleet_change` and as each device steps.
     Running, and once it ended, each device on THE stepper, from the batch deploy's own record
     (`deploy_job.track`, `deploy_job.waves_card`); *q* finds a device in a long run."""
+    return _run_card(_run_of_job(job, (request.args.get("list") or "").strip(),
+                                 (request.args.get("layer") or "").strip()))
+
+
+def _run_of_job(job: str, name: str, layer: str) -> dict:
+    """The run card's ``r`` for *job*: its card route's, and the page's opened on the job
+    (``run_job``; In progress's link, C3601)."""
     from modules import deploy_job
     from modules.nsot import capture_job
 
     got = capture_job.get(job)
-    name = (request.args.get("list") or "").strip()
-    layer = (request.args.get("layer") or "").strip()
     if got is None:
-        return _run_card({"state": "unknown", "list": name, "layer": layer, "job": job})
+        return {"state": "unknown", "list": name, "layer": layer, "job": job}
 
     def stepper(results=None):
         return deploy_job.waves_card(
@@ -345,15 +364,14 @@ def change_run(job):
             q=request.args.get("q", ""), search_target="#fc-plan", unit="batch",
             search=("intent_layers_v2.change_run", {"job": job, "list": name, "layer": layer}))
     if got["state"] == "running":
-        return _run_card({"state": "running", "list": name, "layer": layer, "job": job,
-                          "run": stepper()})
+        return {"state": "running", "list": name, "layer": layer, "job": job, "run": stepper()}
     if got["state"] == "failed":
-        return _run_card({"state": "refused", "list": name, "layer": layer,
-                          "error": f"the run did not finish: {got['error']}"})
+        return {"state": "refused", "list": name, "layer": layer,
+                "error": f"the run did not finish: {got['error']}"}
     run = got["payload"] or {}
     if run.get("state") == "refused":
-        return _run_card({"state": "refused", "list": name, "layer": layer,
-                          "error": run.get("error", "")})
+        return {"state": "refused", "list": name, "layer": layer,
+                "error": run.get("error", "")}
     rows = [{"device": r.get("device", ""), "outcome": r.get("outcome", ""),
              "verified": (r.get("verify") or {}).get("ok"),
              "reason": r.get("reason") or (r.get("verify") or {}).get("summary") or ""}
@@ -361,13 +379,13 @@ def change_run(job):
     batch_of = {d: n for n, b in enumerate(run.get("batches") or []) for d in b}
     # Each device's steps, one level down, while this server keeps their trail.
     steps = stepper(run.get("results") or [])
-    return _run_card({"state": run["state"], "list": name, "layer": layer, "job": job,
-                      "run": steps if steps and any(x["steps"] for x in steps["rows"]) else None,
-                      "title": _run_title(run.get("plan") or {}, layer),
-                      "commit": run.get("commit", ""), "stopped": run.get("stopped", ""),
-                      "rows": [dict(r, batch=batch_of.get(r["device"], 0)) for r in rows],
-                      "left": [d for b in (run.get("batches") or [])[run.get("next", 0):]
-                               for d in b] if run["state"] == "paused" else []})
+    return {"state": run["state"], "list": name, "layer": layer, "job": job,
+            "run": steps if steps and any(x["steps"] for x in steps["rows"]) else None,
+            "title": _run_title(run.get("plan") or {}, layer),
+            "commit": run.get("commit", ""), "stopped": run.get("stopped", ""),
+            "rows": [dict(r, batch=batch_of.get(r["device"], 0)) for r in rows],
+            "left": [d for b in (run.get("batches") or [])[run.get("next", 0):]
+                     for d in b] if run["state"] == "paused" else []}
 
 
 def _run_title(plan: dict, layer: str) -> str:

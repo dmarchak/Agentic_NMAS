@@ -51,6 +51,10 @@ Below the plan, **Approve and run: canary first** commits the layer once and run
 the canary first, then batches, the first failure stopping it (see
 [the approval and the run](fleet-change#run)).
 
+You may leave the page while a plan or a run works: **In progress** lists it while it runs and
+once it ends (a run paused after its canary amber, waiting for your **Go on**), and opens this
+page on it, its card above the layers.
+
 ## Not yet {#not-yet}
 
 Removing a value comes after a removal's shape is measured on each platform. A stopped run

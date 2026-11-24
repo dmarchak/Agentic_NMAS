@@ -632,7 +632,6 @@ EMPTY_IN_FIXTURE = {
     "v2/_history_metric.html rec.rows": "a metrics question's restart record: no restart is recorded on the walk's store",
     "v2/_history_remote.html v.failed": _REMOTE + " (and no Verify is run)",
     "v2/_history_views.html views.views": "History › Saved by your team: no view is saved on the walk's store",
-    "v2/_in_progress.html ip.finished": _NOTHING_RUNS,
     "v2/_in_progress.html ip.unread": _ERRORS + " (a network whose holds could not be read)",
     "v2/_install_access.html acc.labels": "Access and identity's service tokens: none is configured on the walk's store",
     "v2/_install_access.html acc.service_ops": "Access and identity's service tokens: none is configured on the walk's store",
@@ -857,7 +856,10 @@ EMPTY_IN_FIXTURE = {
 #: kind filter's summary (`g`, `kind_groups`) drew, measured.
 #: 325 with the read-only account's running rollout on THE stepper (C4232, 2026-11-24): its two
 #: devices drew the counts line (`r.tally`), measured.
-EMPTY_IN_FIXTURE_CEILING = 325
+#: 324 with a fleet change's plan and run listed by In progress (C3601, 2026-11-24): the walk's
+#: own plan and run jobs carry the intent page, so In progress's finished rows
+#: (`ip.finished`) drew, measured.
+EMPTY_IN_FIXTURE_CEILING = 324
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.
