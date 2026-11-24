@@ -29,9 +29,13 @@
   (`git commit -F`, its first line checked), push; then one full suite; then deploy if C4090 is
   answered. The scratch `~/nmas-worktrees/landing` was removed at 01:55; `land_all.sh`
   rebuilds it on a fresh `git worktree add --detach` (now eleven patches, C4229's last).
-- **Next:** C4228 (an unfocused press answer removed by the next merge) needs a real Settings
-  save, the focus moved, then a `settings` announcement with a change; not started (too long
-  for the time left). The previous handoff is docs/handoff/2026-11-23.md.
+- **C4228 measured, UNKNOWN to B** (01:56 session, scratch `~/mercury-runs/c4228_measure_test.py`,
+  same harness): an answer a press draws inside a part of a region (the Settings group card is
+  no region) is kept in all eight cases; an answer drawn by a press that swaps a REGION itself
+  (e.g. _ai_classes.html, _code_repo.html cards) is captured as the server's copy and removed
+  by the next merge. **Next:** survey which presses target a region or live part, then build
+  C4228's fix as a patch (keep that answer as a kept part); then C4226. The previous handoff is
+  docs/handoff/2026-11-23.md.
 - **C4227 closed as measured** (the refresh audit's cause 2): the live merge keeps a tick, a
   radio and a chosen option (Devices through a real `reachability` redraw; keyed rows merged
   directly, changed and unchanged). The scratch test is `~/mercury-runs/c4227_measure_test.py`
