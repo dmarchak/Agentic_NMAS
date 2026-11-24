@@ -1577,7 +1577,26 @@ def drawn(network: str, found: dict, *, resolved: float = None, ended: str = "",
     out.pop("why_person", None)
     if isinstance(out.get("ai_answer"), dict):
         out["ai_answer"] = {k: v for k, v in out["ai_answer"].items() if k != "overlooked"}
-    return display_names.people_payload(steplog.masked(out))
+    return display_names.people_payload(steplog.masked(_without(out, NOT_DRAWN)))
+
+
+#: Keys real records carry into the section that no template draws (C4219, found by C4090's
+#: fixtures from the installation's records, tests/test_v2_context_is_drawn.py `test_forward`):
+#: a proposal's fit and need for a person (the AI's, read by `view` into the plan's words), a
+#: step's preconditions as read and whether a read was reused (read by `plan` before this), and
+#: a proof's verify seconds (read by `progress`). Dropped on the way out, wherever they sit.
+NOT_DRAWN = frozenset({"fit", "needs_human", "preconditions_read", "reused", "verify_s"})
+
+
+def _without(node, keys):
+    """*node* with every dict's *keys* left out, at any depth (a copy)."""
+    if isinstance(node, dict):
+        return {k: _without(v, keys) for k, v in node.items() if k not in keys}
+    if isinstance(node, list):
+        return [_without(v, keys) for v in node]
+    if isinstance(node, tuple):
+        return tuple(_without(v, keys) for v in node)
+    return node
 
 
 # ── Mercury's diagnosis, and what moved since the panel was drawn ─────────────────────────

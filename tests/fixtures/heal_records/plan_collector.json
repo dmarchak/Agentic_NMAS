@@ -1,0 +1,373 @@
+{
+ "captured": "scripts/nmas-config-read --records heal-incidents and fixit --list Default, 2026-11-24T00:51Z, from the installation, masked; the edits are README.md's",
+ "device": {
+  "id": "uid:39e34872-b120-4744-9aa4-39d9e01b29c2",
+  "name": "r7"
+ },
+ "incident": {
+  "attached": [],
+  "cause": "symptom",
+  "claimed": {
+   "at": "2026-11-17T01:39:47Z",
+   "by": "heal to intent",
+   "from": "standing"
+  },
+  "closed_at": "2026-11-17T01:39:47Z",
+  "closed_why": "nothing: nothing to heal: every symptom the incident named has cleared by itself at 01:39 UTC, nothing to do: r7 is at its golden (decision hd-6a4b444fc780)",
+  "device": "r7",
+  "errdisable": {
+   "checked_epoch": 1794879325.3857574,
+   "seen": 4,
+   "state": "unclassified",
+   "why": "r7's lines name no port err-disabled by bpduguard or psecure-violation"
+  },
+  "fold": {
+   "state": "not_folded",
+   "why": "r4's hi-431eaa1fa107 stood on its decision since 2026-11-14T03:43:43Z, more than 250 s before this symptom, so it is judged on its own"
+  },
+  "id": "hi-22cfdc299000",
+  "network": "Default",
+  "opened_at": "2026-11-14T18:24:40Z",
+  "opened_epoch": 1794680680.597379,
+  "reads": [
+   {
+    "at": "2026-11-14T18:24:43Z",
+    "by": "heal to intent",
+    "changed_lines": null,
+    "departure": "",
+    "epoch": 1794680683.3399081,
+    "error": "",
+    "state": "clean"
+   }
+  ],
+  "related": [],
+  "retries": [
+   {
+    "at": "2026-11-16T04:53:18Z",
+    "by": "alex@example.com",
+    "done_at": "2026-11-16T04:53:18Z",
+    "done_epoch": 1794804798.799002,
+    "epoch": 1794804798.799002,
+    "failed": true,
+    "fixes": [
+     {
+      "decision": "hd-0ce5c92be03f",
+      "fix": "decision",
+      "guard": null,
+      "name": "Mercury's own fix",
+      "outcome": "cant_fix",
+      "state": "no_fix",
+      "words": "r7 is at its golden, which matches its intent, so no configuration fix on r7 can cure this (there is no departure to heal, and guessing is not a fix): Mercury fixes nothing by itself, and a person decides (Tier 3)"
+     }
+    ],
+    "from": {
+     "decision": "hd-7080f74e58d2",
+     "guard": 4,
+     "outcome": "held",
+     "words": "At 21:30 UTC, the alert NMAS telemetry stream lost: r7 subscription 101 fired on r7: no telemetry sample received on subscription 101 for 90 s from r7; a stopped stream is seen about 180 s after it stops, as Telegraf keeps its last values that long, so it stopped about that long before this alert be"
+    },
+    "id": "rt-f50abf4cfdff",
+    "key": "switched_on:2026-11-16T04:53:17Z",
+    "script": "",
+    "state": "done",
+    "trigger": "switched_on",
+    "trigger_words": "self-healing switched on",
+    "words": "Retried at 04:53 UTC: self-healing switched on; Mercury's own fix: r7 is at its golden, which matches its intent, so no configuration fix on r7 can cure this (there is no departure to heal, and guessing is not a fix): Mercury fixes nothing by itself, and a person decides (Tier 3)"
+   },
+   {
+    "at": "2026-11-16T05:59:29Z",
+    "by": "alex@example.com",
+    "done_at": "2026-11-16T05:59:29Z",
+    "done_epoch": 1794808769.9244056,
+    "epoch": 1794808769.9244056,
+    "failed": true,
+    "fixes": [
+     {
+      "decision": "hd-0eab05a176bd",
+      "fix": "decision",
+      "guard": null,
+      "name": "Mercury's own fix",
+      "outcome": "cant_fix",
+      "state": "no_fix",
+      "words": "r7 is at its golden, which matches its intent, so no configuration fix on r7 can cure this (there is no departure to heal, and guessing is not a fix): Mercury fixes nothing by itself, and a person decides (Tier 3)"
+     }
+    ],
+    "from": {
+     "decision": "hd-0ce5c92be03f",
+     "guard": null,
+     "outcome": "cant_fix",
+     "words": "At 21:30 UTC, the alert NMAS telemetry stream lost: r7 subscription 101 fired on r7: no telemetry sample received on subscription 101 for 90 s from r7; a stopped stream is seen about 180 s after it stops, as Telegraf keeps its last values that long, so it stopped about that long before this alert be"
+    },
+    "id": "rt-d36b5ec27e3e",
+    "key": "switched_on:2026-11-16T05:59:25Z",
+    "script": "",
+    "state": "done",
+    "trigger": "switched_on",
+    "trigger_words": "self-healing switched on",
+    "words": "Retried at 05:59 UTC: self-healing switched on; Mercury's own fix: r7 is at its golden, which matches its intent, so no configuration fix on r7 can cure this (there is no departure to heal, and guessing is not a fix): Mercury fixes nothing by itself, and a person decides (Tier 3)"
+   },
+   {
+    "at": "2026-11-16T06:35:43Z",
+    "by": "alex@example.com",
+    "done_at": "2026-11-16T06:35:43Z",
+    "done_epoch": 1794810943.914052,
+    "epoch": 1794810943.914052,
+    "failed": true,
+    "fixes": [
+     {
+      "decision": "hd-40fc32c327be",
+      "fix": "decision",
+      "guard": null,
+      "name": "Mercury's own fix",
+      "outcome": "cant_fix",
+      "state": "no_fix",
+      "words": "r7 is at its golden, which matches its intent, so no configuration fix on r7 can cure this (there is no departure to heal, and guessing is not a fix): Mercury fixes nothing by itself, and a person decides (Tier 3)"
+     }
+    ],
+    "from": {
+     "decision": "hd-0eab05a176bd",
+     "guard": null,
+     "outcome": "cant_fix",
+     "words": "At 21:30 UTC, the alert NMAS telemetry stream lost: r7 subscription 101 fired on r7: no telemetry sample received on subscription 101 for 90 s from r7; a stopped stream is seen about 180 s after it stops, as Telegraf keeps its last values that long, so it stopped about that long before this alert be"
+    },
+    "id": "rt-a8ff16bc25c1",
+    "key": "switched_on:2026-11-16T06:35:40Z",
+    "script": "",
+    "state": "done",
+    "trigger": "switched_on",
+    "trigger_words": "self-healing switched on",
+    "words": "Retried at 06:35 UTC: self-healing switched on; Mercury's own fix: r7 is at its golden, which matches its intent, so no configuration fix on r7 can cure this (there is no departure to heal, and guessing is not a fix): Mercury fixes nothing by itself, and a person decides (Tier 3)"
+   },
+   {
+    "at": "2026-11-16T19:14:48Z",
+    "by": "alex@example.com",
+    "done_at": "2026-11-16T19:14:48Z",
+    "done_epoch": 1794856488.1245954,
+    "epoch": 1794856488.1245954,
+    "failed": true,
+    "fixes": [
+     {
+      "decision": "hd-51f6cba6e9a9",
+      "fix": "decision",
+      "guard": null,
+      "name": "Mercury's own fix",
+      "outcome": "cant_fix",
+      "state": "no_fix",
+      "words": "r7 is at its golden, which matches its intent, so no configuration fix on r7 can cure this (there is no departure to heal, and guessing is not a fix): Mercury fixes nothing by itself, and a person decides (Tier 3)"
+     }
+    ],
+    "from": {
+     "decision": "hd-40fc32c327be",
+     "guard": null,
+     "outcome": "cant_fix",
+     "words": "At 21:30 UTC, the alert NMAS telemetry stream lost: r7 subscription 101 fired on r7: no telemetry sample received on subscription 101 for 90 s from r7; a stopped stream is seen about 180 s after it stops, as Telegraf keeps its last values that long, so it stopped about that long before this alert be"
+    },
+    "id": "rt-a74a70f01c0e",
+    "key": "switched_on:2026-11-16T19:14:46Z",
+    "script": "",
+    "state": "done",
+    "trigger": "switched_on",
+    "trigger_words": "self-healing switched on",
+    "words": "Retried at 19:14 UTC: self-healing switched on; Mercury's own fix: r7 is at its golden, which matches its intent, so no configuration fix on r7 can cure this (there is no departure to heal, and guessing is not a fix): Mercury fixes nothing by itself, and a person decides (Tier 3)"
+   }
+  ],
+  "settled": {
+   "at": "2026-11-14T18:24:40Z",
+   "first": 0,
+   "how": "at_golden",
+   "operands": {
+    "grace_seconds": 120,
+    "last_outside_change": null,
+    "reads": 1
+   },
+   "second": null,
+   "words": "the read found the device at its golden: nothing departed"
+  },
+  "standing": {
+   "at": "2026-11-16T19:14:48Z",
+   "decision": "hd-51f6cba6e9a9",
+   "departure": "",
+   "epoch": 1794856488.1245954,
+   "guard": null,
+   "mode": "auto",
+   "on": "symptom",
+   "outcome": "cant_fix",
+   "words": "At 21:30 UTC, the alert NMAS telemetry stream lost: r7 subscription 101 fired on r7: no telemetry sample received on subscription 101 for 90 s from r7; a stopped stream is seen about 180 s after it stops, as Telegraf keeps its last values that long, so it stopped about that long before this alert be"
+  },
+  "state": "closed",
+  "stood": null,
+  "triggers": [
+   {
+    "at": "2026-11-08T21:30:50Z",
+    "detect_seconds": "180",
+    "epoch": 1794173450.0,
+    "interface": "",
+    "key": "alert:3c9f88fb8cb36bb87da1",
+    "kind": "alert",
+    "related": [],
+    "rule": "NMAS telemetry stream lost: r7 subscription 101",
+    "source": "grafana-alerts",
+    "subscription": "101",
+    "words": "the alert NMAS telemetry stream lost: r7 subscription 101 fired on r7: no telemetry sample received on subscription 101 for 90 s from r7; a stopped stream is seen about 180 s after it stops, as Telegraf keeps its last values that long, so it stopped about that long before this alert began; it still fires and no open incident holds it: its incident hi-126fa0771352 closed at 2026-11-08T21:31:43Z (cant_fix)"
+   },
+   {
+    "at": "2026-11-08T21:30:50Z",
+    "detect_seconds": "180",
+    "epoch": 1794173450.0,
+    "interface": "",
+    "key": "alert:4381bd117735760e03cc",
+    "kind": "alert",
+    "related": [],
+    "rule": "NMAS telemetry stream lost: r7 subscription 102",
+    "source": "grafana-alerts",
+    "subscription": "102",
+    "words": "the alert NMAS telemetry stream lost: r7 subscription 102 fired on r7: no telemetry sample received on subscription 102 for 90 s from r7; a stopped stream is seen about 180 s after it stops, as Telegraf keeps its last values that long, so it stopped about that long before this alert began; it still fires and no open incident holds it: its incident hi-126fa0771352 closed at 2026-11-08T21:31:43Z (cant_fix)"
+   },
+   {
+    "at": "2026-11-17T01:34:00Z",
+    "epoch": 1794879240.0,
+    "interface": "",
+    "key": "alert:6db363e2cb6fc875f634",
+    "kind": "alert",
+    "related": [],
+    "rule": "NMAS heartbeat missing: r7",
+    "source": "grafana-alerts",
+    "words": "the alert NMAS heartbeat missing: r7 fired on r7: no heartbeat received for 750 s from r7"
+   },
+   {
+    "at": "2026-11-17T01:33:50Z",
+    "epoch": 1794879230.0,
+    "interface": "",
+    "key": "alert:e6de01762e2a3e3d641e",
+    "kind": "alert",
+    "related": [],
+    "rule": "Critical syslog received",
+    "source": "grafana-alerts",
+    "words": "the alert Critical syslog received fired on r7"
+   }
+  ],
+  "triggers_seen": 4,
+  "unsettled": {
+   "at": "2026-11-16T19:14:48Z",
+   "from": "standing on hd-40fc32c327be",
+   "why": "tried again: self-healing switched on"
+  },
+  "updated_at": "2026-11-17T01:39:47Z"
+ },
+ "line": {
+  "ai": "ai:fixit-troubleshoot",
+  "at": "2026-11-16T05:01:42Z",
+  "by": "alex@example.com",
+  "calls": [
+   "ai-e1f1069c95034af4",
+   "ai-5314cc11481f44df"
+  ],
+  "epoch": 1794805302.9334588,
+  "operation": "telemetry-collector-resubscribe",
+  "params": {
+   "subs": [
+    "101",
+    "102"
+   ]
+  },
+  "params_hash": "b47d117dfabb94cc",
+  "prompt": "fixit_troubleshoot.v12",
+  "proposal": "p2",
+  "sessions": {
+   "1": {
+    "at": "2026-11-16T05:01:42Z",
+    "dry_run": "dry run: would close the one established session from 192.0.2.46:56221 to 192.0.2.110:57000 with `/usr/bin/ss -H -4 -t -n -K state established src 192.0.2.110 and sport = :57000 and dst 192.0.2.46 and dport = :56221`. Nothing was closed",
+    "local": "192.0.2.110:57000",
+    "quiet_s": 5324,
+    "refused": "",
+    "session": "192.0.2.46:56221"
+   }
+  },
+  "shown": {
+   "cites": [
+    "read:1",
+    "read:2",
+    "read:3",
+    "attempt:1",
+    "attempt:2"
+   ],
+   "fit": [
+    "the topology left out",
+    "observer cut to 5 of 10 pieces, the first in its order",
+    "observer cut to 2 of 10 pieces, the first in its order",
+    "logs cut to 5 of 11 pieces, those nearest the onset",
+    "health cut to 2 of 4 pieces, the first in its order",
+    "health cut to 1 of 4 pieces, the first in its order",
+    "observer cut to 1 of 10 pieces, the first in its order",
+    "logs cut to 2 of 11 pieces, those nearest the onset",
+    "history cut to 2 of 4 pieces, those nearest the onset",
+    "neighbours cut to 2 of 4 pieces, the first in its order",
+    "logs cut to 1 of 11 pieces, those nearest the onset",
+    "neighbours cut to 1 of 4 pieces, the first in its order",
+    "history cut to 1 of 4 pieces, those nearest the onset",
+    "still over the bound by the fallback estimate: the provider's count decides"
+   ],
+   "hypotheses": [
+    {
+     "cites": [
+      "read:1",
+      "read:2",
+      "diag:1",
+      "diag:2",
+      "attempt:1",
+      "attempt:2"
+     ],
+     "claim": "A stale half-open session from r7 on the collector blocks the stream: r7 reads Disconnecting while the collector holds an established, idle session from it.",
+     "confirm": "show telemetry internal connection",
+     "unverified_words": ""
+    },
+    {
+     "cites": [
+      "read:3",
+      "attempt:1",
+      "attempt:2"
+     ],
+     "claim": "r7's receivers stay Connecting because no new session can be established while the stale one stands, so the earlier re-subscribes never took effect.",
+     "confirm": "show telemetry ietf subscription 101 receiver",
+     "unverified_words": ""
+    }
+   ],
+   "needs_human": false,
+   "passes": 2,
+   "rationale": "r7's telemetry connection to the collector reads Disconnecting while the collector still holds an established session from r7 (192.0.2.46 port 56221) that has received nothing for about 5275 s. r7's receiver for subscription 101 stays Connecting, so no fresh session forms and both streams stay lost. Two plain re-subscribes did not clear this, because the stale session was left in place both times, and r7's configuration matches its intent.",
+   "reads": "AI analysis: asked for 3 reads; 3 run; 1 round of reads; answered; to fit the prompt's bound: the topology left out; observer cut to 5 of 10 pieces, the first in its order; observer cut to 2 of 10 pieces, the first in its order; logs cut to 5 of 11 pieces, those nearest the onset; health cut to 2 of 4 pieces, the first in its order; health cut to 1 of 4 pieces, the first in its order; observer cut to 1 of 10 pieces, the first in its order; logs cut to 2 of 11 pieces, those nearest the onset; history cut to 2 of 4 pieces, those nearest the onset; neighbours cut to 2 of 4 pieces, the first in i\u2026",
+   "steps": [
+    {
+     "cites": [
+      "read:1",
+      "read:2",
+      "read:3",
+      "attempt:1",
+      "attempt:2"
+     ],
+     "n": 1,
+     "only_unverified": false,
+     "operation": "telemetry-collector-resubscribe",
+     "unverified_words": "",
+     "why": "It closes the collector's stale idle session from r7 and then re-subscribes both streams, which the two earlier plain re-subscribes did not do."
+    }
+   ],
+   "why": "It closes the collector's stale idle session from r7 and then re-subscribes both streams, which the two earlier plain re-subscribes did not do."
+  },
+  "source": "ai",
+  "steps": [
+   {
+    "operation": "telemetry-collector-resubscribe",
+    "params": {
+     "subs": [
+      "101",
+      "102"
+     ]
+    },
+    "params_hash": "b47d117dfabb94cc"
+   }
+  ],
+  "verified": "access"
+ },
+ "page": "hi-22cfdc299000"
+}

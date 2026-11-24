@@ -5654,6 +5654,130 @@ def _fixit_section(client, _lab, _mp):
             capture_job._jobs.pop(k, None)
 
 
+def _fixit_captured(client, _lab, _mp):
+    """C4090 (the operator's ruling, 2026-11-23): the incident card's loops a fixed heal and an
+    AI plan draw, from real records captured on the installation by `nmas-config-read
+    --records` (tests/fixtures/heal_records/, its README.md the edits): a heal of r3 that closed
+    fixed and verified, its tail (save, golden commit, read again) under Fixed and its proof's
+    check; and two AI plans as their fix-it records kept them, drawn by the plan's own preflight
+    (`fixit.plan.preflight`) on its captured proposal line: s5's err-disable recovery (its
+    preconditions as the proposing job judged them, the command plan's verify) and r7's
+    re-subscribe with the collector step (its two systems' steps, the host's close and the
+    device's lines). Stood in for this provider alone: each device's identity (the captured
+    one), each step's preview (`plan._check_one`: the command plan rendered by its own code
+    from the captured parameters, the re-subscribe's units by its own plan on
+    tests/test_heal_resubscribe.py's box, r2's real intent standing in for r7's, and the
+    collector's session the one the proposal kept, which a page draw's preview never asks),
+    and the section's state, proposed, over each closed incident for the plan's one draw.
+    Lab's three heal stores are written for this provider alone, and put back as they were."""
+    import json as _json
+    import os as _os
+
+    import pytest
+
+    from modules.fixit import plan as PL
+    from modules.fixit import section as FS
+    from modules.heal import catalog
+    from modules.heal import decisions as HD
+    from modules.heal import incidents as HI
+    from modules.heal import resubscribe as R
+    from modules.heal import steplog as SL
+    from modules.nsot import command_plan as CP
+    from modules.nsot import ifnames
+    from tests import test_heal_resubscribe as T
+
+    def fixture(name):
+        with open(_os.path.join(ROOT, "tests", "fixtures", "heal_records", f"{name}.json"),
+                  encoding="utf-8") as fh:
+            return _json.load(fh)
+
+    healed = fixture("healed_tail")
+    plans = {d["page"]: d for d in (fixture("plan_errdisable"), fixture("plan_collector"))}
+    ids = {d["device"]["name"]: d["device"]["id"] for d in plans.values()}
+    paths = {"incidents": HI.path("Lab"), "decisions": HD.path("Lab"), "steps": SL._path("Lab")}
+    kept = {p: (open(p, "rb").read() if _os.path.exists(p) else None) for p in paths.values()}
+    made = [d for d in {_os.path.dirname(p) for p in paths.values()} if not _os.path.isdir(d)]
+    mp = pytest.MonkeyPatch()
+    src = T.Src()
+    src.device = lambda h: dict(T.DEV, hostname=h) if h == "r7" else {}
+    src._intents["r7"] = src._intents["r2"]
+
+    def preview(incident, operation, params, **_kw):
+        line = plans[incident.id]["line"]
+        if operation == R.COLLECTOR_KEY:
+            op = catalog.CATALOG[operation]
+            got = op.plan("Lab", params, sources=src)
+            drawn = op.drawn(got)
+            s = line["sessions"]["1"]
+            drawn["close"] = {"remote": s["session"], "local": s["local"],
+                              "quiet_s": s["quiet_s"], "dry_run": s["dry_run"]}
+            return {"ok": got["ok"], "hash": got["hash"], "drawn": drawn,
+                    "refused": "; ".join(got["refusals"]), "code": "", "repeat": {}}
+        t = CP.template_of(operation)
+        derived = dict(params, interface_short=ifnames.abbreviate(params["interface"]))
+        pre = line["shown"]["preconditions_read"]["1"]
+        p = {"ok": True, "derived": derived, "program": CP.program(t, derived),
+             "title": CP.substitute(t.title, derived), "hash": pre["hash"],
+             "dialect": "cisco_ios"}
+        return {"ok": True, "hash": pre["hash"], "drawn": CP.drawn(t, p), "refused": "",
+                "code": "", "repeat": {}}
+
+    real_view = FS.view
+
+    def view(network, found, **kw):
+        out = real_view(network, found, **kw)
+        d = plans.get(found.get("id") or "")
+        if not d:
+            return out
+        plan = PL.preflight(FS.incident_of(network, found)["incident"], d["line"])
+        out = dict(out, proposal=plan, state="proposed")
+        out["card"] = FS.card_of(out, found)
+        return out
+
+    def get(incident):
+        r = client.get(f"/v2/incident/{incident}?list=Lab")
+        assert r.status_code == 200, (incident, r.status_code)
+        return r.get_data(as_text=True)
+
+    try:
+        for p in paths.values():
+            _os.makedirs(_os.path.dirname(p), exist_ok=True)
+        with open(paths["incidents"], "w", encoding="utf-8") as fh:
+            _json.dump({"version": HI.VERSION, "incidents": healed["incidents"] + [
+                d["incident"] for d in plans.values()]}, fh)
+        for key in ("decisions", "steps"):
+            with open(paths[key], "w", encoding="utf-8") as fh:
+                fh.writelines(_json.dumps(row) + "\n" for row in healed[key])
+        mp.setattr(FS, "_identity", lambda net, dev: ids.get(dev, "nb:3"))
+        fixed = get(healed["page"])
+        assert 'data-tail="ok"' in fixed and "Golden committed: 4e2e7da21b" in fixed, \
+            fixed[:400]
+        assert "Verified: at intent · show proof" in fixed and 'data-check="pass"' in fixed
+        mp.setattr(PL, "_check_one", preview)
+        mp.setattr(FS, "view", view)
+        recover = get("hi-0614b58f49f7")
+        assert 'data-plan-checked="1"' in recover and "The cause has cleared: no new" in recover, \
+            recover[:400]
+        assert 'data-verify="2"' in recover and "within" in recover, recover[:400]
+        collector = get("hi-22cfdc299000")
+        assert 'data-plan-part="2"' in collector, collector[:400]
+        assert "close TCP session 192.0.2.46:56221 -&gt; 192.0.2.110:57000" in collector
+        assert 'data-step-sent="2"' in collector and "telemetry ietf subscription 101" in \
+            collector, collector[:400]
+    finally:
+        mp.undo()
+        for p, data in kept.items():
+            if data is None:
+                if _os.path.exists(p):
+                    _os.remove(p)
+            else:
+                with open(p, "wb") as fh:
+                    fh.write(data)
+        for d in made:
+            if _os.path.isdir(d) and not _os.listdir(d):
+                _os.rmdir(d)
+
+
 def _incidents_list(client, _lab, _mp):
     """Troubleshooting › Incidents (board T; provisional, operator review pending) on Lab, its
     two tabs with rows, a search and a device filter, and the top bar's Self-healing chip, from the
@@ -5731,7 +5855,8 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _settings_ai_catch_up, _ai_feedback,
                    _ai_spend, _assistant, _plans, _oob_onboard, _sdn, _sdn_apps,
                    _nsot_export_and_code_repo, _dhcp_steering, _heal_and_notify,
-                   _heal_proposal, _resubscribe, _heal_run, _incident_page, _fixit_section, _saved_plans,
+                   _heal_proposal, _resubscribe, _heal_run, _incident_page, _fixit_section,
+                   _fixit_captured, _saved_plans,
                    _fixes, _incidents_list,
                    _sdn_no_topology, _sdn_evidence, _sdn_trace, _sdn_switches, _sdn_analyse,
                    _sdn_policies, _sdn_links_and_caps,

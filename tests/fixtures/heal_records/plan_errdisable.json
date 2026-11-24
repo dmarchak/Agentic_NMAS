@@ -1,0 +1,261 @@
+{
+ "captured": "scripts/nmas-config-read --records heal-incidents and fixit --list Default, 2026-11-24T00:51Z, from the installation, masked; the edits are README.md's",
+ "device": {
+  "id": "uid:da11388c-9c2a-43d2-ac2e-d7d5b3017b83",
+  "name": "s5"
+ },
+ "incident": {
+  "attached": [],
+  "cause": "symptom",
+  "claimed": {
+   "at": "2026-11-16T06:44:25Z",
+   "by": "heal to intent",
+   "from": "standing"
+  },
+  "closed_at": "2026-11-16T06:44:25Z",
+  "closed_why": "nothing: fixed: the plan's run 8a25ad7a verified on s5 at 06:43 UTC (attempt 1, errdisable-recover): the incident closes on its fix's own device check, not on its alerts clearing (decision hd-3a39b1383fd3)",
+  "device": "s5",
+  "errdisable": {
+   "at": "2026-11-16T05:54:24Z",
+   "cause": "psecure-violation",
+   "checked_epoch": 1794811035.99568,
+   "classified_at": "2026-11-16T06:37:15Z",
+   "cleared": "unknown",
+   "cleared_at": "",
+   "confirmed": {
+    "agrees": true,
+    "at": "2026-11-16T06:37:15Z",
+    "cleared": "true",
+    "epoch": 1794811035.99568,
+    "found": {
+     "port": "Gi0/3",
+     "reason": "psecure-violation"
+    },
+    "psec": {
+     "last_mac": "aabb.cc00.8099",
+     "violations": 2
+    },
+    "run": "20261116T063717488165Z-8d8259ecafc34400948187eac42607ac",
+    "why": ""
+   },
+   "epoch": 1794808464.3090699,
+   "host": "edge-h7",
+   "lines": [
+    {
+     "at": "2026-11-16T05:54:24Z",
+     "line": "Nov 16 05:54:24 192.0.2.54 6298: s5: .Nov 15 00:42:16.153: %PM-4-ERR_DISABLE: psecure-violation error detected on Gi0/3, putting Gi0/3 in err-disable state"
+    },
+    {
+     "at": "2026-11-16T05:54:25Z",
+     "line": "Nov 16 05:54:25 192.0.2.54 6299: s5: .Nov 15 00:42:16.170: %PORT_SECURITY-2-PSECURE_VIOLATION: Security violation occurred, caused by MAC address aabb.cc00.8099 on port GigabitEthernet0/3."
+    },
+    {
+     "at": "2026-11-16T05:54:27Z",
+     "line": "Nov 16 05:54:27 192.0.2.54 6302: s5: .Nov 15 00:42:18.169: %LINK-3-UPDOWN: Interface GigabitEthernet0/3, changed state to down"
+    }
+   ],
+   "mac": "aabb.cc00.8099",
+   "port": "GigabitEthernet0/3",
+   "port_role": "access",
+   "seen": 1,
+   "short": "Gi0/3",
+   "state": "classified",
+   "vlan": "10"
+  },
+  "fixed": {
+   "at": "2026-11-16T06:43:52Z",
+   "attempt": 1,
+   "device": "s5",
+   "epoch": 1794811432.2285845,
+   "operation": "errdisable-recover",
+   "run": "20261116T064239245455Z-ad72bbb7218d463c8d8ea7fa8a25ad7a"
+  },
+  "fold": {
+   "state": "not_folded",
+   "why": "no open incident's device changed, and none is the far end of its link"
+  },
+  "id": "hi-0614b58f49f7",
+  "network": "Default",
+  "opened_at": "2026-11-16T06:37:15Z",
+  "opened_epoch": 1794811035.0012298,
+  "reads": [],
+  "related": [],
+  "settled": {
+   "at": "2026-11-16T06:37:15Z",
+   "first": null,
+   "how": "confirmed",
+   "operands": {
+    "port": "GigabitEthernet0/3",
+    "run": "20261116T063717488165Z-8d8259ecafc34400948187eac42607ac"
+   },
+   "second": null,
+   "words": "show interfaces status err-disabled on s5 at 2026-11-16T06:37:15Z: Gi0/3 err-disabled by psecure-violation, as classified"
+  },
+  "standing": {
+   "at": "2026-11-16T06:37:24Z",
+   "decision": "hd-764c178160e4",
+   "departure": "",
+   "epoch": 1794811044.1357286,
+   "guard": null,
+   "mode": "auto",
+   "on": "symptom",
+   "outcome": "cant_fix",
+   "words": "At 05:55 UTC, the alert Interface down fired on s5 on GigabitEthernet0/3; it still fires and no open incident holds it: its incident hi-e9dc4c96a036 closed (healed). s5 is at its golden, which matches its intent, so no configuration fix on s5 can cure this (configuration cannot fix a cable, an optic"
+  },
+  "state": "closed",
+  "stood": null,
+  "triggers": [
+   {
+    "address": "192.0.2.54",
+    "at": "2026-11-16T05:55:50Z",
+    "epoch": 1794808550.0,
+    "interface": "GigabitEthernet0/3",
+    "key": "alert:216744b2e7c83d21947c",
+    "kind": "alert",
+    "related": [],
+    "rule": "Interface down",
+    "source": "grafana-alerts",
+    "words": "the alert Interface down fired on s5 on GigabitEthernet0/3; it still fires and no open incident holds it: its incident hi-e9dc4c96a036 closed at 2026-11-16T06:35:58Z (healed)"
+   }
+  ],
+  "triggers_seen": 1,
+  "updated_at": "2026-11-16T06:44:25Z"
+ },
+ "line": {
+  "ai": "ai:fixit-troubleshoot",
+  "at": "2026-11-16T06:40:19Z",
+  "by": "alex@example.com",
+  "calls": [
+   "ai-607e20b249b74ac7",
+   "ai-06ed3058fd56423c"
+  ],
+  "epoch": 1794811219.6555355,
+  "operation": "errdisable-recover",
+  "params": {
+   "cause": "psecure-violation",
+   "interface": "GigabitEthernet0/3"
+  },
+  "params_hash": "a82b640d99e0383b",
+  "prompt": "fixit_troubleshoot.v12",
+  "proposal": "p1",
+  "shown": {
+   "cites": [
+    "read:1",
+    "read:2",
+    "read:3",
+    "read:5"
+   ],
+   "hypotheses": [
+    {
+     "cites": [
+      "read:1",
+      "read:3",
+      "read:4"
+     ],
+     "claim": "A host with MAC aabb.cc00.8099 (not edge-h7's configured aabb.cc00.8007) appeared on Gi0/3 and tripped port security in shutdown mode, so the port is err-disabled.",
+     "confirm": "show port-security interface GigabitEthernet0/3",
+     "unverified_words": ""
+    },
+    {
+     "cites": [
+      "read:3",
+      "read:4",
+      "history:4"
+     ],
+     "claim": "edge-h7's NIC or host was replaced, so the committed secure MAC aabb.cc00.8007 is stale and the port will trip again after recovery unless intent is updated.",
+     "confirm": "show port-security interface GigabitEthernet0/3",
+     "unverified_words": ""
+    },
+    {
+     "cites": [
+      "read:2",
+      "read:1"
+     ],
+     "claim": "The port stays down because psecure-violation has no auto-recovery timer on s5.",
+     "confirm": "show errdisable recovery",
+     "unverified_words": ""
+    }
+   ],
+   "needs_human": true,
+   "passes": 2,
+   "preconditions_read": {
+    "1": {
+     "checked": [
+      {
+       "name": "The port is err-disabled by the cause now",
+       "result": "pass",
+       "reused": [
+        {
+         "age_s": 48.6,
+         "command": "show interfaces status err-disabled",
+         "from": "during the investigation",
+         "run": "20261116T063914852885Z-26b3b4289c574154ad72f4a401ec8e29"
+        }
+       ],
+       "words": "Gi0/3 err-disabled by psecure-violation (`show interfaces status err-disabled` read 49 s ago, during the investigation)"
+      },
+      {
+       "name": "The switch does not recover the cause itself",
+       "result": "pass",
+       "reused": [],
+       "words": "no errdisable recovery for port security"
+      },
+      {
+       "name": "The cause has cleared",
+       "result": "pass",
+       "reused": [
+        {
+         "age_s": 59.7,
+         "command": "show port-security interface GigabitEthernet0/3",
+         "from": "during the investigation",
+         "run": "20261116T063914852885Z-26b3b4289c574154ad72f4a401ec8e29"
+        }
+       ],
+       "words": "no new violation on Gi0/3 since its err-disable at 2026-11-16T05:54:24Z; violation count 2, as at the err-disable; the violating MAC aa:bb:cc:00:80:99 (`show port-security interface GigabitEthernet0/3` read 60 s ago, during the investigation)"
+      }
+     ],
+     "hash": "ce1223c0b21905f4",
+     "ok": true,
+     "refused": "",
+     "reuse": {
+      "live": 1,
+      "live_s": 12.4,
+      "reused": 2,
+      "took_s": 13.8
+     }
+    }
+   },
+   "rationale": "Gi0/3 on s5 is err-disabled by psecure-violation. The port allows one MAC, and the last source address, aabb.cc00.8099 on VLAN 10, is not the secure MAC that intent configures (aabb.cc00.8007). The device's own errdisable recovery timer for psecure-violation is disabled, so the port stays down until someone recovers it. s5 matches its golden and intent, so this is not configuration drift.",
+   "reads": "AI analysis: asked for 5 reads; 5 run; 1 round of reads; answered",
+   "steps": [
+    {
+     "cites": [
+      "read:1",
+      "read:2",
+      "read:3",
+      "read:5"
+     ],
+     "n": 1,
+     "only_unverified": false,
+     "operation": "errdisable-recover",
+     "unverified_words": "",
+     "why": "The port is err-disabled by psecure-violation with no auto-recovery, and aabb.cc00.8099 is not in the MAC table now; the tool re-checks that the cause has cleared before it runs."
+    }
+   ],
+   "why": "The port is err-disabled by psecure-violation with no auto-recovery, and aabb.cc00.8099 is not in the MAC table now; the tool re-checks that the cause has cleared before it runs."
+  },
+  "source": "ai",
+  "steps": [
+   {
+    "operation": "errdisable-recover",
+    "params": {
+     "cause": "psecure-violation",
+     "interface": "GigabitEthernet0/3"
+    },
+    "params_hash": "a82b640d99e0383b"
+   }
+  ],
+  "verified": "access"
+ },
+ "page": "hi-0614b58f49f7"
+}

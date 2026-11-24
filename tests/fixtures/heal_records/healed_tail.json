@@ -1,0 +1,769 @@
+{
+ "captured": "scripts/nmas-config-read --records heal-incidents, heal-decisions and heal-steps --list Default, 2026-11-24T00:51Z, from the installation, masked; the edits are README.md's",
+ "decisions": [
+  {
+   "at": "2026-11-17T03:20:28Z",
+   "cause": {
+    "facts": [
+     {
+      "at": "2026-11-17T03:16:22Z",
+      "epoch": 1794885382.9755943,
+      "kind": "config_change",
+      "text": "r3's configuration was changed outside Mercury (the line names the account lab on vty0 from 192.0.2.10): \u201cdescription P2P to r4 Gi4 - OSPFv3 core interlink\u201d was removed from interface GigabitEthernet4"
+     }
+    ],
+    "hypothesis": null
+   },
+   "dangerous": [],
+   "departure": "f3a9a4915a7a6698",
+   "device": "r3",
+   "epoch": 1794885628.380797,
+   "guard": null,
+   "headline": "r3: description removed on GigabitEthernet4 outside Mercury. Mercury is putting it back itself",
+   "id": "hd-453ba1a4d9c5",
+   "incident": "hi-977e71ad809c",
+   "kind": "missing_line",
+   "left_out": {
+    "golden_behind": 0,
+    "golden_not_intent": 0,
+    "intent_only": 0
+   },
+   "mode": "auto",
+   "network": "Default",
+   "outcome": "heal",
+   "outcome_words": "Mercury is putting it back itself: put back \u201cdescription P2P to r4 Gi4 - OSPFv3 core interlink\u201d in interface GigabitEthernet4; this kind of fix may run by itself here (Tier 1)",
+   "person": {
+    "address": "192.0.2.10",
+    "line": "vty0",
+    "process": "",
+    "source": "console",
+    "user": "lab",
+    "words": "the line names the account lab on vty0 from 192.0.2.10"
+   },
+   "policy": {
+    "by": "alex@example.com",
+    "fingerprint": "2cd6234c1f3b91b4",
+    "reason": "the Self-healing toggle on Troubleshoot \u203a Incidents's control strip, turned on"
+   },
+   "program": [
+    "interface GigabitEthernet4",
+    " description P2P to r4 Gi4 - OSPFv3 core interlink",
+    "exit"
+   ],
+   "program_hash": "cd129dad85fec1f8",
+   "removal_ids": [],
+   "row": "decision",
+   "settled": "persisted",
+   "tier": 1,
+   "triggers": [
+    "%SYS-5-CONFIG_I on r3 at 2026-11-17T03:16:22Z: from outside Mercury: no Mercury operation held r3 at 2026-11-17T03:16:22Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty0 from 192.0.2.10"
+   ],
+   "units": [
+    {
+     "add": [
+      " description P2P to r4 Gi4 - OSPFv3 core interlink"
+     ],
+     "blocked": "",
+     "id": "bc72aa64b1cb",
+     "joined": 0,
+     "kind": "missing_line",
+     "op": "add",
+     "remove": [],
+     "secret_position": false,
+     "section": "interface GigabitEthernet4",
+     "stanza": false,
+     "tier": 1,
+     "why": "",
+     "words": "a missing line (Tier 1): re-apply 1 line(s) in interface GigabitEthernet4"
+    }
+   ],
+   "until": null,
+   "verify": {
+    "intent": "intent_match on the read after the change",
+    "read_back": 3,
+    "symptom": [
+     "%SYS-5-CONFIG_I on r3 at 2026-11-17T03:16:22Z: from outside Mercury: no Mercury operation held r3 at 2026-11-17T03:16:22Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty0 from 192.0.2.10"
+    ]
+   },
+   "words": "At 03:16 UTC, r3's configuration was changed outside Mercury (the line names the account lab on vty0 from 192.0.2.10): \u201cdescription P2P to r4 Gi4 - OSPFv3 core interlink\u201d was removed from interface GigabitEthernet4. Mercury is putting it back itself: put back \u201cdescription P2P to r4 Gi4 - OSPFv3 core interlink\u201d in interface GigabitEthernet4; this kind of fix may run by itself here (Tier 1)"
+  }
+ ],
+ "incidents": [
+  {
+   "attached": [],
+   "cause": "change",
+   "claimed": {
+    "at": "2026-11-17T03:20:28Z",
+    "by": "heal to intent"
+   },
+   "closed_at": "2026-11-17T03:21:51Z",
+   "closed_why": "healed: healed and verified; the incident named no symptom beyond the configuration (decision hd-453ba1a4d9c5)",
+   "device": "r3",
+   "fixed": {
+    "act": "hd-453ba1a4d9c5",
+    "at": "2026-11-17T03:21:51Z",
+    "device": "r3",
+    "epoch": 1794885711.346674,
+    "verify": [
+     {
+      "at": "2026-11-17T03:21:50Z",
+      "result": "ok",
+      "step": "intent",
+      "words": "each healed unit at intent, from GigabitEthernet4's own section read after the change"
+     }
+    ]
+   },
+   "fold": {
+    "state": "judged",
+    "why": "0 device(s) Mercury loses reach to without r3, from committed intent's IPv4 subnets and this host's IPv4 addresses: a path the routing does not use still counts as reach, a switch carrying a subnet at layer 2 with no address in it is not seen, and a path over IPv6 alone is not judged"
+   },
+   "grace": {
+    "address": "192.0.2.10",
+    "change_epoch": 1794885382.9755943,
+    "line": "vty0",
+    "lines": 1,
+    "person": "lab",
+    "source": "console",
+    "told": true,
+    "until": "2026-11-17T03:19:28Z",
+    "user": "lab",
+    "words": "the line names the account lab on vty0 from 192.0.2.10"
+   },
+   "id": "hi-977e71ad809c",
+   "network": "Default",
+   "opened_at": "2026-11-17T03:16:37Z",
+   "opened_epoch": 1794885397.0345135,
+   "reads": [
+    {
+     "at": "2026-11-17T03:17:28Z",
+     "by": "heal to intent",
+     "changed_lines": 1,
+     "departure": "f3a9a4915a7a6698",
+     "epoch": 1794885448.8014514,
+     "error": "",
+     "state": "drifted"
+    },
+    {
+     "at": "2026-11-17T03:20:12Z",
+     "by": "heal to intent",
+     "changed_lines": 1,
+     "departure": "f3a9a4915a7a6698",
+     "epoch": 1794885612.0187998,
+     "error": "",
+     "state": "drifted"
+    }
+   ],
+   "related": [],
+   "settled": {
+    "at": "2026-11-17T03:20:06Z",
+    "first": 0,
+    "how": "persisted",
+    "operands": {
+     "apart_seconds": 163,
+     "departure": "f3a9a4915a7a6698",
+     "first_at": 1794885448.8014514,
+     "grace_seconds": 120,
+     "last_outside_change": 1794885382.9755943,
+     "reads": 2,
+     "second_at": 1794885612.0187998
+    },
+    "second": 1,
+    "words": "two reads 163 s apart (at least 120 s), the same departure (f3a9a4915a7a6698), and no outside change between them (after the outside change at 2026-11-17T03:16:22Z)"
+   },
+   "state": "closed",
+   "triggers": [
+    {
+     "at": "2026-11-17T03:16:22Z",
+     "attribution": {
+      "by": "outside",
+      "evidence": {},
+      "words": "from outside Mercury: no Mercury operation held r3 at 2026-11-17T03:16:22Z, and no receipt or rotation of it is within 600 s before to 60 s after"
+     },
+     "epoch": 1794885382.9755943,
+     "key": "cfg:2ee5c18b4a3df82a",
+     "kind": "config_change",
+     "person": {
+      "address": "192.0.2.10",
+      "line": "vty0",
+      "process": "",
+      "source": "console",
+      "user": "lab",
+      "words": "the line names the account lab on vty0 from 192.0.2.10"
+     },
+     "source": "heal-detect",
+     "words": "%SYS-5-CONFIG_I on r3 at 2026-11-17T03:16:22Z: from outside Mercury: no Mercury operation held r3 at 2026-11-17T03:16:22Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty0 from 192.0.2.10"
+    }
+   ],
+   "triggers_seen": 1,
+   "updated_at": "2026-11-17T03:21:51Z"
+  }
+ ],
+ "page": "hi-977e71ad809c",
+ "steps": [
+  {
+   "at": "2026-11-17T03:20:28Z",
+   "cause": {
+    "facts": [
+     {
+      "at": "2026-11-17T03:16:22Z",
+      "epoch": 1794885382.9755943,
+      "kind": "config_change",
+      "text": "r3's configuration was changed outside Mercury (the line names the account lab on vty0 from 192.0.2.10): \u201cdescription P2P to r4 Gi4 - OSPFv3 core interlink\u201d was removed from interface GigabitEthernet4"
+     }
+    ],
+    "hypothesis": null
+   },
+   "decision": "hd-453ba1a4d9c5",
+   "device": "r3",
+   "epoch": 1794885628.380797,
+   "guard": {},
+   "headline": "r3: description removed on GigabitEthernet4 outside Mercury. Mercury is putting it back itself",
+   "id": "hs-5334b13b26c2",
+   "incident": "hi-977e71ad809c",
+   "kind": "missing_line",
+   "mode": "auto",
+   "network": "Default",
+   "outcome": "heal",
+   "outcome_words": "Mercury is putting it back itself: put back \u201cdescription P2P to r4 Gi4 - OSPFv3 core interlink\u201d in interface GigabitEthernet4; this kind of fix may run by itself here (Tier 1)",
+   "person": "the line names the account lab on vty0 from 192.0.2.10",
+   "policy": {
+    "by": "alex@example.com",
+    "fingerprint": "2cd6234c1f3b91b4",
+    "reason": "the Self-healing toggle on Troubleshoot \u203a Incidents's control strip, turned on"
+   },
+   "program": [
+    "interface GigabitEthernet4",
+    " description P2P to r4 Gi4 - OSPFv3 core interlink",
+    "exit"
+   ],
+   "program_hash": "cd129dad85fec1f8",
+   "row": "decision",
+   "steps": [
+    {
+     "result": "ok",
+     "step": "claim",
+     "words": "the incident on r3 taken"
+    },
+    {
+     "result": "ok",
+     "step": "stops",
+     "words": "no kill switch, fixing by itself (Auto), no halt, no planned work"
+    },
+    {
+     "result": "ok",
+     "step": "approved",
+     "words": "the golden 3e5b37649d is the approved state: at intent"
+    },
+    {
+     "result": "ok",
+     "step": "guards",
+     "words": "not many devices at once, and no fight stopped by the network's setting"
+    },
+    {
+     "result": "ok",
+     "step": "read",
+     "words": "r3 read again: it holds the change the grace period settled on"
+    },
+    {
+     "result": "ok",
+     "step": "classify",
+     "words": "1 part(s) changed, a missing line (Tier 1); the fix 2 line(s)"
+    },
+    {
+     "result": "heal",
+     "step": "decide",
+     "words": "Mercury is putting it back itself: put back \u201cdescription P2P to r4 Gi4 - OSPFv3 core interlink\u201d in interface GigabitEthernet4; this kind of fix may run by itself here (Tier 1)"
+    },
+    {
+     "result": "ok",
+     "step": "record",
+     "words": "the decision recorded"
+    }
+   ],
+   "tier": 1,
+   "triggers": [
+    "%SYS-5-CONFIG_I on r3 at 2026-11-17T03:16:22Z: from outside Mercury: no Mercury operation held r3 at 2026-11-17T03:16:22Z, and no receipt or rotation of it is within 600 s before to 60 s after; the line names the account lab on vty0 from 192.0.2.10"
+   ],
+   "units": [
+    "a missing line (Tier 1): re-apply 1 line(s) in interface GigabitEthernet4"
+   ],
+   "words": "At 03:16 UTC, r3's configuration was changed outside Mercury (the line names the account lab on vty0 from 192.0.2.10): \u201cdescription P2P to r4 Gi4 - OSPFv3 core interlink\u201d was removed from interface GigabitEthernet4. Mercury is putting it back itself: put back \u201cdescription P2P to r4 Gi4 - OSPFv3 core interlink\u201d in interface GigabitEthernet4; this kind of fix may run by itself here (Tier 1)"
+  },
+  {
+   "at": "2026-11-17T03:20:45Z",
+   "by": "heal to intent (policy set by alex@example.com)",
+   "decision": "hd-453ba1a4d9c5",
+   "device": "r3",
+   "epoch": 1794885645.849344,
+   "id": "hs-17557aab5488",
+   "incident": "hi-977e71ad809c",
+   "kind": "missing_line",
+   "mode": "auto",
+   "network": "Default",
+   "policy": {
+    "by": "alex@example.com",
+    "fingerprint": "2cd6234c1f3b91b4",
+    "reason": "the Self-healing toggle on Troubleshoot \u203a Incidents's control strip, turned on"
+   },
+   "policy_by": "alex@example.com",
+   "program": [
+    "interface GigabitEthernet4",
+    " description P2P to r4 Gi4 - OSPFv3 core interlink",
+    "exit"
+   ],
+   "program_hash": "cd129dad85fec1f8",
+   "row": "started",
+   "steps": [
+    {
+     "policy_by": "alex@example.com",
+     "result": "ok",
+     "step": "take",
+     "words": "taken by heal to intent (policy set by alex@example.com)"
+    },
+    {
+     "at": "2026-11-17T03:20:47Z",
+     "result": "ok",
+     "step": "stops",
+     "words": "AUTO on a network marked lab, the policy decided under, no planned work"
+    },
+    {
+     "at": "2026-11-17T03:20:59Z",
+     "began": "2026-11-17T03:20:48Z",
+     "result": "ok",
+     "step": "read",
+     "words": "r3 read again, holding it: the deploy's read before, too"
+    },
+    {
+     "at": "2026-11-17T03:21:03Z",
+     "result": "ok",
+     "step": "plan",
+     "words": "the program recomputed from the read: 2 line(s), hash cd129dad85fec1f8, the decision's"
+    },
+    {
+     "at": "2026-11-17T03:21:03Z",
+     "result": "ok",
+     "step": "authorise",
+     "words": "nothing that needs a reason"
+    },
+    {
+     "policy_by": "alex@example.com",
+     "result": "running",
+     "step": "apply",
+     "words": "as the policy set by alex@example.com, holding r3"
+    }
+   ],
+   "tier": 1
+  },
+  {
+   "at": "2026-11-17T03:21:52Z",
+   "by": "heal to intent (policy set by alex@example.com)",
+   "decision": "hd-453ba1a4d9c5",
+   "device": "r3",
+   "epoch": 1794885712.2399561,
+   "id": "hs-9f1620ad0a0c",
+   "incident": "hi-977e71ad809c",
+   "kind": "missing_line",
+   "mode": "auto",
+   "network": "Default",
+   "outcome": "healed",
+   "policy": {
+    "by": "alex@example.com",
+    "fingerprint": "2cd6234c1f3b91b4",
+    "reason": "the Self-healing toggle on Troubleshoot \u203a Incidents's control strip, turned on"
+   },
+   "policy_by": "alex@example.com",
+   "records": {
+    "tail": {
+     "began": 1794885712.2399457,
+     "flag": "",
+     "state": "running",
+     "steps": []
+    }
+   },
+   "row": "act",
+   "sent": true,
+   "steps": [
+    {
+     "policy_by": "alex@example.com",
+     "result": "ok",
+     "step": "take",
+     "words": "taken by heal to intent (policy set by alex@example.com)"
+    },
+    {
+     "at": "2026-11-17T03:20:47Z",
+     "result": "ok",
+     "step": "stops",
+     "words": "AUTO on a network marked lab, the policy decided under, no planned work"
+    },
+    {
+     "at": "2026-11-17T03:20:59Z",
+     "began": "2026-11-17T03:20:48Z",
+     "result": "ok",
+     "step": "read",
+     "words": "r3 read again, holding it: the deploy's read before, too"
+    },
+    {
+     "at": "2026-11-17T03:21:03Z",
+     "result": "ok",
+     "step": "plan",
+     "words": "the program recomputed from the read: 2 line(s), hash cd129dad85fec1f8, the decision's"
+    },
+    {
+     "at": "2026-11-17T03:21:03Z",
+     "result": "ok",
+     "step": "authorise",
+     "words": "nothing that needs a reason"
+    },
+    {
+     "at": "2026-11-17T03:21:30Z",
+     "policy_by": "alex@example.com",
+     "result": "running",
+     "step": "apply",
+     "words": "as the policy set by alex@example.com, holding r3"
+    },
+    {
+     "at": "2026-11-17T03:21:50Z",
+     "result": "ok",
+     "step": "intent",
+     "words": "each healed unit at intent, from GigabitEthernet4's own section read after the change"
+    },
+    {
+     "at": "2026-11-17T03:21:51Z",
+     "result": "healed",
+     "step": "record",
+     "words": "healed and verified: healed and verified; the incident named no symptom beyond the configuration"
+    }
+   ],
+   "tier": 1,
+   "words": "healed and verified; the incident named no symptom beyond the configuration"
+  },
+  {
+   "at": "2026-11-17T03:22:57Z",
+   "by": "heal to intent (policy set by alex@example.com)",
+   "decision": "hd-453ba1a4d9c5",
+   "device": "r3",
+   "epoch": 1794885777.365499,
+   "id": "hs-9d2570555193",
+   "incident": "hi-977e71ad809c",
+   "kind": "missing_line",
+   "mode": "auto",
+   "network": "Default",
+   "outcome": "healed",
+   "policy": {
+    "by": "alex@example.com",
+    "fingerprint": "2cd6234c1f3b91b4",
+    "reason": "the Self-healing toggle on Troubleshoot \u203a Incidents's control strip, turned on"
+   },
+   "policy_by": "alex@example.com",
+   "records": {
+    "change_record": {
+     "markdown": "# Change record: r3, healed to intent by Mercury's self-healing\n\nMercury's record of decision hd-453ba1a4d9c5, incident hi-977e71ad809c: deterministic, written by Mercury's code, no AI call. Program cd129dad85fe: the program is the change.\n\n## Summary\n\nSelf-healing on Default found r3 departed from its approved state (a missing line: a missing line (Tier 1): re-apply 1 line(s) in interface GigabitEthernet4) and returned it to intent: healed and verified. The change it healed was made outside Mercury (the line names the account lab on vty0 from 192.0.2.10).\n\n## Scope\n\n1 device: r3 (cisco_iosxe), network Default. Interfaces GigabitEthernet4. The approved state: golden 3e5b37649d.\n\n## Risk\n\nLevel: low. Mercury's rule: 0 lines needing a stated reason, 0 removals, 0 routing protocols touched.\n\n## Implementation\n\nProgram cd129dad85fe, 3 line(s), recomputed from Mercury's own read of r3 at apply and compared by its hash with the decision's, sent merge-only as the policy, holding r3:\n\n```\ninterface GigabitEthernet4\n description P2P to r4 Gi4 - OSPFv3 core interlink\nexit\n```\n\n\n## Verification\n\nFULL: it changes `interface GigabitEthernet4`, which can affect forwarding or is not a management section: neighbours, routes and interfaces are watched, BGP's hold time is not waited out (every line is descriptions: no line here can reach a BGP session), and each new line is read back.\n- Each healed unit at intent: ok: each healed unit at intent, from GigabitEthernet4's own section read after the change\n- Saved to startup: ok: Saved\n- The golden read again: ok: At its golden: documentation updated and tested, golden 4e2e7da21b committed and r3 read again matches it\n\n## Rollback plan\n\nOn a failed Verify, or a healed unit not at intent after the change, Mercury undoes what landed, per device, re-adding a removed line from its own read, and says what it achieved:\n\n```\ninterface GigabitEthernet4\n no description P2P to r4 Gi4 - OSPFv3 core interlink\nexit\n```\n\nA manual back-out: restore r3's golden 3e5b37649d from its History tab.\n\n## Window and approver\n\nThe standing policy 2cd6234c1f3b91b4 for Default, confirmed by alex@example.com (the Self-healing toggle on Troubleshoot \u203a Incidents's control strip, turned on): a verified person previewed and confirmed it by its fingerprint, and this heal's program was decided under it.\n\n## Status\n\nhealed and verified at 2026-11-17T03:20:45Z: healed and verified; the incident named no symptom beyond the configuration Golden 4e2e7da21b committed.\n",
+     "risk": "low",
+     "state": "made",
+     "words": "made: 53 line(s), risk low, deterministic (no AI call)"
+    },
+    "golden": "4e2e7da21b85ec7516062a43222ec99a70ab5a42",
+    "journal": {
+     "id": null,
+     "state": "not_written",
+     "words": "not written: r3 has no NetBox record Mercury knows (no NetBox id in its inventory or its manifest: Default's inventory is local)"
+    },
+    "laps": [
+     {
+      "at_s": 0.0,
+      "lap": "plan: inventory rows",
+      "took_s": 0.0
+     },
+     {
+      "at_s": 6.6,
+      "lap": "plan: render artifact (golden, inventory, template)",
+      "took_s": 6.6
+     },
+     {
+      "at_s": 7.9,
+      "lap": "plan: summary and unrendered sections",
+      "took_s": 1.3
+     },
+     {
+      "at_s": 9.1,
+      "lap": "plan: prepare device",
+      "took_s": 1.1
+     },
+     {
+      "at_s": 9.1,
+      "lap": "plan: merge diff and residue",
+      "took_s": 0.1
+     },
+     {
+      "at_s": 9.3,
+      "lap": "plan: program",
+      "took_s": 0.1
+     },
+     {
+      "at_s": 10.5,
+      "lap": "plan: committed intents read",
+      "took_s": 1.2
+     },
+     {
+      "at_s": 10.6,
+      "lap": "plan: expected effects",
+      "took_s": 0.1
+     },
+     {
+      "at_s": 12.2,
+      "lap": "plan: verify checks",
+      "took_s": 1.6
+     },
+     {
+      "at_s": 12.3,
+      "lap": "plan: removable lines",
+      "took_s": 0.1
+     },
+     {
+      "at_s": 12.3,
+      "lap": "plan: dangerous lines and command hash",
+      "took_s": 0.0
+     },
+     {
+      "at_s": 12.7,
+      "lap": "plan: prior authorisations",
+      "took_s": 0.4
+     },
+     {
+      "at_s": 16.8,
+      "lap": "plan: attribution",
+      "took_s": 4.1
+     },
+     {
+      "at_s": 16.8,
+      "lap": "plan: busy read",
+      "took_s": 0.0
+     },
+     {
+      "at_s": 16.8,
+      "lap": "act: the plan's checks",
+      "took_s": 0.0
+     },
+     {
+      "at_s": 21.7,
+      "lap": "act: program written to the step log",
+      "took_s": 5.0
+     },
+     {
+      "at_s": 27.1,
+      "lap": "act: apply step announced",
+      "took_s": 5.4
+     },
+     {
+      "at_s": 31.1,
+      "lap": "apply: render artifact again (golden, inventory, template)",
+      "took_s": 4.0
+     },
+     {
+      "at_s": 33.3,
+      "lap": "apply: program recomputed and its hash",
+      "took_s": 2.1
+     },
+     {
+      "at_s": 33.3,
+      "lap": "apply: devices held",
+      "took_s": 0.0
+     },
+     {
+      "at_s": 33.3,
+      "lap": "apply: batch planned",
+      "took_s": 0.0
+     },
+     {
+      "at_s": 33.3,
+      "lap": "apply: pending receipts written",
+      "took_s": 0.0
+     },
+     {
+      "at_s": 34.4,
+      "lap": "apply: prepared for deploy (secrets resolved, mask check)",
+      "took_s": 1.2
+     },
+     {
+      "at_s": 34.6,
+      "lap": "apply: program built again and held merge-only",
+      "took_s": 0.1
+     },
+     {
+      "at_s": 35.9,
+      "lap": "apply: committed intents read again",
+      "took_s": 1.3
+     },
+     {
+      "at_s": 35.9,
+      "lap": "apply: expected effects again",
+      "took_s": 0.1
+     },
+     {
+      "at_s": 35.9,
+      "lap": "apply: the pipeline's context built",
+      "took_s": 0.0
+     },
+     {
+      "at_s": 36.1,
+      "lap": "netbox_query",
+      "took_s": 0.1
+     },
+     {
+      "at_s": 36.4,
+      "lap": "template_render",
+      "took_s": 0.3
+     },
+     {
+      "at_s": 36.7,
+      "lap": "ci_gate",
+      "took_s": 0.3
+     },
+     {
+      "at_s": 41.2,
+      "lap": "pre_snapshot: signed in",
+      "took_s": 4.6
+     },
+     {
+      "at_s": 41.2,
+      "lap": "pre_snapshot: operational reads",
+      "took_s": 0.0
+     },
+     {
+      "at_s": 41.2,
+      "lap": "pre_snapshot: running configuration (the caller's read)",
+      "took_s": 0.0
+     },
+     {
+      "at_s": 41.6,
+      "lap": "pre_snapshot",
+      "took_s": 0.4
+     },
+     {
+      "at_s": 42.1,
+      "lap": "config_diff",
+      "took_s": 0.5
+     },
+     {
+      "at_s": 45.0,
+      "lap": "deploy: sent",
+      "took_s": 2.9
+     },
+     {
+      "at_s": 45.3,
+      "lap": "deploy",
+      "took_s": 0.3
+     },
+     {
+      "at_s": 45.4,
+      "lap": "post_snapshot: session (kept)",
+      "took_s": 0.1
+     },
+     {
+      "at_s": 45.4,
+      "lap": "post_snapshot: operational reads",
+      "took_s": 0.0
+     },
+     {
+      "at_s": 46.1,
+      "lap": "post_snapshot: running configuration",
+      "took_s": 0.7
+     },
+     {
+      "at_s": 46.2,
+      "lap": "post_snapshot",
+      "took_s": 0.1
+     },
+     {
+      "at_s": 46.2,
+      "lap": "verify: the pipeline's checks",
+      "took_s": 0.0
+     },
+     {
+      "at_s": 46.4,
+      "lap": "verify",
+      "took_s": 0.1
+     },
+     {
+      "at_s": 46.5,
+      "lap": "save_startup",
+      "took_s": 0.1
+     },
+     {
+      "at_s": 46.5,
+      "lap": "save_golden",
+      "took_s": 0.0
+     },
+     {
+      "at_s": 81.6,
+      "lap": "tail: saved",
+      "took_s": 35.1
+     },
+     {
+      "at_s": 85.7,
+      "lap": "tail: full running configuration",
+      "took_s": 4.1
+     },
+     {
+      "at_s": 87.9,
+      "lap": "tail: golden capture",
+      "took_s": 2.2
+     }
+    ],
+    "receipt": "the deploy receipt naming decision hd-453ba1a4d9c5",
+    "recheck": "ok: At its golden: documentation updated and tested, golden 4e2e7da21b committed and r3 read again matches it",
+    "tail": {
+     "flag": "",
+     "state": "ok",
+     "steps": [
+      {
+       "at": "2026-11-17T03:22:25Z",
+       "result": "ok",
+       "step": "saved",
+       "words": "Saved"
+      },
+      {
+       "at": "2026-11-17T03:22:43Z",
+       "result": "ok",
+       "step": "commit",
+       "words": "Golden committed: 4e2e7da21b, from the whole configuration read after the change, after Mercury's config check passed"
+      },
+      {
+       "at": "2026-11-17T03:22:53Z",
+       "result": "ok",
+       "step": "golden",
+       "words": "At its golden: documentation updated and tested, golden 4e2e7da21b committed and r3 read again matches it"
+      }
+     ]
+    }
+   },
+   "row": "act",
+   "sent": true,
+   "steps": [
+    {
+     "at": "2026-11-17T03:22:25Z",
+     "began": "2026-11-17T03:21:59Z",
+     "result": "ok",
+     "step": "saved",
+     "words": "Saved"
+    },
+    {
+     "at": "2026-11-17T03:22:43Z",
+     "began": "2026-11-17T03:22:25Z",
+     "result": "ok",
+     "step": "commit",
+     "words": "Golden committed: 4e2e7da21b, from the whole configuration read after the change, after Mercury's config check passed"
+    },
+    {
+     "at": "2026-11-17T03:22:53Z",
+     "began": "2026-11-17T03:22:43Z",
+     "result": "ok",
+     "step": "golden",
+     "words": "At its golden: documentation updated and tested, golden 4e2e7da21b committed and r3 read again matches it"
+    }
+   ],
+   "tier": 1,
+   "words": "healed and verified; the incident named no symptom beyond the configuration"
+  }
+ ]
+}
