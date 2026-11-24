@@ -8,16 +8,19 @@ and the next session unblocks the item and moves the entry to Answered.
 
 ## Open
 
-### loop-script
+### session-namespace
 
-- **Asked:** the nightly loop script, `tools/nightly/mercury-loop.sh`. The setup message of
-  2026-11-23 said "with exactly this content", but its body read `<paste the script from my
-  message>`, so no script was added and the crontab still runs `mercury-session.sh`.
-- **Options:** paste the script (the next session adds it, makes it executable, commits it and
-  moves the crontab line, 03:35 as now), or keep `mercury-session.sh`.
-- **Recommendation:** paste it; until then the 03:35 session runs as today.
+- **Asked:** a session the loop starts (systemd/cron, AppArmor label `unconfined`) cannot make a
+  network namespace, so the commit hook's red-green (`scripts/nmas-red-green` → `nmas-test`)
+  says COULD NOT ASK and refuses every commit that changes a test. VS Code's label grants it.
+- **Options:** (a) install docs/TESTING.md's `nmas-test` AppArmor profile (sudo, yours), its
+  path covering the checkout and `~/nmas-worktrees/*`; (b) start the loop from VS Code's
+  terminal; (c) let red-green pass `--allow-unconfined` (a protected guard: your words).
+- **Recommendation:** (a). C3886's finished work waits as `~/mercury-runs/c3886-keyed-placeholder.patch`.
 
 ## Answered
+
+- **2026-11-23, loop-script:** the script arrived (3f9c6b0d) and the crontab runs it at 03:35.
 
 - **2026-11-23 (evening), rulings on overnight/gui's standing failures** (the plan's Stage 1
   items): C3970 and test_heal_analysis_never_read fixed (cfe043d8, bd09416f); C3886, C4090,
