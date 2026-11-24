@@ -531,6 +531,19 @@ class TestTheCompiledCodeIsKept:
     kept across renders, so nothing compiled may carry one render's values into another's,
     and a template whose text changed compiles again."""
 
+    def test_clearing_the_cache_forgets_every_compiled_template(self):
+        """Jinja's `BytecodeCache.clear` (its interface's third call): what was kept is gone,
+        and the next load compiles again (nothing is read back)."""
+        from jinja2 import DictLoader, Environment
+        from modules.nsot import roundtrip
+        store = roundtrip._Compiled()
+        cache = store()
+        env = Environment(loader=DictLoader({"t": "hostname {{ h }}"}), bytecode_cache=cache)
+        assert env.get_template("t").render(h="r1") == "hostname r1"
+        assert len(store._kept) == 1, "the compiled code was kept"
+        cache.clear()
+        assert not store._kept, store._kept
+
     @staticmethod
     def _library(tmp_path, text):
         root = tmp_path / "library"
