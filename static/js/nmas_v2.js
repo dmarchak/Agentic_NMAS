@@ -448,15 +448,68 @@
     for (var i = 0; i < keep.length; i++) {
       var said = keep[i];
       if (!said.isConnected || !said.classList || !said.classList.contains('set-result')) continue;
-      for (var n = said.parentNode; n && n.nodeType === 1; n = n.parentNode) {
-        var copy = drawnFrom.get(n);
-        if (copy && copy.nodeType === 1 && !copy.nmasRevisit) {
-          copy.appendChild(root.document.createComment('an answer kept while it was read'));
-          copy.nmasRevisit = true;
-        }
-        if (n === region) break;
-      }
+      revisitUp(said.parentNode, region);
     }
+  }
+
+  /* Each element from *n* up to *region* remembered as differing from the server's drawing,
+     so the next merge goes down to *n* (a marker in each copy). */
+  function revisitUp(n, region) {
+    for (; n && n.nodeType === 1; n = n.parentNode) {
+      var copy = drawnFrom.get(n);
+      if (copy && copy.nodeType === 1 && !copy.nmasRevisit) {
+        copy.appendChild(root.document.createComment('an answer kept while it was read'));
+        copy.nmasRevisit = true;
+      }
+      if (n === region) break;
+    }
+  }
+
+  /* C4226: a person's press inside a region that swaps the whole region (a card's Close whose
+     `hx-target` is the region) went past the merge, so htmx replaced the region and every
+     other card's typed text, tick and open state were gone (measured 2026-11-24, outerHTML and
+     innerHTML, the focus in the field notwithstanding). Its answer now merges as a live one
+     does, the parts a person is working in kept, except the pressed control's own unit (its
+     form, card or component): that is the answer they asked for, drawn whole from it (`fresh`
+     in `morph`), its fields as the server drew them. PURE over a swap's detail: that unit, or
+     null where the press is htmx's own to swap (a live update, a press from outside the
+     region, one whose unit the page holds no copy of, all the way up to the region, or one
+     with no work of a person's outside its unit to keep).
+     **Only where there is work to keep** (`workOutside`): with none, htmx's replacement is the
+     answer exactly, and a merge would keep what the page itself set on the parts it merges
+     (measured 2026-11-24: a topology drop's save, a script-sent form inside `#topo`, merged,
+     kept the dragged device's `data-dx` and `transform`, so it was drawn 108 px from where
+     the store had it; tests/test_topology_v2.py's three drag tests). **And only a person's
+     press:** its triggering event is the browser's (`isTrusted`), never a script's submit (the
+     topology's save is `htmx.trigger(form, 'submit')`, so text typed in its Find box is no
+     reason to merge the map over a drag's offsets). */
+  function pressedUnit(d) {
+    if (!d || !d.target || !drawnFrom || isLiveUpdate(d) || !isRegion(d.target)) return null;
+    var ev = d.requestConfig && d.requestConfig.triggeringEvent;
+    if (!ev || ev.isTrusted !== true) return null;
+    var region = d.target, src = (d.requestConfig && d.requestConfig.elt) || d.elt;
+    if (!src || src.nodeType !== 1 || src === region || !region.contains(src)) return null;
+    var unit = src.closest('form, .card, [x-data]');
+    if (!unit || unit === region || !region.contains(unit)) unit = src;
+    for (var n = unit; n && n !== region; n = n.parentNode) if (!drawnFrom.get(n)) return null;
+    return drawnFrom.get(region) && workOutside(region, unit) ? unit : null;
+  }
+
+  /* Whether *region* holds a person's work outside *unit*: text typed, a tick, an option
+     chosen, an open part, an answer unread (`heldParts`), anywhere but in the unit. The
+     control they point at is no work of theirs (as `holdsWork`, C4229): at a drop the pointer
+     is on the map. A part around the unit (a form around two cards) counts by its fields
+     outside the unit. */
+  function workOutside(region, unit) {
+    var parts = heldParts(region), at = pointedAt(region);
+    for (var i = 0; i < parts.length; i++) {
+      var k = parts[i];
+      if (k === at || unit.contains(k)) continue;
+      if (!k.contains(unit)) return true;
+      var f = k.querySelectorAll('input, textarea, [data-editing="true"]');
+      for (var j = 0; j < f.length; j++) if (!unit.contains(f[j]) && isEditing(f[j])) return true;
+    }
+    return false;
   }
 
   /* C2841: the control a person is pointing at, or a button they have focused, in *region*:
@@ -879,6 +932,14 @@
   function morph(live, next, ctx) {
     var was = drawnFrom.get(live);
     if (!was) return live;                           // the page's own: kept as it is
+    if (live === ctx.fresh && live !== ctx.root && live.parentNode) {
+      // The unit a person pressed in: drawn whole from the answer they asked for (C4226).
+      var drawn = root.document.importNode(next, true);
+      live.parentNode.replaceChild(drawn, live);
+      remember(drawn, next);
+      ctx.drew.push(drawn);
+      return drawn;
+    }
     if (was.isEqualNode(next)) return live;          // unchanged: untouched
     if (ctx.keep.indexOf(live) >= 0) return live;    // a person is working in it: drawn later
     if (live.nodeType !== 1) {
@@ -1132,21 +1193,44 @@
     for (var i = 0; i < els.length; i++) if (els[i].isConnected) root.htmx.process(els[i]);
   }
 
+  /* A pressed unit a merge drew whole (C4226) is the answer htmx would have swapped in, and
+     htmx says so with `htmx:load` once it has wired new content (its settle task): said here
+     too, once wired, so what waits on that word (a second press after the first's answer is
+     bound, tests/test_update_button.py's C1955) hears it. The autofocus step stays out. */
+  function loaded(els) {
+    if (!root.htmx || !root.htmx.trigger) return;
+    for (var i = 0; i < els.length; i++) if (els[i].isConnected) root.htmx.trigger(els[i], 'htmx:load');
+  }
+
   /* Merge an answer into its region: *outer* the region itself redrawn (its outerHTML), else
      its children (innerHTML). A region the page holds no copy of, or an answer that is not
      one element of the same kind, is replaced as htmx would have. Returns [] (htmx's settle has
      nothing left to wire). */
   function mergeRegion(outer, target, fragment, hold) {
     target.nmasMerged = true;
-    var done = mergeInto(outer, target, fragment, hold);
+    var pressed = target.nmasPressed || null;
+    delete target.nmasPressed;
+    var drew = [];
+    var done = mergeInto(outer, target, fragment, hold, pressed, drew);
     // Wired once the answer's own request has ended: a merged region is the element that
     // asked, and htmx drops a request (a redrawn card's `load`) from an element still asking.
-    root.setTimeout(function () { wire(done); }, 0);
+    root.setTimeout(function () { wire(done); loaded(drew); }, 0);
     return [];
   }
 
-  function mergeInto(outer, target, fragment, hold) {
-    var ctx = {hold: hold !== false, keep: heldParts(target), root: target, pointed: pointedAt(target)};
+  function mergeInto(outer, target, fragment, hold, pressed, drew) {
+    var ctx = {hold: hold !== false, keep: heldParts(target), root: target,
+               pointed: pointedAt(target), fresh: null, drew: drew || []};
+    var before = [];
+    if (pressed && pressed.isConnected && target.contains(pressed)) {
+      // C4226: what the person pressed in is the answer's, never inside a part kept from it
+      // (a form around both cards, kept for the text typed in the other, would keep the
+      // pressed card as it was; `morph` draws the unit itself whole before any keep).
+      ctx.keep = ctx.keep.filter(function (k) { return !k.contains(pressed); });
+      ctx.fresh = pressed;
+      revisitUp(pressed.parentNode, target);
+      before = Array.prototype.slice.call(target.querySelectorAll('.set-result'));
+    }
     var kept = focusIn(target);
     var els = Array.prototype.filter.call(fragment.childNodes, function (n) { return n.nodeType === 1; });
     var next = els.length === 1 ? els[0] : null;
@@ -1180,6 +1264,12 @@
       merging = false;
     }
     answerRevisited(ctx.keep, target);
+    if (ctx.fresh) {
+      // C4228 on a merged press: the answers it drew are unread until seen (`captureSwapped`
+      // returns on a merge's own swap, so they are marked here).
+      var said = target.querySelectorAll('.set-result');
+      for (var s = 0; s < said.length; s++) if (before.indexOf(said[s]) < 0) markUnread(said[s]);
+    }
     // Ages are the page's to draw: drawn before the browser paints the merge (clock times
     // come drawn by the server, in the viewer's zone).
     drawAges(target);
@@ -1189,10 +1279,12 @@
   }
 
   /* A live answer merges (`htmx:beforeSwap`, after the holds have had their say). */
-  /* PURE over a swap's detail: the merge's swap for a live answer to a region the page holds
-     the server's copy of, or '' (any other swap is htmx's own). */
+  /* PURE over a swap's detail: the merge's swap for a live answer, or a person's press inside
+     the region it swaps (C4226, `pressedUnit`), to a region the page holds the server's copy
+     of, or '' (any other swap is htmx's own). */
   function mergeSpec(d) {
-    if (!d || !d.target || !drawnFrom || !isLiveUpdate(d) || !drawnFrom.get(d.target)) return '';
+    if (!d || !d.target || !drawnFrom || !drawnFrom.get(d.target)) return '';
+    if (!isLiveUpdate(d) && !pressedUnit(d)) return '';
     var src = (d.requestConfig && d.requestConfig.elt) || d.elt || d.target;
     var holder = src.closest ? src.closest('[hx-swap]') : null;
     var spec = d.swapOverride || (holder ? holder.getAttribute('hx-swap') : '') || 'innerHTML';
@@ -1204,7 +1296,10 @@
   }
   function mergeLive(e) {
     var d = e.detail, spec = d && d.shouldSwap ? mergeSpec(d) : '';
-    if (spec) d.swapOverride = spec;
+    if (!spec) return;
+    d.swapOverride = spec;
+    var unit = isLiveUpdate(d) ? null : pressedUnit(d);
+    if (unit) d.target.nmasPressed = unit;
   }
 
   function defineMerge() {

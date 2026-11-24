@@ -317,6 +317,113 @@ class TestAPressAnswerIsKeptUntilSeen:
         assert got == {"kept": False, "value": "newest"}, got
 
 
+def _two_cards(b_text, b_answer="", form=False):
+    html = _cards(b_text, b_answer)
+    if form:  # both cards inside one form, as a selection form holds its rows
+        html = html.replace('<div class="card" id="c4226a">', '<form id="c4226-form">'
+                            '<div class="card" id="c4226a">').replace('</div></section>', '</div></form></section>')
+    return html
+
+
+def _cards(b_text, b_answer):
+    return ('<section id="c4226" hx-get="/v2/" hx-trigger="nmas:c4226 from:body">'
+            '<div class="card" id="c4226a"><input type="text" id="c4226-fa" name="fa" value="">'
+            '<input type="checkbox" id="c4226-ta"><details id="c4226-da"><summary>more</summary>'
+            '<p>x</p></details></div>'
+            f'<div class="card" id="c4226b"><p id="c4226-pb">{b_text}</p>'
+            '<input type="text" id="c4226-fb" name="fb" value="">'
+            f'<div class="set-result">{b_answer}</div>'
+            '<button type="button" id="c4226-close" hx-get="/v2/" hx-target="#c4226" '
+            'hx-swap="SWAP">Close</button></div></section>')
+
+
+_C4226_READ = ("var f = document.getElementById('c4226-fa');"
+               " return {text: f && f.value, tick: document.getElementById('c4226-ta').checked,"
+               " open: document.getElementById('c4226-da').open,"
+               " b: document.getElementById('c4226-pb').textContent,"
+               " typedB: document.getElementById('c4226-fb').value,"
+               " said: !!document.querySelector('#c4226b .said')}")
+
+
+class TestAPressInOneCardKeepsAnother:
+    """C4226: a person's press in card B that swaps the whole live region went past the live
+    merge (`mergeSpec` asked for a live trigger), so htmx replaced the region and card A's
+    typed text, tick and open state were gone (measured 2026-11-24, outerHTML and innerHTML).
+    Through htmx's own request and swap; the server's answer set on the region's own
+    `htmx:beforeSwap`, which runs before the page script's document listeners."""
+
+    def _press(self, b, swap, form=False, work=True):
+        html = _two_cards("before", form=form).replace("SWAP", swap)
+        answer = _two_cards("closed", '<p class="said">Closed.</p>', form=form).replace("SWAP", swap)
+        if swap == "innerHTML":
+            answer = answer[answer.index(">") + 1:-len("</section>")]
+        b.js("var old = document.getElementById('merge-box'); if (old) old.remove();"
+             "var box = document.createElement('div'); box.id = 'merge-box';"
+             "box.innerHTML = arguments[0]; document.querySelector('main').prepend(box);"
+             "htmx.process(box); NMAS_V2.capture(document.getElementById('c4226'));"
+             "window.__answer4226 = arguments[1]; window.__ended4226 = false;"
+             "document.getElementById('c4226').addEventListener('htmx:beforeSwap', function (e) {"
+             " e.detail.serverResponse = window.__answer4226; e.detail.shouldSwap = true;"
+             " e.detail.isError = false; }, {once: true});"
+             "document.addEventListener('htmx:afterRequest', function () {"
+             " window.__ended4226 = true; }, {once: true}); return 1", html, answer)
+        b.js("var g = document.getElementById('c4226-fb'); g.value = 'sent with B';"
+             "window.__region4226 = document.getElementById('c4226');"
+             "document.getElementById('c4226a').setAttribute('data-page-set', '1'); return 1")
+        if work:
+            b.js("var f = document.getElementById('c4226-fa'); f.focus(); f.value = 'half typed';"
+                 "f.dispatchEvent(new Event('input', {bubbles: true}));"
+                 "document.getElementById('c4226-ta').checked = true;"
+                 "document.getElementById('c4226-da').open = true; return 1")
+        b.click("#c4226-close")      # a person's press: the browser's own click (isTrusted)
+        # The press's request ended (its swap done): what the merge drew is then read, so a
+        # pressed card left undrawn fails on its words, never as a timeout.
+        b.wait_for("return window.__ended4226", 10)
+        return b.js(_C4226_READ)
+
+    @pytest.mark.parametrize("swap", ["outerHTML", "innerHTML"])
+    def test_another_card_s_text_tick_and_open_state_survive(self, page, swap):
+        got = self._press(page, swap)
+        assert {k: got[k] for k in ("text", "tick", "open", "b")} == {
+            "text": "half typed", "tick": True, "open": True, "b": "closed"}, got
+
+    def test_the_pressed_card_is_drawn_as_the_server_answered(self, page):
+        # The pressed card is the answer the person asked for: drawn whole from it, its field
+        # as the server drew it (empty), never the text sent with the press.
+        got = self._press(page, "outerHTML")
+        assert {k: got[k] for k in ("b", "typedB", "said")} == {
+            "b": "closed", "typedB": "", "said": True}, got
+
+    def test_with_no_work_outside_the_pressed_card_htmx_replaces_the_region(self, page):
+        # Nothing of a person's to keep in card A: the answer is htmx's own replacement, so
+        # nothing the page itself set on card A survives it (a topology drop's drag offset kept
+        # by a merge drew the device 108 px from where it was saved; tests/test_topology_v2.py).
+        got = self._press(page, "outerHTML", work=False)
+        replaced = page.js("return {old: window.__region4226.isConnected,"
+                           " set: document.getElementById('c4226a').hasAttribute('data-page-set')}")
+        assert {k: got[k] for k in ("b", "said")} == {"b": "closed", "said": True}, got
+        assert replaced == {"old": False, "set": False}, replaced
+
+    def test_a_form_around_both_cards_still_draws_the_pressed_one(self, page):
+        # The text typed in card A keeps the form around both cards as a part a person works
+        # in; the pressed card inside it is still the answer's, and card A's text stays.
+        got = self._press(page, "outerHTML", form=True)
+        assert {k: got[k] for k in ("text", "b", "typedB", "said")} == {
+            "text": "half typed", "b": "closed", "typedB": "", "said": True}, got
+
+    def test_the_press_s_answer_survives_the_next_live_merge(self, page):
+        # C4228 on the merged press: its answer is unread, kept by the redraw its own
+        # invalidation asks for, until the person presses or types in the region.
+        self._press(page, "outerHTML")
+        got = page.js("if (document.activeElement) document.activeElement.blur();"
+                      "var r = document.getElementById('c4226');"
+                      "var t = document.createElement('template');"
+                      "t.innerHTML = arguments[0]; NMAS_V2.mergeInto(true, r, t.content);"
+                      + _C4226_READ, _two_cards("closed, newer").replace("SWAP", "outerHTML"))
+        assert {k: got[k] for k in ("b", "said", "text")} == {
+            "b": "closed, newer", "said": True, "text": "half typed"}, got
+
+
 # ── Needs attention ─────────────────────────────────────────────────────────────────────────
 
 

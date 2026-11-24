@@ -987,6 +987,35 @@ def test_an_announcement_mid_drag_waits_for_the_drop_in_a_browser(web):
             == stored["r1"]
 
 
+def test_a_drop_with_text_typed_in_find_draws_the_device_where_it_was_saved_in_a_browser(web):
+    """C4226's press merge on the map: text typed in Find, unsent, is a person's work in
+    `#topo`; the drop's save (a script's submit of `#topo-move`) is still htmx's own swap, so
+    the map is drawn again from the answer: r1 where the store has it, no drag offset left on
+    it (merged, r1 kept `data-dx`, drawn 108 px from its saved place, measured 2026-11-24)."""
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    import app as A
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        _open_snapped(b, srv)
+        b.type("#topo-find", "r")
+        _pointer(b, [{"type": "pointerMove", "origin": _element(b, '[data-node="r1"] .topo-ic'),
+                      "x": 3, "y": -4},
+                     {"type": "pointerDown", "button": 0},
+                     {"type": "pointerMove", "origin": "pointer", "x": 90, "y": 60,
+                      "duration": 200},
+                     {"type": "pointerUp", "button": 0}])
+        b._call("DELETE", f"/session/{b.session}/actions")
+        b.wait_for("return window.__done.some(function (r) {"
+                   " return r.indexOf('POST /v2/topology/positions') === 0; }) && "
+                   "!window.__r1.isConnected", 10)
+        stored = json.loads((web["dir"] / "topology_layout.json").read_text())["positions"]
+        got = b.js("var g = document.querySelector('svg.topo-map [data-node=\"r1\"]');"
+                   "return [+g.getAttribute('data-x'), +g.getAttribute('data-y'),"
+                   " g.getAttribute('data-dx'), g.getAttribute('transform')]")
+        assert got == [stored["r1"][0], stored["r1"][1], None, None], (got, stored["r1"])
+
+
 def test_a_save_answering_mid_drag_waits_for_the_next_drop_in_a_browser(web, monkeypatch):
     """C882, the walk's own sequence: r1 dropped, and dragged again before the save answers
     (held 0.8 s here). The answer arrives mid-drag and waits; the second drop lands on the dot
