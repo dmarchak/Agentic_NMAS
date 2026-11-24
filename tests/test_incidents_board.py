@@ -49,6 +49,17 @@ def test_the_strip_counts_the_period_by_outcome():
                    "closed_unfixed": 2}
 
 
+def test_the_strips_open_counts_every_open_incident_as_the_tiles_do():
+    """C4033: an incident still open though detected before the window is open on the strip,
+    so the strip never reads "0 open" beside the tab's "Open · 1" and the tile's "1 open"."""
+    rows = [_row("needs_person", days_ago=40, resolved=False), _row("fixed_person", days_ago=45),
+            _row("working", days_ago=2, category="routing", resolved=False)]
+    got = B.board(rows, NOW)
+    strip = {o["key"]: o["n"] for o in got["outcomes"]}
+    assert strip["open"] == 2 == sum(t["open"] for t in got["tiles"])
+    assert strip.get("person_fixed", 0) == 0, "the window still bounds the closed counts"
+
+
 def test_each_tile_counts_its_open_and_its_detections_per_day():
     rows = [_row("fixed_mercury", days_ago=0.5), _row("fixed_mercury", days_ago=0.6),
             _row("needs_person", days_ago=40, resolved=False),

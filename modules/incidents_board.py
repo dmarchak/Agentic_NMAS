@@ -80,9 +80,10 @@ def _epoch(stamp) -> float:
 
 def board(rows: list, now: float) -> dict:
     """``{"days", "outcomes", "tiles", "needs"}`` for every row of a network (both tabs).
-    *outcomes* the strip over the incidents detected in the last `WINDOW_DAYS`: ``{"key",
-    "words", "n"}``; *tiles* each category with an incident: ``{"key", "words", "open",
-    "total", "trend"}``, *trend* the detections per day, oldest first, `WINDOW_DAYS` long;
+    *outcomes* the strip, every open incident and the closed among those detected in the last
+    `WINDOW_DAYS`: ``{"key", "words", "n"}``; *tiles* each category with an incident: ``{"key",
+    "words", "open", "total", "trend"}``, *trend* the detections per day, oldest first,
+    `WINDOW_DAYS` long;
     *needs* the brief's categories the store holds none of."""
     start = now - WINDOW_DAYS * 86400
     counts = {k: 0 for k, _w in OUTCOMES}
@@ -92,12 +93,15 @@ def board(rows: list, now: float) -> dict:
         at = _epoch(r.get("since"))
         tile = tiles.get(r.get("category") or "other", tiles["other"])
         if not r.get("resolved"):
+            # Open counts every open incident, as the tile does; the window bounds only the
+            # closed outcomes and the trend (C4033: "0 open" beside the tab's "Open · 1").
             tile["open"] += 1
+            counts["open"] += 1
         if at < start or at > now:
             continue
         tile["total"] += 1
         tile["trend"][min(WINDOW_DAYS - 1, int((at - start) // 86400))] += 1
-        key = "open" if not r.get("resolved") else OUTCOME_OF.get(r.get("group"), "")
+        key = OUTCOME_OF.get(r.get("group"), "") if r.get("resolved") else ""
         if key:
             counts[key] += 1
     outcomes = [{"key": k, "words": w, "n": counts[k]} for k, w in OUTCOMES
