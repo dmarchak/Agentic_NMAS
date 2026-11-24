@@ -2534,15 +2534,22 @@ def _read_account_fleet(client, _lab, _mp):
             # Reopened from In progress: the page's own address draws the job's card.
             page = client.get(f"/v2/credentials/profiles/read-account/job/{job}")
             assert page.status_code == 200
-        # A run under way: its card says the wave it is on and each device done so far.
+        # A run under way: its card draws THE stepper (C4232), the wave it is on and each
+        # device done so far, from the batch deploy's own record.
+        from modules import deploy_job
         real_get = capture_job.get
         mp.setattr(capture_job, "get", lambda job: {"state": "running"}
                    if job == "running-rollout" else real_get(job))
-        mp.setattr(RA, "progress", lambda job: {"wave": 1, "state": "running",
-                                                "done": {"r5": "deployed"}})
+        mp.setitem(deploy_job._progress, "running-rollout", {})
+        on_device = deploy_job.track("running-rollout", "Lab", ["r5", "r6"],
+                                     waves=[("the canary", ["r5"]), ("wave 2", ["r6"])])
+        on_device("start", "r5", None)
+        on_device("done", "r5", {"outcome": DEPLOYED})
+        deploy_job.track_wave("running-rollout")(1, "running")
         html = client.get(f"{base}/rollout/run/running-rollout?network=Lab") \
             .get_data(as_text=True)
-        assert "data-ra-progress" in html and "r5 (deployed)" in html, html[:300]
+        assert "data-run-stepper" in html and 'data-row="r5"' in html, html[:300]
+        assert "waiting its turn: wave 2" in html and "running wave 2" in html, html[:300]
         mp.setattr(capture_job, "get", real_get)
         r = client.post(f"{base}/rollout/go-on", data={"job": "no-such-job"})
         assert r.status_code == 409 and "data-ra-run-refused" in r.get_data(as_text=True)

@@ -327,7 +327,10 @@ def change_go_on():
 @bp.route("/change/run/<job>", methods=["GET"])
 def change_run(job):
     """The run's card for its job: running, paused after the canary, stopped, done, refused, or
-    why there is none. Re-read when the run announces `fleet_change` and as each device steps."""
+    why there is none. Re-read when the run announces `fleet_change` and as each device steps.
+    Running, and once it ended, each device on THE stepper, from the batch deploy's own record
+    (`deploy_job.track`, `deploy_job.waves_card`); *q* finds a device in a long run."""
+    from modules import deploy_job
     from modules.nsot import capture_job
 
     got = capture_job.get(job)
@@ -335,8 +338,15 @@ def change_run(job):
     layer = (request.args.get("layer") or "").strip()
     if got is None:
         return _run_card({"state": "unknown", "list": name, "layer": layer, "job": job})
+
+    def stepper(results=None):
+        return deploy_job.waves_card(
+            deploy_job.state(job), name, results=results, label="The change", key=f"fc-{job}",
+            q=request.args.get("q", ""), search_target="#fc-plan", unit="batch",
+            search=("intent_layers_v2.change_run", {"job": job, "list": name, "layer": layer}))
     if got["state"] == "running":
-        return _run_card({"state": "running", "list": name, "layer": layer, "job": job})
+        return _run_card({"state": "running", "list": name, "layer": layer, "job": job,
+                          "run": stepper()})
     if got["state"] == "failed":
         return _run_card({"state": "refused", "list": name, "layer": layer,
                           "error": f"the run did not finish: {got['error']}"})
@@ -349,7 +359,10 @@ def change_run(job):
              "reason": r.get("reason") or (r.get("verify") or {}).get("summary") or ""}
             for r in run.get("results") or []]
     batch_of = {d: n for n, b in enumerate(run.get("batches") or []) for d in b}
+    # Each device's steps, one level down, while this server keeps their trail.
+    steps = stepper(run.get("results") or [])
     return _run_card({"state": run["state"], "list": name, "layer": layer, "job": job,
+                      "run": steps if steps and any(x["steps"] for x in steps["rows"]) else None,
                       "title": _run_title(run.get("plan") or {}, layer),
                       "commit": run.get("commit", ""), "stopped": run.get("stopped", ""),
                       "rows": [dict(r, batch=batch_of.get(r["device"], 0)) for r in rows],

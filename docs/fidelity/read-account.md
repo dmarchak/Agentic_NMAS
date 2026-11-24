@@ -9,7 +9,7 @@ rollout's preview and run), not from board shots: the board is not on the mockup
 tests/test_board_shots.py has no file for it yet. A shot comparison at 1440, 1280 and 390 is the
 operator's review's.
 Templates compared: templates/v2/_read_account_fleet.html, templates/v2/_read_account_coverage.html, templates/v2/_read_account_op.html
-Templates sha256: `d3c622656118f7a4e6a24c5f96c65e0caa82b84fa3c77da0441451f7cd261f19`
+Templates sha256: `f410d027bedeaa34e478a810ca10381e3fa9cce7e63d00ba2304666a79d299f3`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
@@ -40,3 +40,13 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | R8: The preview | whom it signs in as, every command in order with what is expected, not measured and not asked with why, the hash; Probe <device>, Cancel; refused now named | the same: the probe's own preview words in one block, the hash beside the confirm; a refusal now (the backup window, a device held) drawn and the button not offered | **same** |
 | R8: The result | the verdict and why, recorded on History as whom; the commands by result, collapsed | the same, with the record's file name and the proposal when a read is refused | **same** |
 | C3427 | not on board R | not built | **later** a replaced read-only password reaching every device (plan-before-video 1.4) |
+
+Compared again 2026-11-24 (C4232), by `_read_account_op.html`'s diff against this record's own
+words for board R (the board's file was not on the machine, so no new shot): while the rollout
+runs, the card draws the one stepper (`run_stepper`) in place of its one line of text ("Running
+wave 2 · done so far: …"): a row per device in wave order, its steps with their times, a waiting
+device's wave, the wave running as the last row; ended, each device's steps one level down.
+Every other region is unchanged. Templates sha256 before:
+`d3c622656118f7a4e6a24c5f96c65e0caa82b84fa3c77da0441451f7cd261f19`.
+
+| R5: the rollout while it runs | each wave's devices and state in place | the one stepper: a row per device in wave order with its steps and times, a waiting device's wave, the wave running last | **deviation** (log: C4232: a change run and the rollout draw the one stepper) |

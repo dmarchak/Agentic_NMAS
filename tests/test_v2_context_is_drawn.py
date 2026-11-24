@@ -731,7 +731,6 @@ EMPTY_IN_FIXTURE = {
     "v2/_rotate.html c.what_not": _OP + " (Rotate's preview: its preflight read is not run)",
     "v2/_run_stepper.html g.rows": _RUN_GROUPS,
     "v2/_run_stepper.html r.groups": _RUN_GROUPS,
-    "v2/_run_stepper.html r.tally": _RUN_GROUPS,
     "v2/_run_stepper.html s.tally": _RUN_GROUPS,
     "v2/_save.html g.devices #3": _SAVE,
     "v2/_save.html s.groups #4": _SAVE,
@@ -856,7 +855,9 @@ EMPTY_IN_FIXTURE = {
 #: stored view, so `_neighbours.html`'s rows per protocol drew, measured.
 #: 326 with History's alert rule changes provider (C3290, 2026-11-13): one kind chosen, so the
 #: kind filter's summary (`g`, `kind_groups`) drew, measured.
-EMPTY_IN_FIXTURE_CEILING = 326
+#: 325 with the read-only account's running rollout on THE stepper (C4232, 2026-11-24): its two
+#: devices drew the counts line (`r.tally`), measured.
+EMPTY_IN_FIXTURE_CEILING = 325
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.

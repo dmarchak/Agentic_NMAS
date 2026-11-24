@@ -14,6 +14,11 @@ where the batch is: done (with its outcome), running, or not reached, never a
 spinner. At the end the job announces every key a deploy changes, as
 today's `/deploy/apply` declared them until 7.8 (2026-10-17).
 
+**The same record for every run over THE rollout engine** (C4232): a layer's or a selection's
+change (`fleet_change._run`) and the read-only account's rollout (`read_account._run`) record
+their devices through `track` and `track_wave` too, and their cards draw them through
+`waves_card`, which builds its rows as `run_card` does (`_live_rows`, `_ended_row`).
+
 **The person behind it.** The confirm's verified identity is carried into the
 thread (`identity.carried`), so the golden commit reads `Actor-Verified:
 access` and the receipts name the person, as a request's confirm does.
@@ -26,6 +31,7 @@ import logging
 import threading
 import time
 
+from modules import op_progress
 from modules.nsot.receipts import SCOPES
 
 log = logging.getLogger(__name__)
@@ -38,6 +44,10 @@ KINDS = {**{scope: words[0] for scope, words in SCOPES.items()}, "": "deploy"}
 ANNOUNCER = "deploy-job"
 #: Announced as each device finishes: the page's progress moved.
 PROGRESS_KEYS = ("deploy_job",)
+#: What the engine's other runs (a change, the read-only account's rollout) announce as each
+#: device or wave moves: a run's step written (`op_progress.STEP_KEYS`, by its announcer),
+#: which every running card and In progress listen for and no reader wakes on.
+ENGINE_PROGRESS = {"keys": op_progress.STEP_KEYS, "by": op_progress.STEP_ANNOUNCER}
 #: Announced at the end: what a deploy changes (today's `/deploy/apply` declared these).
 DONE_KEYS = ("deploy_job", "device_state", "baselines", "drift", "rolled_back",
              "goldens", "remote")
@@ -67,37 +77,8 @@ def start(list_name: str, order: list, confirmations: dict, command_hashes: dict
         from modules.outbound import mask_payload
         from routes.deploy import apply_batch
 
-        with _lock:
-            _progress[job_id] = {"order": list(order), "done": {}, "current": "",
-                                 "started": {}, "scope": scope}
-
-        def on_device(event, name, result):
-            with _lock:
-                p = _progress.get(job_id)
-                if p is None:
-                    return
-                if event == "start":
-                    p["current"], p["started"][name] = name, time.time()
-                else:
-                    p["current"] = ""
-                    checks = (result or {}).get("checks") or {}
-                    p["done"][name] = {"outcome": (result or {}).get("outcome", ""),
-                                       "stage": (result or {}).get("stage", ""),
-                                       "reason": (result or {}).get("reason", ""),
-                                       # Sent, and its verify did not pass (C394).
-                                       "partial": bool(checks.get("ran") and not checks.get("ok")),
-                                       "took_s": round(time.time() - p["started"].get(
-                                           name, time.time()), 1),
-                                       # Its steps' trail, kept while the batch still holds
-                                       # it, so its finished row keeps each step's time (the
-                                       # one stepper, 2026-10-12).
-                                       "trail": _trail(list_name, name), "at": time.time()}
-            try:
-                from modules import invalidation
-                invalidation.announce(PROGRESS_KEYS, by=ANNOUNCER)
-            except Exception as exc:              # noqa: BLE001
-                log.info("deploy job %s: progress not announced (%s); the page asks "
-                         "when Check now is pressed", job_id, exc)
+        # Each device's start and finish, recorded for THE stepper and announced (`track`).
+        on_device = track(job_id, list_name, order, scope=scope)
 
         # THE rollout engine (the operator, 2026-11-14: "the same engine for every batch
         # deploy", `fleet_change.run_waves`): the confirmed devices as ONE wave in their order
@@ -212,6 +193,75 @@ def start_restore(list_name: str, ref: str, confirmations: dict, command_hashes:
     return job
 
 
+def track(job_id: str, list_name: str, order: list, *, scope: str = "", waves: list = None,
+          keys: tuple = PROGRESS_KEYS, by: str = ANNOUNCER):
+    """Record a run's devices for THE stepper (`state`, `run_card`, `waves_card`) and return THE
+    apply's *on_device* (`routes.deploy.apply_batch`): each device's start, and its finish with
+    its outcome and its steps' trail, kept while the run still holds it so its finished row
+    keeps each step's time; each announced, so its card redraws. ONE recorder for every run
+    over THE apply: the batch deploy (`start`), a layer's or a selection's change
+    (`fleet_change._run`) and the read-only account's rollout (`read_account._run`). *waves*
+    (``[(words, devices)]``, the engine's runs): each wave's name on its card, *order* its
+    devices in wave order. Display only: what it records is never read by the run. *keys*,
+    announced *by*, are what each move announces: the batch deploy's own by default; the
+    engine's runs pass `ENGINE_PROGRESS`, which wakes no reader (the device-write review of
+    2026-11-24, MEDIUM: `deploy_job` wakes the `rip` and `endpoints` readers, which open a
+    session to every device, the one being sent to included)."""
+    with _lock:
+        _progress[job_id] = {"order": list(order), "done": {}, "current": "", "started": {},
+                             "scope": scope, "waves": [(w, list(d)) for w, d in waves or []],
+                             "wave": 0, "wave_state": ""}
+
+    def on_device(event, name, result):
+        with _lock:
+            p = _progress.get(job_id)
+            if p is None:
+                return
+            if event == "start":
+                p["current"], p["started"][name] = name, time.time()
+            else:
+                p["current"] = ""
+                checks = (result or {}).get("checks") or {}
+                p["done"][name] = {"outcome": (result or {}).get("outcome", ""),
+                                   "stage": (result or {}).get("stage", ""),
+                                   "reason": (result or {}).get("reason", ""),
+                                   # Sent, and its verify did not pass (C394).
+                                   "partial": bool(checks.get("ran") and not checks.get("ok")),
+                                   "took_s": round(time.time() - p["started"].get(
+                                       name, time.time()), 1),
+                                   # Its steps' trail, kept while the batch still holds
+                                   # it, so its finished row keeps each step's time (the
+                                   # one stepper, 2026-10-12).
+                                   "trail": _trail(list_name, name), "at": time.time()}
+        _announce_progress(job_id, keys, by)
+    return on_device
+
+
+def track_wave(job_id: str, *, keys: tuple = PROGRESS_KEYS, by: str = ANNOUNCER):
+    """The engine's *on_wave* (`fleet_change.run_waves`) for a run `track` records: the wave it
+    is on and whether it is settling before it, announced (*keys* by *by*, as `track`'s).
+    Display only."""
+    def on_wave(n, state):
+        with _lock:
+            p = _progress.get(job_id)
+            if p is None:
+                return
+            p["wave"], p["wave_state"] = n, state
+        _announce_progress(job_id, keys, by)
+    return on_wave
+
+
+def _announce_progress(job_id: str, keys: tuple = PROGRESS_KEYS, by: str = ANNOUNCER) -> None:
+    """The run's progress moved: its card redraws (never raises: a run is never stopped by
+    its page)."""
+    try:
+        from modules import invalidation
+        invalidation.announce(keys, by=by)
+    except Exception as exc:                          # noqa: BLE001
+        log.info("deploy job %s: progress not announced (%s); the page asks "
+                 "when Check now is pressed", job_id, exc)
+
+
 def _trail(list_name: str, host: str) -> list:
     """The steps the device's pipeline noted on its hold so far (`device_ops.note`), or []."""
     from modules.nsot import device_ops
@@ -253,15 +303,8 @@ def run_card(st: dict, list_name: str, *, q: str = "") -> dict:
     the pipeline's declared steps (`pipeline.STEPS`) with the time in each, read from its hold
     while it runs and from the trail kept when it finished; the batch's commit as the last
     row. *st* is `state()`'s."""
-    from modules import device_actions, pipeline
     from modules import run_stepper as RS
-    from modules.preview_confirm import OUTCOME_WORDS
 
-    def steps_of(progress, at=None):
-        return RS.from_stepper(device_actions.stepper(pipeline.STEPS, progress, now=at,
-                                                      starts=True))
-
-    rows = []
     by_name = {s["device"]: s for s in st.get("steps") or []}
     result = (st.get("payload") or {}).get("result") or {}
     if st.get("state") != "running" and result.get("targets"):
@@ -269,61 +312,16 @@ def run_card(st: dict, list_name: str, *, q: str = "") -> dict:
         # its verify not passed, is never green); its steps' times come from the trail kept.
         said = {x.get("name"): x.get("words", "") for x in
                 (result.get("happened") or {}).get("targets") or []}
-        for t in result["targets"]:
-            name = t.get("name", "")
-            checks = t.get("checks") or {}
-            group = _DONE.get(t.get("outcome"), "failed")
-            if group == "done" and t.get("outcome") == "deployed" and checks.get("ran") \
-                    and not checks.get("ok"):
-                group = "partial"
-            words = said.get(name) or OUTCOME_WORDS.get(t.get("outcome"), t.get("outcome", ""))
-            if group == "partial":
-                words += ", and its verify did not pass"
-            if t.get("reason") and group != "done":
-                words += f": {t['reason']}"
-            kept = by_name.get(name) or {}
-            # A partial here is its verify not passing (above): that step is the partial one,
-            # never drawn done beside it (C1541).
-            steps = (RS.finished(steps_of({"trail": kept["trail"]}, kept.get("at")),
-                                 group if group in ("done", "partial") else "failed",
-                                 partial_at="verify")
-                     if kept.get("trail") else [])
-            rows.append(RS.row(name, group, steps, detail="" if group == "done" else words,
-                               elapsed_words=_took(kept) if steps else ""))
+        rows = [_ended_row(t.get("name", ""), t.get("outcome"), t.get("checks") or {},
+                           t.get("reason", ""), said.get(t.get("name", "")),
+                           by_name.get(t.get("name", "")) or {})
+                for t in result["targets"]]
         return RS.card(rows, label=f"Applied to {len(rows)} devices", key=f"apply-{st['job']}",
                        search=("v2.profile_apply_job", {"job": st["job"]}),
                        search_target="#apply-job",
                        q=q, final={"name": "Commit", "state": "done", "detail": "",
                                    "words": "the batch's goldens and receipts are committed"})
-    for s in st.get("steps") or []:
-        name = s["device"]
-        if s["state"] == "running":
-            from modules.nsot import device_ops
-            prog = (device_ops.holder(list_name, name) or {}).get("progress")
-            rows.append(RS.row(name, "running", steps_of(prog),
-                               elapsed_words=f"running {round(s.get('took_s') or 0)} s"))
-        elif s["state"] == "done":
-            group = _DONE.get(s.get("outcome"), "failed")
-            if group == "done" and s.get("partial"):
-                group = "partial"
-            # `state()`'s words: the outcome, and while the batch runs, that its record is
-            # committed when the batch ends.
-            words = s.get("words") or OUTCOME_WORDS.get(s.get("outcome"), s.get("outcome", ""))
-            detail = words + (f": {s['reason']}" if s.get("reason") and group == "failed" else "")
-            if s.get("trail"):
-                steps = RS.finished(steps_of({"trail": s["trail"]}, s.get("at")),
-                                    "failed" if group == "failed" else group,
-                                    partial_at="verify")
-            else:
-                steps = []
-            rows.append(RS.row(name, group, steps, detail=detail,
-                               elapsed_words=_took(s) if steps else ""))
-        elif s["state"] == "pending":
-            rows.append(RS.row(name, "waiting", detail="waiting its turn: one device at a time, "
-                                                       "in the rollout order"))
-        else:
-            rows.append(RS.row(name, "not_reached",
-                               detail="not reached: the batch stopped before it"))
+    rows = _live_rows(st, list_name)
     running = st.get("state") == "running"
     left = any(r["group"] in ("running", "waiting") for r in rows)
     final = {"name": "Commit",
@@ -337,6 +335,128 @@ def run_card(st: dict, list_name: str, *, q: str = "") -> dict:
                    search=("v2.profile_apply_job", {"job": st.get("job", "")}),
                    search_target="#apply-job",
                    key=f"apply-{st.get('job', '')}")
+
+
+def _steps_of(progress, at=None) -> list:
+    """A device's row of steps: the pipeline's declared steps (`pipeline.STEPS`) from its hold's
+    *progress* (or its kept trail), each with its time."""
+    from modules import device_actions, pipeline
+    from modules import run_stepper as RS
+
+    return RS.from_stepper(device_actions.stepper(pipeline.STEPS, progress, now=at, starts=True))
+
+
+def _ended_row(name: str, outcome, checks: dict, reason: str, said, kept: dict) -> dict:
+    """An ended run's row for one device, from its RESULT (the authority once the run ends:
+    C394, sent and its verify not passed is never green) and the steps' trail kept for it
+    (*kept*, `state()`'s step)."""
+    from modules import run_stepper as RS
+    from modules.preview_confirm import OUTCOME_WORDS
+
+    group = _DONE.get(outcome, "failed")
+    if group == "done" and outcome == "deployed" and checks.get("ran") and not checks.get("ok"):
+        group = "partial"
+    words = said or OUTCOME_WORDS.get(outcome, outcome or "")
+    if group == "partial":
+        words += ", and its verify did not pass"
+    if reason and group != "done":
+        words += f": {reason}"
+    # A partial here is its verify not passing (above): that step is the partial one, never
+    # drawn done beside it (C1541).
+    steps = (RS.finished(_steps_of({"trail": kept["trail"]}, kept.get("at")),
+                         group if group in ("done", "partial") else "failed",
+                         partial_at="verify")
+             if kept.get("trail") else [])
+    return RS.row(name, group, steps, detail="" if group == "done" else words,
+                  elapsed_words=_took(kept) if steps else "")
+
+
+def _live_rows(st: dict, list_name: str, waiting=None) -> list:
+    """A run's rows while it runs (and once it ended with no result to read), from `state()`'s
+    steps: the running device's steps from its hold, each finished one's from its kept trail,
+    the rest waiting their turn (*waiting(name)*: the words a waiting row says) or not
+    reached."""
+    from modules import run_stepper as RS
+    from modules.nsot import device_ops
+    from modules.preview_confirm import OUTCOME_WORDS
+
+    rows = []
+    for s in st.get("steps") or []:
+        name = s["device"]
+        if s["state"] == "running":
+            prog = (device_ops.holder(list_name, name) or {}).get("progress")
+            rows.append(RS.row(name, "running", _steps_of(prog),
+                               elapsed_words=f"running {round(s.get('took_s') or 0)} s"))
+        elif s["state"] == "done":
+            group = _DONE.get(s.get("outcome"), "failed")
+            if group == "done" and s.get("partial"):
+                group = "partial"
+            # `state()`'s words: the outcome, and while the batch runs, that its record is
+            # committed when the batch ends.
+            words = s.get("words") or OUTCOME_WORDS.get(s.get("outcome"), s.get("outcome", ""))
+            detail = words + (f": {s['reason']}" if s.get("reason") and group == "failed" else "")
+            if s.get("trail"):
+                steps = RS.finished(_steps_of({"trail": s["trail"]}, s.get("at")),
+                                    "failed" if group == "failed" else group,
+                                    partial_at="verify")
+            else:
+                steps = []
+            rows.append(RS.row(name, group, steps, detail=detail,
+                               elapsed_words=_took(s) if steps else ""))
+        elif s["state"] == "pending":
+            rows.append(RS.row(name, "waiting", detail=(
+                waiting(name) if waiting else
+                "waiting its turn: one device at a time, in the rollout order")))
+        else:
+            rows.append(RS.row(name, "not_reached",
+                               detail="not reached: the batch stopped before it"))
+    return rows
+
+
+def waves_card(st: dict, list_name: str, *, results=None, label: str, key: str, q: str = "",
+               search: tuple = None, search_target: str = "", unit: str = "wave"):
+    """A run of THE rollout engine's waves (`fleet_change.run_waves`: a layer's or a
+    selection's change, the read-only account's rollout) on THE stepper, as the batch deploy
+    draws its one wave (`run_card`), from the same record (`track`): a row per device in wave
+    order, each waiting row naming its wave (the canary, wave 2, ...), the pipeline's steps with
+    their times; the waves as the last row (*unit*: what the run calls one, a wave or a batch).
+    Ended, *results* (the run's ``results``, the authority) give each device's outcome, its
+    steps from the trail kept. None when the run recorded no device (still making its plan
+    again, or this server has no record of it)."""
+    from modules import run_stepper as RS
+
+    if not st or not st.get("order"):
+        return None
+    last = {"name": f"{unit[:1].upper()}{unit[1:]}s", "state": "done", "detail": "",
+            "words": f"each {unit} committed its goldens and receipts as it ended"}
+    waves = st.get("waves") or []
+    named = {d: words for words, devices in waves for d in devices}
+    running = st.get("state") == "running"
+    if not running and results is not None:
+        by_name = {s["device"]: s for s in st.get("steps") or []}
+        rows = []
+        for r in results:
+            verify = r.get("verify") or {}
+            checks = r.get("checks") or ({"ran": True, "ok": bool(verify.get("ok"))}
+                                         if "ok" in verify else {})
+            rows.append(_ended_row(r.get("device", ""), r.get("outcome"), checks,
+                                   r.get("reason") or verify.get("summary") or "", None,
+                                   by_name.get(r.get("device", "")) or {}))
+        return RS.card(rows, label=f"{label}: {len(rows)} devices", key=key, q=q,
+                       search=search, search_target=search_target, final=last)
+    rows = _live_rows(st, list_name, waiting=lambda name: (
+        f"waiting its turn: {named[name]}" if name in named else
+        "waiting its turn: one device at a time, in the rollout order"))
+    n = st.get("wave") or 0
+    at = waves[n][0] if n < len(waves) else f"{unit} {n + 1}"
+    final = last if not running else {
+        "name": last["name"], "state": "running",
+        "detail": f"{n + 1} of {len(waves)}" if waves else "",
+        "words": (f"settling before {at}" if st.get("wave_state") == "settling"
+                  else f"running {at}")
+        + f"; each {unit} commits its goldens and receipts as it ends"}
+    return RS.card(rows, label=f"{label}: {len(rows)} devices", final=final, q=q, key=key,
+                   search=search, search_target=search_target)
 
 
 def _doing(list_name: str, host: str) -> str:
@@ -358,7 +478,9 @@ def state(job_id: str):
     offer a failed device's Retry on the same scope, C1499). Each step is a device
     in the rollout order: ``done`` (with its outcome in words), ``running``,
     ``pending`` (its turn has not come) while the batch runs, or
-    ``not_reached`` once it has ended without reaching it (the breaker)."""
+    ``not_reached`` once it has ended without reaching it (the breaker). ``waves``, ``wave``
+    and ``wave_state``: an engine run's waves as `track` recorded them, the wave it is on, and
+    ``settling`` while it waits out the settle before it (empty for a batch deploy)."""
     from modules.nsot import capture_job
     from modules.preview_confirm import OUTCOME_WORDS
 
@@ -368,7 +490,9 @@ def state(job_id: str):
     with _lock:
         p = _progress.get(job_id) or {"order": [], "done": {}, "current": "", "started": {}}
         p = {"order": list(p["order"]), "done": dict(p["done"]), "current": p["current"],
-             "started": dict(p["started"]), "scope": p.get("scope", "")}
+             "started": dict(p["started"]), "scope": p.get("scope", ""),
+             "waves": list(p.get("waves") or []), "wave": p.get("wave", 0),
+             "wave_state": p.get("wave_state", "")}
     now = time.time()
     steps = []
     for name in p["order"]:
@@ -376,8 +500,10 @@ def state(job_id: str):
             row = p["done"][name]
             words = OUTCOME_WORDS.get(row["outcome"], row["outcome"].replace("_", " "))
             if job["state"] == "running":
-                # Its receipt row is written, commit pending, until the batch commits.
-                words += "; its record is committed when the batch ends"
+                # Its receipt row is written, commit pending, until the batch commits (a wave
+                # of the engine's runs is one batch: its wave's commit).
+                words += ("; its record is committed when its wave ends" if p["waves"]
+                          else "; its record is committed when the batch ends")
             steps.append({"device": name, "state": "done", **row, "words": words})
         elif name == p["current"]:
             steps.append({"device": name, "state": "running",
@@ -389,4 +515,5 @@ def state(job_id: str):
     return {"job": job_id, "state": job["state"], "order": p["order"], "steps": steps,
             "list": job.get("list", ""), "scope": p["scope"],
             "elapsed_s": job.get("elapsed_s"), "payload": job.get("payload"),
-            "error": job.get("error", "")}
+            "error": job.get("error", ""), "waves": p["waves"], "wave": p["wave"],
+            "wave_state": p["wave_state"]}

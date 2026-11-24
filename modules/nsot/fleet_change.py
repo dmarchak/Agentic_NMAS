@@ -558,6 +558,11 @@ def batches_of(devices: list, canary: str, size: int) -> list:
     return [[canary]] + [rest[i:i + size] for i in range(0, len(rest), size)]
 
 
+def batch_words(n: int) -> str:
+    """Batch *n* of a run as its card names it: the canary first, then batch 1, 2, ..."""
+    return "the canary" if n == 0 else f"batch {n}"
+
+
 def run_batches(list_name: str, plan: dict, batches: list, *, actor: str, actor_kind: str,
                 on_device=None, after_verify=None) -> dict:
     """Run *batches* in order through THE apply (`routes.deploy.apply_batch`: each device's
@@ -751,7 +756,7 @@ def approve_and_run_start(list_name: str, target, steps: list, confirmed_hash: s
     from modules.nsot import capture_job
     from modules.outbound import mask_payload
 
-    def work(_job):
+    def work(job):
         got = approve_target(list_name, target, steps, confirmed_hash, summary=summary,
                              reason=reason, actor=actor)
         if not got["ok"]:
@@ -765,24 +770,34 @@ def approve_and_run_start(list_name: str, target, steps: list, confirmed_hash: s
         first = canary if canary in hosts else hosts[0]
         batches = batches_of(hosts, first, batch)
         return _run(list_name, plan, got["commit"], batches, after_canary=after_canary,
-                    actor=actor, actor_kind=actor_kind, start_at=0)
+                    actor=actor, actor_kind=actor_kind, start_at=0, job=job)
     return capture_job.start(list_name, f"Approve and run {named(target)}'s change", actor, work,
                              kind="fleet change run", announce_keys=RUN_KEYS,
                              announcer=RUN_ANNOUNCER)
 
 
 def _run(list_name: str, plan: dict, commit: str, batches: list, *, after_canary: str,
-         actor: str, actor_kind: str, start_at: int) -> dict:
+         actor: str, actor_kind: str, start_at: int, job: str = "") -> dict:
     """One job's part of the run, its masked payload, through THE engine (`run_waves`): the
     canary, then every batch, a pause after the canary when *after_canary* is ``pause`` (the
-    engine's option), the first failure stopping it and telling the team."""
+    engine's option), the first failure stopping it and telling the team. Each device's start
+    and finish, and the batch it is on, are recorded for the run's card by the batch deploy's
+    own recorder (`deploy_job.track`, THE stepper; display only)."""
+    from modules import deploy_job
     from modules.outbound import mask_payload
 
+    on_device = on_wave = None
+    if job:
+        names = [(batch_words(n), b) for n, b in enumerate(batches)]
+        on_device = deploy_job.track(job, list_name, [d for b in batches[start_at:] for d in b],
+                                     waves=names, **deploy_job.ENGINE_PROGRESS)
+        on_wave = deploy_job.track_wave(job, **deploy_job.ENGINE_PROGRESS)
     got = run_waves(list_name, batches, plan_waves(list_name, plan, actor=actor,
-                                                   actor_kind=actor_kind),
+                                                   actor_kind=actor_kind, on_device=on_device),
                     options={"pause_after_canary": after_canary == "pause"},
                     start_at=start_at, label=f"{label_of(plan)}'s change",
-                    link=f"/v2/intent?list={list_name}", key=plan.get("hash") or commit)
+                    link=f"/v2/intent?list={list_name}", key=plan.get("hash") or commit,
+                    on_wave=on_wave)
     return mask_payload({"state": got["state"], "commit": commit, "plan": plan,
                          "batches": batches, "next": got["next"],
                          "results": got["results"], "stopped": got["stopped"],
@@ -797,9 +812,9 @@ def run_start(list_name: str, plan: dict, commit: str, batches: list, *, after_c
     `RUN_KEYS` when it ends."""
     from modules.nsot import capture_job
 
-    def work(_job):
+    def work(job):
         return _run(list_name, plan, commit, batches, after_canary=after_canary, actor=actor,
-                    actor_kind=actor_kind, start_at=start_at)
+                    actor_kind=actor_kind, start_at=start_at, job=job)
     return capture_job.start(list_name, f"Run {label_of(plan)}'s change", actor, work,
                              kind="fleet change run", announce_keys=RUN_KEYS,
                              announcer=RUN_ANNOUNCER)

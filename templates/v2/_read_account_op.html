@@ -1,8 +1,11 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- Board R's R2 to R7 (provisional, operator review pending), in place under the coverage:
     Add the read-only account… (pick, preview, the commit's result) and the rollout (its form,
     the one preview as a job, the run: the canary, Go on, a management-path device's own
-    confirm, a stop at the first failure). routes/credential_profiles_v2.py over
+    confirm, a stop at the first failure). The run, while it runs, on THE stepper
+    (`deploy_job.waves_card`, C4232), each device's steps kept one level down once it ended.
+    routes/credential_profiles_v2.py over
     modules/nsot/read_account.py. *op* is the card's state; *may* the approval's statement,
     *may_send* the deploy's. -#}
 {%- macro program(lines) -%}
@@ -240,9 +243,8 @@
 </section>
 {%- elif op.state == 'roll_running' %}
 <section class="op-card" aria-labelledby="ra-run-h" hx-get="{{ url_for('credential_profiles_v2.read_account_rollout_run', job=op.job, network=op.network) }}" hx-trigger="nmas:fleet_change from:body, nmas:device_progress from:body" hx-target="#ra-op" hx-swap="outerHTML">
-  <div class="op-hd"><h2 id="ra-run-h">Rolling out to {{ op.network }}</h2></div>
-  <div class="op-part"><h3>The run</h3><div><p class="op-wait">Making the plan again, then each wave by itself: each device held, sent, verified, saved. The card redraws as it goes; leave the page and In progress keeps it.</p>
-    {%- if op.p %}<p class="small" data-ra-progress>{{ 'Settling before' if op.p.state == 'settling' else 'Running' }} {{ 'the canary' if op.p.wave == 0 else 'wave ' ~ (op.p.wave + 1) }}{% if op.p.done %} · done so far: {% for d, o in op.p.done.items() %}{{ d }} ({{ o | replace('_', ' ') }}){{ ', ' if not loop.last }}{% endfor %}{% endif %}</p>{% endif %}</div></div>
+  <div class="op-hd"><h2 id="ra-run-h">Rolling out to {{ op.network }}{% if op.run %} · {{ op.run.total }} device{{ 's' if op.run.total != 1 }}{% endif %}</h2></div>
+  <div class="op-part"><h3>The run</h3><div>{% if op.run %}{{ run_stepper(op.run) }}{% else %}<p class="op-wait">Making the plan again, then each wave by itself: each device held, sent, verified, saved. The card redraws as it goes; leave the page and In progress keeps it.</p>{% endif %}</div></div>
 </section>
 {%- elif op.state == 'roll_run' %}
 {%- set r = op.r %}
@@ -256,6 +258,9 @@
     </div>
     {%- endfor %}
     <p class="small muted">Each device's receipt is on its History · confirmed sha256 <span class="mono" title="{{ r.hash }}">{{ r.hash[:12] }}</span></p>
+    {%- if op.run %}
+    <details class="fc-group" data-keep="ra-steps-{{ op.job }}" data-ra-steps><summary class="small">Each device's steps</summary>{{ run_stepper(op.run) }}</details>
+    {%- endif %}
   </div></div>
   {%- if r.state == 'paused' %}
   <form method="post" action="{{ url_for('credential_profiles_v2.read_account_rollout_go_on') }}" hx-post="{{ url_for('credential_profiles_v2.read_account_rollout_go_on') }}" hx-target="#ra-op" hx-swap="outerHTML">

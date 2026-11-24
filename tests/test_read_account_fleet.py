@@ -20,6 +20,11 @@ faked where it would send (`routes.deploy.apply_batch`), as tests/test_fleet_cha
 - **The rollout** orders the canary alone, then waves, then each management-path carrier last
   and alone; the run pauses after the canary; a carrier's wave needs the confirm naming it; the
   first failure stops it; a moved plan refuses the run naming both hashes.
+- **The run on THE stepper** (C4232): running, its card draws the batch deploy's stepper from
+  the batch deploy's own record (`deploy_job.track`), a row per device in wave order, the
+  running device on its running step, a waiting one naming its wave, never the retired text
+  line (`data-ra-progress`); ended, each device keeps its steps one level down, a failed probe's
+  device failed with its why and the rest not reached.
 - **The routes** draw the held coverage (never computing it), the Add's preview and its refusal.
 
 IPv6: nothing here parses or connects to an address; the account's lines are the same for IPv4
@@ -29,6 +34,7 @@ in any assertion.
 
 import json
 import os
+import re
 import subprocess
 
 import pytest
@@ -634,6 +640,87 @@ class TestTheRollout:
         run = capture_job.get(job)["payload"]
         assert run["state"] == "refused" and p["hash"][:12] in run["error"]
         assert planned["calls"] == []
+
+
+# ── C4232: the rollout on THE stepper ─────────────────────────────────────────────────────────
+
+class TestTheRolloutOnTheStepper:
+    """C4232: the rollout draws the batch deploy's live stepper (the week plan's Stage 5 item 1:
+    every action reports progress through THE one stepper), from the same record; THE apply
+    stepped by `tests.test_fleet_run_v2.stepping`, the probe in verify the fixture's."""
+
+    CARD = "/v2/credentials/profiles/read-account/rollout/run/{job}?network=Lab"
+
+    @staticmethod
+    def _one(_ln, d, kw):
+        from modules.nsot.deploy import DEPLOYED
+        r = {"device": d, "outcome": DEPLOYED, "verify": {"ok": True},
+             "checks": {"ran": True, "ok": True}}
+        why = (kw["after_verify"](d, r, None) or {}).get("rollback")
+        if why:
+            r.update(outcome="failed", reason=why, stage="after_verify")
+        return r
+
+    @staticmethod
+    def _press(lab, p):
+        """Deploy the canary pressed (the one confirm, as a verified person): the run's job."""
+        r = lab["client"].post("/v2/credentials/profiles/read-account/rollout", data={
+            "network": "Lab", "device": ["a", "b", "c"], "canary": "b", "size": "4",
+            "hash": p["hash"]})
+        assert r.status_code == 202, r.status_code
+        return r.get_data(as_text=True).split("/rollout/run/", 1)[1].split("?", 1)[0]
+
+    def test_running_it_draws_each_device_on_the_stepper_in_wave_order(self, lab, planned,
+                                                                       monkeypatch):
+        from modules import pipeline
+        from tests.test_fleet_run_v2 import announced, rows_of, stepping
+
+        p = RA.rollout_plan("Lab", ["a", "b", "c"], "b", 4)
+        assert p["batches"] == [["b"], ["a"], ["c"]] and p["confirm_at"] == [2]
+        heard = announced(monkeypatch)
+        at, go = stepping(monkeypatch, self._one, block_at="a")
+        try:
+            job = self._press(lab, p)
+            assert at.wait(10), "a's turn came"
+            html = lab["client"].get(self.CARD.format(job=job)).get_data(as_text=True)
+            moved = list(heard)
+        finally:
+            go.set()
+        assert "data-ra-progress" not in html, "the text line is retired"
+        assert "Rolling out to Lab · 3 devices" in html, html
+        assert "nmas:device_progress from:body" in html, "it redraws as each device moves"
+        # The device-write review of 2026-11-24 (MEDIUM): a fleet-wide rollout's moves announce
+        # the run's step key, never `deploy_job` (its readers open a session to every device).
+        assert ((("device_progress",), "run-progress") in moved
+                and not any(by == "deploy-job" for _k, by in moved)), moved
+        assert html.count("data-run-stepper") == 1, html
+        rows = rows_of(html)
+        assert [(d, g) for d, g, _x in rows] == [("b", "done"), ("a", "running"),
+                                                 ("c", "waiting")], rows
+        assert re.search(r'<li class="run-step run-step-running" data-step="%s"'
+                         % pipeline.STAGE_NAMES[2], rows[1][2]), rows[1][2]
+        assert 'run-step-done" data-step="verify"' in rows[0][2], rows[0][2]
+        assert "waiting its turn: last, alone" in rows[2][2]
+        assert "running wave 2" in html, "the last row says the wave it is on"
+
+    def test_ended_each_device_keeps_its_steps_and_a_failed_probe_is_drawn_failed(
+            self, lab, planned, monkeypatch):
+        from modules.nsot import capture_job
+        from tests.test_fleet_run_v2 import rows_of, stepping
+
+        planned["verdict"]["a"] = "FAIL"
+        p = RA.rollout_plan("Lab", ["a", "b", "c"], "b", 4)
+        _at, go = stepping(monkeypatch, self._one, block_at="")
+        go.set()
+        job = self._press(lab, p)
+        assert capture_job.wait(job, 10)
+        html = lab["client"].get(self.CARD.format(job=job)).get_data(as_text=True)
+        assert "data-ra-stopped" in html and "data-ra-steps" in html, html
+        rows = rows_of(html.split("data-ra-steps", 1)[1])
+        assert [(d, g) for d, g, _x in rows] == [("b", "done"), ("a", "failed"),
+                                                 ("c", "not_reached")], rows
+        assert 'run-step-done" data-step="verify"' in rows[0][2], rows[0][2]
+        assert "gave FAIL" in rows[1][2], rows[1][2]
 
 
 # ── C3427, its first part: Replace its password… refused while a device holds it ──────────────

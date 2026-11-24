@@ -71,8 +71,11 @@ leave as it is has nothing to commit, and the plan offers no approval.
    one you approved refuses the run, naming both, nothing committed or sent.
 6. **The canary.** Read: the canary's program as committed, which must be the one approved.
    Sent: its program, through the deploy every device takes (held, sent, verified, rolled back
-   on its own if it fails). Recorded: its receipt. The card draws each device's step, outcome
-   and why as it goes.
+   on its own if it fails). Recorded: its receipt. While it runs, the card draws the deploy's
+   own stepper: a row per device in batch order, the running one on its step with each step's
+   time, a waiting one naming its batch, and the batch the run is on. Once it ends, the card
+   draws each device's step (canary or batch N), outcome and why, and each device's steps one
+   level down, under "Each device's steps", while this server keeps them.
 7. **The batches.** After a pause, the card names the devices left and offers **Go on: the N
    left** (a verified person's decision, each device's program checked again before it is
    sent) or **Leave it paused**, which sends nothing more: the layer stays committed, so those

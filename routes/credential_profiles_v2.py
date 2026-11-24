@@ -390,7 +390,7 @@ def read_account_rollout_confirm():
                            actor=identity.request_actor(), actor_kind=getattr(who, "kind", ""),
                            named=request.form.getlist("management"),
                            options=RA.fleet_change_options(request.form))
-    return _op(202, op={"state": "roll_running", "job": job, "network": network, "p": {}})
+    return _op(202, op={"state": "roll_running", "job": job, "network": network})
 
 
 def _opened(job: str) -> None:
@@ -446,17 +446,26 @@ def read_account_rollout_go_on():
 @bp.route("/read-account/rollout/run/<job>", methods=["GET"])
 def read_account_rollout_run(job):
     """The rollout's card for its job: running, paused (after the canary, or before a
-    management-path device), stopped, done, refused, or why there is none."""
+    management-path device), stopped, done, refused, or why there is none. Running, and once it
+    ended, each device on THE stepper, from the batch deploy's own record (`deploy_job.track`,
+    `deploy_job.waves_card`); *q* finds a device in a long run."""
+    from modules import deploy_job
     from modules.nsot import capture_job
-    from modules.nsot import read_account as RA
 
     got = capture_job.get(job)
+    network = (request.args.get("network") or "").strip()
     if got is None:
-        return _op(op={"state": "roll_unknown", "job": job,
-                                 "roll": {"network": (request.args.get("network") or "")}})
+        return _op(op={"state": "roll_unknown", "job": job, "roll": {"network": network}})
+
+    def stepper(net, results=None):
+        return deploy_job.waves_card(
+            deploy_job.state(job), net, results=results, label="The rollout", key=f"ra-{job}",
+            q=request.args.get("q", ""), search_target="#ra-op",
+            search=("credential_profiles_v2.read_account_rollout_run",
+                    {"job": job, "network": net}))
     if got["state"] == "running":
-        return _op(op={"state": "roll_running", "job": job,
-                       "network": (request.args.get("network") or ""), "p": RA.progress(job)})
+        return _op(op={"state": "roll_running", "job": job, "network": network,
+                       "run": stepper(got.get("list") or network)})
     _opened(job)
     run = got.get("payload") or {}
     if got["state"] == "failed" or run.get("state") == "refused":
@@ -464,7 +473,10 @@ def read_account_rollout_run(job):
                                  "network": run.get("network", ""),
                                  "error": got.get("error") or run.get("error") or
                                  "the run did not finish"})
-    return _op(op={"state": "roll_run", "job": job, "r": _run_view(run)})
+    # Each device's steps, one level down, while this server keeps their trail.
+    steps = stepper(run.get("network") or got.get("list") or network, run.get("results") or [])
+    return _op(op={"state": "roll_run", "job": job, "r": _run_view(run),
+                   "run": steps if steps and any(x["steps"] for x in steps["rows"]) else None})
 
 
 def _run_view(run: dict) -> dict:

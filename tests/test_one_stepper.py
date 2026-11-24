@@ -68,6 +68,9 @@ OPERATION_PAGES = {
     "_dhcp_reserve.html": "DHCP reservation writes",
     "_dhcp_exclusion.html": "DHCP exclusion writes",
     "_plan_card.html": "A plan of operations (modules/plan_engine.py), its steps in order",
+    # C4232: the rollout engine's two other runs, drawn as the batch deploy's (`deploy_job`).
+    "_fleet_run.html": "A layer's or a selection's change, its batches through THE apply",
+    "_read_account_op.html": "The read-only account's rollout, its waves through THE apply",
 }
 #: Operation pages not yet converted (the 2026-10-12 program, finished the same day): EXACT,
 #: so nothing joins it.

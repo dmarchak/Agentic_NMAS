@@ -71,9 +71,12 @@ reopens this card where you left it.
    rollout**, your press, recorded; without it, it goes on by itself.
 4. `waves`. Each wave in turn with no press, the settle waited before each, each device's
    program checked against the confirmed one before it is sent, then held, sent, verified,
-   probed and saved as the canary was. The card draws where the run is and each device's state
-   in place: waiting, deployed, verified and saved with its probe's verdict, failed and rolled
-   back, or not started.
+   probed and saved as the canary was. While it runs, the card draws the deploy's own stepper:
+   a row per device in wave order, the running one on its step with each step's time, a
+   waiting one naming its wave, and the wave the run is on or is settling before. Once it
+   ends, each wave with each device's state in place: waiting, deployed, verified and saved with its
+   probe's verdict, failed and rolled back, or not started; and each device's steps one level
+   down, under "Each device's steps", while this server keeps them.
 5. `management`. Each device that carries Mercury's management path goes last, alone, after
    every device reached through it, by itself like every wave.
 6. `stop`. The first device that does not deploy, verify and pass its probe is rolled back

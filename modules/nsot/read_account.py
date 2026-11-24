@@ -976,14 +976,12 @@ def plan_start(network: str, devices: list, canary: str, size: int, actor: str,
                              announcer=fleet_change.ANNOUNCER)
 
 
-#: Each running rollout's place, by job: the wave it is on and its devices' outcomes so far,
-#: drawn in place by its card while it runs (`progress`). In memory, as its job is.
-_PROGRESS: dict = {}
-
-
-def progress(job: str) -> dict:
-    """``{"wave", "state", "done": {device: outcome}}`` for a running rollout, or ``{}``."""
-    return dict(_PROGRESS.get(job) or {})
+def wave_words(plan: dict, n: int) -> str:
+    """Wave *n* of *plan* as its cards name it: the canary, wave 2, 3, ..., and a device carrying
+    Mercury's management path last, alone."""
+    if n in (plan.get("confirm_at") or []):
+        return "last, alone"
+    return "the canary" if n == 0 else f"wave {n + 1}"
 
 
 def page_of(network: str) -> str:
@@ -1048,19 +1046,21 @@ def _run(network: str, plan: dict, start_at: int, before: list, *, actor: str,
     """One part of the run, its payload, through THE engine (`fleet_change.run_waves`): every
     wave from *start_at*, the canary first and the carriers last in their order, with no press
     between them; the settle waited between waves; a pause after the canary when the plan's
-    options say so; the first failure rolled back, the rest named not started, the team told."""
+    options say so; the first failure rolled back, the rest named not started, the team told.
+    Each device's start and finish, and the wave it is on, are recorded for the run's card by
+    the batch deploy's own recorder (`deploy_job.track`, THE stepper; display only)."""
+    from modules import deploy_job
     from modules.nsot import fleet_change
     from modules.outbound import mask_payload
 
-    _PROGRESS[job] = {"wave": start_at, "state": "running", "done": {}}
-
-    def on_wave(n, state):
-        _PROGRESS.setdefault(job, {"done": {}}).update(wave=n, state=state)
-
-    def on_device(event, name, result):
-        if event != "start":
-            _PROGRESS.setdefault(job, {"done": {}})["done"][name] = (result or {}).get(
-                "outcome", "")
+    batches = plan["batches"]
+    on_device = on_wave = None
+    if job:
+        on_device = deploy_job.track(
+            job, network, [d for b in batches[start_at:] for d in b],
+            waves=[(wave_words(plan, n), b) for n, b in enumerate(batches)],
+            **deploy_job.ENGINE_PROGRESS)
+        on_wave = deploy_job.track_wave(job, **deploy_job.ENGINE_PROGRESS)
 
     got = fleet_change.run_waves(
         network, plan["batches"], fleet_change.plan_waves(
@@ -1069,7 +1069,6 @@ def _run(network: str, plan: dict, start_at: int, before: list, *, actor: str,
         options=plan.get("options") or {}, start_at=start_at, before=before,
         label=f"The read-only account's rollout to {network}", on_wave=on_wave,
         link=page_of(network).format(job=job) if job else "", key=plan["hash"])
-    _PROGRESS.pop(job, None)
     return mask_payload({"state": got["state"], "network": network, "plan": plan,
                          "next": got["next"], "waits": "canary" if got["state"] == "paused"
                          else "", "results": got["results"], "stopped": got["stopped"],

@@ -1,7 +1,11 @@
 {%- from "v2/_macros.html" import icon, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- A layer change's run (board FC's FC5; PHASE8_PLAN 22.2 (d); C2283): the approval and the
     canary as one job, then Go on for the rest; each device's row with its batch, its outcome
-    and why. Running, it re-reads on `fleet_change` and as each device steps; paused, it offers
+    and why. Running, it draws THE stepper (`deploy_job.waves_card`, C4232: a row per device in
+    batch order, the pipeline's steps with their times, the batch it is on) and re-reads on
+    `fleet_change`, as each device steps and as each finishes (`deploy_job`); ended, each
+    device's steps stay one level down while this server keeps them; paused, it offers
     Go on (a verified person's decision); stopped, it says what landed, what rolled back and
     what was not attempted. routes/intent_layers_v2.py over modules/nsot/fleet_change.py. -#}
 {%- macro rows_table(rows) %}
@@ -18,8 +22,8 @@
 {%- endmacro %}
 {%- if r.state == 'running' %}
 <section class="op-card" id="fc-plan" aria-labelledby="fc-run-title" hx-get="{{ url_for('intent_layers_v2.change_run', job=r.job, list=r.list, layer=r.layer) }}" hx-trigger="nmas:fleet_change from:body, nmas:device_progress from:body" hx-swap="outerHTML">
-  <div class="op-hd"><h2 id="fc-run-title">Running {{ (r.layer ~ "'s change") if r.layer else 'the change' }}</h2></div>
-  <div class="op-part"><h3>The run</h3><div><p class="op-wait">Making the plan again, committing the layer, then each device in turn, held, sent, verified. The card redraws as it goes.</p></div></div>
+  <div class="op-hd"><h2 id="fc-run-title">Running {{ (r.layer ~ "'s change") if r.layer else 'the change' }}{% if r.run %} · {{ r.run.total }} device{{ 's' if r.run.total != 1 }}{% endif %}</h2></div>
+  <div class="op-part"><h3>The run</h3><div>{% if r.run %}{{ run_stepper(r.run) }}{% else %}<p class="op-wait">Making the plan again, committing the layer, then each device in turn, held, sent, verified. The card redraws as it goes.</p>{% endif %}</div></div>
 </section>
 {%- else %}
 <section class="op-card" id="fc-plan" aria-labelledby="fc-run-title">
@@ -40,7 +44,10 @@
     <p class="small">{{ landed | length }} deployed · the layer committed as <code title="{{ r.commit }}">{{ (r.commit or '')[:10] }}</code>; each device's receipt is on its History.</p>
   </div></div>
   {%- if r.rows %}
-  <div class="op-part"><h3>Devices</h3><div>{{ rows_table(r.rows) }}</div></div>
+  <div class="op-part"><h3>Devices</h3><div>{{ rows_table(r.rows) }}
+    {%- if r.run %}
+    <details class="fc-group" data-keep="fc-steps-{{ r.job }}" data-fc-steps><summary class="small">Each device's steps</summary>{{ run_stepper(r.run) }}</details>
+    {%- endif %}</div></div>
   {%- endif %}
   {%- if r.state == 'paused' %}
   <form method="post" action="{{ url_for('intent_layers_v2.change_go_on') }}" hx-post="{{ url_for('intent_layers_v2.change_go_on') }}" hx-target="#fc-plan" hx-swap="outerHTML">

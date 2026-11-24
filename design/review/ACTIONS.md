@@ -350,7 +350,10 @@ SDN › Analyse Ask and Ask with tools.
   Adopt; out-of-band onboarding; console ZTP survey and kick-start; onboarding pending progress;
   NetBox preview and import; scheduled credential rotation; the control strip's heal batch;
   the heal run card and incident page; telemetry re-subscribe; SDN app deploy; monitoring and
-  history apply (`_apply_job.html`); Update.
+  history apply (`_apply_job.html`); Update; a layer's or a selection's change run, and the
+  read-only account's rollout (`_fleet_run.html`, `_read_account_op.html`; C4232: the batch
+  deploy's own record and rows, `deploy_job.track` and `waves_card`, each device's steps kept
+  one level down once the run ends).
 - **Already using it, after the fact:** Persist (Save), Retire, Capture's record, onboarding
   Verify, the four DHCP writes. Show commands and logging-path use `run_summary` only. The
   incident Fix it, approved plans and fix scripts use the compact stepper.
@@ -358,8 +361,8 @@ SDN › Analyse Ask and Ask with tools.
   - Device: Drift check now, Re-key (read and keep), Seed, Revert and Retry commits, Diagnose
     run, Privileged read and send, Ask, Rotate preview, Reload preview, Save's effect read,
     Saved action run.
-  - Fleet: fleet change plan, approve and go on; read-account rollout and probe, which today
-    write their own wave line; Show commands and logging-path (full rows in place of
+  - Fleet: fleet change plan (its run is live, above); read-account probe; Show commands and
+    logging-path (full rows in place of
     `run_summary`); Topology path trace; Template coverage check.
   - Onboarding: Create (NetBox, address, reservation, intent) and Abandon. Persist, Retire,
     Verify and the DHCP writes already draw the stepper afterwards and could draw it live if they
