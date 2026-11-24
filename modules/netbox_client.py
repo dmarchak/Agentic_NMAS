@@ -1236,9 +1236,9 @@ def _say_held_by_decommissioned(session, base: str, ip: str, device_id, hostname
                          "holder": name, "holder_id": other})
         _write_failed(f"management address {ip}", RuntimeError(
             f"{h.get('address') or ip} is held by {name} (NetBox device {other}, "
-            "Decommissioning), a record retired before retire freed its addresses (C1494); "
-            f"free it from that record with Free {ip} from {name}… on the import's preview "
-            f"(C1504), then import {hostname} again"), hostname)
+            "Decommissioning), a record retired before retire freed its addresses; "
+            f"free it from that record with Free {ip} from {name}… on the import's preview, "
+            f"then import {hostname} again"), hostname)
     return named
 
 

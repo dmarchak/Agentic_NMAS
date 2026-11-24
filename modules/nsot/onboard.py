@@ -267,16 +267,16 @@ class OnboardPlan:
             # bootstrap from the config server the plan derives (`ztp_reasons` says why not).
             if not self.mgmt_ip:
                 reasons.append("no management address: an out-of-band (console) onboarding "
-                               "types the planned STATIC address (C1592)")
+                               "types the planned STATIC address")
             if not self.mgmt_mask:
                 reasons.append(
                     f"no network mask for {self.mgmt_ip or 'the address'}: an out-of-band "
-                    "(console) onboarding types the STATIC address and mask (C1592), and a "
+                    "(console) onboarding types the STATIC address and mask, and a "
                     "/24 assumption is how a tool works in exactly one lab")
             if not self.manager_gateway:
                 reasons.append(
                     "no gateway: an out-of-band (console) onboarding types `ip default-gateway` "
-                    "with the static address (C1592), so the gateway (the relay's own address "
+                    "with the static address, so the gateway (the relay's own address "
                     "on the device's link) is part of the plan")
             reasons.extend(self.ztp_reasons)
         elif self.address_source == "ztp":

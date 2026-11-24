@@ -98,8 +98,7 @@ RESPONSE_PRIORITY_FLOOR = 300
 RESPONSE_PRIORITY_STEP = 10
 SETTINGS = {"sdn_response_hard_timeout_seconds": 600, "sdn_response_max_seconds": 3600}
 VERIFY_LIMIT = ("Verify checks installation and counters; testing traffic from the hosts is "
-                "the operator's (a probe that sends test traffic is registered for later, "
-                "C1915)")
+                "the operator's (a probe that sends test traffic is not built yet)")
 
 
 class Refused(ValueError):

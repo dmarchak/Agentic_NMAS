@@ -47,7 +47,8 @@ def test_a_replay_of_an_older_alert_is_not_given_today_s_read():
     sec = EP.endpoints_section("Lab", ["edge1"], AT, AT + 86400,
                                stored=_read(EP._iso(AT + 86400)))
     assert sec["state"] == "absent" and sec["pieces"] == []
-    assert "not as of this alert's time" in sec["why"] and "C1793" in sec["why"]
+    assert "not as of this alert's time" in sec["why"]
+    assert "no endpoint history is kept yet" in sec["why"]
 
 
 def test_a_read_too_long_before_the_alert_is_not_the_alert_s_either():

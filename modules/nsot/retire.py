@@ -562,7 +562,7 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
         "its running configuration is not changed",
         "a session the app has pooled to it is not closed by this command, "
         "which runs outside the app; the app's idle reaper closes it within "
-        "two minutes of its last use (C97)",
+        "two minutes of its last use",
     ]
     golden_path = os.path.join(repo, rel_golden)
     if os.path.exists(golden_path):
@@ -1292,7 +1292,7 @@ def _netbox_record_facts(list_name: str, hostname: str, nb: dict) -> dict:
                 "are off here (netbox_allow_writes), so its name stays taken in NetBox, and "
                 f"onboarding a new device named {hostname} is refused until the record is "
                 "renamed or decommissioned there; its IP addresses stay assigned to it, so a "
-                "new device given one of them is told the retired record holds it (C1494)")
+                "new device given one of them is told the retired record holds it")
     if not mark and not patch:
         return {"step": "nothing to change in NetBox's record or Mercury's created-object "
                         "record", "done": True, "not_doing": not_doing}
@@ -1314,7 +1314,7 @@ def _netbox_record_facts(list_name: str, hostname: str, nb: dict) -> dict:
                 words.append("unassign the other(s) from it ("
                              + ", ".join(a["address"] for a in addresses["unassign"])
                              + "), each kept in NetBox with its before recorded")
-            parts.append(" and ".join(words) + ", its primary addresses cleared first (C1494): "
+            parts.append(" and ".join(words) + ", its primary addresses cleared first: "
                          "a retired record holds no address a new device needs, and the "
                          "unassigned ones survive, named, in NetBox's IPAM")
             patch = dict(patch, addresses=addresses)

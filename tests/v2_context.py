@@ -477,6 +477,26 @@ class _Recorder:
         # route and templates that drew them (tests/test_no_utc_drawn.py), and how many
         # responses showed a time in the viewer's zone (the clock's own words).
         self.utc, self.clocked = {}, 0
+        # C4234: each HTML response's register and plan codes in the text a person reads
+        # (tests/test_settings_words_name_no_codes.py's CODE), by the route and templates that
+        # drew them (tests/test_codes_drawn.py).
+        self.codes = {}
+        # Settings › Installation and About quote the running commit's subject, a record's own
+        # words that change with every commit (and often name its rows): left out of the scan.
+        import subprocess
+        self.subject = subprocess.run(
+            ["git", "-C", os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "log",
+             "-1", "--format=%s"], capture_output=True, text=True).stdout.strip()
+        # A console profile's description is shipped DATA whose sha256 an approval and every
+        # recorded console survey bind to (modules/nsot/console_profiles.py): changing its
+        # words asks each surveyed device to survey again, so it is quoted as the profile says
+        # it and left out of the scan too.
+        import glob
+        import json
+        self.quoted = [json.load(open(p, encoding="utf-8")).get("description", "")
+                       for p in sorted(glob.glob(os.path.join(os.path.dirname(os.path.dirname(
+                           os.path.abspath(__file__))), "modules", "nsot", "console_profiles",
+                           "*.json")))]
 
     def _key(self, out) -> tuple:
         route = sorted({r for r, _n, _c in self.buf}) or [
@@ -499,6 +519,15 @@ class _Recorder:
         times = utc_scan(body)
         if times:
             self.utc.setdefault(self._key(out), set()).update(times)
+        from tests.test_settings_words_name_no_codes import CODE, visible
+        text = visible(body)
+        for quoted in [self.subject] + self.quoted:
+            if quoted:
+                text = text.replace(quoted, " ")
+        codes = {" ".join(text[max(0, m.start() - 60):m.end() + 15].split())
+                 for m in CODE.finditer(text)}
+        if codes:
+            self.codes.setdefault(self._key(out), set()).update(codes)
 
     def __call__(self, sender, template, context, **_extra):
         from flask import request
@@ -743,7 +772,8 @@ def _measure_here() -> dict:
     return {"routes": recorder.routes, "pages": len(pages), "fragments": fragments,
             "providers": len(PROVIDERS), "upstream": upstream, "drew": drew,
             "addresses": recorder.addresses, "bodies": recorder.bodies,
-            "records": recorder.records, "utc": recorder.utc, "clocked": recorder.clocked}
+            "records": recorder.records, "utc": recorder.utc, "clocked": recorder.clocked,
+            "codes": recorder.codes}
 
 
 def _golden_sha(lab) -> str:

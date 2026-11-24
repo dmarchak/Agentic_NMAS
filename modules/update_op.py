@@ -822,7 +822,7 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
     gate(SAFE_DEPLOY_GATE, not lacking,
          "yes" if not lacking else
          ("the installed updater does not run " + ", ".join(SAFE_DEPLOY_WORDS[g] for g in lacking)
-          + ", which the safe-deploy script does (C2337): deploy through the safe-deploy "
+          + ", which the safe-deploy script does: deploy through the safe-deploy "
           "script, or install the updater that runs them (a host step)"))
     from modules import host_steps as HS
     # Each BEFORE step checked where the tool can check it (the operator,

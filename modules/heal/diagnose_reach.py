@@ -335,7 +335,7 @@ def _step(step: str, host: str, cmds: list, ans: dict, prefix: str) -> dict:
     for c in cmds:
         kind = D.PARSE_KIND.get(c["kind"], c["kind"])
         parts.append(D.READ_WORDS.get(c["kind"], c["kind"]) + (
-            " (read, and not yet interpreted: C2414)" if kind in NOT_CAPTURED else ""))
+            " (read, and not yet interpreted)" if kind in NOT_CAPTURED else ""))
     return {"step": step, "device": host, "result": "ok",
             "reads": [D.ref(ans["run"], host, c["command"]) for c in cmds],
             "words": f"{prefix}{len(cmds)} read(s) on {host}: " + "; ".join(parts)}
@@ -623,7 +623,7 @@ def run_plan(p: dict, out: dict, actor: str, *, session=None, logs=None, sleep=N
     if p["family"] == 6:
         out["not_checked"].append({"check": "the IPv6 access lists bound on the path",
                                    "why": "no capture of `show ipv6 interface` binds one, so "
-                                          "its bindings are not read (C2414)"})
+                                          "its bindings are not read"})
     D._judge(ctx, out, PATH_RULES)
 
 

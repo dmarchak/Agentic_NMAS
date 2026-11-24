@@ -24,7 +24,7 @@
     <dt>Its tests</dt><dd>{% if p.test %}{{ badge('passed' if p.test.ok else 'failed', 'ok' if p.test.ok else 'danger') }} {{ p.test.passed }} passed{% if not p.test.ok %}, {{ p.test.failed }} failed, {{ p.test.errors }} errors{% endif %} on Python {{ p.test.python }}, {{ stamp(p.test.at) }}, run <span class="mono">{{ p.test.id }}</span>, by {{ p.test.by | people }}{% else %}not run at this hash{% endif %}{% if p.tests %} <span class="faint">({{ p.tests | join(', ') }})</span>{% endif %}</dd>
     <dt>Who may publish</dt><dd>{{ p.policy_words }} <span class="faint">({{ p.network }}'s policy, on its Code repository card)</span></dd>
     <dt>You</dt><dd>{{ p.reviewer | people }}: {% if p.may %}you may publish it{% if p.self_review %}, recorded as self-review{% endif %}{% else %}you may not yet{% endif %}</dd>
-    <dt>Not checked yet</dt><dd class="muted">the gate's mutation, survivors, reconcile and @covers checks (after Nov 30; C2728)</dd>
+    <dt>Not checked yet</dt><dd class="muted">the gate's mutation, survivors, reconcile and @covers checks (after Nov 30)</dd>
   </dl>
   <form class="apps-act" hx-post="{{ url_for('sdn_v2.apps_publish_confirm') }}" hx-target="closest .apps-publish" hx-swap="outerHTML">
     <input type="hidden" name="list" value="{{ p.network }}"><input type="hidden" name="app" value="{{ p.name }}"><input type="hidden" name="version" value="{{ p.version }}"><input type="hidden" name="hash" value="{{ p.hash }}">

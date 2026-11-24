@@ -414,7 +414,8 @@ class TestTheRoutesOfTheSecondPart:
 
 class TestTheHopsDrawn:
     HOPS = [{"n": 0, "device": "r4", "read": "ping 192.0.2.17: sent", "against": "not "
-             "interpreted yet (C2414)", "verdict": "not_interpreted"},
+             "interpreted: its parser waits for a real capture of this read",
+             "verdict": "not_interpreted"},
             {"n": 1, "device": "r4", "read": "out Gi2 toward r6", "against": "as intent",
              "verdict": "ok"},
             {"n": 2, "device": "r6", "read": "show ip cef: dropped",

@@ -3184,17 +3184,17 @@ RETIRE_GATES = (
     ("netbox_mask", "NetBox holds no credential retire cannot mask",
      "its stored config context is masked, or will be, or holds none"),
     ("host_key", "its SSH host key, and who else has its address, can be read",
-     "the key record and every network's inventory were read (C940)"),
+     "the key record and every network's inventory were read"),
     ("bindings", "its template bindings can be read",
      "templates/bindings.yml was read: an override of its own leaves in the commit"),
     ("staged", "no staged credential is the only copy of its password",
      "none is staged, or the staged one is the CSV row's"),
     ("reservations", "its Kea reservations can be read, and each removal planned",
      "ZTP's fragment and the DHCP page's files were read; Kea planned each removal"),
-    ("leases", "Kea's leases can be read, so every lease left for it is named (C1403)",
+    ("leases", "Kea's leases can be read, so every lease left for it is named",
      "Kea's leases in both families were read for its MAC and every address it was known by"),
     ("ztp_subnet", "Mercury's Kea subnets can be read, so a subnet its Add device added for its "
-                   "link is found (C1460)",
+                   "link is found",
      "Mercury's IPv4 subnet file was read for a subnet its Add device added, with what else is "
      "in it"),
     ("tags", "its golden tags can be listed", "each is archived under retired/ after the commit"),
@@ -3316,7 +3316,7 @@ def retire_preview(plan: dict, *, busy: str, request) -> dict:
 
 
 RETIRE_STEP_WORDS = {"netbox_mask": "masked the credentials NetBox held in its stored config "
-                                    "context, read back clean (C139)",
+                                    "context, read back clean",
                      "override": "cleared its credential overrides, at every address it was "
                                  "known by",
                      "staged": "deleted its staged credential and any adoption sidecar (the "
@@ -3326,35 +3326,33 @@ RETIRE_STEP_WORDS = {"netbox_mask": "masked the credentials NetBox held in its s
                      "leases": "released its Kea leases, each read back and recorded in the "
                                "Kea owner's repository",
                      "ztp_subnet": "removed the Kea subnet its Add device added for its link, "
-                                   "nothing else being in it (C1460)",
+                                   "nothing else being in it",
                      "commit": "removed its intent, golden and template override and released "
                                "its identity, in one commit",
                      "tags": "archived its golden tags under retired/, never offered as a "
-                             "restore point (C1332)",
+                             "restore point",
                      "rolled_back": "archived its rollback block in the retire record and "
-                                    "cleared it (C1333)",
-                     "approvals": "withdrew its pending approval-queue items (C1339)",
+                                    "cleared it",
+                     "approvals": "withdrew its pending approval-queue items",
                      "rotation_policy": "took it out of the credential-rotation policies "
-                                        "naming it (C1336)",
-                     "topology": "removed its Topology declaration and arranged place (C1341)",
-                     "probes": "removed its read-only account probe records (board R's R8)",
+                                        "naming it",
+                     "topology": "removed its Topology declaration and arranged place",
+                     "probes": "removed its read-only account probe records",
                      "heartbeat": "removed its Grafana heartbeat rule from the generated rules "
-                                  "file and named it for deletion; its host step installs both "
-                                  "(C1338, C1419)",
+                                  "file and named it for deletion; its host step installs both",
                      "telemetry": "removed its Grafana telemetry rules from the generated rules "
                                   "file and named them for deletion; its host step installs "
-                                  "both (C1419)",
+                                  "both",
                      "console": "removed the console port and cable Mercury made for it, and "
-                                "moved its console survey and kick-start records aside "
-                                "(C1553); the console server's port stays",
+                                "moved its console survey and kick-start records aside; the "
+                                "console server's port stays",
                      "netbox_record": "set its NetBox record to Decommissioning and renamed it, "
-                                      "and marked Mercury's created-object entry retired "
-                                      "(C1342)",
+                                      "and marked Mercury's created-object entry retired",
                      "legacy": "deleted its file from the deprecated golden_configs/ store, "
-                               "whose content survives in the repository (C176)",
+                               "whose content survives in the repository",
                      "host_key": "forgot the SSH host key Mercury kept for its address, kept "
                                  "in the record's history: the next machine there is a first "
-                                 "contact (C940)",
+                                 "contact",
                      "row": "deleted its CSV row, last"}
 
 
@@ -4368,7 +4366,7 @@ def heal_policy_preview(p: dict, confirm: dict) -> dict:
     if after[H.MODE_KEY] == "auto":
         what_not.append({"target": name, "kind": "production",
                          "text": ("Lab drills never count as production evidence: production "
-                                  "keeps PHASE8_PLAN section 7's bar and 17.7's gate")})
+                                  "keeps its own bar, Production's bar on the Self-healing tab")})
     target = {
         "name": name, "state": mode, "selectable": p["confirmable"],
         "why_not": "; ".join(f"{g['name']}: {g['why']}" for g in p["gates"]

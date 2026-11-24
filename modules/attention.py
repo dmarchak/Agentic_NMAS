@@ -674,7 +674,7 @@ CLEARS = {
                            "as approved by them, and History records what it did), or declines "
                            "it there with a reason; "
                            "or self-healing's next read of the device finds it back at intent "
-                           "(withdrawn) or changed again (withdrawn and made again, C2470)"),
+                           "(withdrawn) or changed again (withdrawn and made again)"),
     ("heal", "halted"): (("resolves",),
                          "a person lifts the halt on this item with a reason (Lift the halt), "
                          "recorded with their name in the network's heal decisions"),

@@ -34,7 +34,7 @@ import re
 NOT_CAPTURED = frozenset({"ospf_interface", "ospfv3_interface", "link_ping", "df_ping",
                           "bgp_neighbor", "bgp_ping"})
 NOT_CAPTURED_WORDS = ("read, and not yet interpreted: its parser waits for a real capture of "
-                      "this read (C2414)")
+                      "this read")
 PARSED, UNSUPPORTED, NOT_PARSED, UNREADABLE = "parsed", "unsupported", "not_parsed", "unreadable"
 
 #: What both platforms print for a command they do not have (measured: `show foobar` on an IOS-XE router

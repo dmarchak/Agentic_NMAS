@@ -174,7 +174,7 @@ NOT_REBUILT = {
                 "topology Explain sends are the network model as it is now, said so, which "
                 "may differ from then",
     "endpoints": "the endpoint store keeps only its latest read (no endpoint history is kept "
-                 "yet, C1793); who was attached then was not captured when the alert fired",
+                 "yet); who was attached then was not captured when the alert fired",
 }
 #: The log window around the onset: 15 minutes each side (the reader's alerts fire from 1 to
 #: 13 minutes after their onset, a heartbeat window being up to 1337 s: the capture of
@@ -1100,7 +1100,7 @@ def endpoints_section(network: str, devices, now: float, built: float,
         return _section("endpoints", source, built, "absent",
                         f"the endpoint store keeps only its latest read ({read_at or 'none'}), "
                         f"which is not as of this alert's time {as_of} (no endpoint history "
-                        "is kept yet, C1793)", as_of=as_of, endpoints_read_at=read_at)
+                        "is kept yet)", as_of=as_of, endpoints_read_at=read_at)
     hours = E.stale_after_hours(network)
     keep = set(devices)
     pieces = [{"mac": e.get("mac") or "", "addresses": list(e.get("addresses") or []),
@@ -1585,8 +1585,7 @@ def build_detection(inst: dict, *, network: str, sdn: dict, now: float, trigger:
                                source=SDN_ALERT_SOURCE),
                 _section("device", "every network's inventory", now, "absent",
                          f"{switch_words} is an SDN controller's switch, not a device in any "
-                         "network's inventory (adopting switches as devices comes after "
-                         "PHASE8_PLAN 17.1's slice)")]
+                         "network's inventory (adopting switches as devices is not built yet)")]
     extra = {k: v for k, v in sdn.items() if k not in ("source", "read_at", "pieces")}
     sections.append(_section(SDN_SECTION, sdn["source"], sdn["read_at"], "ok",
                              pieces=sdn["pieces"], **extra))

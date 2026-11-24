@@ -36,7 +36,7 @@ CHOICES = (("adjacency_down", "An adjacency is down", "with both ends at intent"
 #: key keeps its name, `ipv4_only`, which the signed-off card draws.
 IPV4_ONLY = ("An IPv6 address is followed with show ipv6 cef, but on a segment intent shares "
              "among several devices a link-local next hop names none of them, so the path "
-             "stops there, said; and IPv6 access lists bound on the path are not read (C2414)")
+             "stops there, said; and IPv6 access lists bound on the path are not read")
 
 
 def _protocols(end: dict) -> str:

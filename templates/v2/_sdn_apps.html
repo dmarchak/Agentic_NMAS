@@ -101,7 +101,7 @@
     <dt>REST</dt><dd>{% for e in d.rest %}<span class="mono">{{ e.path }}</span> {{ e.methods }}{% if e.health %} <span class="faint">(read by the post-check)</span>{% endif %}{{ ' · ' if not loop.last }}{% endfor %}</dd>
     <dt>Owns flows</dt><dd>{{ d.owns }}</dd>
     <dt>Egress</dt><dd>{{ d.egress }}</dd>
-    <dt>Config</dt><dd>no start-time config is compiled for it yet: the compiler is not built (C2760); a config file, when there is one, is staged beside the version and its hash is in the request</dd>
+    <dt>Config</dt><dd>no start-time config is compiled for it yet: the compiler is not built yet; a config file, when there is one, is staged beside the version and its hash is in the request</dd>
   </dl>
   {%- else %}<p class="muted small">No registered version is chosen.</p>{% endif %}
 </section>

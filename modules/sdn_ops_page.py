@@ -334,7 +334,7 @@ def incident_rows(awaiting: dict, network: str = "") -> list:
                      "last_seen": r.get("last_seen") or r.get("at"),
                      "ingress_known": bool(inc.get("ingress_known")),
                      "ingress_words": inc.get("ingress_words") or (
-                         "kept before incidents were grouped (C1999): proposed at the switch "
+                         "kept before incidents were grouped: proposed at the switch "
                          "that saw it"),
                      "window_words": inc.get("window_words") or "",
                      "began_as": dict(r.get("began_as") or {}),

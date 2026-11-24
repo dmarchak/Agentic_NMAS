@@ -235,7 +235,7 @@ class TestTheParsers:
                                 "bgp_neighbor", "bgp_ping"}
         for kind in NOT_CAPTURED:
             got = parse(kind, "anything at all")
-            assert got["state"] == "not_parsed" and "C2414" in got["why"]
+            assert got["state"] == "not_parsed" and "waits for a real capture" in got["why"]
 
     def test_a_dialect_keyed_read_without_its_dialect_is_refused(self):
         """C452: `show ip arp` is read by the platform pack's pattern for the device's own
@@ -618,7 +618,7 @@ class TestEachRule:
         got, _ = diagnose(edit=set_intent("r4", "GigabitEthernet4", hello_interval="5"))
         first = got["hypotheses"][0]
         assert first["strength"] == "strong" and "not measured" in first["claim"]
-        assert "C2414" in first["incomplete"][0]       # the read that settles it is uncaptured
+        assert "waits for a real capture" in first["incomplete"][0]  # the read that settles it is uncaptured
 
     def test_passive_on_one_end(self, world):
         def edit(intents):
@@ -674,7 +674,8 @@ class TestEachRule:
                           target={"device": "r3", "peer": "198.51.100.1"})
         hit = next(h for h in got["hypotheses"] if h["rule"] == "bgp_not_established")
         assert hit["strength"] == "strong" and "is Active" in hit["claim"]
-        assert any("ping 198.51.100.1" in w and "C2414" in w for w in hit["incomplete"])
+        assert any("ping 198.51.100.1" in w and "waits for a real capture" in w
+                   for w in hit["incomplete"])
 
     def test_an_acl_intent_does_not_hold(self, world):
         got, _ = diagnose(with_answer("r4", "show ip interface GigabitEthernet4", R4_IP.replace(
