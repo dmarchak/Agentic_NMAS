@@ -30,6 +30,7 @@ baseline.
 
 import logging
 import os
+import re
 
 log = logging.getLogger(__name__)
 
@@ -182,6 +183,39 @@ def words(result: dict) -> str:
     return f"unknown ({result['why']})"
 
 
+#: `words`' detail of a device that differs: its signed counts and reordered sections, in order.
+_DETAIL = re.compile(r"(?:[+-]\d+|\d+ reordered)(?: (?:[+-]\d+|\d+ reordered))*")
+
+
+def said(detail: str) -> str:
+    """A trailer's detail (`words`: ``+1 -1``, ``-2``, ``3 reordered``) in a person's words
+    (C2820's survey, item 9: "departs (+1 -1)" read as a key). A `+` line is in intent and not
+    on the device; a `-` line is on the device and not in intent. A detail of any other shape
+    is returned as it is (never a sign found inside other text, such as a time's)."""
+    if not _DETAIL.fullmatch((detail or "").strip()):
+        return detail or ""
+    out = []
+    for tok in re.findall(r"[+-]\d+|\d+ reordered", detail):
+        if tok.endswith("reordered"):
+            n = int(tok.split()[0])
+            out.append(f"{n} section{'' if n == 1 else 's'} in a different order")
+        else:
+            n = int(tok[1:])
+            line = f"{n} line{'' if n == 1 else 's'}"
+            out.append(f"{line} in intent not on the device" if tok[0] == "+"
+                       else f"{line} on the device not in intent")
+    return ", ".join(out) or (detail or "")
+
+
+def state_said(state: dict) -> str:
+    """An intent state's words (`device_list.intent_state`: ``differs (+2 -2)``) with the
+    detail said (`said`), for a sentence that already says it differs; any other words, or
+    the state's name when it has none, as they are."""
+    words = state.get("words") or state.get("state") or ""
+    m = re.fullmatch(r"differs \((.*)\)", words)
+    return said(m.group(1)) if m else words
+
+
 def trailer(results: dict) -> str:
     """The ``Intent-Match:`` trailer for a save, computed at commit time
     whatever the path: ``yes (9 of 9)``, or ``no: r2 (+1 -1)``, naming every
@@ -219,7 +253,7 @@ def explain(result: dict) -> str:
                                                               else "") + ")" if mine else ""))
     if result.get("reordered"):
         parts.append(f"{result['reordered']} section(s) in a different order")
-    return "departs from its committed intent: " + ("; ".join(parts) or "differs")
+    return "differs from its committed intent: " + ("; ".join(parts) or "differs")
 
 
 def resolutions(result: dict) -> list:

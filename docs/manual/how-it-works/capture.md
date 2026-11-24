@@ -91,8 +91,8 @@ below.
    commit carries `Out-Of-Band: <device>: by console per SYS-5-CONFIG_I, received <time>:
    <the line, masked>`. A log with no such line says so, and a log that could not be read
    (Loki not configured, or not answering) says that, never "no change". The golden's history
-   marks the commit "captured, departs from intent (+1 -1); changed out-of-band, by console
-   per SYS-5-CONFIG_I", and the device page's **Since last capture** check says the capture
+   marks the commit "captured, differs from intent (1 line in intent not on the device, 1 line
+   on the device not in intent); changed out-of-band, by console per SYS-5-CONFIG_I", and the device page's **Since last capture** check says the capture
    took the change in, never "unchanged" as a pass (see [Drift](drift#out-of-band)).
 4. **Decide the baseline.** Recorded: for a whole-fleet save, a `Baseline:` trailer. Every
    inventory device read and recorded (or unchanged), and every one at its committed intent,

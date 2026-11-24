@@ -564,7 +564,7 @@ class TestGuards:
         kind judged."""
         d = one(GOLDEN + ROUTE4, src=Fake(GOLDEN + ROUTE4, state="departs"))
         assert (d["outcome"], d["guard"], d["until"], d["tier"]) == ("cant_fix", None, None, 3)
-        assert "golden departs from its committed intent" in d["words"], d["words"]
+        assert "golden differs from its committed intent" in d["words"], d["words"]
         assert d["program"] == []
 
     @pytest.mark.parametrize("mark,words", [

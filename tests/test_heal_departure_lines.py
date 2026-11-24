@@ -49,7 +49,7 @@ class TestTheDecisionReadsTheLines:
 
         calls = _compared(monkeypatch, DEPARTS)
         got = decide.Sources("Default").golden("r4", {"ip": "192.0.2.4"})
-        assert got["state"] == "departs" and got["words"] == "departs (+2 -2)", got
+        assert got["state"] == "departs" and got["words"] == "differs (+2 -2)", got
         assert got["lines"] == R4 and calls == ["r4"]
 
     def test_a_golden_at_intent_carries_no_lines_and_is_not_compared(self, repo, monkeypatch):  # noqa: F811

@@ -59,7 +59,7 @@ class TestThePreviewSaysWhatConfirmingAchieves:
         p = _fleet_preview(cap)["preview"]
         effect = p["confirm"]["effect"]
         assert effect.startswith("Nothing will be recorded as a golden and no baseline will "
-                                 "be taken: r2 departs from its committed intent")
+                                 "be taken: r2 differs from its committed intent")
         assert "`load-interval 30`" in effect
         # The WORK as well as the outcome: the devices are still read.
         assert p["confirm"]["button"] == "Read the device and record the denial only"
@@ -71,7 +71,7 @@ class TestThePreviewSaysWhatConfirmingAchieves:
         p = _fleet_preview(cap)["preview"]
         (op,) = [o for o in p["targets"][0]["operands"] if o["name"] == "committed intent"]
         assert op["blocks"] == "the baseline"
-        assert op["value"].startswith("departs from its committed intent: 1 line(s) on the "
+        assert op["value"].startswith("differs from its committed intent: 1 line(s) on the "
                                       "device that intent does not have (`load-interval 30`)")
 
     def test_a_one_device_capture_that_changes_nothing_cannot_be_confirmed(self, cap):
@@ -125,7 +125,7 @@ class TestTheResultAndTheRecord:
         assert r["what"] == ("No stored baseline can be re-applied, and a new one cannot be "
                              "earned yet")
         assert "the last Save All was denied" in r["cause"] and "load-interval 30" in r["cause"]
-        assert r["action"]["label"].startswith("Resolve each departure")
+        assert r["action"]["label"].startswith("Resolve each difference from intent")
         assert "Take a current baseline" not in r["action"]["label"]
 
 

@@ -54,7 +54,7 @@ def test_an_at_golden_decision_says_a_departing_golden_departs(lab):  # noqa: F8
     # never "nothing to heal" (`test_at_a_departing_golden_with_no_symptom_...` below).
     assert d["outcome"] == "cant_fix", d
     assert "matches its intent" not in d["words"], d["words"]
-    assert "departs from its intent" in d["words"], d["words"]
+    assert "differs from its intent" in d["words"], d["words"]
 
 
 @pytest.mark.parametrize("state", ["departs", "unknown"])
@@ -73,7 +73,7 @@ def test_at_a_departing_golden_with_no_symptom_is_a_tier_3_cant_fix_never_closed
     d = DS.find("Default", ran["decision"])
     assert (d["outcome"], d["tier"], d["guard"], d["program"]) == ("cant_fix", 3, None, []), d
     assert "nothing to heal" not in d["words"], d["words"]
-    assert "departs from its intent" in d["words"], d["words"]
+    assert "differs from its intent" in d["words"], d["words"]
     assert "the AI investigates" in d["words"], d["words"]
     (inc,) = [i for i in I.read("Default")["incidents"] if i["id"] == d["incident"]]
     assert inc["state"] == "standing", inc
@@ -94,7 +94,7 @@ def test_at_a_departing_golden_a_symptom_cleared_by_itself_is_still_a_cant_fix(l
     d = DC.decide_one("Default", inc, now=T0, sources=src)
     assert (d["outcome"], d["tier"]) == ("cant_fix", 3), d
     assert "nothing to heal" not in d["words"], d["words"]
-    assert "departs from its intent" in d["words"], d["words"]
+    assert "differs from its intent" in d["words"], d["words"]
 
 
 @pytest.mark.parametrize("state", ["departs", "unknown"])
@@ -115,7 +115,7 @@ def test_a_departure_that_leaves_no_unit_at_a_departing_golden_is_a_cant_fix(
     inc = settle(GOLDEN, how="persisted", triggers=trig)
     d = DC.decide_one("Default", inc, now=T0, sources=src)
     assert (d["outcome"], d["tier"], d["program"]) == ("cant_fix", 3, []), d
-    assert "golden departs from its committed intent" in d["words"], d["words"]
+    assert "golden differs from its committed intent" in d["words"], d["words"]
     assert "nothing to heal" not in d["words"], d["words"]
 
 

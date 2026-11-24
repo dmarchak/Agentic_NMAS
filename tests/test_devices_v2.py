@@ -14,6 +14,7 @@ import re
 
 import pytest
 
+from modules.nsot import intent_match  # its `said` read in the test's body
 from tests.test_profile_apply import lab  # noqa: F401 (the fixture)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -50,8 +51,9 @@ class TestTheTrailerIsRead:
     def test_each_shape_save_golden_writes(self):
         from modules.device_list import _intent_of
         assert _intent_of("r2", "yes (9 of 9)")["state"] == "at_intent"
-        assert _intent_of("r2", "no: r2 (+1 -1)") == {"state": "departs", "words": "departs (+1 -1)"}
-        assert _intent_of("r6", "no: r2 (+1 -1); r6 (-1)")["words"] == "departs (-1)"
+        assert _intent_of("r2", "no: r2 (+1 -1)") == {"state": "departs", "words": "differs (+1 -1)",
+                                                  "why": "1 line in intent not on the device, 1 line on the device not in intent"}
+        assert _intent_of("r6", "no: r2 (+1 -1); r6 (-1)")["words"] == "differs (-1)"
         assert _intent_of("r6", "no: r2 (+1 -1)")["state"] == "at_intent"     # not named: matched
         assert _intent_of("r2", "no: r2 (unknown (no committed intent))")["state"] == "unknown"
         # A short word in the row; the reason, whole, on its hover (the operator, 2026-10-02).
@@ -97,7 +99,8 @@ class TestTheTrailerIsRead:
                     assert got == {"state": "unknown", "words": "unknown",
                                    "why": why or "not established"}, (host, trailer, got)
                 else:
-                    assert got == {"state": "departs", "words": f"departs ({want})"}, (
+                    assert got == {"state": "departs", "words": f"differs ({want})",
+                                   "why": intent_match.said(want)}, (
                         host, trailer, got)
         assert seen == {"at_intent", "departs", "unknown"}
 
@@ -162,7 +165,7 @@ class TestTheListing:
         rows = {r["name"]: r for r in d["rows"]}
         assert rows["r6"]["intent"]["state"] == "departs"
         # The device holds a line its intent lacks: "-1" in the trailer's words.
-        assert rows["r6"]["intent"]["words"] == "departs (-1)"
+        assert rows["r6"]["intent"]["words"] == "differs (-1)"
         assert rows["r6"]["measured"]["words"] == "a capture, golden changed"
         assert rows["r2"]["intent"] == {"state": "at_intent", "words": "at intent"}
         assert rows["r6"]["measured"]["iso"] and rows["r6"]["platform"] == "cisco_iosxe"
@@ -386,7 +389,8 @@ class TestTheLastMeasurement:
                        out["commit"]).strip()
         assert trailer.startswith("no: r2 (+1"), trailer
         rows = {r["name"]: r for r in listing(_ref())["rows"]}
-        assert rows["r2"]["intent"] == {"state": "departs", "words": "departs (+1)"}
+        assert rows["r2"]["intent"] == {"state": "departs", "words": "differs (+1)",
+                                    "why": "1 line in intent not on the device"}
         assert rows["r2"]["measured"]["sha"] == out["commit"][:7]
 
     def test_a_changing_save_all_names_every_device_it_read(self, inv):
@@ -640,8 +644,8 @@ class TestOneIntentState:
         assert {"goldens", "intent", "templates"} <= set(re.findall(r"nmas:(\w+) from:body",
                                                                     trigger)), trigger
         table = inv["client"].get("/v2/devices/table").get_data(as_text=True)
-        assert ">intent changed since measured</span>" in table and ">departs (" not in table
-        assert "; that measurement read departs (-1)\"" in table     # what it recorded, on hover
+        assert ">intent changed since measured</span>" in table and ">differs (" not in table
+        assert "; that measurement read differs (-1)\"" in table     # what it recorded, on hover
         # 3. A new measurement that matches: both say "at intent".
         out = _save_all(inv, texts)
         assert out.get("commit"), out

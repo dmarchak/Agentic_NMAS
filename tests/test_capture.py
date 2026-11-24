@@ -125,7 +125,7 @@ class TestThePreviewAsksWhatTheRestOfTheToolAsks:
         part = "\n".join(w["text"] for w in p["what_not"]["items"])
         # In words, the lines named (the operator, 2026-09-28: "(+1 -1)" read
         # as a number and was the fact that decided the operation).
-        assert "Departs from its committed intent: 1 line(s) on the device that intent " \
+        assert "Differs from its committed intent: 1 line(s) on the device that intent " \
                "does not have (`load-interval 30`)" in part
         assert "1 line(s) in intent that the device does not have" in part
         assert "No baseline tag: capturing part of the fleet never earns one" in part

@@ -209,7 +209,7 @@ moves and no region's verdict moves. Compared by the templates' diff
 "Records name people by display name on every v2 screen (C3715)"). Templates sha256 before:
 `ff90b75c0cdf442995324183d0aa6b892cb584552a27919a1226f13ea72a2c93`.
 Compared again 2026-11-18 (the skip-mode debt, docs/FAST_LANE_DEBT.md; 93120b2f and c4948c2c): `_status.html`'s chip reads "Reachable" with the probe said on hover ("It answers Mercury's reachability probe (a ping, or a connection to its SSH port), checked …"), where it read "Answering" (c4948c2c), and a chip naming an approved plan's step links its run's home, its incident's card (`href`), as `_held_banner.html`'s Open the run does (93120b2f, a plan's run drawn on its incident's card); nothing else moved. Shot again from this tree (`device` at 1440, 1280 and 390, `device-menu` and `device-capture` at 1440, 1280 and 390; `planned-device-r3`, `-r4`, `planned-devices`, `planned-reload-card` and `planned-topology`; tests/test_board_shots.py's `test_device_page` and `test_planned_state`) and read region by region against this record's verdicts: the Header's chips row's Built moves (the word) and stays a deviation for its own reason, the word logged once for every screen; every other verdict stands. The redesign and device boards are the canvas's, not on disk, so they were not re-shot. `test_device_page` stopped at its capture result (`#device-op` never took `op-ok` within 30 s), so `device-capture-result` and the deploy, rotate and later shots of this record were not retaken; their templates did not change in these two commits (registered by the debt pass as a test row, its one measurement the class `#device-op` takes when the capture job ends). Logged (docs/STANDING_APPROVAL_LOG.md, "Reachable, not Answering: the reachability reader's word on every screen"). Templates sha256 before: `433674cf9db165859f1c3c3b08c3744807d119504457916747946a9d8792d51e`.
-Templates sha256: `7a39e1ae96a7c8f79335a50641eff87ee1bad35b48ddcecea11970190c3c508e`
+Templates sha256: `f57540c266f45081095cd027c4e1fe1ceaa9968b8e5870911ec63b75386b18b1`
 
 **Hashed again 2026-11-12 for the reopened card's banner** (the operator's F1 smoke test of r3,
 "no "Reopened" label"; his words of 2026-11-11, "Your run, started 13:01"; C3162, C3122, and
@@ -574,3 +574,9 @@ Compared again 2026-11-12 after `_declare_drill.html`'s "Declare the drill" gain
 `gate('configure')`, as every posting control carries (tests/test_controls_consult_may.py
 refused it in the slice's first gate): an attribute the page reads to disable the control for
 a viewer who may not configure; nothing drawn moves, and every region above is as compared.
+
+Compared again 2026-11-24 (C2820's survey, item 9): in `_capture.html`, the result's intent
+sentence reads "<device> still differs from its committed intent" in place of "departs from";
+the same element and position. Words only: no region changed, no deviation. Compared by the
+template's diff, not by new shots. Templates sha256 before:
+`7a39e1ae96a7c8f79335a50641eff87ee1bad35b48ddcecea11970190c3c508e`.

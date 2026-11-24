@@ -1144,7 +1144,7 @@ def _r_hop_down(rule, ctx):
                 ", as intent holds it shut" if shut else
                 ", though intent holds it up: it was shut outside intent")
             todo = ("Intent shuts it: change intent to bring it up" if shut else
-                    "Check drift now…: it departs from intent")
+                    "Check drift now…: it differs from intent")
         else:
             claim = (f"{h.name(where)}, {role}, is down while administratively up" + (
                 f" ({f['reason']})" if f["reason"] else ""))

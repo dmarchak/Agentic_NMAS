@@ -144,18 +144,18 @@ class TestTheControls:
         _save_all(_broken(captured))
         (r,) = A.baseline_source()["rows"]
         assert "r2 does not match its committed intent" in r["cause"]
-        assert r["action"]["label"].startswith("Resolve each departure")
+        assert r["action"]["label"].startswith("Resolve each difference from intent")
         _usable_none(monkeypatch)
         (r,) = A.baseline_source()["rows"]
         assert "the last Save All was denied" in r["cause"]
-        assert "will be refused again while it departs" in r["action"]["label"]
+        assert "will be refused again while it differs" in r["action"]["label"]
         assert "refused again" in _drawn(client)
 
     def test_a_deploy_that_failed_on_a_device_is_a_denial(self, nine):
         _repo, captured = nine
         _deploy_to_r2(captured, failed=["s3"])
         (r,) = A.baseline_source()["rows"]
-        assert "did not succeed" in r["cause"] and "Resolve each departure" in \
+        assert "did not succeed" in r["cause"] and "Resolve each difference from intent" in \
             r["action"]["label"]
 
 

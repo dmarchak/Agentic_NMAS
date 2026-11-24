@@ -742,7 +742,7 @@ class TestABaselineAfterAScopedDeploy:
         assert out["baseline"] is False and out["standing"] == {}
         (why,) = out["baseline_reasons"]
         assert why.startswith("1 device(s) not targeted: ['r7'], not shown at intent (r7: its "
-                              "intent state is departs (+1))"), why
+                              "intent state is differs (+1) (1 line in intent not on the device))"), why
         assert not_targeted_only(why) == 1
 
     def _report(self, reach_lost):

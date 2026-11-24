@@ -227,7 +227,7 @@
       {%- if r.departure %}
       {%- set dep = r.departure %}
       <div class="att-departs" data-device="{{ dep.device }}">
-        <p class="small"><strong>{{ dep.device }} departs from its intent by {{ dep.total }} line{{ 's' if dep.total != 1 }}:</strong></p>
+        <p class="small"><strong>{{ dep.device }} differs from its intent by {{ dep.total }} line{{ 's' if dep.total != 1 }}:</strong></p>
         {%- for grp in dep.groups %}
         <ul class="att-dep-lines">{% for l in dep.lines if l.side == grp.side %}<li><code>{{ l.line }}</code> <span class="att-dep-side">{{ l.side }}</span></li>{% endfor %}</ul>
         {%- set to_deploy, to_edit = grp.actions[0], grp.actions[1] %}

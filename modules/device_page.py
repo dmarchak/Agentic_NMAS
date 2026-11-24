@@ -360,8 +360,10 @@ def capture_taken_in(ref, host: str, intent_result: dict) -> str:
     if off is None:
         return ""
     how = OOB.named((parts[3] if len(parts) > 3 else "").split("\x1c")).get(host, "")
-    return (f"its last capture ({parts[0]}) took in a change made outside Mercury that departs "
-            f"from intent ({off})" + (f": changed out-of-band, {OOB.short(how)}" if how else "")
+    from modules.nsot.intent_match import said
+    return (f"its last capture ({parts[0]}) took in a change made outside Mercury that differs "
+            f"from intent ({said(off)})"
+            + (f": changed out-of-band, {OOB.short(how)}" if how else "")
             + "; it is not at its intent (see Intent)")
 
 

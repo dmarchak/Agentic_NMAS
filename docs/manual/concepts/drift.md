@@ -35,7 +35,8 @@ When a device's last golden is a capture (Capture, Save, Save All) whose commit 
 departing from intent, and a line of that departure is one no rule explains now (see the
 Intent row on the [device page](device-page#overview)), the **Since last capture** row is a
 warning: "unchanged at the last run, but its last capture (`<commit>`) took in a change made
-outside Mercury that departs from intent (+1 -1): changed out-of-band, by console per
+outside Mercury that differs from intent (1 line in intent not on the device, 1 line on the
+device not in intent): changed out-of-band, by console per
 SYS-5-CONFIG_I; it is not at its intent (see Intent)". How it was changed is the device's own
 word, read from its log when the capture was recorded and kept in the commit's `Out-Of-Band:`
 line ([Capture and Save All](capture)); the golden's history marks the commit the same way. The

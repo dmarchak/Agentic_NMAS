@@ -8,7 +8,7 @@ own session, 2026-10-01), with the one line the walk deployed at step 18 added (
 ` description spare port`), its intent parsed from it by the parser, committed, and the edit
 committed through the real route (`/v2/device/s1/intent/commit`):
 
-- an edit that only deletes: headed "How s1 now departs from its intent", the line drawn as
+- an edit that only deletes: headed "How s1 now differs from its intent", the line drawn as
   one s1 holds, the words say a deploy sends nothing, and Remove lines (Mode B)… is the
   primary action, opening the device page's Mode B card; no Plan a deploy…;
 - an edit that deletes and adds: "What a deploy would send now" draws only the line it sends,
@@ -144,9 +144,9 @@ class TestAnEditThatOnlyDeletes:
         html = _commit(s1, "description: spare port", "description: ''",
                        "W1 walk: Gi0/1 back to no description")
         words = _words(html)
-        assert "How s1 now departs from its intent" in words
+        assert "How s1 now differs from its intent" in words
         assert "What a deploy would send now" not in words
-        assert _rows(_block(html, "How s1 now departs from its intent")) == [
+        assert _rows(_block(html, "How s1 now differs from its intent")) == [
             ("head", "interface GigabitEthernet0/1"), ("keep", "description spare port")]
         assert "A deploy sends nothing: it is merge-only" in words
         assert "until a deploy sends the lines beside" not in words

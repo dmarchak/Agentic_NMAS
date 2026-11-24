@@ -228,7 +228,11 @@ def _intent_of(host: str, trailer: str) -> dict:
         # nested parenthesis is cut by the pattern above, so the reason is taken whole here.
         why = detail[len("unknown"):].strip().lstrip("(").strip()
         return {"state": "unknown", "words": "unknown", "why": why or "not established"}
-    return {"state": "departs", "words": f"departs ({detail})"}
+    # C2820's survey, item 9: "departs" read as a key. The badge stays short (above) and its
+    # hover says the lines in words.
+    from modules.nsot.intent_match import said
+    return {"state": "departs", "words": f"differs ({detail})",
+            "why": said(detail)}
 
 
 def _with_intent(repo: str, only: str = None) -> tuple:

@@ -546,10 +546,12 @@ def _named(rows, folder, renames):
 def _departure_marks(r: dict, devices, device: str) -> list:
     """A golden commit that recorded a device departing from its intent, marked (C1819, the
     operator's Walk 3: a capture that took in an out-of-band change read as any other):
-    "captured, departs from intent (+1 -1); changed out-of-band, by console per SYS-5-CONFIG_I".
+    "captured, differs from intent (1 line in intent not on the device, 1 line on the device
+    not in intent); changed out-of-band, by console per SYS-5-CONFIG_I".
     From the commit's own `Intent-Match:` and `Out-Of-Band:` trailers (`out_of_band`), so
     nothing is read per row. A device's view marks that device; the fleet's names each."""
     from modules.nsot import out_of_band as OOB
+    from modules.nsot.intent_match import said
 
     off = OOB.departures(r.get("intent_match", ""))
     how = OOB.named(r.get("out_of_band") or [])
@@ -558,7 +560,7 @@ def _departure_marks(r: dict, devices, device: str) -> list:
     for d in sorted(devices):
         if d not in off or (device and d != device):
             continue
-        mark = f"{verb}, departs from intent ({off[d]})"
+        mark = f"{verb}, differs from intent ({said(off[d])})"
         if d in how:
             mark += f"; changed out-of-band, {OOB.short(how[d])}"
         marks.append(mark if device else f"{d} {mark}")

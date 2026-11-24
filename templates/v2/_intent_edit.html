@@ -85,9 +85,9 @@
       <p class="muted">Committed in Mercury's own formatting: the data you typed, without its comments and layout.</p>
       {%- endif %}
       <p><strong>Nothing was sent to {{ host }}:</strong> its intent changed, {{ host }} did not
-      {%- if sends and departs %}, so it now departs from its intent: a deploy sends the lines it lacks, and keeps the lines only {{ host }} holds until you remove them (Mode B)
-      {%- elif sends %}, so it now departs from intent until a deploy sends the lines beside
-      {%- elif departs %}, so it now departs from its intent by the lines beside, which only {{ host }} holds. A deploy is merge-only and sends nothing for them: Remove lines (Mode B)… takes them off, only the lines you select, each with a reason
+      {%- if sends and departs %}, so it now differs from its intent: a deploy sends the lines it lacks, and keeps the lines only {{ host }} holds until you remove them (Mode B)
+      {%- elif sends %}, so it now differs from intent until a deploy sends the lines beside
+      {%- elif departs %}, so it now differs from its intent by the lines beside, which only {{ host }} holds. A deploy is merge-only and sends nothing for them: Remove lines (Mode B)… takes them off, only the lines you select, each with a reason
       {%- endif %}.</p>
       {%- else %}
       <p>{{ c.r.message }}</p>
@@ -98,7 +98,7 @@
       <h3 class="ie-k">What a deploy would send now</h3>
       <p class="muted">Not read: {{ c.p.error }}.</p>
       {%- elif departs and not sends %}
-      <h3 class="ie-k">How {{ host }} now departs from its intent</h3>
+      <h3 class="ie-k">How {{ host }} now differs from its intent</h3>
       {{ rows(d.departs_rows) }}
       <p class="muted small">{{ departs }} line{{ '' if departs == 1 else 's' }} {{ host }} holds that its intent does not, against its golden. A deploy sends nothing: it is merge-only.</p>
       {%- elif sends %}

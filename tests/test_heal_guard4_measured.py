@@ -78,7 +78,7 @@ def test_a_later_save_all_measuring_it_at_intent_is_the_approved_state(repo):
 
 def test_the_golden_commits_own_trailer_still_counts_when_it_is_the_newest(repo):
     got = _golden()
-    assert (got["state"], got["words"]) == ("departs", "departs (+2 -2)"), got
+    assert (got["state"], got["words"]) == ("departs", "differs (+2 -2)"), got
     from modules.heal import guards
     assert guards.g4_golden(got)["guard"] == 4
 

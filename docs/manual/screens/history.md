@@ -239,10 +239,11 @@ error. A commit whose record is known to be wrong says so in its row.
 
 **A golden that departs from intent is marked.** A golden row whose commit recorded the device
 departing from its intent says so beside its title, from the commit's own `Intent-Match:`
-line: "captured, departs from intent (+1 -1)" for a Capture, Save or Save All ("recorded, …"
-for any other save). When the capture took in a change no rule explains, the mark says how the
-device's own log says it was changed, kept with the capture: "captured, departs from intent
-(+1 -1); changed out-of-band, by console per SYS-5-CONFIG_I". On History, a commit of several
+line: "captured, differs from intent (1 line in intent not on the device, 1 line on the device
+not in intent)" for a Capture, Save or Save All ("recorded, …" for any other save). When the
+capture took in a change no rule explains, the mark says how the device's own log says it was
+changed, kept with the capture: "captured, differs from intent (…); changed out-of-band, by
+console per SYS-5-CONFIG_I". On History, a commit of several
 devices names each one it marks. The opened row holds both lines whole (**Intent-Match** and
 **Out-of-band**, the log line masked). See [Drift](drift#out-of-band).
 

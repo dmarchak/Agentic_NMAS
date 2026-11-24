@@ -138,7 +138,7 @@ class TestNoCheckReadsClean:
         assert intent["state"] == "warn" and intent["in_intent"] and intent["on_device"]
         assert row["state"] == "warn", row
         assert row["text"].startswith("unchanged at the last run, but its last capture ("), row
-        assert ("took in a change made outside Mercury that departs from intent (+1 -1): "
+        assert ("took in a change made outside Mercury that differs from intent (1 line in intent not on the device, 1 line on the device not in intent): "
                 "changed out-of-band, by console per SYS-5-CONFIG_I; it is not at its intent "
                 "(see Intent)") in row["text"], row["text"]
 
@@ -179,7 +179,7 @@ class TestTheGoldensHistoryMarksIt:
         from modules import history_sources as H
         got = H.timeline(_ref(), device="r2", kinds=["golden"])
         newest = next(e for e in got["events"] if e["kind"] == "golden")
-        assert ("captured, departs from intent (+1 -1); changed out-of-band, by console per "
+        assert ("captured, differs from intent (1 line in intent not on the device, 1 line on the device not in intent); changed out-of-band, by console per "
                 "SYS-5-CONFIG_I") in newest["marks"], newest
         rec = dict(newest["record"])
         assert rec["Intent-Match"] == "no: r2 (+1 -1)"
@@ -192,7 +192,7 @@ class TestTheGoldensHistoryMarksIt:
         from modules import history_sources as H
         got = H.timeline(_ref(), kinds=["golden"])
         newest = next(e for e in got["events"] if e["kind"] == "golden")
-        assert any(m.startswith("r2 captured, departs from intent (+1 -1); changed "
+        assert any(m.startswith("r2 captured, differs from intent (1 line in intent not on the device, 1 line on the device not in intent); changed "
                                 "out-of-band, by console per SYS-5-CONFIG_I")
                    for m in newest["marks"]), newest["marks"]
 
@@ -200,7 +200,7 @@ class TestTheGoldensHistoryMarksIt:
         from modules import device_page
         monkeypatch.setattr(device_page, "find_device", lambda name, ref=None: (_ref(), _dev()))
         html = walked["client"].get("/v2/device/r2/history").get_data(as_text=True)
-        assert "captured, departs from intent (+1 -1); changed out-of-band, by console per " \
+        assert "captured, differs from intent (1 line in intent not on the device, 1 line on the device not in intent); changed out-of-band, by console per " \
                "SYS-5-CONFIG_I" in html, html[:400]
 
 

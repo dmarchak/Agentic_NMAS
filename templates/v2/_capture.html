@@ -47,7 +47,7 @@
     <p>Reads {{ c.host }}'s running configuration now and records it as {{ c.host }}'s golden: one commit, <span class="mono">Source: capture</span>, as you. {{ stamp(c.read_at, 'Read just now', 'read in ' ~ c.read_in) }}</p></div></div>
   <div class="op-part"><h3>What will not happen</h3><div>
     <p>Nothing is sent to {{ c.host }}.</p>
-    <p>{% if c.intent.departs %}Intent is not changed: {{ c.host }} still departs from its committed intent, as below, until intent or the device moves.{% else %}Intent is not changed.{% endif %}</p>
+    <p>{% if c.intent.departs %}Intent is not changed: {{ c.host }} still differs from its committed intent, as below, until intent or the device moves.{% else %}Intent is not changed.{% endif %}</p>
     <p>No baseline is taken: one device is not the fleet.</p></div></div>
   <div class="op-part"><h3>The difference</h3><div>
     {%- if not c.read %}

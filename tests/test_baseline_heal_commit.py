@@ -494,7 +494,7 @@ class TestTheRowMatchesItsCause:
         assert "s3 skipped" in r["cause"] and "does not match its committed intent" in r["cause"]
         label = r["action"]["label"]
         assert label.startswith("Capture the missing devices: that save could not read s3")
-        assert "The reasons also name a departure: resolve each first" in label
+        assert "The reasons also name a difference from intent: resolve each first" in label
 
     def test_with_no_baseline_usable_the_usability_row_matches_its_cause_too(
             self, nine, monkeypatch):
@@ -511,7 +511,7 @@ class TestTheRowMatchesItsCause:
         _repo, captured = nine
         _save_all(_broken(captured))
         r = _the_row()
-        assert r["action"]["label"].startswith("Resolve each departure the reasons name")
+        assert r["action"]["label"].startswith("Resolve each difference from intent the reasons name")
         assert "Capture the missing devices" not in r["action"]["label"]
 
     def test_the_row_says_what_leaves_it_standing_and_what_replaces_it(self, nine):

@@ -22,7 +22,7 @@ and Mode's options lose a second parenthetical of the same retired rule; no regi
 Compared by the template diff, not by new shots (owed in the full pass, docs/FAST_LANE_DEBT.md).
 Templates sha256 before: `455516ff4556a71207f2141145b95be9c0b61e72d638d086397ab4d2a9830949`.
 Compared again 2026-11-24 (the week plan's Stage 5, every setting's description): `_heal.html` draws one line, what the setting does in plain words from `settings_schema.DESCRIPTIONS` through `_macros.setting_desc`, under the Mode (and Auto's expiry while Auto is in force), Set and Network stage rows, under Fix kinds' lead (the two kind lists), under each hard stop's label (each setting it shows), under Who is told's Team and Sent for, and above the stop everywhere control. Nothing else moves and no region's verdict changed. Artboard A draws no such line: a deviation, logged once (docs/STANDING_APPROVAL_LOG.md, "Settings: every setting's description"). Compared by the template's diff and tests/test_settings_descriptions.py's render, not by new shots. Templates sha256 before: `7f997a162e2d2d4adcfed10dfb15a40244deb368c0927541b1763511e3d3f1e5`.
-Templates sha256: `7daad0dda2cec19fcdc7c002339d1cfbae39c034d4232ba1fd73a3d073e90e3b`
+Templates sha256: `92d9fcd96fb6824e8c9b1de9fb737f6ef90739c83480416529f5799c09d6eb3a`
 
 **Compared again 2026-11-12 for C3196 (the BGP session clear listed twice):** by the template's
 diff against the Fix kinds region, not from new shots. The table and the change card draw a
@@ -75,3 +75,9 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Stop self-healing everywhere… | the danger button, alone | the button; pressed, a card says what stopping does and asks why (never required) with Stop self-healing everywhere and Cancel; while stopped, every network's tab says so with Resume self-healing…, its preview and confirm with a reason | **deviation** (log: Board H built: the kill switch's ask, stopped notice and resume card) |
 | Answers in place | not drawn | Confirmed…, Turned off, Not saved: … (what was typed kept), Saved for Who is told, each in its card | **deviation** (log: Board H built: each answer drawn in its card) |
 | Phone width | not drawn | the two columns stack: the mode, the kinds, the hard stops, Who is told and the kill switch; a change's modal fills the width less its gutters and scrolls inside itself; tables scroll inside their cards | **deviation** (log: Board H built: the tab's phone width) |
+
+Compared again 2026-11-24 (C2820's survey, item 9): in `_heal_preview.html`, "Devices it may
+act on" reads "with a golden that differs from intent" in place of "departs from"; the same
+cell. Words only: no region changed, no deviation. Compared by the template's diff, not by new
+shots. Templates sha256 before:
+`7daad0dda2cec19fcdc7c002339d1cfbae39c034d4232ba1fd73a3d073e90e3b`.

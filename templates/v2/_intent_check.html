@@ -40,7 +40,7 @@
     {%- elif p.message %}<p class="muted">{{ p.message }}</p>
     {%- else %}<p class="muted">Nothing yet: the document is what is committed.</p>{% endif %}
     {%- if d.not_removed %}
-    <div class="notice notice-warn ie-keep">{{ icon('warn', 16) }}<div><p><strong>A deploy will not remove what this edit deletes.</strong> Deploys are merge-only: they add and change lines, never remove them. After this commit {{ host }} keeps these, and departs from its intent by them, until you remove them with Actions › Remove lines (Mode B)…, which removes only lines you select, each with a reason:</p>
+    <div class="notice notice-warn ie-keep">{{ icon('warn', 16) }}<div><p><strong>A deploy will not remove what this edit deletes.</strong> Deploys are merge-only: they add and change lines, never remove them. After this commit {{ host }} keeps these, and differs from its intent by them, until you remove them with Actions › Remove lines (Mode B)…, which removes only lines you select, each with a reason:</p>
       {{ rows(d.not_removed, 'ie-diff-keep') }}</div></div>
     {%- endif %}</div>
   <div><h3 class="ie-k">What a deploy would send to {{ host }}, after this commit</h3>

@@ -26,7 +26,7 @@ Shots: `tab-overview-board-1440`, `-1280` beside `tab-overview-page-1440`, `-128
 Compared 2026-10-16.
 Templates compared: templates/v2/_overview.html, templates/v2/_drift_detail.html, templates/v2/_saved_actions_slot.html, templates/v2/_saved_actions_device.html
 Compared again 2026-11-18 (the skip-mode debt, docs/FAST_LANE_DEBT.md; c4948c2c and da740aa1): `_overview.html`'s reachability row is Reachable, where it was Answering (c4948c2c, "Answering" is "Reachable" everywhere); `_saved_actions_device.html` draws each choice a saved action's plan takes as a select beside its Preview… and carries it to the preview and Run (da740aa1, a fix's manual controls); nothing else moved. Shot again from this tree (`tab-overview` at 1440, 1280 and 390, `tab-overview-folded` at 1440 and 390, `tab-overview-drift-open`, `-closed`, `-unreadable` at 1440, 1280 and 390; tests/test_board_shots.py's `test_tab_overview` and `_drift`) and read region by region against this record's verdicts: the facts card's first row reads "Reachable, since 2 d ago · last probe answered", its layout as before; every verdict stands, one row added for the choices (compared by the template's diff: the shots' world holds no saved action). The redesign and C342 boards are the canvas's, not on disk, so they were not re-shot. In these shots the saved actions slot under the facts card draws "Couldn't load this view. Try again": its request names the list Lab, which the shot world's registry does not hold (`/v2/saved-plans/device/r2/actions?list=Lab` answers 404 "There is no device list named 'Lab'", read with the Flask client on the same world), so the shot's world, not the product, drew it (registered by the debt pass as a test row). Logged (docs/STANDING_APPROVAL_LOG.md, "Reachable, not Answering: the reachability reader's word on every screen" and "A saved action's own choices are asked beside its Preview"). Templates sha256 before: `6f77d32897f1e9ab1ca852c02de39463420b1fe588e2581310756cd11bd39ca0`.
-Templates sha256: `f7972aafa07cd05ba41540a6a6bba21e441806abe5f3b1253e33827d544e79d6`
+Templates sha256: `c95e4a63c14b67fd7caa8029051320929ea18be5aedffbf80d7032b6ca680afc`
 Templates sha256 before the saved actions slot passed a reopened run on (2026-11-15, Gate 1b: In progress reopens a saved action's run at the device's Overview with `run=`, and the slot asks for that run's card; nothing drawn differently, every verdict unchanged): `4e998fc3c2d6391b896914b2fb1e4ffb4eac1d34f5caeeea2140fbe131148891`
 (2026-11-15, Gate 1b: `_overview.html` gains one include line after Checks, the saved actions'
 slot, asked in place, and its card compared with board saved-plans D, docs/boards/saved-plans.html,
@@ -170,3 +170,9 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Run | bound to the preview's hash, busy on itself | the same, run by the command-plan runner as a job | **same** |
 | A right the viewer lacks | said beside Run, the button disabled | the same | **same** |
 | The run | running, then its outcome, its record on History | the same, drawn from the run's record as it records each step | **same** |
+
+Compared again 2026-11-24 (C2820's survey, item 9): in `_drift_detail.html`, Capture's hint
+reads "the Intent check then shows anything that differs from it" in place of "departs from";
+the same element. Words only: no region changed, no deviation. Compared by the template's diff,
+not by new shots. Templates sha256 before:
+`f7972aafa07cd05ba41540a6a6bba21e441806abe5f3b1253e33827d544e79d6`.

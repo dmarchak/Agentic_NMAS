@@ -100,7 +100,8 @@ ROW_KINDS = {
                                "some of the lines it sent",
                                "read those lines in the device's golden: acknowledge a line "
                                "the device prints in another form, plan again for one absent"),
-    ("baseline", "denied"): ("the last baseline was not earned", "resolve each departure, then Save All"),
+    ("baseline", "denied"): ("the last baseline was not earned",
+                             "resolve each difference from intent, then Save All"),
     ("baseline", "unusable"): ("no stored baseline can be re-applied", "take a current baseline"),
     ("authorisations", "repeated"): ("one line is authorised again and again",
                                      "read the reasons; move the line into intent, or its cause"),
@@ -2284,8 +2285,8 @@ def baseline_source(log_fn=None, presence=None) -> dict:
             what=(f"The last commit earned no baseline: {blocker['operation']} did not cover "
                   "the network"),
             cause=(f"{_not_covered_words(blocker)} That is a partial operation's decision, "
-                   "not a Save All denied for departures: no device was judged to depart "
-                   "from its intent"),
+                   "not a Save All denied for differences from intent: no device was judged "
+                   "to differ from its intent"),
             action={"label": "Save All takes one: it captures every device and earns a "
                              "baseline if each is at its committed intent; if not, it records "
                              "the denial and names the device and its lines"},
@@ -2336,12 +2337,12 @@ def _denial_remedy(reasons: str, unusable: bool = False) -> str:
     got = uncaptured(reasons)
     if not got["any"]:
         if unusable:
-            return ("Resolve each departure the denial names, one of two ways that mean "
-                    "opposite things: change the DEVICE if intent is right (a line only the "
+            return ("Resolve each difference from intent the denial names, one of two ways "
+                    "that mean opposite things: change the DEVICE if intent is right (a line only the "
                     "device has is removed by hand: the tool never removes one), or Edit "
                     "INTENT if the device is right. Then Save All. Save All alone will be "
-                    "refused again while it departs")
-        return ("Resolve each departure the reasons name, one of two ways "
+                    "refused again while it differs")
+        return ("Resolve each difference from intent the reasons name, one of two ways "
                 "that mean opposite things: change the DEVICE (a line intent "
                 "has is deployed; a line only the device has is removed by hand, "
                 "since the tool never removes one) if intent is right, or Edit "
@@ -2353,8 +2354,8 @@ def _denial_remedy(reasons: str, unusable: bool = False) -> str:
                  "each is read and at its committed intent")
     if got["only"]:
         return capture
-    return (capture + ". The reasons also name a departure: resolve each first, by changing "
-            "the DEVICE if intent is right (a line only the device has is removed by hand: "
+    return (capture + ". The reasons also name a difference from intent: resolve each first, "
+            "by changing the DEVICE if intent is right (a line only the device has is removed by hand: "
             "the tool never removes one) or by Edit INTENT if the device is right")
 
 
@@ -6214,7 +6215,7 @@ def _duplicate_rows(v: dict, value_at, names: dict) -> list:
         if owner and owner in claimers + others:
             departed = [d for d in claimers + others if d != owner]
             judged = (f"Committed intent gives {rid} to {owner}, so "
-                      f"{_and(departed) if departed else 'another router'} departed from its "
+                      f"{_and(departed) if departed else 'another router'} differs from its "
                       "intent")
             fix = departed[0] if departed else owner
         else:
@@ -6237,7 +6238,7 @@ def _duplicate_rows(v: dict, value_at, names: dict) -> list:
                       "still_logged": AL.still_logged(g, at)},
             action={"label": (f"Compare {_and(sorted(set(claimers + others)))}'s {proto} "
                               f"router-id with committed intent (each device's Intent tab), "
-                              f"and set back the one that departed: its router-id takes "
+                              f"and set back the one that differs: its router-id takes "
                               "effect only once its OSPF process resets"),
                     "href": f"/v2/device/{fix}?tab=intent&list={lst}"}))
     return out

@@ -154,7 +154,7 @@ def capture_result_card(ref, host: str, got: dict, confirmed: str, actor: str,
         # Recorded, but not at its committed intent: never green over that (C1273), the
         # same judgement `preview_confirm.capture_result` makes ("partial"); the chip leads
         # with the state to act on, which "What next" answers.
-        chip = ("Recorded; departs from intent" if intent.get("state") == "differs"
+        chip = ("Recorded; differs from intent" if intent.get("state") == "differs"
                 else "Recorded; intent not compared")
         level = "warn"
     from modules.nsot.intent_match import explain

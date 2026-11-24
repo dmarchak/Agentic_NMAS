@@ -179,7 +179,7 @@ class TestTheWalks:
         # can't-fix that stands (C3909: its golden departs from intent, Tier 3).
         change("core-b", T0)
         d = decide("core-b", TWO, T0 + 150, state="departs")
-        assert d["outcome"] == "cant_fix" and "departs from its committed intent" in DS.find(
+        assert d["outcome"] == "cant_fix" and "differs from its committed intent" in DS.find(
             "Default", d["decision"])["words"], d
         assert the("core-b")["state"] == "standing"
         alerted("leaf-c", T0 + 249, by=by, rule="Telemetry stream lost")

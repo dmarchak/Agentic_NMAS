@@ -128,10 +128,10 @@ class TestThePreview:
         # The read timings on hover (the faked read records no connect phase).
         assert re.search(r'<time class="stamp" datetime="[^"]+" title="[^"]+ · read in [0-9.]+ s', html)
         assert "Nothing is sent to r2." in html and "No baseline is taken" in html
-        assert "still departs from its committed intent" in html
+        assert "still differs from its committed intent" in html
         diff = html[html.index("The difference"):html.index("Operands")]
         assert '<span class="op-add">+ load-interval 30</span>' in diff
-        assert "Against committed intent, r2 departs" in diff
+        assert "Against committed intent, r2 differs" in diff
         ops = html[html.index("Operands"):html.index("Checks")]
         assert re.search(r"Golden now</dt><dd class=\"mono\">[0-9a-f]{7,}", ops)
         assert re.search(r"This read</dt><dd class=\"mono\">capture [0-9a-f]+", ops)
@@ -205,14 +205,14 @@ class TestTheConfirm:
         assert "Source: capture" in msg and "Actor: test-person@example.invalid" in msg
         # r2 departs from its intent: recorded, never green over that (C1273).
         assert "op-card op-warn" in out and "Captured" in out and "badge-warn" in out
-        assert "Recorded; departs from intent" in out and "op-ok" not in out
+        assert "Recorded; differs from intent" in out and "op-ok" not in out
         # Board E2a: who recorded it, by display name (the part before the "@").
         assert f">{after[:10]}</a>" in out and "test-person (verified)" in out
         assert "test-person@example.invalid" not in out
         assert re.search(r'title="[^"]*read again at confirm: capture [0-9a-f]+, unchanged since '
                          r'the preview; [^"]+"', out)
         still = out[out.index("Still true"):]
-        assert "r2 departs" in still and "the next deploy would send intent" in still
+        assert "r2 differs" in still and "the next deploy would send intent" in still
         assert "Edit intent…</a>" in out and "on its Intent tab's editor, which this opens" in out
         assert 'data-op="removal"' in out
         assert 'href="/v2/device/r2?tab=history&amp;list=Lab"' in out and "Open in History" in out
@@ -381,7 +381,7 @@ class TestTheResultsColour:
 
     def test_a_capture_departing_from_intent_is_amber_and_says_so(self):
         c = self._card({"state": "differs", "lines": ["+ ip ospf 1 area 0"]})
-        assert (c["chip"], c["level"]) == ("Recorded; departs from intent", "warn")
+        assert (c["chip"], c["level"]) == ("Recorded; differs from intent", "warn")
 
     @pytest.mark.parametrize("intent", [{}, {"state": "unknown"}])
     def test_a_capture_with_intent_not_compared_is_amber_and_says_so(self, intent):

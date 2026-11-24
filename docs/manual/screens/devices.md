@@ -59,7 +59,7 @@ is the newest measurement's, read from that commit, never by reading the device 
 is drawn only while nothing that measurement was judged against has moved since. When the
 device's committed intent, the network's monitoring profile or the template library has a
 commit after it, the row says **intent changed since measured** instead, and its hover names
-what changed, when, and what the measurement had read: the recorded "departs" or "at intent"
+what changed, when, and what the measurement had read: the recorded "differs" or "at intent"
 may no longer be true. A capture or Save All (see [Capture and Save All](capture)) brings it
 up to date. The device page's Overview shows the same state, from the same reading, beside
 its Intent check, which compares the golden with intent now.

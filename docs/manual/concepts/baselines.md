@@ -142,8 +142,8 @@ can be re-applied, [Needs attention](needs-attention) shows one row per network,
 baseline can be re-applied", with its action: take a current baseline (Save All captures
 every device and earns one if each is at its committed intent). When the last Save All was
 denied, the row reads "No stored baseline can be re-applied, and a new one cannot be earned
-yet", names the denial and its commit, and its action is to resolve each departure the
-denial names first (change the device if intent is right, or edit intent if the device is
+yet", names the denial and its commit, and its action is to resolve each difference from intent
+the denial names first (change the device if intent is right, or edit intent if the device is
 right), then Save All.
 
 ## What a baseline is not

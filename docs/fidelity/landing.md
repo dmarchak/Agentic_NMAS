@@ -273,7 +273,7 @@ without `_resubscribe.html`).
 | The lost stream's Re-subscribe card (C2838, folded in 2026-11-18) | logged 2026-11-14 as the card's own pattern, no board ("The re-subscribe card gains the collector step's controls") | in place on the row, its preview, the collector step, the result; while the device is held, "Not offered while <device> is held … Open the run", the run's own home | **deviation** (log: The re-subscribe card gains the collector step's controls) |
 | R5: phone (390) | lines wrap rather than cut | the title and the status wrap; the impact line is cut with an ellipsis, whole on hover | **deviation** (log: R5: some of a row's lines are cut at phone width, whole on hover) |
 
-Templates sha256: `a4ce21a025bb69c187ce971863af4c86fbd52e403762a0c012894bb947ab316a`
+Templates sha256: `3a29dfb59afdab5aed9467a8acb1ce894364b6b220d61308e14bbf62ca28392f`
 (before the combined gate's reviews, 2026-11-15, above: `95963b5612ee0d494c7192eb31a8ade9c34068395adb2cb9bdede8db69638a35`)
 (before the port problem's fold, 2026-11-15, above: `a894c8009f442e454c18b53caaaa6a23a7ad9a59f9a045a201afd44e2459c8c6`)
 (before the lost stream's Start, 2026-11-14, below: `df04b28a2f32a3505d0451f14d5f4dbad62cc0643c8e194e95a2522806aba5bd`)
@@ -774,3 +774,9 @@ and region is unchanged. Compared by the template's diff, not by new shots.
 | Region | Board | Built | Verdict |
 |---|---|---|---|
 | A lost stream's primary (R1, R2) | Re-subscribe on its line (board NA-R) | Start AI troubleshooting…, to the incident's bottom line, while its incident offers it | **deviation** (log: Needs attention: a row about an incident leads with its bottom line (R2)) |
+
+Compared again 2026-11-24 (C2820's survey, item 9): in `_attention.html`, the departing lines'
+header of a guard 4 hold reads "<device> differs from its intent by N lines" in place of
+"departs from"; the same element, position and lines under it. Words only: no region changed,
+no deviation. Compared by the template's diff, not by new shots. Templates sha256 before:
+`a4ce21a025bb69c187ce971863af4c86fbd52e403762a0c012894bb947ab316a`.

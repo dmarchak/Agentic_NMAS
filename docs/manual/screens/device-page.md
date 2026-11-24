@@ -83,8 +83,8 @@ unchanged at the last run, skipped, or changed, with how many lines it differs f
 by. It never says whether the device is right: that is **Intent**. When its last capture took
 in a change made outside Mercury that departs from intent by a line no rule explains, the row
 says so and is a warning, never a pass: "unchanged at the last run, but its last capture
-(`<commit>`) took in a change made outside Mercury that departs from intent (+1 -1): changed
-out-of-band, by console per SYS-5-CONFIG_I; it is not at its intent (see Intent)" (how it was
+(`<commit>`) took in a change made outside Mercury that differs from intent (1 line in intent
+not on the device, 1 line on the device not in intent): changed out-of-band, by console per SYS-5-CONFIG_I; it is not at its intent (see Intent)" (how it was
 changed is the device's own log line, kept with the capture; see
 [Drift](drift#out-of-band)). A drift record that cannot be read says **unreadable** with the
 reason: whether the device is at its golden is then not known, which is neither unchanged nor

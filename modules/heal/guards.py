@@ -125,8 +125,9 @@ def g4_golden(golden: dict):
         return None
     lines = [str(x) for x in golden.get("lines") or []]
     total = max(len(lines), int(golden.get("adds") or 0) + int(golden.get("removes") or 0))
-    return hit(4, "held", (f"heal off for this device: its golden departs from its intent "
-                           f"({golden.get('words') or golden.get('state')}), so there is no "
+    from modules.nsot.intent_match import state_said
+    return hit(4, "held", (f"heal off for this device: its golden differs from its intent "
+                           f"({state_said(golden)}), so there is no "
                            "approved state to heal to; a person resolves it first (adopt the "
                            "change into intent, or capture after a revert)"),
                {"golden_commit": golden.get("commit", ""), "intent_match": golden.get("state"),

@@ -375,9 +375,10 @@ def _departing_golden(base: dict, device: str, golden: dict, *, at_golden: bool)
     diagnosis action, team message or analysis call starts from it (`heal_notice.due`)."""
     why = ("a restore to intent that adds lines the golden never held is not built yet: no fix "
            "of Mercury's own, so the AI investigates")
-    words = (f"{device} is at its golden, which departs from its intent "
-             f"({golden.get('words') or golden.get('state')}), and {why}" if at_golden else
-             f"{device}'s golden departs from its committed intent, and {why}")
+    from modules.nsot.intent_match import state_said
+    words = (f"{device} is at its golden, which differs from its intent "
+             f"({state_said(golden)}), and {why}" if at_golden else
+             f"{device}'s golden differs from its committed intent, and {why}")
     return dict(base, tier=3, outcome="cant_fix", words=words, **{INTERIM: True})
 
 
@@ -513,6 +514,7 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
     from modules.drift_check import departure, drift_diff
     from modules.heal import act, decisions, guards, incidents, kinds, policy
     from modules.heal.guards import value
+    from modules.nsot import intent_match
 
     from modules import fault_drills
 
@@ -576,8 +578,8 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
     passed("approved", (f"the golden {commit} is the approved state: "
                         f"{golden.get('words') or golden.get('state')}"
                         if golden.get("state") == "at_intent" else
-                        f"the golden {commit} departs from intent "
-                        f"({golden.get('words') or golden.get('state')}): the restore's lines "
+                        f"the golden {commit} differs from intent "
+                        f"({intent_match.state_said(golden)}): the restore's lines "
                         "come from committed intent"), "guards")
     # The operator, 2026-11-17 (round 2): guard 10 (the decisions store unread) is a wait,
     # never a halt; guards 11 (the fight stop), 12 (the program's size) and 14 (a rolled-back

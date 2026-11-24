@@ -1000,7 +1000,7 @@ def _r_admin_down(rule, ctx):
                     "shutdown" if shut else "no shutdown")],
                 rule_out=f"`show interfaces {e['interface']}` reading up",
                 todo=("Intent shuts it: change intent to bring it up" if shut else
-                      "Check drift now…: it departs from intent")))
+                      "Check drift now…: it differs from intent")))
     return hits, ("neither end is administratively down"
                   if seen == len(ctx.ends) and seen and not hits else "")
 
@@ -1184,7 +1184,7 @@ def _r_subnet(rule, ctx):
                                                   f"Internet address is {f['address']}",
                                                   e["v4"])],
                                 rule_out="the address reading as intent holds it",
-                                todo="Check drift now…: it departs from intent"))
+                                todo="Check drift now…: it differs from intent"))
         elif f.get("address"):
             ok += 1
     if len(ctx.ends) == 2:
@@ -1382,7 +1382,7 @@ def _r_bgp_remote_as(rule, ctx):
                                 [ev(ctx.ref_of(e, "bgp_summary", 2), "no such neighbour",
                                     f"neighbor {peer['address']} remote-as {peer['remote_as']}")],
                                 rule_out="the summary listing the neighbour",
-                                todo="Check drift now…: it departs from intent"))
+                                todo="Check drift now…: it differs from intent"))
         elif row["remote_as"] != peer["remote_as"]:
             hits.append(finding(rule, f"{e['host']}'s BGP neighbour {peer['address']} is "
                                 f"configured in AS {row['remote_as']}; intent holds AS "
@@ -1391,7 +1391,7 @@ def _r_bgp_remote_as(rule, ctx):
                                     f"{peer['address']} AS {row['remote_as']}",
                                     f"remote-as {peer['remote_as']}")],
                                 rule_out="the summary's AS reading as intent holds it",
-                                todo="Check drift now…: it departs from intent"))
+                                todo="Check drift now…: it differs from intent"))
     return hits, ""
 
 

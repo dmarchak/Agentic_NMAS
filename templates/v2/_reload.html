@@ -81,7 +81,7 @@
         hx-post="{{ url_for('device_v2.reload_confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML">
     {%- if c.can %}
     <input type="hidden" name="list" value="{{ c.list }}"><input type="hidden" name="back" value="{{ c.back }}"><input type="hidden" name="fingerprint" value="{{ p.fingerprint }}">
-    <label class="op-reason">Why reload {{ c.host }}? (recorded with the reload{% if p.departs %}, and as acknowledging that it departs from its golden or intent{% endif %})
+    <label class="op-reason">Why reload {{ c.host }}? (recorded with the reload{% if p.departs %}, and as acknowledging that it differs from its golden or intent{% endif %})
       <input type="text" name="reason" autocomplete="off" required maxlength="200"></label>
     <p class="op-note">Bound to this read ({{ p.fingerprint }}): the run reads {{ c.host }} again and sends nothing if it moved. The planned-restart window is declared before anything is sent.</p>
     <span class="op-act"><button type="submit" class="btn btn-danger op-confirm" data-op="reload" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Reload {{ c.host }} (up to {{ (p.bound_s / 60) | round(0, 'ceil') | int }} minutes out)</span><span class="op-busy">Starting the reload…</span></button>{{ how('reload', compact=True, op='reload') }}</span>

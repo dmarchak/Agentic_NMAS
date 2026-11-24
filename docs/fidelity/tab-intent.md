@@ -29,7 +29,7 @@ Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html, templates/v2/_intent_secrets.html
 Compared again 2026-11-13 (the operator's approved rule, "money shown as $"): `_intent_words.html` draws the drafting call's cost, in its three notices, through the `usd` filter (`modules.money.usd`, an exact amount). No element moves and no region's verdict moved; compared by the template's diff, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Money through one formatter"). Templates sha256 before: `88b16e5fd0b2ee63c061a5d8a0d1abad4235aaddc4c98b7c8c1156f00bee5f73`.
 Compared again 2026-11-24 (the week plan's Stage 4, the toolbar assistant's hand-off, docs/design/assistant.md): `_intent.html` passes the Intent tab's `?words=` to `_intent_words.html` as *prefill*, and Change it in words' box holds those words before any draft, as F7-Q's box holds the decided sentence ("the box holding that sentence", same). Nothing is drafted or sent until the person presses Draft the change. No element is added or moves and no region's verdict moved; compared by the templates' diff, not by new shots; no deviation, so no log line. Templates sha256 before: `2c8805fe7dbaf6963556923f5495346c704dd048806fc9d791de0494d97c1a6e`.
-Templates sha256: `b047978dfd3784fbb79b49c26175b61b0b9788d9b792457c2c4f833cdbf49673`
+Templates sha256: `63ce12db55c649d1f8a9c814c9fbb32bc2e4d10c6cc13cdf73497f9c4f0b0e82`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_intent_edit.html`, `_intent_words.html` and
@@ -345,3 +345,10 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | F7-Q Q5: a description with no text | the question with the current description, a text box, Continue, "The text typed here is the value: it reaches the model as a placeholder" | the same, the text quoted into the decided sentence and held as a placeholder | **same** |
 | F7-Q: after any answer | "the sentence the draft uses is shown as decided", then the draft as board F7 draws it; Cancel leaves nothing drafted | "Your words, as decided: <q>…</q>" over the draft (or the next question), the box holding that sentence | **same** |
 | Change it in words: the masked-words note (C1845) | not drawn (no board draws what was masked of the sentence) | under the row, only when something was masked before sending: "1 value was masked before sending: a pre-shared key. The model read a placeholder in its place, and the value never left Mercury: leave secrets out of your words.", each kind (and line, for text of more than one line) in words, never the value; the box and Why, in one line holding the sentence as sent | **deviation** (log: C1845: the masked-words note under a typed AI row) |
+
+Compared again 2026-11-24 (C2820's survey, item 9): in `_intent_edit.html` and
+`_intent_check.html`, an edit's effect reads "so it now differs from its intent", the block's
+heading "How <device> now differs from its intent", and the merge-only notice "differs from
+its intent by them", in place of "departs from"; the same elements, positions and rows. Words
+only: no region changed, no deviation. Compared by the templates' diff, not by new shots.
+Templates sha256 before: `b047978dfd3784fbb79b49c26175b61b0b9788d9b792457c2c4f833cdbf49673`.

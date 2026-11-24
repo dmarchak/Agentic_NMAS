@@ -1180,7 +1180,7 @@ def _r_stream_missing(rule, ctx):
                       [D.ev(ctx.brief_ref, f"{_subs_words(gone)} absent",
                             f"telemetry ietf subscription {gone[0]}")],
                       rule_out=f"{_subs_words(gone)} listed on {ctx.host}",
-                      todo="Check drift now…: it departs from intent")], ""
+                      todo="Check drift now…: it differs from intent")], ""
 
 
 def _r_stream_invalid(rule, ctx):

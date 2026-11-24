@@ -1179,8 +1179,9 @@ def _apply_decision(network: str, decision: dict, *, now: float = None, sources=
         # Not a wait: the golden departed from intent since the decision (the review of C3909:
         # a restore from intent is not built until it classifies every line it sends, C3910),
         # a failure R1 starts on, nothing sent.
-        return refuse("plan", f"{device}'s golden departs from its committed intent now "
-                              f"({golden.get('words') or golden.get('state')})")
+        from modules.nsot.intent_match import state_said
+        return refuse("plan", f"{device}'s golden differs from its committed intent now "
+                              f"({state_said(golden)})")
     prog = decide.program(decide.restore_source(golden, intended), text, c["units"],
                           c["removal_ids"], mgmt_ip=dev.get("ip", ""), platform=platform)
     from modules.drift_check import departure, drift_diff
