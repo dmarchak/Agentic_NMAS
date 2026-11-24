@@ -395,7 +395,33 @@
     if (at) out.push(at);
     var said = answerRead(region);
     if (said) out.push(said);
+    var unread = region.querySelectorAll('.set-result');
+    for (i = 0; i < unread.length; i++) if (unread[i].nmasUnread) out.push(unread[i]);
     return out.filter(function (u) { return u !== region; });
+  }
+
+  /* C4228: a press that swaps a region (or a live part) itself has its answer captured as the
+     server's drawing, so the redraw its own invalidation asks for, about 0.1 s later, removed
+     it unless the focus was on it (measured 2026-11-24: removed with the focus on the button,
+     the server's value changed or not; a press swapping a part inside a region is the page's
+     own and was kept). Its answers (`.set-result`) are unread, kept parts, until the person
+     presses or types in that region (`answersSeen`); then the next redraw draws the state in
+     their place (`answerRevisited`). */
+  function markUnread(el) {
+    var said = el.querySelectorAll('.set-result');
+    for (var i = 0; i < said.length; i++) said[i].nmasUnread = true;
+    if (el.classList && el.classList.contains('set-result')) el.nmasUnread = true;
+  }
+
+  function answersSeen(e) {
+    var t = e.target;
+    for (var n = t && t.nodeType === 1 ? t : null; n && n.nodeType === 1; n = n.parentNode) {
+      if (isRegion(n) || (n.hasAttribute && n.hasAttribute(LIVE_PART))) {
+        var said = n.querySelectorAll('.set-result');
+        for (var i = 0; i < said.length; i++) delete said[i].nmasUnread;
+        return;
+      }
+    }
   }
 
   /* C4081: the answer a press drew in place and gave the focus to (`.set-result`: a modal's
@@ -722,8 +748,7 @@
     if (t.nmasMerged) { delete t.nmasMerged; return; }
     var now = t.isConnected ? t : (t.id ? root.document.getElementById(t.id) : null);
     if (!now) return;
-    if (isRegion(now)) { capture(now); return; }
-    if (now.hasAttribute(LIVE_PART)) { capture(now); return; }
+    if (isRegion(now) || now.hasAttribute(LIVE_PART)) { capture(now); markUnread(now); return; }
     var up = now.parentNode;
     while (up && up.nodeType === 1) {
       if (isRegion(up)) return;                     // loaded into a region: the page's own
@@ -2908,6 +2933,8 @@
     root.document.addEventListener('htmx:beforeSwap', holdWhileEditing);  // after: the last word on a swap
     root.document.addEventListener('htmx:beforeSwap', mergeLive);         // a swap the holds let through merges
     root.document.addEventListener('htmx:afterSwap', captureSwapped);
+    root.document.addEventListener('click', answersSeen, true);  // before the press's own swap
+    root.document.addEventListener('input', answersSeen, true);
     root.document.addEventListener('htmx:oobAfterSwap', captureOob);
     root.document.addEventListener('htmx:oobBeforeSwap', mergeOob);
     root.document.addEventListener('htmx:beforeRequest', noteLiveAsk);

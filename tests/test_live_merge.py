@@ -274,6 +274,49 @@ class TestTheMerge:
         assert got == {"cls": "x mine y", "btn": "b mine"}, got
 
 
+def _swapped_region(value, answer=""):
+    return ('<section class="card" id="c4228" hx-get="/v2/" hx-trigger="nmas:c4228 from:body">'
+            f'<p class="v">{value}</p><button type="button" class="other">Other</button>'
+            f'<div class="set-result">{answer}</div></section>')
+
+
+# The press swaps the region itself, as htmx does: its answer drawn, the afterSwap event the
+# page's own listener captures it by; the focus left on the page.
+_PRESSED = ("var r = document.getElementById('c4228'); var t = document.createElement('template');"
+            " t.innerHTML = window.__pressed; r.replaceWith(t.content);"
+            " var now = document.getElementById('c4228');"
+            " now.dispatchEvent(new CustomEvent('htmx:afterSwap', {bubbles: true,"
+            " detail: {target: now}}));"
+            " if (document.activeElement) document.activeElement.blur();"
+            " window.__check = function (box) { return {kept: !!box.querySelector('.said'),"
+            " value: box.querySelector('.v').textContent}; }")
+
+
+class TestAPressAnswerIsKeptUntilSeen:
+    """C4228: a press that swaps a region itself had its answer captured as the server's
+    drawing, so the next live merge (its own invalidation's, about 0.1 s later) removed it
+    unless the focus was on it; measured 2026-11-24 with the focus on the button."""
+
+    def _press(self, page):
+        page.js("window.__pressed = arguments[0]; return 1",
+                _swapped_region("saved", '<p class="said">Saved.</p>'))
+
+    def test_the_answer_survives_the_next_merge(self, page):
+        self._press(page)
+        got = _merge(page, _swapped_region("old"), _swapped_region("newer"), _PRESSED)
+        assert got == {"kept": True, "value": "newer"}, got
+
+    def test_a_press_in_the_region_lets_the_next_merge_draw_the_state(self, page):
+        self._press(page)
+        _merge(page, _swapped_region("old"), _swapped_region("newer"), _PRESSED)
+        got = page.js("var box = document.getElementById('merge-box');"
+                      "box.querySelector('.other').click();"
+                      "var t = document.createElement('template');"
+                      "t.innerHTML = arguments[0]; NMAS_V2.mergeInto(false, box, t.content);"
+                      "return window.__check(box)", _swapped_region("newest"))
+        assert got == {"kept": False, "value": "newest"}, got
+
+
 # ── Needs attention ─────────────────────────────────────────────────────────────────────────
 
 
