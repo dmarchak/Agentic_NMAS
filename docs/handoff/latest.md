@@ -1,6 +1,31 @@
 # Handoff: the waiting patches landed; main red only on C4090 (2026-11-24, 10:45 Denver)
 
-## 0000000000000. The operator's decisions of 2026-11-24, 13:15 Denver: read this first
+## 00000000000000. The afternoon of 2026-11-24 (14:00 to 14:55 Denver): read this first
+
+- **Work until 02:30 Denver** (the operator, 13:25): never end a turn before 02:30, never stop
+  to report, summarise or ask; progress in the day's report; questions in OPERATOR.md with the
+  item BLOCKED. START.md and the week plan say so; the CLAUDE.md line waits as paste-ready text
+  in OPERATOR.md#claude-md-0230. Never ask in a dialog (memory: no-dialog-questions).
+- **Blocked, each in OPERATOR.md:** c4090-confirms (C4090's records need two confirms only a
+  verified person gives; a walk sheet offered), ci-shards-gate (the gate's shard constants are
+  a protected guard the 10-shard words do not name), c2518-runner (scripts/nmas-local-ci is a
+  guard path; the patch is `~/mercury-runs/c2518-runner.patch`), claude-md-0230.
+- **Landed:** Stage 2 DONE (587 s at 10 workers; serial and parallel agree, C4222 closed,
+  cf819581). Stage 5: the audit's cause 7 (a chart's unchanged poll keeps its zoom, 6438b246),
+  cause 8 measured not a defect (1bad9c09), self-healing's "departed" in "differs" words
+  (f8080e46, reviewed SAFE; the manual's four are C4243). Stage 6, C3601: Show commands' and
+  Ask the device's runs (1719cad2) and the logging path's test (c3da65e8) listed by In progress.
+  A rows: C3862, C3863, C4109, C4110 closed as measured (fixed earlier, tests pass today);
+  C4111 fixed (bad5a051, reviewed SAFE; C4244 B from it); C3864 closed with its missing test
+  (82c212e2); C3880's page half (4e60db80). Main is red only on C4090 (CI #2102 on fad30e81).
+- **A rows left:** C3424 waits on the operator's scan (fix 3); C2239, C139, C551 and the Lab 9
+  Ryu rows (C3925, C3929, C3936, C3938) need device measurement or hardware; C3601's last
+  callers (adopt, the golden capture batch, an app's deploy) each need a page to host its job
+  (adopt's form is a dialog fragment); C3902's fuller version is "after the demo".
+- **Next:** C4244 (B, the stopped card's words: needs a template change and its board
+  fidelity record), then B rows by user impact, or C4223's design.
+
+## 0000000000000. The operator's decisions of 2026-11-24, 13:15 Denver
 
 They supersede the 11:50 deploy order below (decisions file, 13:15 lines, the words verbatim).
 - **No fast lane: it is retired. No deploy until CI is fully green.** CI #2102 on fad30e81 is
