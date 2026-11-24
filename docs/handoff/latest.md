@@ -38,7 +38,17 @@ line by `~/mercury-runs/register_count.py`, run from the checkout), run the aime
   fixtures and providers from them in the main checkout (tests/v2_context.py and a new
   tests/fixtures folder, staged, not committed): that part changes no test function, so it can
   be committed here once its checks pass.
-- Land them in this order: C3886, C4207-C4208, C4205, C4090's reader, then a full suite.
+  C4090's fixtures and providers landed (b0c9b952): seven of ten loops.
+- `c4195-c4196.patch` (base b0e450c2): the SDN scan-reply problems; red-green checked by hand
+  (5 selected, 5 red); its device-write review was started at about 18:25 Denver:
+  `review-devicewrite-2026-11-24-c4195-c4196.md`. Worktree `~/nmas-worktrees/c4195`.
+- C4207-C4208 and C4205 had their second review: both safe
+  (`review-devicewrite-2026-11-24-c4207-c4208-r2-c4205.md`); its N1, N2 and N4 fixed in the
+  patches, N3 in the decisions file.
+- C4081 reproduced under load (3 of 14 runs, always the focus wait after Hand over's confirm);
+  an agent was measuring the cause (`~/mercury-runs/c4081.patch` if it fixes it).
+- Land them in this order: C3886, C4207-C4208, C4205, C4090's reader, C4195-C4196 (after its
+  review), C4081, then a full suite.
 
 ## 2. Where the plan stands
 
