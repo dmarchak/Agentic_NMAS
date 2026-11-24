@@ -15,9 +15,16 @@
   `~/nmas-worktrees/c4200-fix`, branch fix/c4200): the test before the one the probe named,
   `test_the_tag_survives_the_declarations_expiry`, ran `decide.run` in AUTO outside
   `acts_with`, so a real heal job outlived it and wrote a needs-a-person step into the
-  session's store. A serial full run with the fix started about 21:00 Denver in that worktree:
-  `~/mercury-runs/c4200-fix-serial.log` and `suite/c4200-fix-serial.xml` (about 90 min);
-  compare with `suite/serial.xml` (`junit_diff.py`) for C4222.
+  session's store. **Its serial full run (85 min, 20:55 to 22:20 Denver): 25 failed to 7;**
+  19 of C4222's 21 serial-only failures pass. Left serial-only: test_history_one_timeline (1)
+  and test_no_control_moves's Needs attention row (1): C4222's next step. The patch's message
+  carries the measurement.
+- **Stage 5's refresh audit DONE** (9f905ced, `design/review/REFRESH_AUDIT.md`): C4226 to
+  C4230, each UNKNOWN with its measurement; the fixes change tests/test_live_merge.py.
+- **Last measured full suite:** serial 5,092 s (the C4200 run); 12 workers on 9f905ced 949 s
+  (`suite/main12-9f905ced.xml`, 14 failed: main's two reds, test_nmas_workers' two
+  unconfined cases, and C4200's victims, test_one_cause_one_row 9 and test_no_control_moves
+  1). The cut files 707 s to 263 s summed; the rest ran 15% slower that run (machine load).
 - **Stage 2 (C4184), landed:** 7ef8673e (AI route scans once per text, 216 s summed to ~14 s),
   a4e32125 (source index survey), 7ea5a823 (the v2 walk shared across xdist workers; C1763's
   app log read from the store), 8c307c32 (writer-site scan once a process). Measured: 8,263 s
