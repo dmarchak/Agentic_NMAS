@@ -22,11 +22,17 @@
   a4e32125 (source index survey), 7ea5a823 (the v2 walk shared across xdist workers; C1763's
   app log read from the store), 8c307c32 (writer-site scan once a process). Measured: 8,263 s
   summed in the 12-worker run, so ~1,800 s must go for 10 minutes (C4184's row).
-- **Uncommitted in the checkout: modules/nsot/roundtrip.py** (render's compiled-code cache,
-  `_COMPILED`, a Jinja BytecodeCache; test_ai_intent_change 108 s to 58 s; 915 render and
-  deploy tests passed). Device-write path: its review was started about 21:05 Denver,
-  `~/Documents/nmas-reports/review-devicewrite-2026-11-24-render-cache.md`. Commit it only
-  if that says SAFE.
+- **Render's compiled-code cache: a patch** (`~/mercury-runs/render-cache.patch`, `.msg`;
+  worktree `~/nmas-worktrees/render-cache`, branch speed/render-cache, staged; base
+  6f18deea). Its first device-write review found a HIGH (a constant secret folded into kept
+  code), fixed with `pass_context` and a test; the second review says SAFE
+  (`~/Documents/nmas-reports/review-devicewrite-2026-11-24-render-cache-r2.md`). It changes
+  a test, so it lands with the other patches. Deploy files about half the time.
+- **Stage 6, first ranking** (`~/mercury-runs/page_times.py`, the walk's fixture lab, warm,
+  in-process): 2,024 requests in 22 s; slowest GET /v2/device/<d>/deploy (0.10 s mean, 0.38
+  worst), POST /v2/sdn/dhcp/confirm and /v2/sdn/flow/confirm (1.5 s once each), intent
+  words and check posts (0.25 to 0.7 s). Nothing over a second on a page GET; real host times
+  are the next measurement.
 
 Read CLAUDE.md, this file and the standing plan, `docs/plan/week-2026-11-23.md`, then
 `docs/handoff/OPERATOR.md` (what waits on the operator). docs/handoff/START.md is the standing
