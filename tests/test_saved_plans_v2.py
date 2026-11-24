@@ -128,6 +128,41 @@ class TestTheCard:
         assert ("It runs on 1 other open incident, on s3, once self-healing is on"
                 in _html(_get(card)))
 
+    def test_the_runs_on_line_follows_the_ticks_and_the_dry_run_box(self, card, monkeypatch):
+        """C4205 (the review of 33bf385f, MEDIUM: the line counted the default match while Save
+        sends what Customize… has ticked): the form redraws the line on every change, asking
+        `heal.retry.would_run` with the match Save would send (`kept_match`: an unticked field
+        left out), and with Dry run ticked it says nothing is changed."""
+        from modules.heal import retry
+        asked = []
+
+        def would_run(network, match, *, now=None, exclude=()):
+            asked.append(dict(match))
+            wide = "cause" not in match
+            return {"auto": True, "devices": ["s3", "s5"] if wide else ["s5"], "error": "",
+                    "incidents": [{"incident": f"hi-{d}", "device": d}
+                                  for d in (["s3", "s5"] if wide else ["s5"])]}
+        monkeypatch.setattr(retry, "would_run", would_run)
+        html = _html(_get(card))
+        form = re.search(r'<form id="saved-script-[^"]*"[^>]*>', html).group(0)
+        assert f'hx-get="/v2/saved-plans/{INC}/runs-on' in form and 'hx-trigger="change"' in form
+        assert f'hx-target="#runs-on-{INC}"' in form, form
+        assert f'id="runs-on-{INC}"' in html
+        # The cause unticked: the match Save sends has no cause, and the line counts its two.
+        got = _html(card["client"].get(f"/v2/saved-plans/{INC}/runs-on?list={NET}"))
+        assert "cause" not in asked[-1] and asked[-1]["condition"] == "err_disabled", asked
+        assert "Save runs it now on 2 other open incidents, on s3 and s5" in got, got
+        assert f'id="runs-on-{INC}"' in got and 'data-runs-on="2"' in got, got
+        # Ticked again, the narrower match and its one incident.
+        got = _html(card["client"].get(f"/v2/saved-plans/{INC}/runs-on?list={NET}&keep_cause=1"))
+        assert asked[-1]["cause"] == "BPDU guard", asked
+        assert "Save runs it now on 1 other open incident, on s5" in got, got
+        # Dry run: it records what it would do there and changes nothing.
+        got = _html(card["client"].get(
+            f"/v2/saved-plans/{INC}/runs-on?list={NET}&keep_cause=1&dry_run=1"))
+        assert "In Dry run it changes nothing: it records what it would do on 1 other open " \
+               "incident, on s5, each when it is next decided" in got, got
+
     def test_no_verified_run_says_so_and_offers_nothing(self, card, monkeypatch):
         monkeypatch.setattr("modules.fixit.incident.attempts", lambda inc, *a, **kw: {
             "attempts": []})

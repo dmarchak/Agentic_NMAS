@@ -109,7 +109,8 @@ when its match holds while the network's self-healing is on. Before you press it
 names how many other open incidents Save runs it on and their devices ("Save runs it now on 2
 other open incidents, on edge1 and edge2"; "once self-healing is on" while it is not in Auto), read
 from the same selection the retry below makes. **Customize…** holds the same form
-with **Dry run** as a choice. **Not now** puts the offer off for this incident, saving nothing,
+with **Dry run** as a choice; untick a field of the match, or tick Dry run, and that line is
+redrawn at once for what Save will then send. **Not now** puts the offer off for this incident, saving nothing,
 and the card then says so in one line with **Save this fix…**, which shows the offer again.
 Every saved fix is listed on [Fixes](fixes).
 

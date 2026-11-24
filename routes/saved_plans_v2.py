@@ -110,6 +110,22 @@ def _already(network, incident, e):
         f"{e.get('saved_by') or 'a person not recorded'}; nothing new was saved"))
 
 
+@bp.route("/<incident>/runs-on", methods=["GET"])
+def runs_on(incident):
+    """The line naming what Save runs on, for the match the Customize… ticks keep and its Dry
+    run box, redrawn as they change (C4205): the same match Save sends (`kept_match`). A read."""
+    from modules.nsot import saved_plans as S
+
+    network, args = _list_name(), request.args
+    o = S.offer(network, incident, **_who())
+    if o["state"] != "ready":
+        on = {"count": 0, "devices": [], "words": f"Couldn't load: {o['why']}"}
+    else:
+        on = S.runs_on(network, S.kept_match(o["match"], lambda k: args.get(f"keep_{k}") == "1"),
+                       incident, dry_run=args.get("dry_run") == "1")
+    return _strict(render_template("v2/_saved_plans_runs_on.html", incident=incident, on=on))
+
+
 @bp.route("/<incident>/save-script", methods=["POST"])
 def save_script(incident):
     """Save the incident's verified run as a self-heal script, in Dry run: its match the
@@ -120,9 +136,7 @@ def save_script(incident):
     o = S.offer(network, incident, **_who())
     if o["state"] != "ready":
         return _draw(network, incident, 409, level="danger", words=f"Not saved: {o['why']}")
-    match = {"condition": o["match"]["condition"],
-             **{k: v for k, v in o["match"].items()
-                if k in S.OPTIONAL_MATCH and form.get(f"keep_{k}") == "1"}}
+    match = S.kept_match(o["match"], lambda k: form.get(f"keep_{k}") == "1")
     try:
         e = S.save_script(network, run_id=o["run"], name=(form.get("name") or "").strip(),
                           match=match, fills=o["fills"], dry_run=form.get("dry_run") == "1",

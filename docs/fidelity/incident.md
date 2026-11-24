@@ -170,7 +170,15 @@ incidents it runs the fix on, and their devices). No region moves. Compared by t
 diff, not by new shots (owed in the full pass, docs/FAST_LANE_DEBT.md). Templates sha256
 before: `468a48d7c485e7698a8d7eed5d4baf027cc551b7b94b5b8a0ef8a160085de783`.
 
-Templates sha256: `138c42a817d7663a935de95fea42b16ca5b0fd0076e143f8c4a13eaa934943d9`
+Hashed again 2026-11-24 for C4205 (the review of 33bf385f, MEDIUM): the Save card's "runs on"
+words move into `_saved_plans_runs_on.html`, included where they were, and are redrawn in place
+when a Customize… tick or the Dry run box changes (`saved_plans_v2.runs_on`); the Save's title
+names its words as the all-ticked case ("With every field ticked: …"). No element moves and no
+region's verdict moves. Compared by the templates' diff and tests/test_saved_plans_v2.py's
+render, not by new shots (owed in the full pass, docs/FAST_LANE_DEBT.md). Templates sha256
+before: `138c42a817d7663a935de95fea42b16ca5b0fd0076e143f8c4a13eaa934943d9`.
+
+Templates sha256: `535b035d54df9bbe38164c7b71b93831f4d237440347af78da08e1398625e1d4`
 Templates sha256 before the saved plans card said a right's holders unset (2026-11-15, Gate 1b's review, item 7; the row "Rights not set" below): `770515ac382839dde54d1ae789920a7578375acf87fe6fb9d221961273361976`
 Templates sha256 before C3725's session moved from a press to the proposal's record (2026-11-15, the operator; the session row below): `90974cd13f0f0f2aece5e005c3cc5e3c2c21726aa22192e6535bce1ca4953909`
 Templates sha256 before the verify-speed gate's page fixes (2026-11-14, C3725, C3727, C3728, C3729, below): `b8969275f9560c0d423e154d881391989736eb6548a35bb27ab4020fa5542a6c`

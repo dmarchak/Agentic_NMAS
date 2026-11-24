@@ -1652,12 +1652,20 @@ def offer(network: str, incident_id: str, *, actor: str, actor_verified: str,
 RUNS_ON_NAMED = 10
 
 
-def runs_on(network: str, match: dict, incident_id: str) -> dict:
-    """What the default Save (Automatic, *match*) runs on besides *incident_id*, said before
-    the press (ruling 3, the operator, 2026-11-18: "Save names the count and the devices it
-    will run on. No new confirm"): ``{"count", "devices", "words"}``, read from the
-    script-saved retry's own selection (`heal.retry.would_run`), never a second matching. A
-    read."""
+def kept_match(match: dict, keep) -> dict:
+    """The match Save sends: *match*'s condition always, and each of its `OPTIONAL_MATCH`
+    fields for which ``keep(field)`` is true (the Customize… ticks). The one home for it, read
+    by Save and by the line naming what Save runs on (C4205)."""
+    return {"condition": match["condition"],
+            **{k: v for k, v in match.items() if k in OPTIONAL_MATCH and keep(k)}}
+
+
+def runs_on(network: str, match: dict, incident_id: str, dry_run: bool = False) -> dict:
+    """What Save (Automatic, or Dry run when *dry_run*, with *match*) runs on besides
+    *incident_id*, said before the press (ruling 3, the operator, 2026-11-18: "Save names the
+    count and the devices it will run on. No new confirm"; C4205: the match the ticks keep,
+    redrawn as they change): ``{"count", "devices", "words"}``, read from the script-saved
+    retry's own selection (`heal.retry.would_run`), never a second matching. A read."""
     from modules.heal import retry
 
     try:
@@ -1676,7 +1684,10 @@ def runs_on(network: str, match: dict, incident_id: str) -> dict:
         on = (", ".join(named[:-1]) + " and " + named[-1] if len(named) > 1 and not more
               else ", ".join(named) + (f" and {more} more" if more else ""))
         what = f"{n} other open incident{'s' if n != 1 else ''}" + (f", on {on}" if on else "")
-        words = (f"Save runs it now on {what}" if got["auto"]
+        # A Dry run save starts no retry (the second review's N4): each records what it would
+        # do when it is next decided.
+        words = (f"In Dry run it changes nothing: it records what it would do on {what}, "
+                 "each when it is next decided" if dry_run else f"Save runs it now on {what}" if got["auto"]
                  else f"It runs on {what}, once self-healing is on")
     return {"count": n, "devices": devices, "words": words}
 
