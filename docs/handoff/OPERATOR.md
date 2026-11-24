@@ -27,6 +27,15 @@ and the next session unblocks the item and moves the entry to Answered.
 - **Options:** A, B, C, or C with B's Needs attention queue and step timeline.
 - **Recommendation:** C with B's queue and timeline (about 30 build days by its estimate).
 
+### c4090-records
+
+- **Asked:** C4090's three loops are the last red once the patches land (stacked suite, 2026-11-24);
+  they need records no store holds (a Fixed command-plan run with a net-zero difference and its
+  reads; two saved fixes matching one incident), and your ruling says real captures only.
+- **Options:** (a) wait for them to occur; (b) the agent makes them on the sandbox device through
+  Mercury, then captures them masked; (c) your words for EMPTY_IN_FIXTURE.
+- **Recommendation:** (b), outside the backup window, never on s3. File: C4090's row, docs/OPEN_FINDINGS.md.
+
 ## Answered
 
 - **2026-11-23, loop-script:** the script arrived (3f9c6b0d) and the crontab runs it at 03:35.

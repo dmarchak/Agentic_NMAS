@@ -1,6 +1,37 @@
-# Handoff: Stage 3 done; Stage 1's test changes built as patches, waiting on the operator (2026-11-23, late)
+# Handoff: every waiting patch run together as one stack; its failures fixed in the patches (2026-11-24, 01:00 to 02:30 Denver)
 
-## 0. The late session (from 22:37 Denver, 2026-11-23): read this first
+## 0. The small-hours session (from 01:02 Denver, 2026-11-24): read this first
+
+- **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
+- **The landing stack:** `~/mercury-runs/land_all.sh` applies all ten patches in section 1's
+  order onto a scratch worktree (`~/nmas-worktrees/landing`, made fresh on f9ec3f88 each
+  time), keeping both sides in the three append-only docs (OPEN_FINDINGS, TIER_HAND_CHECK,
+  STANDING_APPROVAL_LOG); write one fresh Count line after (register_count.py). Every patch
+  applies; no code conflict.
+- **First full suite over it** (`suite/landing-f9ec3f88.xml`, 12 workers, worksteal, 775 s):
+  9 failed. Known: C4090's three loops, test_nmas_workers' two unconfined cases. **The stack's
+  own six, each fixed in its patch** (worktree staged, patch and .msg refreshed):
+  C3886's save-check docstring named r1 and s1 (test_device_names); the assistant's read-loop
+  `ask` hid its trigger in `**k` (test_ai_triggers), `assistant_threads._masked` was in no
+  masking list (test_url_userinfo_masked), assistant.py not in KNOWN_LOOP
+  (test_read_loop_never_read), two masking tests asserted only their answer (test_presence_only:
+  now the kept thread, two controls bite), and tab-intent, in-progress and incidents records
+  stale (re-compared by diff; one log line, "The Assistant's button is drawn disabled while it
+  is off").
+- **C3709 closed inside the assistant patch** (the diagram from STEPS as built; manual tests 73
+  passed). It is NOT in the second stack run (made before it); its own tests passed.
+- **Second full suite over the corrected stack** (`suite/landing2-f9ec3f88.xml`, 780 s): **3
+  failed, 32,589 passed**: test_nmas_workers' two cases (pass in a namespace) and C4090's three
+  loops, now asked as OPERATOR.md#c4090-records. So once session-namespace is answered the
+  patches land green but for C4090.
+- **Landing, once a commit can be made:** per patch in order, `git apply --3way --index`, keep
+  both sides in the three docs, a fresh Count line, the aimed tests in its .msg, commit
+  (`git commit -F`, its first line checked), push; then one full suite; then deploy if C4090 is
+  answered. The scratch `~/nmas-worktrees/landing` can be removed.
+- Nothing committed but this handoff, the plan, OPERATOR.md and the day's files; nothing
+  deployed.
+
+## 0a. The late session (from 22:37 Denver, 2026-11-23)
 
 - **Still blocked the same way:** AppArmor label `unconfined`, no answer in OPERATOR.md, so
   test-changing work stays patches. Every patch's code still applies on 1c6d3687; each
@@ -160,5 +191,6 @@ line by `~/mercury-runs/register_count.py`, run from the checkout), run the aime
 
 ## 3. State
 
-- main is cd2e3c7a (pushed). Nothing deployed. Full suites this session: the serial run (done)
-  and C4200's probe (running).
+- main is f9ec3f88 plus this session's handoff commit (pushed). Nothing deployed. Main's CI
+  red as before (#2030: C3886's test_heal_act, C4090's loops). Full suites this session: two
+  over the landing stack, 12 workers (775 s and 780 s).
