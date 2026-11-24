@@ -7,7 +7,7 @@
 <p class="crumbs muted"><a href="{{ url_for('v2.devices') }}">Devices</a> › Save</p>
 <div class="page-head">
   <div class="page-title">
-    <h1>Save {{ s.total }} device{{ 's' if s.total != 1 }}: to startup, and as golden {{ info('save') }}</h1>
+    <h1>Save{% if s.total is defined %} {{ s.total }} device{{ 's' if s.total != 1 }}{% endif %}: to startup, and as golden {{ info('save') }}</h1>
     <p class="sub">{{ list_name }}: each device saves its running config to startup, the startup is read back, and the running config is recorded as its golden, one commit for the batch.</p>
   </div>
 </div>

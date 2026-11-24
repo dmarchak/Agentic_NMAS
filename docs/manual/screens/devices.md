@@ -106,6 +106,8 @@ The Actions menu:
   stay; Remove lines (Mode B) is on each device's page. See [Deploy](deploy).
 - **Save (<count>)…** opens Devices › Save for the ticked devices: each saves its running
   configuration to startup, is read back, and is recorded as golden, one commit for the batch.
+  You may leave the page once it is confirmed: **In progress** lists the Save once it ends
+  (amber when only some devices were saved), and opens Save on its result.
   See [Save to startup and as golden](save).
 - **Change across the (<count>) ticked…** opens the change's form on Source of Truth › Intent
   for the ticked devices. Under **Where**, the change goes to each device's own intent (the

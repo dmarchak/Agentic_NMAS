@@ -24,7 +24,14 @@ network's result with its baseline earned (screenshots 41 to 43); read beside th
 draw the same regions.
 Compared 2026-10-18.
 Templates compared: templates/v2/save.html, templates/v2/_save.html
-Templates sha256: `12121a8bbe308b1adea1f7a5c3d3136cbff6273cbbbef431493330d0334b091f`
+Templates sha256: `f3dd35c5d98ca6af143c28c00450d72b74dfb79bf47fbd84177e3005f4149ca1`
+
+Compared again 2026-11-24 (C3601), by `save.html`'s diff: opened on a Save's job (In
+progress's link, `job`), the page draws that run's card; when the job carries no count (this
+server no longer holds it, or it failed or was refused) the heading reads "Save: to startup,
+and as golden" and names no number, where it drew "Save  devices". Every region the board
+draws is unchanged, so no deviation. Templates sha256 before:
+`12121a8bbe308b1adea1f7a5c3d3136cbff6273cbbbef431493330d0334b091f`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

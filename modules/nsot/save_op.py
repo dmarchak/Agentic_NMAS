@@ -277,7 +277,7 @@ def run(list_name: str, hostnames: list, actor: str, confirmed_hash: str, *, job
     p = plan(list_name, hostnames)
     if confirmed_hash != p["hash"]:
         return {"ok": False, "state": "refused", "plan": p, "outcomes": [], "commit": "",
-                "save": {},
+                "save": {}, "words": "not run: the selection's plan changed; nothing was sent",
                 "detail": (f"the selection's plan changed since you confirmed it "
                            f"({confirmed_hash} -> {p['hash']}): a device's address, driver, "
                            "account, hold or reachability moved. Nothing was sent; open Save "
@@ -436,11 +436,15 @@ def run(list_name: str, hostnames: list, actor: str, confirmed_hash: str, *, job
     rows = [outcomes[d["host"]] for d in p["devices"]]
     good = sum(1 for r in rows if r["outcome"] in GOOD)
     ok = bool(rows) and good == len(rows)
+    # In progress's row in the card's terms (`in_flight.page_finished_row` reads ``words``).
+    words = (f"{good} saved" if ok else f"{good} of {len(rows)} saved" if good else
+             f"none of {len(rows)} saved")
     log.info("save: %s saved and recorded %d of %d in %s (commit %s)", actor, good, len(rows),
              list_name, commit or "none")
     if save.get("baseline"):
         _reread_baselines(list_name, save.get("baseline"))
-    return {"ok": ok, "state": "done" if ok else ("partial" if good else "failed"), "plan": p,
+    return {"ok": ok, "state": "done" if ok else ("partial" if good else "failed"),
+            "words": words, "plan": p,
             "outcomes": rows, "commit": commit, "fleet": p["fleet"],
             "save": {k: save[k] for k in ("ok", "error", "baseline", "baseline_denied", "tags",
                                           "decision_only") if k in save}}
@@ -488,6 +492,11 @@ def start(list_name: str, hostnames: list, actor: str, confirmed_hash: str) -> d
         return run(list_name, hostnames, actor, confirmed_hash, job_id=job_id)
 
     # What it announces is declared once, as its announcer's keys (`invalidation.ANNOUNCERS`).
+    # In progress lists it with Save opened on the job as its link (C3601), so a Save started
+    # and left keeps its result reachable once its devices are released.
+    from urllib.parse import quote
+
     return {"job": capture_job.start(list_name, f"save {len(p['save'])} device(s)", actor, work,
                                      kind="save", announce_keys=invalidation.ANNOUNCERS["save"],
-                                     announcer="save")}
+                                     announcer="save",
+                                     page=f"/v2/devices/save?list={quote(list_name)}&job={{job}}")}

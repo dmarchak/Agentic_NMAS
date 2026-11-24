@@ -3184,9 +3184,10 @@ def devices_deploy():
 @bp.route("/devices/save", methods=["GET"])
 def save():
     """Devices › Save: what Save would do for the selection, from stored records only, and
-    its confirm."""
+    its confirm; opened on a Save's job (``job``: In progress's link, C3601), that run's
+    card."""
     from modules import save_page
-    from modules.nsot import listref
+    from modules.nsot import capture_job, listref
     from modules.preview_confirm import confirm_part
     from routes.list_param import named_list
 
@@ -3195,13 +3196,18 @@ def save():
     # A scope in place of a selection (C1232: `no_golden`, every device with no committed
     # golden); an unknown one is refused, naming the ones there are.
     scope = (request.values.get("scope") or "").strip()
-    if scope:
+    job = (request.args.get("job") or "").strip()
+    if job:
+        s = save_page.job_card(ref.name, job, capture_job.get(job),
+                               q=request.args.get("q", ""),
+                               outcome=request.args.get("outcome", ""))
+    elif scope:
         s = save_page.scope_card(ref.name, scope, may=confirm_part(request, "confirm"))
     else:
         s = save_page.plan_card(ref.name, _save_selection(request, ref),
                                 may=confirm_part(request, "confirm"))
     return _page("v2/save.html", active_nav="devices", s=s, list_name=ref.name), \
-        (400 if s["state"] == "refused" else 200)
+        (400 if s["state"] == "refused" and not job else 200)
 
 
 @bp.route("/devices/save/confirm", methods=["POST"])

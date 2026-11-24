@@ -596,6 +596,41 @@ class TestTheRun:
         html = lab["client"].get("/v2/devices/save/job/0123abcd?list=Lab").get_data(as_text=True)
         assert "This server has no record of that Save" in html
 
+    @pytest.mark.parametrize("devices,level,words,drawn", [
+        (("r2",), "ok", "1 saved", "1 device: 1 saved and recorded"),
+        (("r2", "r3"), "warn", "1 of 2 saved", "2 devices: 1 saved and recorded, 1 not"),
+    ])
+    def test_a_save_is_listed_by_in_progress_and_its_page_reopens_it(self, lab, monkeypatch,
+                                                                     devices, level, words,
+                                                                     drawn):
+        """C3601's Save of many devices: a Save confirmed and left is listed by In progress
+        once its devices are released, with Save opened on its job as the link, which draws
+        the run's result; a Save that recorded only some devices is amber, never green."""
+        from modules import in_flight
+        from modules.nsot import capture_job
+
+        monkeypatch.setattr("modules.nsot.device_ops.in_flight", lambda name, now: [])
+        monkeypatch.setattr("modules.seen_runs.is_seen", lambda viewer, job: False)
+        if "r3" in devices:
+            lab["running"]["r2"] = _broken(lab["captured"])   # r3 unknown to the manifest
+        r = lab["client"].post("/v2/devices/save/confirm", data=_form(_page(lab, *devices)))
+        job = re.search(r"/v2/devices/save/job/([0-9a-f]+)", r.get_data(as_text=True)).group(1)
+        assert capture_job.wait(job, 60)
+        href = f"/v2/devices/save?list=Lab&job={job}"
+        (done,) = [f for f in in_flight.chip([], "test-person@example.invalid")["finished"]
+                   if f.get("href") == href]
+        assert (done["level"], done["words"]) == (level, words), done
+        said = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", lab["client"].get(href)
+                                          .get_data(as_text=True)))
+        assert drawn in said, said[:600]
+        # The same link once this server no longer holds the job (a restart): it says so,
+        # under a heading that names no count it does not know.
+        capture_job._jobs.pop(job)
+        r = lab["client"].get(href)
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200 and "This server has no record of that Save" in html
+        assert "<h1>Save: to startup, and as golden" in html, html[:800]
+
 
 class TestTheRunningCard:
     def _card(self, job, rows):
