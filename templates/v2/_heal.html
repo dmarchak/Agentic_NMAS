@@ -84,14 +84,14 @@
 
   <section class="card set-card heal-card" id="heal-kinds" aria-labelledby="h-heal-kinds">
     <div class="card-head"><h2 id="h-heal-kinds">Fix kinds</h2><span class="card-head-how">{{ how('settings', 'self-healing') }}</span></div>
-    <p class="muted small heal-lead">A kind's tier is fixed by Mercury. Here you choose whether each Tier 1 kind heals in Auto or stays in dry run, and whether Tier 2 kinds are proposed. Allow a kind in Auto only after its lab scenario has passed.</p>
+    <p class="muted small heal-lead">Mercury sets who may fix each kind. Here you choose whether each kind Mercury may fix by itself heals in Auto or stays in dry run, and whether each kind a person approves is proposed. Allow a kind in Auto only after its lab scenario has passed.</p>
     {{ setting_desc('heal_kinds_auto') }}{{ setting_desc('heal_kinds_propose') }}
     <div class="table-wrap"><table class="table heal-table">
-      <thead><tr><th>Fix kind</th><th>Tier</th><th>In Auto</th></tr></thead>
+      <thead><tr><th>Fix kind</th><th>Who fixes it</th><th>In Auto</th></tr></thead>
       <tbody>
         {%- for k in h.kinds %}
         <tr><td>{{ k.label }}</td>
-          <td>{{ badge('1 auto', 'ok') if k.tier == 1 else badge('2 propose', 'warn') }}</td>
+          <td>{{ badge(h.tier_words[k.tier][0], h.tier_words[k.tier][1], title='Tier ' ~ k.tier) }}</td>
           {#- The toggle IS the control (C3158): the setting in force is drawn pressed, and the
               other opens its change as a modal anchored to it. -#}
           <td><span class="seg heal-seg" role="group" aria-label="{{ k.label.split(':')[0] }}: {{ k.on_words if k.on else k.off_words }}">
@@ -101,7 +101,7 @@
             {%- endfor %}</span></td></tr>
         {%- endfor %}
         {%- for label, tier, words, why in h.fixed %}
-        <tr><td>{{ label }}</td><td>{{ badge('3 alert', 'muted') if tier == 3 else badge('4 never', 'danger') }}</td>
+        <tr><td>{{ label }}</td><td>{{ badge(h.tier_words[tier][0], h.tier_words[tier][1], title='Tier ' ~ tier) }}</td>
           <td><span class="muted">{{ words }}</span> <span class="set-origin">{{ why }}</span></td></tr>
         {%- endfor %}
       </tbody>

@@ -97,6 +97,51 @@ def _preview_and_confirm(n, network, data, reason="Lab 10's walk"):
 
 # ── The tab ───────────────────────────────────────────────────────────────────────────────
 
+#: Who fixes a kind, by its tier, as the Fix kinds table says it (C2820's survey, item 27).
+TIER_WORDS = {1: "Mercury by itself", 2: "A person approves", 3: "No configuration fix",
+              4: "A person only"}
+
+
+def test_no_tier_number_stands_in_for_words_on_the_tab(networks):
+    """A tier is said in words, its number on hover only (C2820's survey, item 27;
+    MERCURY_CHARTER, "Human-facing means human-readable", rule 3: never "Tier 2" instead of
+    the words): the tab, the Fix kinds change and each kind's own change, on a network and on
+    one marked lab (the session clear Tier 1 there), hold no "Tier <n>" and no numbered badge
+    ("1 auto" … "4 never") in the text a person reads; each kind's row says who fixes it, the
+    security row (Tier 2, always proposed) "A person approves", never "A person only"."""
+    from tests.test_settings_words_name_no_codes import visible
+    numbered = re.compile(r"\bTier [1-4]\b|\b(?:1 auto|2 propose|3 alert|4 never)\b")
+    for lab in (False, True):
+        if lab:
+            _mark_lab()
+        html = networks["client"].get("/v2/settings/network/Default?tab=heal").get_data(
+            as_text=True)
+        text = visible(html)
+        assert not numbered.search(text), numbered.findall(text)
+        fix = html.split('id="h-heal-kinds"', 1)[1].split("</table>")[0]
+        rows = fix.split("<tr>")[2:]
+        assert len(rows) >= 10, f"the floor: {len(rows)} kind rows"
+        for row in rows:
+            said = [t for n, t in TIER_WORDS.items() if f'title="Tier {n}"' in row]
+            assert len(said) == 1 and said[0] in visible(row), row
+        security = [r for r in rows if "A security control removed" in r]
+        assert len(security) == 1 and TIER_WORDS[2] in security[0], security
+    assert "Allow a kind in Auto only after its lab scenario has passed: one more kind at a " \
+           "time." in text
+    # Pressed: the session clear allowed in Auto; the store holds it, and its row, drawn again,
+    # still says who fixes it in words, now pressed Heal.
+    r, _tab = _preview_and_confirm(networks, "Default", {
+        "part": "kinds", "heal_kinds_auto": ["", "session_clear"], "heal_kinds_propose": [""]})
+    assert r.status_code == 200
+    assert H.current("Default")["kinds_auto"] == ["session_clear"]
+    html = networks["client"].get("/v2/settings/network/Default?tab=heal").get_data(as_text=True)
+    fix = html.split('id="h-heal-kinds"', 1)[1].split("</table>")[0]
+    row = fix.split("BGP session clear", 1)[1].split("</tr>")[0]
+    assert 'title="Tier 1">Mercury by itself<' in row, row
+    assert 'aria-pressed="true" disabled title="In force now">Heal<' in row, row
+    assert not numbered.search(visible(html))
+
+
 def test_the_hard_stops_labels_read_as_phrases(networks):
     """C2820's survey, item 29: a hard stop's label, drawn on its Edit… field and in its
     value's words, says what it counts in a person's words: no log mnemonic ("UPDOWN") and no
@@ -122,7 +167,7 @@ def test_the_tab_draws_every_control_the_board_draws(networks):
     for words in ("Self-healing on Default", "History of this policy",
                   "Fix kinds", "Change fix kinds…", "Hard stops and guards", "Who is told",
                   "Stop self-healing everywhere…", "Production's bar", "Policy fingerprint",
-                  "Network stage", "Planned work a person declared", "4 never"):
+                  "Network stage", "Planned work a person declared", "A person only"):
         assert words in tab, words
     # Premise corrected (C3158, the operator's rule of 2026-11-12: "The mode is a dropdown
     # (Off / Dry run / Auto) opening the same modal"): Change mode… is the mode's dropdown.
@@ -384,7 +429,7 @@ def test_a_kind_in_both_lists_is_drawn_once_at_its_networks_tier(networks):
     fix, card = kinds_card("Branch")
     assert fix.count(words) == 1 and card.count(words) == 1
     row = fix.split(words, 1)[1].split("</tr>")[0]
-    assert "2 propose" in row and "Alert only" in row
+    assert "A person approves" in row and "Alert only" in row
     assert 'name="heal_kinds_propose" value="session_clear"' in card
     assert 'name="heal_kinds_auto" value="session_clear"' not in card
     # Marked lab, it is Tier 1, and its proposal setting rides in the card as it was.
@@ -396,7 +441,7 @@ def test_a_kind_in_both_lists_is_drawn_once_at_its_networks_tier(networks):
     fix, card = kinds_card("Default")
     assert fix.count(words) == 1 and card.count(words) == 1
     row = fix.split(words, 1)[1].split("</tr>")[0]
-    assert "1 auto" in row and "Dry run only" in row
+    assert "Mercury by itself" in row and "Dry run only" in row
     assert '<input type="checkbox" name="heal_kinds_auto" value="session_clear">' in card
     assert '<input type="hidden" name="heal_kinds_propose" value="session_clear">' in card
     r, _tab = _preview_and_confirm(networks, "Default", {

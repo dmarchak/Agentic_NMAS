@@ -191,7 +191,7 @@ Default: turning healing on for Default turns it on for no other network. Self-h
 a device to its committed intent; nothing on this tab contacts a device.
 
 - **Self-healing on <network>**: the mode now (**Off**, **Dry run**: every step but the apply,
-  each record saying what it would have done, or **Auto**: the Tier 1 kinds allowed below heal
+  each record saying what it would have done, or **Auto**: the kinds allowed below heal
   without a person until the expiry, then dry run, or, with no expiry, until someone turns it
   off), with why in words ("dry run: AUTO … expired", "off: self-healing is stopped
   everywhere"); who set it, when and their reason; the network's stage (since 2026-11-16 the
@@ -234,8 +234,10 @@ a device to its committed intent; nothing on this tab contacts a device.
 - **Turn off**: one press, no confirm, effective at once, recorded with who and when (its steps
   `write` and `record`). Nothing new starts; a heal already applying finishes its own verify and
   rollback. Turning a network back on is a change, previewed and confirmed as above.
-- **Fix kinds**: each kind's tier, fixed by Mercury (1 heals in Auto, 2 is proposed to a person,
-  3 only alerts, 4 is never automatic). Each Tier 1 kind's toggle (**Heal** or **Dry run only**)
+- **Fix kinds**: who fixes each kind, set by Mercury: **Mercury by itself** (Tier 1, heals in
+  Auto), **A person approves** (Tier 2, proposed to a person), **No configuration fix** (Tier
+  3, only alerts) or **A person only** (Tier 4, never automatic); the tier's number on hover.
+  Each Tier 1 kind's toggle (**Heal** or **Dry run only**)
   and each Tier 2 kind's (**Propose** or **Alert only**) is the control: the setting in force is
   drawn pressed, and pressing the other opens that one change, previewed as it opens and
   confirmed with a reason as a mode change is. **Change fix kinds…** chooses several at once:

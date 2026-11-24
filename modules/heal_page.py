@@ -91,9 +91,13 @@ ALWAYS = (("Planned work a person declared, and no-change windows",
 MODE_MEANS = {
     "off": "Off: nothing heals and nothing is recorded",
     "dry_run": "Dry run: every step but the apply. Each record says what it would have done",
-    "auto": "Auto: the Tier 1 kinds allowed below heal without a person, then dry run at the "
-            "expiry",
+    "auto": "Auto: the kinds allowed below heal without a person, then dry run at the expiry",
 }
+#: Who fixes a kind, by its tier, as the Fix kinds table says it, and the badge's colour; the
+#: tier's number is the hover (C2820's survey, item 27; MERCURY_CHARTER, "Human-facing means
+#: human-readable", rule 3).
+TIER_WORDS = {1: ("Mercury by itself", "ok"), 2: ("A person approves", "warn"),
+              3: ("No configuration fix", "muted"), 4: ("A person only", "danger")}
 #: The mode chip: (words, colour) by the mode now.
 MODE_CHIP = {"off": ("off", "neutral"), "dry_run": ("dry run", "info"), "auto": ("Auto", "ok")}
 #: The parts a change card edits.
@@ -372,7 +376,8 @@ def view(network: str, now: float = None) -> dict:
         "chip": _chip(cur), "means": MODE_MEANS.get(cur["mode"], ""),
         "until_words": cur["until"] or "",
         "confirmed_words": cur["confirmed"].get("at", ""),
-        "kinds": _kinds(cur, lab), "fixed": FIXED_KINDS, "guards": _guards(cur, lab),
+        "kinds": _kinds(cur, lab), "fixed": FIXED_KINDS, "tier_words": TIER_WORDS,
+        "guards": _guards(cur, lab),
         "always": ALWAYS, "bar": PRODUCTION_BAR, "stopped": cur["stopped"],
         "told": told, "told_loaded": heal_notify.drawn(told), "choices": heal_notify.CHOICES,
         "teams": [{"id": k, "name": t.get("name", "")}

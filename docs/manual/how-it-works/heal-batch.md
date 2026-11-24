@@ -79,8 +79,8 @@ switch-on. While self-healing is off, one line beside the switch says what turni
 "Also fixes the N open problems (2 restores, 1 saved script)", and the open incidents with no
 fix decided yet, "decided again in Auto, each fixed by itself only if its kind is allowed
 Auto", said apart and never counted as fixed. What Auto heals by itself is still the kinds the
-policy allows in Auto: a Tier 1 kind not allowed stays a dry run, and a Tier 2 fix is proposed
-to a person. Every run's own preconditions and verify, guard 4 (a device Mercury may not
+policy allows in Auto: a kind Mercury may fix by itself (Tier 1) but not allowed Auto stays a
+dry run, and a fix that needs a person (Tier 2) is proposed to one. Every run's own preconditions and verify, guard 4 (a device Mercury may not
 change), the findings and the notifications hold as in any Auto. A gate the policy holds
 refuses it, naming the gate, and nothing changes. The gear opens the network's full
 Self-healing settings, where every limit and kind is set.

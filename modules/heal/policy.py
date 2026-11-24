@@ -516,8 +516,9 @@ def plan(network: str, proposed: dict, now: float = None) -> dict:
             heals = "no kind is allowed Auto, so nothing heals by itself"
         gates.append({"name": "AUTO heals the kinds allowed Auto",
                       "state": "pass",
-                      "why": heals + "; a Tier 1 kind not listed stays a dry run, and a Tier 2 "
-                                     "fix is proposed for a person"})
+                      "why": heals + "; a kind Mercury may fix by itself but not allowed Auto "
+                                     "stays a dry run, and a fix that needs a person is "
+                                     "proposed for one"})
         gates.append({"name": "AUTO's expiry: until turned off, or at most 7 days",
                       "state": "pass",
                       "why": (f"until {after[UNTIL_KEY]}, then dry run" if after[UNTIL_KEY]

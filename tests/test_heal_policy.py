@@ -344,7 +344,8 @@ def test_the_auto_confirm_says_the_kind_lists_decide(networks):
         else:
             assert heals["why"].startswith("no kind is allowed Auto, so nothing heals by "
                                            "itself"), heals
-        assert "a Tier 2 fix is proposed for a person" in heals["why"]
+        assert "a fix that needs a person is proposed for one" in heals["why"]
+        assert "Tier" not in said, said
     auto = {"mode": "auto"}
     tier2 = {"tier": 2, "kind": "process_reset",
              "units": [{"kind": "process_reset", "section": "interface Gi0/1"}]}

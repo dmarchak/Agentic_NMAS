@@ -70,7 +70,7 @@
       {%- elif c.flip %}
       {%- set f = c.flip %}
       <p class="small"><strong>{{ f.label }}</strong></p>
-      <p class="small">Now: {{ c.was.on_words if c.was.on else c.was.off_words }}. After you confirm: <strong>{{ f.on_words if f.on else f.off_words }}</strong>.{% if f.tier == 1 and f.on %} Allow a kind in Auto only after its lab scenario has passed: one more Tier 1 kind at a time.{% endif %}</p>
+      <p class="small">Now: {{ c.was.on_words if c.was.on else c.was.off_words }}. After you confirm: <strong>{{ f.on_words if f.on else f.off_words }}</strong>.{% if f.tier == 1 and f.on %} Allow a kind in Auto only after its lab scenario has passed: one more kind at a time.{% endif %}</p>
       <input type="hidden" name="heal_kinds_auto" value="">
       <input type="hidden" name="heal_kinds_propose" value="">
       {%- for x in c.kinds %}
@@ -78,7 +78,7 @@
       {%- if x.keep %}<input type="hidden" name="{{ x.keep }}" value="{{ x.kind }}">{% endif %}
       {%- endfor %}
       {%- elif c.part == 'kinds' %}
-      <p class="small muted">Allow a kind in Auto only after its lab scenario has passed: one more Tier 1 kind at a time.</p>
+      <p class="small muted">Allow a kind in Auto only after its lab scenario has passed: one more kind at a time.</p>
       <input type="hidden" name="heal_kinds_auto" value="">
       <input type="hidden" name="heal_kinds_propose" value="">
       <div class="heal-kind-pick">
