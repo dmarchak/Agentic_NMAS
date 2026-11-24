@@ -673,8 +673,16 @@ def _plan_ran_to_its_end(network: str, run_id: str) -> bool:
     a plan stopped at a later step (its deploy moved at apply, refused, nothing sent) leaves an
     earlier step's pass as its newest attempt, and that pass is no fix of the incident (the
     correctness review's G7-D1, 2026-11-18). Any other run is held to the plan that ran it as a
-    step, if one did (`_its_plan_ran_to_its_end`, ruling 6). A record that cannot be read is
+    step, if one did (`_its_plan_end`, ruling 6). A record that cannot be read is
     False: an attempt not read never closes."""
+    return plan_end(network, run_id) in ("done", "")
+
+
+def plan_end(network: str, run_id: str) -> str:
+    """How the plan that ran *run_id* ended, the one judgement `_plan_ran_to_its_end` and the
+    incident's card read (C4111): ``""`` when no plan ran it (its own verify is its attempt's),
+    ``"done"``, ``"running"`` (this or a later step still to come) or ``"stopped"``; *run_id* a
+    plan engine run is judged as itself. ``"unread"`` when its record cannot be read."""
     from modules import plan_engine as PE
     from modules.config import list_data_path
     from modules.nsot import privileged
@@ -683,15 +691,22 @@ def _plan_ran_to_its_end(network: str, run_id: str) -> bool:
         rec = privileged.get(network, run_id, data_dir=list_data_path(network))
     except (ValueError, OSError) as exc:
         log.info("heal: %s's run %s could not be read: %s", network, run_id, exc)
-        return False
+        return "unread"
     if not isinstance(rec, dict):
-        return False
+        return "unread"
     if rec.get("key") == PE.KEY:
-        return rec.get("outcome") == "done"
-    return _its_plan_ran_to_its_end(network, rec)
+        return _plan_word(rec)
+    return _its_plan_end(network, rec)
 
 
-def _its_plan_ran_to_its_end(network: str, rec: dict) -> bool:
+def _plan_word(plan: dict) -> str:
+    """A plan engine run's end: ``done`` only on its outcome; ``running`` while it runs."""
+    if plan.get("outcome") == "done":
+        return "done"
+    return "running" if plan.get("state") == "running" else "stopped"
+
+
+def _its_plan_end(network: str, rec: dict) -> str:
     """Ruling 6 (the operator, 2026-11-18: "'The plan ran to its end' applies to every step
     kind"): *rec*, a run of a step kind with its own record (a catalogue operation, a command
     plan), closes its incident only when the plan engine run that ran it as a step (a step
@@ -713,12 +728,12 @@ def _its_plan_ran_to_its_end(network: str, rec: dict) -> bool:
         steps = [s for s in plan.get("plan_steps") or [] if isinstance(s, dict)]
         if any(isinstance(s.get("receipt"), dict) and s["receipt"].get("run") == run_id
                for s in steps):
-            return plan.get("outcome") == "done"
+            return _plan_word(plan)
         if (incident_id and plan.get("incident") == incident_id
                 and plan.get("state") == "running"
                 and any(s.get("state") == "running" and s.get("kind") == key for s in steps)):
-            return False
-    return True
+            return "running"
+    return ""
 
 
 def verified_fix(network: str, inc: dict) -> dict:

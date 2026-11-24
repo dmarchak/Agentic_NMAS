@@ -493,6 +493,15 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
         a = newest[3]
         state = ("running" if a["state"] == "running" else "passed" if a["passed"]
                  else "stopped")
+        if state == "passed":
+            # A step's pass is the fix only when the plan that ran it ended done (ruling 6,
+            # `detect.plan_end`, the close's own judgement): a plan stopped at a later step
+            # reads stopped, one still running reads running, never "passed" with nothing to
+            # press (C4111).
+            from modules.heal import detect
+            end = detect.plan_end(network, a["run"])
+            if end in ("stopped", "running"):
+                state = end
         out["stop"] = dict(drawn[a["n"] - 1], found=_run_checks(network, a["run"]))
     elif newest[2] == "proposal":
         state = "proposed"

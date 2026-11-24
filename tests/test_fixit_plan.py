@@ -148,6 +148,30 @@ TWO_SUBS = [{"operation": "telemetry-resubscribe", "params": {"subs": ["101"]}},
 
 
 class TestTheRunStops:
+    def test_a_passed_step_of_a_plan_that_did_not_end_done_is_never_drawn_passed(self, web):
+        """C4111 (ruling 6): a plan's step that passed its own verify is the fix only when the
+        plan ended done. A real one-step plan run and passed, then its record given the one
+        edit a later step's refusal makes (its outcome stopped): the card reads stopped and
+        offers Ask again, never "passed" with nothing to press; while the plan still runs, it
+        reads running."""
+        from modules import plan_engine as PE
+        from modules.nsot import privileged
+        iid = plant()
+        line = proposed(iid, ONE)
+        plan = FP.preflight(incident(iid), line)
+        r = post(web, iid, "approve", proposal=line["proposal"], hash=plan["hash"])
+        assert r.status_code == 200, r.get_data(as_text=True)
+        (ap,) = [ln for ln in F.read(incident(iid))["lines"] if ln.get("choice") == "approve"]
+        rec = PE.record_of(NET, ap["run"])
+        assert rec["outcome"] == "done", rec.get("why")
+        assert view(iid)["state"] == "passed"
+        privileged.record(NET, dict(rec, outcome="stopped", state=PE.RECORD_STATE["stopped"]))
+        x = view(iid)
+        assert x["state"] == "stopped", x["state"]
+        assert x["actions"]["ask_again"]["offered"], x["actions"]["ask_again"]
+        privileged.record(NET, dict(rec, outcome="", state="running"))
+        assert view(iid)["state"] == "running"
+
     def test_a_two_step_plan_stops_at_its_first_failure_and_offers_ask_again(self, web):
         import time as _t
         from modules import plan_engine as PE
