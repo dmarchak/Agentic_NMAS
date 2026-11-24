@@ -165,10 +165,14 @@ class TestTheRunStops:
         rec = PE.record_of(NET, ap["run"])
         assert rec["outcome"] == "done", rec.get("why")
         assert view(iid)["state"] == "passed"
-        privileged.record(NET, dict(rec, outcome="stopped", state=PE.RECORD_STATE["stopped"]))
+        privileged.record(NET, dict(rec, outcome="stopped", state=PE.RECORD_STATE["stopped"],
+                                    why="its deploy moved since it was approved"))
         x = view(iid)
         assert x["state"] == "stopped", x["state"]
         assert x["actions"]["ask_again"]["offered"], x["actions"]["ask_again"]
+        # C4244: the "Stopped:" line says why the plan stopped, never the passed step's words.
+        assert x["stop"]["words"] == "the plan stopped: its deploy moved since it was approved", \
+            x["stop"]["words"]
         privileged.record(NET, dict(rec, outcome="", state="running"))
         assert view(iid)["state"] == "running"
 
@@ -332,3 +336,23 @@ class TestModifyAndDeny:
         proposed(iid, ONE)
         r = post(web, iid, what, proposal=old["proposal"], hash="0" * 16, text="x y z")
         assert r.status_code == 409 and web.started["job"] == 0
+
+
+class TestAStoppedPlanSaysWhy:
+    """C4244 (the review of C4111): a stopped plan's card says why the plan stopped, the step that
+    did not pass by its number and what it or the plan said (`heal.detect.stopped_words`)."""
+
+    def test_the_step_that_did_not_pass_and_its_words(self):
+        from modules.heal import detect
+        plan = {"why": "stopped at step 2", "plan_steps": [
+            {"n": 1, "state": "done", "words": "Re-subscribe r2's telemetry (101)"},
+            {"n": 2, "state": "refused", "words": "Deploy r2's intent",
+             "words_said": "its program moved since it was approved"}]}
+        assert detect.stopped_words(plan) == ("the plan stopped at step 2 (Deploy r2's intent): "
+                                              "its program moved since it was approved")
+
+    def test_with_every_step_passed_the_plan_s_own_words_and_with_nothing_none(self):
+        from modules.heal import detect
+        assert detect.stopped_words({"why": "the plan's run ended", "plan_steps": [
+            {"n": 1, "state": "done"}]}) == "the plan stopped: the plan's run ended"
+        assert detect.stopped_words({}) == ""

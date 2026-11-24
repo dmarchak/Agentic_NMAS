@@ -499,10 +499,18 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
             # reads stopped, one still running reads running, never "passed" with nothing to
             # press (C4111).
             from modules.heal import detect
-            end = detect.plan_end(network, a["run"])
+            end, plan = detect.plan_of(network, a["run"])
             if end in ("stopped", "running"):
                 state = end
+        else:
+            end, plan = "", {}
         out["stop"] = dict(drawn[a["n"] - 1], found=_run_checks(network, a["run"]))
+        if end == "stopped":
+            # Its "Stopped:" line says why the plan stopped, never the passed step's own
+            # words (C4244, the review of C4111).
+            said = detect.stopped_words(plan)
+            if said:
+                out["stop"]["words"] = said
     elif newest[2] == "proposal":
         state = "proposed"
         out["proposal"] = _proposal(inc, newest[3], resolved, now, usd)

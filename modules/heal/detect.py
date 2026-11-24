@@ -683,6 +683,12 @@ def plan_end(network: str, run_id: str) -> str:
     incident's card read (C4111): ``""`` when no plan ran it (its own verify is its attempt's),
     ``"done"``, ``"running"`` (this or a later step still to come) or ``"stopped"``; *run_id* a
     plan engine run is judged as itself. ``"unread"`` when its record cannot be read."""
+    return plan_of(network, run_id)[0]
+
+
+def plan_of(network: str, run_id: str) -> tuple:
+    """`plan_end`'s answer and the plan engine record it read: ``(end, plan)``, *plan* ``{}``
+    when no plan ran *run_id* or it could not be read."""
     from modules import plan_engine as PE
     from modules.config import list_data_path
     from modules.nsot import privileged
@@ -691,12 +697,26 @@ def plan_end(network: str, run_id: str) -> str:
         rec = privileged.get(network, run_id, data_dir=list_data_path(network))
     except (ValueError, OSError) as exc:
         log.info("heal: %s's run %s could not be read: %s", network, run_id, exc)
-        return "unread"
+        return "unread", {}
     if not isinstance(rec, dict):
-        return "unread"
+        return "unread", {}
     if rec.get("key") == PE.KEY:
-        return _plan_word(rec)
+        return _plan_word(rec), rec
     return _its_plan_end(network, rec)
+
+
+def stopped_words(plan: dict) -> str:
+    """Why a stopped plan stopped, in its own words (C4244): the step that did not pass, by its
+    number, and what that step or the plan said; ``""`` with nothing recorded."""
+    steps = [s for s in (plan or {}).get("plan_steps") or [] if isinstance(s, dict)]
+    stop = next((s for s in steps if s.get("state") not in ("done", "passed")), None)
+    said = str((stop or {}).get("words_said") or (plan or {}).get("why") or "").strip()
+    if stop is None:
+        return f"the plan stopped: {said}" if said else ""
+    n = stop.get("n") or steps.index(stop) + 1
+    what = str(stop.get("words") or "").strip()
+    return (f"the plan stopped at step {n}" + (f" ({what})" if what else "")
+            + (f": {said}" if said else ""))
 
 
 def _plan_word(plan: dict) -> str:
@@ -706,7 +726,7 @@ def _plan_word(plan: dict) -> str:
     return "running" if plan.get("state") == "running" else "stopped"
 
 
-def _its_plan_end(network: str, rec: dict) -> str:
+def _its_plan_end(network: str, rec: dict) -> tuple:
     """Ruling 6 (the operator, 2026-11-18: "'The plan ran to its end' applies to every step
     kind"): *rec*, a run of a step kind with its own record (a catalogue operation, a command
     plan), closes its incident only when the plan engine run that ran it as a step (a step
@@ -728,12 +748,12 @@ def _its_plan_end(network: str, rec: dict) -> str:
         steps = [s for s in plan.get("plan_steps") or [] if isinstance(s, dict)]
         if any(isinstance(s.get("receipt"), dict) and s["receipt"].get("run") == run_id
                for s in steps):
-            return _plan_word(plan)
+            return _plan_word(plan), plan
         if (incident_id and plan.get("incident") == incident_id
                 and plan.get("state") == "running"
                 and any(s.get("state") == "running" and s.get("kind") == key for s in steps)):
-            return "running"
-    return ""
+            return "running", plan
+    return "", {}
 
 
 def verified_fix(network: str, inc: dict) -> dict:
