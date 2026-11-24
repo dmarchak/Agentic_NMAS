@@ -1,6 +1,40 @@
 # Handoff: every waiting patch run together as one stack; its failures fixed in the patches (2026-11-24, 01:00 to 02:30 Denver)
 
-## 000. The 03:35 session (2026-11-24): read this first
+## 0000. The 04:49 session (2026-11-24): read this first
+
+- **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
+- **C4216 closed in a patch**, `~/mercury-runs/c4216.patch` and `.msg` (worktree
+  `~/nmas-worktrees/c4216` on 012526a8, staged): every pressed `<a>`/`<button>` carrying
+  `hx-get` (271: tabs, DHCP, SDN, NetBox links) busy on itself by one stylesheet rule (the
+  menu row's spinner, C399), and every press that loads another page busy until the page
+  replaces it (nmas_v2.js `markNavigating`, never on a download: every attachment route's
+  link declares `download`, by a scan). ACTIONS.md corrected (the device menu, the panel and
+  the console offer were never "none"). Red on main's stylesheet, six controls
+  (`~/mercury-runs/c4216_control*.sh`). land_all.sh now ends `c4216`.
+- **c4226.patch had a defect, fixed in it** (found running the 121 browser and v2-script
+  files over the stack: tests/test_topology_v2.py's three drag tests red, bisected to c4226;
+  the 199-file run had missed that file): its press merge took the topology's drop (a
+  script's submit inside `#topo`) and kept the dragged device's `data-dx`, drawing it 108 px
+  from its saved place. `pressedUnit` now needs a trusted event and work outside the unit
+  (`workOutside`); two new tests, two controls. c4230.patch re-based on it (content
+  unchanged). The old patches are `*.patch.before-topology`.
+- **Full suite over the stack (16 patches; 12 workers, 765 s): 4 failed, 32,615 passed**
+  (`~/mercury-runs/suite/landing3-012526a8.{log,xml}`): test_nmas_workers' two
+  unconfined-only cases, C4090's loop (its three, as before), and test_tmp_roots, which
+  fails on main too in a session without USER: **C4231, fixed as a patch**
+  (`~/mercury-runs/c4231.patch`: the bound asks pytest's `get_user()`; a control bites).
+  So the stack lands green but for C4090 (OPERATOR.md#c4090-records).
+- **C2820 item 4 (the held rows) BUILT as a patch**, `~/mercury-runs/c2820-held.patch` and
+  `.msg` (worktree `~/nmas-worktrees/c2820`): the ratchet now reads the installation's held
+  decisions (new fixture `tests/fixtures/heal_records/held_decisions.jsonl`, guards 4, 6, 9;
+  on main's attention.py: 3 guard numbers, 2 History lookups); `_held_said` says each in
+  words, the guard in the record. Aimed 2,032 passed (C4090's loop the one red).
+- land_all.sh now ends `c4216 c2820-held c4231` (18 patches); all apply; the three new
+  patches' tests pass on the stack (116).
+- Left in Stage 5 item 1: ACTIONS.md's "could reuse it" list (busy-and-in-place actions moved
+  onto the stepper as jobs).
+
+## 000. The 03:35 session (2026-11-24)
 
 - **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
 - **C4226's fix BUILT as a patch**, `~/mercury-runs/c4226.patch` and `.msg`, now based on
