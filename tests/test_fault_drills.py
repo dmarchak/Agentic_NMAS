@@ -292,7 +292,13 @@ class TestTheTag:
                                          "second": 1,
                                          "operands": {"departure": _departure(GOLDEN + ROUTE6)}},
                  T0 + 25 * MIN)
-        ran = DC.run(NET, now=T0 + 30 * MIN, sources=Fake(GOLDEN + ROUTE6))
+        # The heal the pass decides starts at once as its own job (C3865): inside `acts_with`
+        # it is the real act over the fakes, waited for, so no job outlives the test and
+        # writes into the session's store (C4200: unwaited, the real act's step log row,
+        # needing a person, landed in the session's Default network after the test's end).
+        with acts_with(FakeAct(GOLDEN + ROUTE6, at=T0 + 30 * MIN + 10)) as jobs:
+            ran = DC.run(NET, now=T0 + 30 * MIN, sources=Fake(GOLDEN + ROUTE6))
+        assert len(jobs) == 1 and acted(jobs[0]), jobs
         (one,) = ran["decided"]
         d = DS.find(NET, one["decision"])
         assert FD().covering(NET, DEV, T0 + 30 * MIN) == {}, "the declaration has expired"
