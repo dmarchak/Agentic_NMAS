@@ -350,6 +350,10 @@ def pytest_sessionstart(session):
         tmp_roots.prune_dead_roots(os.path.dirname(base), current=base)
         # C780: the stores and spawn folders of processes that were killed before their exit.
         tmp_roots.prune_dead_process_folders(tempfile.gettempdir())
+    if factory is not None and hasattr(session.config, "workerinput"):
+        # C4184: the folder this run's xdist workers share (each worker's basetemp is beneath
+        # it, and it goes with the run), where tests/v2_context.py's walk is shared.
+        os.environ["NMAS_TEST_SHARED_TMP"] = os.path.dirname(str(factory.getbasetemp()))
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -543,6 +547,16 @@ def _import_the_application_first(_the_store_is_the_test_store):
         if getattr(handler, "baseFilename", "").endswith("device_manager.log"):
             root.removeHandler(handler)
             handler.close()
+
+    # **And the app's log is read from the store, never the checkout** (C1763): Settings ›
+    # Installation's log page drew the checkout's real `logs/device_manager.log`, so its
+    # verdict in tests/test_display_names_drawn.py, test_v2_brand.py and the v2 walk
+    # depended on where the checkout lives and what last wrote there (on 2026-11-24 its last
+    # 500 lines held 1,568 earlier runs' `actor=test-person` request lines). The path is the
+    # current store's `logs/` (read at each call, so a test's own store is its own), absent
+    # until a test writes one, as on a fresh install; a test planting a log still patches it.
+    from modules import app_log, config
+    app_log.path = lambda: _os.path.join(config.DATA_DIR, "logs", "device_manager.log")
 
 
 #: The person every test is, unless it asks for the real identity layer.

@@ -603,12 +603,76 @@ def _store_back(aside: str) -> None:
     shutil.rmtree(aside, ignore_errors=True)
 
 
+#: Where the workers of one xdist run share the walk's answer: set by tests/conftest.py's
+#: `pytest_sessionstart` in a worker to the folder its run's workers share (their basetemp's
+#: parent, removed with the run). Unset (one process, or a run outside the suite's conftest),
+#: each process walks for itself.
+SHARED_ENV = "NMAS_TEST_SHARED_TMP"
+
+
 def measure() -> dict:
     """``{"routes": {route: Route}, "pages": n, "fragments": n, "posts": n}`` for v2, built once
     per test process on test_device_v2's lab (tests/interface_pages.py's walk, from the same
-    starts, with the same verified person), both undone before it returns."""
+    starts, with the same verified person), both undone before it returns.
+
+    **Once per run, under xdist** (the week plan's Stage 2, C4184): four files read the walk
+    (display names, UTC, page waits, the carried context), each 85 to 100 s of its worker's
+    time in the 12-worker run of 2026-11-23. The first worker to ask walks, holding a lock in
+    the run's shared folder (`SHARED_ENV`), and writes the answer there (pickled, 0.2 MB,
+    compared equal after the round trip); the others wait on that lock and read it. A walk that
+    fails writes nothing, so the next worker walks for itself."""
     if "m" in _CACHE:
         return _CACHE["m"]
+    shared = os.environ.get(SHARED_ENV, "")
+    run = os.environ.get("PYTEST_XDIST_TESTRUNUID", "")
+    if not (shared and run and os.path.isdir(shared)):
+        _CACHE["m"] = _measure_here()
+        return _CACHE["m"]
+    import fcntl
+    import hashlib
+    import pickle
+
+    # Keyed by the checkout too: a pytest a test starts inherits the environment, and one run
+    # over another tree (a planted or parent worktree) must never read this tree's walk.
+    here = hashlib.sha256(os.path.realpath(__file__).encode("utf-8")).hexdigest()[:16]
+    path = os.path.join(shared, f"v2-walk-{run}-{here}.pickle")
+    with open(path + ".lock", "a", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            if os.path.exists(path):
+                with open(path, "rb") as fh:
+                    _CACHE["m"] = pickle.load(fh)
+                return _CACHE["m"]
+            _CACHE["m"] = _measure_here()
+            part = f"{path}.{os.getpid()}"
+            with open(part, "wb") as fh:
+                pickle.dump(_CACHE["m"], fh, protocol=pickle.HIGHEST_PROTOCOL)
+            os.replace(part, path)
+            return _CACHE["m"]
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+#: The app's log the walk's Settings › Installation draws: a real line of the app's log
+#: (logs/device_manager.log, 2026-10-12), its absolute path made the checkout's.
+APP_LOG_LINES = ("2026-10-12 18:33:17,677 INFO app: redact: log redaction installed on 11 "
+                 "handler(s) [in app.py:352]\n",)
+
+
+def _plant_app_log() -> None:
+    """The walk's own app log, where the page reads it (`app_log.path()`, the store's since
+    C1763): the walk drew the checkout's real log before, so what it found there decided its
+    verdict; now it draws these lines, and the log card's loop draws."""
+    from modules import app_log
+
+    path = app_log.path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.writelines(APP_LOG_LINES)
+
+
+def _measure_here() -> dict:
+    """`measure`'s walk, in this process."""
     import contextlib
     import pathlib
     import tempfile
@@ -644,6 +708,7 @@ def measure() -> dict:
         with tempfile.TemporaryDirectory(prefix="nmas-v2-context-") as tmp:
             with contextlib.contextmanager(lab_setup)(pathlib.Path(tmp), mp) as lab:
                 IP.seed(lab, mp, tmp)
+                _plant_app_log()
                 client = RecordingClient(lab["client"], recorder)
                 template_rendered.connect(recorder, A.app)
                 try:
@@ -660,12 +725,10 @@ def measure() -> dict:
     finally:
         mp.undo()
         _store_back(aside)
-    _CACHE["m"] = {"routes": recorder.routes, "pages": len(pages), "fragments": fragments,
-                   "providers": len(PROVIDERS), "upstream": upstream, "drew": drew,
-                   "addresses": recorder.addresses, "bodies": recorder.bodies,
-                   "records": recorder.records, "utc": recorder.utc,
-                   "clocked": recorder.clocked}
-    return _CACHE["m"]
+    return {"routes": recorder.routes, "pages": len(pages), "fragments": fragments,
+            "providers": len(PROVIDERS), "upstream": upstream, "drew": drew,
+            "addresses": recorder.addresses, "bodies": recorder.bodies,
+            "records": recorder.records, "utc": recorder.utc, "clocked": recorder.clocked}
 
 
 def _golden_sha(lab) -> str:
