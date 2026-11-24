@@ -3500,8 +3500,8 @@ def persist_preview(plan: dict, *, busy: str, request) -> dict:
         confirm["button"] = f"Save and read back {name}"
     return build(
         action="persist",
-        # C3716: what it does first, in the operator's words ("Saves r2's running config to
-        # startup."); the read-back after it.
+        # C3716: what it does first, in the operator's words ("Saves <device>'s running config
+        # to startup."); the read-back after it.
         summary=(f"Saves {name}'s running config to startup, then reads startup back and "
                  "checks it carries the credential the device runs with."),
         targets=[target], what_not=what_not,

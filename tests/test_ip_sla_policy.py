@@ -512,7 +512,8 @@ class TestTheFrequencyPath:
         r = lab["client"].get(url)
         text = html_mod.unescape(r.get_data(as_text=True))
         assert r.status_code == 200
-        assert "global.ip-sla-operation" in text and "nmas-removal-probe" in text, text[:3000]
+        # C3506: the shape in words, no key and no host command.
+        assert "a global `ip sla` line" in text and "nmas-removal-probe" not in text, text[:3000]
 
 
 class TestACommittedProbeNotOnItsDeviceStaysListed:

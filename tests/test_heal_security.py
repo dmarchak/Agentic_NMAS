@@ -274,7 +274,9 @@ class TestDependents:
     def test_w7_unmeasured_is_blocked_naming_the_probe_and_the_shape(self, lab):
         d = one(W7)
         assert d["outcome"] == "cant_fix", d
-        assert "interface.ip-access-group" in d["words"] and "nmas-removal-probe" in d["words"]
+        # C3506: the shape in words, no key and no host command.
+        assert "an interface's `ip access-group` line" in d["words"], d["words"]
+        assert "nmas-removal-probe" not in d["words"] and "interface.ip-access-group" not in d["words"]
 
     @pytest.mark.parametrize("running,program", [
         (W7, [" no ip access-group EDGE-IN in", "no ip access-list extended EDGE-IN"]),

@@ -319,7 +319,8 @@ class TestTheCantFixEmail:
         assert text.startswith(
             f"{HOST}: access list added on GigabitEthernet2 outside Mercury. Traffic the ACL "
             "matches is filtered differently from what was intended.\n"), text.splitlines()[0]
-        assert ("\nOutcome: Mercury cannot fix this yet: removing that kind of line has not "
+        assert ("\nOutcome: Mercury cannot fix this yet: removing an interface's `ip access-group` "
+                "line has not "
                 "been measured on IOS-XE; nothing was sent (Tier 2)\n") in text, text
         # (EM3) The Decide step says its label and its result; the lead holds why. Premise
         # corrected (the GUI review's item 6, C3454, the approved rule "The stepper never says
@@ -420,13 +421,14 @@ class TestTheCantFixEmail:
         for dialect, name, why in (("cisco_iosxe", "IOS-XE", ""),
                                    ("cisco_ios", "IOS", " (s1, 2026-11-09: the exemplar was "
                                                         "refused)")):
+            # C3506: removal words it plainly itself now; the message's plain() keeps it so.
             words = removal._unmeasured(chain, line, "leaf", dialect)
-            assert "scripts/nmas-removal-probe" in words, "the premise: removal names the probe"
+            assert "scripts/" not in words and "interface.ip-access-group" not in words, words
             assert message.plain(f"Mercury cannot fix this yet: {words}; nothing was sent") \
-                == (f"Mercury cannot fix this yet: removing that kind of line has not been "
-                    f"measured on {name}{why}; nothing was sent")
+                == (f"Mercury cannot fix this yet: removing an interface's `ip access-group` "
+                    f"line has not been measured on {name}{why}; nothing was sent")
         words = removal._unmeasured(chain, "ip unheard-of 1", "leaf", "cisco_iosxe")
-        assert "removal.SHAPES" in words and "scripts/" in words, "the premise"
+        assert "removal.SHAPES" not in words and "scripts/" not in words, words
         got = message.plain(words)
         assert "scripts/" not in got and "removal.SHAPES" not in got and got.endswith(
             "so nothing is sent"), got

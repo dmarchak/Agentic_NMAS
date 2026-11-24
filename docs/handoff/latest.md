@@ -77,8 +77,7 @@ They supersede the 11:50 deploy order below (decisions file, 13:15 lines, the wo
   green). Any other red: fix forward first, no exception for it. Log the deploy in the report.
 - **Stage 2:** the under-10-minute target is DONE (587 s at 10 workers on 3f478dda). The serial
   run (one process, for the counts) started 12:20 Denver in an nmas-control tree; its log and
-  JUnit file: `/tmp/claude-1000/-home-dustin-Documents-Python-Agentic-NMAS/77e28053-940e-4cab-8945-86a73d686146/scratchpad/serial.log`
-  and `serial.xml` beside it (gone after a reboot: then run it again). Compare its failures with
+  JUnit file: `serial.log` and `serial.xml` in that session's scratch folder (gone after a reboot: then run it again). Compare its failures with
   the parallel run's (C4090's loop test only): any test failing serially alone is C4222's.
 - design/proposals.zip exists (53 MB, 2026-11-23); the proposals are A Workbench, B Inbox,
   C Document.
