@@ -132,8 +132,8 @@ The policy also limits which actions each rule may take on the network: a previe
 of any other is refused, naming the action, the rule and what is allowed. In **HITL** (the
 default) a response waits for you on SDN › Responses. In **AUTO**, which a person turns on for
 one network with a reason and an expiry, the loop applies only actions within the allowed risk,
-each recorded as autonomous with that reason and with who chose the action. Until the AUTO
-production-readiness gate is complete, AUTO is turned on only on a network marked **lab** (its
+each recorded as autonomous with that reason and with who chose the action. Until Mercury is
+cleared for production use, AUTO is turned on only on a network marked **lab** (its
 stage, on Settings › Integrations › SDN controllers), and on each pass the loop checks the stage
 again: a network not marked lab, or whose stage cannot be read, gets no unattended action, and
 every response waits for you. **AUTO never acts on an inferred source:** a drop or a rate limit
@@ -463,8 +463,8 @@ force**, with **Re-apply…**:
    first applied it, and it gets its line in the loop's log. The response's own records stand
    as they were, so it keeps the expiry it was applied with.
 
-Mercury never re-applies a response by itself, in any mode. Doing that waits for the AUTO
-production-readiness gate. A flow you added yourself on SDN › Flows is not a response: when it
+Mercury never re-applies a response by itself, in any mode. Doing that waits until Mercury is
+cleared for production use. A flow you added yourself on SDN › Flows is not a response: when it
 goes missing it is drawn **Mercury's, missing** on Flows, with no row and no Re-apply….
 
 ## Classify a detection with AI {#classify}

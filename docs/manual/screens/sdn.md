@@ -471,7 +471,7 @@ mode and whether the loop is running.
   **Turn AUTO off** ends it at once. At its expiry the mode is HITL again, and the record says so.
   The card says the network's stage in one line: "This network is marked lab.", or that it is
   not marked (or marked pilot or production) and that AUTO is turned on only on a network marked
-  lab until the AUTO production-readiness gate is complete, with a link to the stage on
+  lab until Mercury is cleared for production use, with a link to the stage on
   [Settings › Integrations › SDN controllers](settings#sdn-controllers). On a network not marked
   lab, **Turn AUTO on** is drawn disabled with that reason, and Mercury refuses it anyway,
   naming the network's stage and the gate. When AUTO was on and the network has since been

@@ -314,8 +314,8 @@ def test_auto_on_and_off_and_the_loop_started_and_stopped(lab, monkeypatch):
 
 # ── C2009: the network's stage, set on its SDN controllers card, said on the Mode card ──────
 
-GATE = ("AUTO is turned on only on a network marked lab until the AUTO production-readiness "
-        "gate (PHASE8_PLAN 17.7) is complete")
+GATE = ("AUTO is turned on only on a network marked lab until Mercury is cleared for "
+        "production use")
 CARD = "/v2/settings/network/Default/sdn"
 
 
@@ -389,7 +389,7 @@ def test_the_mode_card_says_the_stage_and_draws_turn_auto_on_disabled_off_lab(la
     c = lab["client"]
     page = unescape(c.get("/v2/sdn/responses?list=Default").get_data(as_text=True))
     assert ("This network is not marked; AUTO is turned on only on a network marked lab until "
-            "the AUTO production-readiness gate is complete") in page
+            "Mercury is cleared for production use") in page
     assert "#sdn-stage" in page, "the line links to the stage"
     button = _turn_on_button(page)
     assert " disabled" in button

@@ -105,8 +105,8 @@ decision, 2026-10-27). The card is how a controller is added, changed, tested an
 each controller is doing is on [SDN](sdn).
 
 - **Stage**, first: whether the network is marked **lab**, **pilot** or **production**, or **not
-  marked** (the default), each network's own and never inherited from Default. Until the AUTO
-  production-readiness gate is complete, SDN responses' AUTO is turned on only on a network
+  marked** (the default), each network's own and never inherited from Default. Until Mercury
+  is cleared for production use, SDN responses' AUTO is turned on only on a network
   marked lab ([SDN › Responses](sdn#responses)): on any other network **Turn AUTO on** is drawn
   disabled and refused, and AUTO that was turned on before the network was marked otherwise runs
   nothing unattended (the Mode card says it is suspended). A stage that cannot be read is said,

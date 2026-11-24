@@ -364,7 +364,7 @@ CARDS = {
         "fields": (_f("proxmox_url", "URL", "url"),
                    _f("proxmox_node", "Node", "name"),
                    _f("proxmox_token_expires", "Token expires", "date",
-                      "declared: the token cannot read its own (C380)"),
+                      "typed in: the token is not allowed to read its own expiry"),
                    _f("proxmox_verify_tls", "Verify TLS", "switch"),
                    _f("proxmox_backup_vmids", "Backup VMs", "vmids"),
                    _f("proxmox_backup_storage", "Backup storage", "name")),
@@ -420,7 +420,7 @@ CARDS = {
                       "strip). Manual: a person's press on an incident's page starts AI "
                       "troubleshooting, and nothing starts by itself unless that network is "
                       "Automatic, within its spending limits; Off: none is offered or started, "
-                      "and Mercury's own diagnosis still proposes a fix (C3769)",
+                      "and Mercury's own diagnosis still proposes a fix",
                       _fixit_policy.MODES, _fixit_policy.MODE_WORDS),
                    _f("ai_cap_usd_per_incident", "AI spend per incident", "usd",
                       "what one incident's AI calls may cost: spent plus the next attempt's "

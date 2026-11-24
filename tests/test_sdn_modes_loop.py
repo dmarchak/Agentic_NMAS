@@ -100,8 +100,8 @@ def test_off_is_one_action_at_once(networks):  # noqa: F811
 
 # ── C2009: AUTO only on a network marked lab (PHASE8_PLAN 17.7's guard) ───────────────────
 
-GATE = ("AUTO is turned on only on a network marked lab until the AUTO production-readiness "
-        "gate (PHASE8_PLAN 17.7) is complete; ")
+GATE = ("AUTO is turned on only on a network marked lab until Mercury is cleared for "
+        "production use; ")
 
 
 def _on(network=NET, now=T0):

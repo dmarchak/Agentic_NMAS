@@ -275,7 +275,7 @@
   {%- if st.stage == 'lab' %}
   <p class="small sdn-stage-line" id="sdn-mode-stage">This network is marked lab.</p>
   {%- else %}
-  <p class="small sdn-stage-line" id="sdn-mode-stage">{% if st.state == 'unreadable' %}{{ st.words }}, and a stage that cannot be read is never read as lab{% elif st.stage %}This network is marked {{ st.stage }}{% else %}This network is not marked{% endif %}; AUTO is turned on only on a network marked lab until the AUTO production-readiness gate is complete (<a href="{{ stage_url }}">Settings › Integrations › SDN controllers</a>).</p>
+  <p class="small sdn-stage-line" id="sdn-mode-stage">{% if st.state == 'unreadable' %}{{ st.words }}, and a stage that cannot be read is never read as lab{% elif st.stage %}This network is marked {{ st.stage }}{% else %}This network is not marked{% endif %}; AUTO is turned on only on a network marked lab until Mercury is cleared for production use (<a href="{{ stage_url }}">Settings › Integrations › SDN controllers</a>).</p>
   {%- endif %}
   {%- if m.mode == 'auto' and st.stage != 'lab' %}
   <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p><strong>AUTO is suspended:</strong> it is recorded on, and nothing runs unattended while this network is not marked lab; each response awaits a person. Turn AUTO off, or mark the network lab.</p></div>

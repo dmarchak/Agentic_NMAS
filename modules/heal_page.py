@@ -48,11 +48,11 @@ KIND_LABELS = {
 #: (Tier 2, always proposed), and Tiers 3 and 4.
 FIXED_KINDS = (
     ("A security control removed or changed outside intent · any ACL", 2, "Always proposed",
-     "A person removes it (back to intent) or keeps it (adds it to intent), C2839"),
+     "A person removes it (back to intent) or keeps it (adds it to intent)"),
     ("Physical or link down while admin up; unknown cause", 3, "Alert only",
      "Configuration cannot fix a cable, an optic or a far end"),
     ("Credentials and AAA · Mercury's management path · multi-device", 4,
-     "Never automatic", "Section 13's never list: a person changes these, never a heal"),
+     "Never automatic", "A person changes these; Mercury never fixes them by itself"),
 )
 #: The hard stops in the board's order: (label, keys, how a value is said, the unit's words).
 GUARD_ROWS = (

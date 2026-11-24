@@ -94,7 +94,7 @@ KIND_WORDS = {
                           "(a change to intent; its Approve refused until its removal is "
                           "measured on the platform)",
     "security_revert": "a one-sided security change that broke an adjacency, put back (only "
-                       "where the network allows it, C2839)",
+                       "where the network allows it)",
 }
 
 #: The hard stops a network sets, in section 6's order, each with its unit.
@@ -433,8 +433,8 @@ def _proposed(before: dict, proposed: dict, now: float) -> dict:
             raise PolicyRefused(f"AUTO's expiry is in the future, and {until} is not (now "
                                 f"{_iso(now)})")
         if epoch is not None and epoch - now > MAX_AUTO_SECONDS:
-            raise PolicyRefused(f"AUTO may be on for at most {MAX_AUTO_SECONDS // 86400} days "
-                                f"(N8); {until} is {round((epoch - now) / 86400, 1)} days away")
+            raise PolicyRefused(f"AUTO may be on for at most {MAX_AUTO_SECONDS // 86400} days"
+                                f"; {until} is {round((epoch - now) / 86400, 1)} days away")
     for key, allowed, tier in ((KINDS_AUTO_KEY, TIER1_KINDS, "Tier 1"),
                                (KINDS_PROPOSE_KEY, TIER2_KINDS, "Tier 2")):
         got = after.get(key)
@@ -518,7 +518,7 @@ def plan(network: str, proposed: dict, now: float = None) -> dict:
                       "state": "pass",
                       "why": heals + "; a Tier 1 kind not listed stays a dry run, and a Tier 2 "
                                      "fix is proposed for a person"})
-        gates.append({"name": "AUTO's expiry: until turned off, or at most 7 days (N8)",
+        gates.append({"name": "AUTO's expiry: until turned off, or at most 7 days",
                       "state": "pass",
                       "why": (f"until {after[UNTIL_KEY]}, then dry run" if after[UNTIL_KEY]
                               else "until a person turns it off")})

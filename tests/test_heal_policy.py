@@ -254,7 +254,7 @@ def test_auto_on_a_lab_network_runs_until_its_expiry_then_dry_run_once(networks)
     # off", saved; an expiry given is still in the future and at most 7 days.
     ("", None),
     (iso(T0 - 1), "AUTO's expiry is in the future"),
-    (iso(T0 + 7 * 86400 + 60), "AUTO may be on for at most 7 days (N8)"),
+    (iso(T0 + 7 * 86400 + 60), "AUTO may be on for at most 7 days; "),
     ("tomorrow", "AUTO's expiry is a UTC time, YYYY-MM-DDTHH:MM:SSZ, not 'tomorrow'"),
 ], ids=["none", "past", "past-7-days", "not-a-time"])
 def test_autos_expiry_is_required_and_at_most_7_days(networks, until, words):
@@ -268,6 +268,21 @@ def test_autos_expiry_is_required_and_at_most_7_days(networks, until, words):
     with pytest.raises(H.PolicyRefused) as exc:
         H.plan("Default", proposed, T0)
     assert str(exc.value).startswith(words)
+
+
+def test_the_previews_checks_name_no_register_row_or_plan_section(networks):
+    """C2820's survey, item 34: each check the preview draws (its name and why) is read by a
+    person, so it names no register row or plan section ("(N8)"); with and without an
+    expiry, Auto's checks both drawn."""
+    from tests.test_settings_words_name_no_codes import CODE
+
+    mark()
+    for until in ("", iso(T0 + 3600)):
+        p = H.plan("Default", {"heal_mode": "auto", "heal_mode_until": until,
+                               "heal_kinds_auto": ["added_line"]}, T0)
+        said = [f"{g['name']}: {g['why']}" for g in p["gates"]]
+        assert len(said) >= 2, said
+        assert not [s for s in said if CODE.search(s)], said
 
 
 def test_auto_is_suspended_to_dry_run_once_the_stage_moves_off_lab(networks):

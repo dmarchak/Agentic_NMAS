@@ -55,8 +55,8 @@ MAX_AUTO_SECONDS = 24 * 3600
 STAGE_KEY = "network_stage"
 STAGES = ("lab", "pilot", "production")
 AUTO_STAGE = "lab"
-GATE_WORDS = ("AUTO is turned on only on a network marked lab until the AUTO "
-              "production-readiness gate (PHASE8_PLAN 17.7) is complete")
+GATE_WORDS = ("AUTO is turned on only on a network marked lab until Mercury is cleared "
+              "for production use")
 #: The actions that act on a detection's source (C2147): AUTO runs one only on a source the
 #: flows themselves name.
 SOURCE_ACTIONS = ("drop_source", "rate_limit_source")

@@ -37,7 +37,7 @@
   {%- set st = k.stage %}
   <div class="sdn-conn sdn-stage" id="sdn-stage">
     <div class="sdn-conn-what"><strong>Stage</strong> {{ badge(st.stage or ('unreadable' if st.state == 'unreadable' else 'not marked'), 'danger' if st.state == 'unreadable' else ('ok' if st.stage == 'lab' else 'muted')) }}
-      <span class="muted">{{ st.words }}. SDN responses' AUTO is turned on only on a network marked lab until the AUTO production-readiness gate is complete.</span>{{ setting_desc('network_stage') }}</div>
+      <span class="muted">{{ st.words }}. SDN responses' AUTO is turned on only on a network marked lab until Mercury is cleared for production use.</span>{{ setting_desc('network_stage') }}</div>
     <form class="sdn-acts sdn-stage-form" method="post" action="{{ url_for('settings_v2.sdn_stage', list_name=list_name) }}" hx-post="{{ url_for('settings_v2.sdn_stage', list_name=list_name) }}" hx-target="#sdn-card" hx-swap="outerHTML">
       <input type="hidden" name="loaded" value="{{ st.stage }}">
       <label class="small">Mark it <select name="stage" aria-label="The network's stage">
