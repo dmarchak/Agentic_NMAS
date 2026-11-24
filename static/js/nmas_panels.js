@@ -513,6 +513,15 @@
     if (wait) wait.parentNode.removeChild(wait);
   }
 
+  // Whether *body* is the answer *section* last drew from its source, byte for byte as JSON;
+  // kept as fetched (before `draw` adds its own keys), so the next poll compares like with like.
+  function unchanged(section, body) {
+    var text = JSON.stringify(body);
+    var same = section.__nmasFetched === text && !!section.__nmasChart;
+    section.__nmasFetched = text;
+    return same;
+  }
+
   function load(section) {
     var src = section.getAttribute('data-panel-src');
     // An answer the page already holds (the logs builder's counts, asked once with the page)
@@ -542,6 +551,9 @@
           fail(section, (got.body && got.body.error) || ('HTTP ' + got.status));
           return;
         }
+        // An answer equal to the one drawn draws nothing: the chart, its zoom and its open
+        // hover stay as the person left them (the refresh audit's cause 7, C4230).
+        if (unchanged(section, got.body)) { section.__nmasLoaded = true; return; }
         draw(section, got.body);
         section.__nmasLoaded = true;
       }, function (e) {
@@ -619,5 +631,6 @@
                       windowed: windowed, drawnData: drawnData,
                       spanWords: spanWords, offsetWords: offsetWords, tipWhen: tipWhen,
                       viewerOffset: viewerOffset, viewerZone: viewerZone,
-                      footWords: footWords, emptyWords: emptyWords, emptyHover: emptyHover, scan: scan};
+                      footWords: footWords, emptyWords: emptyWords, emptyHover: emptyHover, scan: scan,
+                      unchanged: unchanged};
 })(typeof window !== 'undefined' ? window : this);
