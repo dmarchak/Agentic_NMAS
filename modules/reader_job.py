@@ -1070,11 +1070,17 @@ def health_rows(now: float = None, population: list = None) -> list:
         good = doc.get("last_good") or {}
         at = _parse_iso(attempt.get("at"))
         stale_after = r.interval_seconds * r.stale_after_intervals
-        if at is None or now - at > stale_after:
+        # C3331: judged from the attempt's END (its start plus how long it took): a read that
+        # fails slowly (a Loki ask's three 5 s tries and its backoff, about 16 s) is a reader
+        # still reading and failing, never one that has stopped.
+        took_s = attempt.get("took_ms") / 1000.0 if isinstance(attempt.get("took_ms"),
+                                                                (int, float)) else 0.0
+        ended = at + max(0.0, took_s) if at is not None else None
+        if at is None or now - ended > stale_after:
             # `since` is epoch seconds, as every job-health row carries it
             # (Needs attention formats it); an ISO string here crashed the
             # page's source on the first stopped reader.
-            since = at + stale_after if at is not None else None
+            since = ended + stale_after if ended is not None else None
             rows.append({**base, "state": "stale", "since": since,
                          "detail": (f"no read since {attempt.get('at', 'ever')} (it reads every "
                                     f"{r.interval_seconds} s; stale after {stale_after} s): the "

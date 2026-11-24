@@ -315,6 +315,34 @@ class TestLiveness:
         row = one_row(r, clock.t + 181)
         assert row["state"] == "stale" and row["since"] == clock.t + 180
 
+    def test_a_read_that_fails_slowly_is_failing_never_stopped(self, monkeypatch):
+        """C3331: a reader whose every read fails slowly (a Loki ask's three 5 s tries and its
+        backoff, about 16 s) is still reading: judged from the attempt's end, not its start, it
+        is failing, never "the reader has stopped"; past three intervals from its end, stale.
+        The read's duration is measured on `time.monotonic`, moved here with the clock."""
+        import time as real_time
+        clock = Clock()
+        start = clock.t
+        mono = [1000.0]
+
+        class Time:
+            def __getattr__(self, name):
+                return getattr(real_time, name)
+
+            def monotonic(self):
+                return mono[0]
+        monkeypatch.setattr(R, "time", Time())
+
+        def slow_boom():
+            clock.t += 16
+            mono[0] += 16
+            raise RuntimeError("Loki did not answer")
+        r = make(slow_boom)
+        R.run_once(r, clock=clock)
+        row = one_row(r, start + 185)
+        assert row["state"] != "stale", row
+        assert one_row(r, start + 16 + 181)["state"] == "stale"
+
     def test_an_unreadable_store_is_unknown_never_absent(self):
         r = make(lambda: {})
         path = R.store_path("t-reader")
