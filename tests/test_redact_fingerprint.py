@@ -40,11 +40,26 @@ def test_the_value_is_never_drawn_and_keyed_is_idempotent():
     assert _keyed(out) == out
 
 
+def test_a_run_salts_its_fingerprints_by_itself_and_each_secret_s_label():
+    """C4237 (the final review's MEDIUM 1): *keyed* given a run's id salts each fingerprint by
+    the run and the secret's label: one run, one value, one label, one fingerprint; another run
+    another; and a community and an enable secret holding one value never draw the same."""
+    same = "SharedValue9"
+    text = f"snmp-server community {same} RO\nenable password 0 {same}\n"
+    a = KEYED.findall(redact.redact_text(text, {}, keyed="run-a"))
+    a2 = KEYED.findall(redact.redact_text(text, {}, keyed="run-a"))
+    b = KEYED.findall(redact.redact_text(text, {}, keyed="run-b"))
+    assert len(a) == 2 and len({lab for lab, _ in a}) == 2, a
+    assert a == a2, (a, a2)
+    assert a[0][1] != a[1][1], f"two fields sharing a value drew one fingerprint: {a}"
+    assert all(x[1] != y[1] for x, y in zip(a, b)), (a, b)
+
+
 def test_the_fingerprint_is_keyed(monkeypatch):
     """Not a digest of the value alone: a different installation key draws a different one."""
     import hashlib
     first = redact.fingerprint("Comm2Ready")
-    assert first != hashlib.sha256(b"Comm2Ready").hexdigest()[:4]
+    assert len(first) == 8 and first != hashlib.sha256(b"Comm2Ready").hexdigest()[:8]
     monkeypatch.setattr(redact, "_fingerprint_key", lambda: b"another installation's key")
     assert redact.fingerprint("Comm2Ready") != first
 

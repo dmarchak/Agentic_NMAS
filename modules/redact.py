@@ -62,7 +62,11 @@ PLACEHOLDER = "<redacted:{label}>"
 #: answers are equal, and a guess typed into a device's answer by someone who can (a
 #: neighbour's name, a failed login) is fingerprinted with the same key; so only a run that
 #: compares two of its own answers asks for it (`reads.run`'s *keyed*, the heal confirm's
-#: save check), never a run a person or the AI reads.
+#: save check), never a run a person or the AI reads. That run is still stored and listed
+#: (History, Ask the device), so the engine salts each fingerprint by its run, the device and
+#: the secret's label (C4237, the final review's MEDIUM 1): running and startup in one run still
+#: compare, and nothing compares across runs, devices or fields (two devices, or a community
+#: and an enable secret, sharing a value draw different fingerprints).
 KEYED_PLACEHOLDER = "<redacted:{label}:{fp}>"
 
 _fp_lock = threading.Lock()
@@ -102,20 +106,28 @@ def _fingerprint_key() -> bytes:
         return key
 
 
-def fingerprint(value: str) -> str:
+def fingerprint(value: str, salt: str = "") -> str:
     """Eight hex characters naming *value* without showing it: an HMAC-SHA256 keyed by
     `_fingerprint_key`, of the value without the spaces around it (a value running to its
-    line's end can carry the line's trailing spaces on one side only: the review's LOW 4)."""
+    line's end can carry the line's trailing spaces on one side only: the review's LOW 4),
+    after *salt* and a NUL when one is given (`_placeholder`'s run and label, C4237)."""
     import hashlib
     import hmac
 
-    return hmac.new(_fingerprint_key(), str(value).strip().encode("utf-8"),
-                    hashlib.sha256).hexdigest()[:8]
+    data = str(value).strip().encode("utf-8")
+    if salt:
+        data = str(salt).encode("utf-8") + b"\x00" + data
+    return hmac.new(_fingerprint_key(), data, hashlib.sha256).hexdigest()[:8]
 
 
-def _placeholder(label: str, value: str, keyed: bool) -> str:
-    return (KEYED_PLACEHOLDER.format(label=label, fp=fingerprint(value)) if keyed
-            else PLACEHOLDER.format(label=label))
+def _placeholder(label: str, value: str, keyed) -> str:
+    """*value*'s placeholder: the plain one, or with *keyed* its fingerprint; *keyed* a string
+    (the reads engine's run id) salts it by that and *label* (C4237), so it compares only
+    within that run and that kind of secret."""
+    if not keyed:
+        return PLACEHOLDER.format(label=label)
+    salt = f"{keyed}\x00{label}" if isinstance(keyed, str) else ""
+    return KEYED_PLACEHOLDER.format(label=label, fp=fingerprint(value, salt))
 
 #: **Positional** redaction: the token that occupies a secret's syntactic slot,
 #: whatever its length and whether or not this installation has ever seen it.
@@ -694,7 +706,8 @@ def redact_text(text: str, values: dict = None, *, keyed: bool = False) -> str:
     Positional runs first so that value-based cannot re-wrap a placeholder.
 
     *keyed* draws each placeholder with its value's `fingerprint` (`KEYED_PLACEHOLDER`): the
-    reads engine's answers, so two answers compared tell different secrets apart (C3886).
+    reads engine's answers, so two answers compared tell different secrets apart (C3886); a
+    string salts every fingerprint by it and the secret's label (the engine's run id, C4237).
     """
     if not text:
         return text

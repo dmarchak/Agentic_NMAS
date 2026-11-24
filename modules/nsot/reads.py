@@ -828,6 +828,11 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
         by = OPERATION
     record = begun(list_name, run_id, hosts, commands, actor, by=by, purpose=purpose,
                    reason=reason, drivers=drivers, started=started, part_of=part_of)
+    if keyed:
+        # Marked, so Compare never takes it as a previous run (C4238), and its fingerprints
+        # salted by this run's id and each device's name, so they compare within one device's
+        # answers in this run alone (C4237; its review's LOW 1).
+        record["keyed"] = True
     why = (refusal(commands, len(hosts), by, reason)
            or ("" if hosts else "Refused: no device to ask."))
     if why:
@@ -894,7 +899,9 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
                 with device_ops.hold(list_name, host, "read", holder,
                                      detail=f"{len(commands)} command(s)", ip=dev.get("ip", "")):
                     answers = session(signed, lambda conn: [_answer(conn, c, values, cap,
-                                                                    driver, keyed)
+                                                                    driver,
+                                                                    f"{run_id}\x00{host}"
+                                                                    if keyed else False)
                                                             for c in commands])
                 failed = [a for a in answers if a["state"] != ANSWERED]
                 out = {"state": FAILED if len(failed) == len(answers) else ANSWERED,
@@ -1094,9 +1101,11 @@ def answer_of(record: dict, host: str, command: str):
 
 
 def previous(list_name: str, host: str, command: str, before_id: str):
-    """The latest run before *before_id* in which *host* answered *command*, or None."""
+    """The latest run before *before_id* in which *host* answered *command*, or None. A keyed
+    run (the heal confirm's save check) is never one: its secrets' fingerprints are salted by
+    its own id, so every secret line would read as changed (C4238)."""
     for r in runs(list_name, device=host, limit=500)["runs"]:
-        if r["id"] >= before_id:
+        if r["id"] >= before_id or r.get("keyed"):
             continue
         a = answer_of(r, host, command)
         if a and a.get("state") == ANSWERED and "answer" in a:

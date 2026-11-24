@@ -1668,6 +1668,23 @@ def _saved_read(network: str, dev: dict, device: str) -> dict:
     running, startup = got[SAVED_READS[0]], got[SAVED_READS[1]]
     if not startup or not running:
         return {"state": "unread", "words": "its startup or running configuration read empty"}
+    # Judged only when both arrived as configurations (C4239, the final review's MEDIUM 3):
+    # running as Reload's gate reads it (`config_read.problems`, strict: one `end`, last, and
+    # this device's hostname), startup with its `end`; two identical refusals compare equal
+    # and would read "the save held".
+    from modules import config_read
+    bad = config_read.problems(running, (dev or {}).get("hostname", ""), strict=True)
+    if bad:
+        return {"state": "unread",
+                "words": f"its running configuration did not arrive whole ({bad[0]})"}
+    if "startup-config is not present" in startup:
+        # IOS's own answer when nothing was ever saved: a true fail, not an unread one (the
+        # review of C4237-C4239, LOW 5).
+        return {"state": "fail",
+                "words": "it has no startup configuration, so the save did not hold"}
+    if not any(line.strip() == "end" for line in startup.splitlines()):
+        return {"state": "unread",
+                "words": "its startup configuration did not arrive whole (no `end` line)"}
     nvram = ""
     if normalize.certificate_pointers(startup):
         more = _engine_answers(network, device, ("dir nvram:",),

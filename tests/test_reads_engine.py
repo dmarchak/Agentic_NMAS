@@ -182,6 +182,42 @@ class TestARun:
         a = r["results"]["r2"]["answers"][0]["answer"]
         assert not keyed.search(a) and "<redacted:" in a, a
 
+    def test_a_keyed_run_s_fingerprints_compare_within_it_alone(self, lab):
+        """C4237 (the final review's MEDIUM 1): a keyed run is stored and listed where a person
+        reads answers, so its fingerprints are salted by its run: two answers in one run holding
+        one secret draw one fingerprint, the same answer in another keyed run another, and the
+        run is marked keyed."""
+        import re
+        fp = re.compile(r"<redacted:snmp_community:([0-9a-f]{8})>")
+        first, _ = _run(["r2"], ["show running-config", "show running-config"], keyed=True)
+        one, two = (x["answer"] for x in first["results"]["r2"]["answers"])
+        assert fp.search(one) and fp.findall(one) == fp.findall(two), (one, two)
+        again, _ = _run(["r2"], ["show running-config"], keyed=True)
+        other = again["results"]["r2"]["answers"][0]["answer"]
+        assert fp.findall(other) and fp.findall(other) != fp.findall(one), (one, other)
+        assert first.get("keyed") is True and again.get("keyed") is True
+
+    def test_two_devices_in_one_keyed_run_never_share_a_fingerprint(self, lab):
+        """C4237's review, LOW 1: the salt names the device too, so one keyed run of two devices
+        answering one secret draws two fingerprints (the stand-in answers both alike)."""
+        import re
+        fp = re.compile(r"<redacted:snmp_community:([0-9a-f]{8})>")
+        r, _ = _run(["r1", "r2"], ["show running-config"], keyed=True)
+        one, two = (fp.findall(r["results"][h]["answers"][0]["answer"]) for h in ("r1", "r2"))
+        assert one and two and one != two, (one, two)
+
+    def test_compare_never_takes_a_keyed_run_as_the_previous_one(self, lab):
+        """C4238 (the final review's MEDIUM 2): a person's run compared against the previous run
+        of its command is never compared against a keyed save-check run, whose salted
+        fingerprints would read every secret line as changed."""
+        from modules.nsot import reads
+        plain, _ = _run(["r2"], ["show running-config"])
+        keyed, _ = _run(["r2"], ["show running-config"], keyed=True)
+        mine, _ = _run(["r2"], ["show running-config"])
+        assert plain["id"] < keyed["id"] < mine["id"]
+        got = reads.previous("Lab", "r2", "show running-config", mine["id"])
+        assert got and got["id"] == plain["id"], (got or {}).get("id")
+
     def test_the_concurrency_bound_holds(self, lab):
         # Each session waits for a third to open (0.5 s at most): under a bound of 2 none does.
         lab["settings"]["reads_max_workers"] = 2

@@ -12,6 +12,7 @@ a keyed fingerprint of the value (`redact.KEYED_PLACEHOLDER`, the operator's rul
 2026-11-23), and `TestASecretOnlyDifference` masks real values through the engine's own mask.
 """
 import os
+import re
 
 import pytest
 
@@ -20,8 +21,11 @@ from modules.nsot import reads
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 T = os.path.join(ROOT, "tests", "fixtures", "transcripts")
-#: s1's real running configuration, read back as its own startup (a save that held).
-CONFIG = open(os.path.join(T, "s1", "show_running-config.txt"), encoding="utf-8").read()
+#: s1's real running configuration, read back as its own startup (a save that held), as the
+#: engine answers it: the transcript ends with the device's prompt (`s1#`), which the engine's
+#: `send_command` strips (`strip_prompt=True`, modules/commands.py), so the answer ends `end`.
+CONFIG = re.sub(r"\n\S+#\s*\Z", "\n",
+                open(os.path.join(T, "s1", "show_running-config.txt"), encoding="utf-8").read())
 #: r1's real startup, which keeps its certificates as files in nvram:.
 R1_STARTUP = open(os.path.join(T, "r1", "show_startup-config.txt"), encoding="utf-8").read()
 
@@ -52,10 +56,49 @@ def test_startup_holding_what_runs_passes_through_one_engine_run(engine):
 
 
 def test_a_running_line_startup_lacks_fails(engine):
-    engine["answers"].update({"show running-config": CONFIG + "logging host 192.0.2.99\n",
-                              "show startup-config": CONFIG})
+    # The line planted inside the configuration, before its `end`, as a device draws it.
+    running = re.sub(r"\nend\n\s*\Z", "\nlogging host 192.0.2.99\nend\n", CONFIG)
+    assert running != CONFIG
+    engine["answers"].update({"show running-config": running, "show startup-config": CONFIG})
     got = act._saved_read("Lab", {}, "s1")
     assert got["state"] == "fail" and "1 running line(s) not in startup" in got["words"], got
+
+
+def test_the_real_capture_passes_with_its_own_hostname(engine):
+    """C4239: the strict read's hostname is the device's own (`dev["hostname"]`), as Reload's."""
+    engine["answers"].update({"show running-config": CONFIG, "show startup-config": CONFIG})
+    assert act._saved_read("Lab", {"hostname": "s1"}, "s1")["state"] == "pass"
+
+
+def test_two_identical_refusals_are_unread_never_a_save_that_held(engine):
+    """C4239 (the final review's MEDIUM 3, its probe): both reads refused the same way compare
+    equal, so the save check judges only configurations: unread, naming why."""
+    refusal = "% Invalid input detected at '^' marker.\n"
+    engine["answers"].update({"show running-config": refusal, "show startup-config": refusal})
+    got = act._saved_read("Lab", {"hostname": "s1"}, "s1")
+    assert got["state"] == "unread" and "did not arrive whole" in got["words"], got
+
+
+def test_another_device_s_configuration_is_unread(engine):
+    engine["answers"].update({"show running-config": CONFIG, "show startup-config": CONFIG})
+    got = act._saved_read("Lab", {"hostname": "r9"}, "r9")
+    assert got["state"] == "unread" and "its hostname is 's1', not 'r9'" in got["words"], got
+
+
+def test_no_startup_configuration_is_a_save_that_did_not_hold(engine):
+    """IOS answers `show startup-config` on a device that never saved with its own words."""
+    engine["answers"].update({"show running-config": CONFIG,
+                              "show startup-config": "startup-config is not present\n"})
+    got = act._saved_read("Lab", {"hostname": "s1"}, "s1")
+    assert got["state"] == "fail" and "no startup configuration" in got["words"], got
+
+
+def test_a_startup_with_no_end_is_unread(engine):
+    startup = re.sub(r"\nend\n\s*\Z", "\n", CONFIG)
+    assert "\nend" not in startup[-10:]
+    engine["answers"].update({"show running-config": CONFIG, "show startup-config": startup})
+    got = act._saved_read("Lab", {"hostname": "s1"}, "s1")
+    assert got["state"] == "unread" and "no `end` line" in got["words"], got
 
 
 def test_a_cut_answer_is_never_judged(engine):
@@ -103,10 +146,12 @@ class TestASecretOnlyDifference:
     @staticmethod
     def _engine_masked(engine, running_raw, startup_raw):
         from modules.discovery import masked
-        # The save check's run is keyed (`reads.run`'s *keyed*, asked by `_engine_answers`).
+        # The save check's run is keyed (`reads.run`'s *keyed*, asked by `_engine_answers`),
+        # salted as the engine salts one device's answers in one run (C4237): its id and host.
+        salt = "run-1\x00s1"
         engine["answers"].update({
-            "show running-config": masked(running_raw, {}, "cisco_ios", keyed=True),
-            "show startup-config": masked(startup_raw, {}, "cisco_ios", keyed=True)})
+            "show running-config": masked(running_raw, {}, "cisco_ios", keyed=salt),
+            "show startup-config": masked(startup_raw, {}, "cisco_ios", keyed=salt)})
 
     def test_the_same_secrets_pass(self, engine):
         raw = _with_values("Comm2Ready", HASH_A)
