@@ -13,11 +13,14 @@ always bad) and `example.com` (always good).
 ## Before you start: two things that must hold, or the results mislead
 
 1. **fabric_forwarding must leave this app's queries alone.** Both apps receive every
-   packet-in. fabric_forwarding 0.2.0 forwards every packet-in it gets, so it would also
-   forward each DNS query this app punts, blocked ones included: the host would then get the
-   resolver's real answer, racing the block. Until fabric_forwarding ignores a packet-in whose
-   cookie is not its own, a blocked name can still resolve. Check the version deployed beside
-   this app before reading any result below.
+   packet-in. fabric_forwarding 0.3.0 and later handle only a packet-in raised by their own
+   flows (the punt table's miss and ARP: `fabric_logic.handles_packet_in`, by the packet-in's
+   cookie), so a DNS query this app's steering flow punts (cookie `0x444e…`) is never
+   forwarded by it too. (0.2.0 forwarded every packet-in, so a blocked name could resolve,
+   racing the block; this item was first written for it, C2974.) Check before reading any
+   result below: SDN › Apps lists fabric_forwarding 0.3.0 or later beside this app, and after
+   check 3 its `/health` counter `packet_in_others` has risen (the queries it left to this
+   app).
 2. **The bonus needs its config and a page.** The block page's address comes from the
    network's config for this app (`block_page.ipv4`, and `block_page.ipv6` for IPv6 hosts).
    No Mercury screen sets an app's network config yet; with none, a blocked name is
