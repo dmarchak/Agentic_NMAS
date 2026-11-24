@@ -320,10 +320,34 @@ def survey(files=None):
     test module exports are resolved first, so an import carries them."""
     files = files or _test_files()
     srcs = {p: open(p, encoding="utf-8").read() for p in files}
+    kept = {}                              # path -> (what it read, its names, its walks)
+
+    def answers(p, s, exports):
+        """*p*'s ``(module names, walks)`` under *exports*. A file's answers read the exports
+        of the test modules it imports alone (`_reads`), so a round that leaves those unchanged
+        reuses its last build: the survey built every file four times (the week plan's
+        Stage 2, C4184). Only the answers are kept, never the build, so memory stays flat."""
+        got = kept.get(p)
+        if got is not None and all(frozenset(exports.get(m, ())) == v
+                                   for m, v in got[0].items()):
+            return got[1], got[2]
+        f = _File(s, p, exports)
+        kept[p] = ({m: frozenset(exports.get(m, ())) for m in _reads(f)}, f.module_names(),
+                   f.walks())
+        return kept[p][1], kept[p][2]
+
     exports = {}
     for _ in range(3):                     # helpers importing helpers: settles in two
-        exports = {_module(p): _File(s, p, exports).module_names() for p, s in srcs.items()}
-    return {os.path.relpath(p, ROOT): _File(s, p, exports).walks() for p, s in srcs.items()}
+        exports = {_module(p): answers(p, s, exports)[0] for p, s in srcs.items()}
+    return {os.path.relpath(p, ROOT): answers(p, s, exports)[1] for p, s in srcs.items()}
+
+
+def _reads(f) -> set:
+    """The test modules whose exports *f*'s answers read: `checkout`'s attribute of an
+    imported test module and `_solve`'s imported names."""
+    out = {m for m in f.modules.values() if m.startswith("tests.")}
+    out |= {m if m.startswith("tests.") else f"tests.{m}" for _s, _a, m, _n in f.imported}
+    return out
 
 
 @pytest.fixture(scope="module")
