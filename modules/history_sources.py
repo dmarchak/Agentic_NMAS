@@ -29,6 +29,7 @@ import re
 import time
 
 from modules import money as _money
+from modules.nsot.deploy import config_line_count  # C3413: lines as a person reads them
 
 log = logging.getLogger(__name__)
 
@@ -2786,7 +2787,7 @@ def heal(ctx):
                     ("Mode", mode), ("Fix", e.get("kind")),
                     ("Policy", (f"{pol.get('fingerprint')} confirmed by {pol.get('by')}"
                                 if pol.get("fingerprint") else "")),
-                    ("Program", (f"{len(e['program'])} line(s), hash {e['program_hash']}"
+                    ("Program", (f"{config_line_count(e['program'])} line(s), hash {e['program_hash']}"
                                  if e["program_hash"] else "")),
                     ("Program lines (masked)", "; ".join(m(x) for x in e["program"])),
                     ("Golden commit", (rec.get("golden") or "")[:12]),

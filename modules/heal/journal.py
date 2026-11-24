@@ -29,6 +29,7 @@ so `_nb_post` adds the tag and refuses an entry it cannot tag.
 
 import logging
 import re
+from modules.nsot.deploy import config_line_count  # C3413: lines as a person reads them
 
 log = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ def comments(network: str, device: str, decision: dict, outcome: str, *, link: s
             f"Mercury self-healing on {network}: {device} {act.OUTCOME_WORDS.get(outcome, outcome)}"
             f". The fix: {KIND_WORDS.get(kind, kind) or 'no kind recorded'}, program "
             f"{(decision.get('program_hash') or '')[:12] or '(none)'} "
-            f"({len(decision.get('program') or [])} line(s)), {under}. "
+            f"({config_line_count(decision.get('program') or [])} line(s)), {under}. "
             f"Incident {decision.get('incident')}, decision {decision.get('id')}. "
             f"The step log, the receipt and the golden commit: {link}")
 

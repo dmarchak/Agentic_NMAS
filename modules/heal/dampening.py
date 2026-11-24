@@ -76,6 +76,7 @@ import json
 import logging
 import re
 import time
+from modules.nsot.deploy import config_line_count  # C3413: lines as a person reads them
 
 log = logging.getLogger(__name__)
 
@@ -350,7 +351,7 @@ def plan(network: str, device: str, interface: str, *, src) -> dict:
     if why:
         return no(f"{device}'s deploy cannot be planned as committed: {why}")
     if now.get("commands"):
-        return no(f"{device}'s deploy already holds {len(now['commands'])} line(s) not sent: "
+        return no(f"{device}'s deploy already holds {config_line_count(now['commands'])} line(s) not sent: "
                   "dampening is proposed only on a device at its intent, so its program is the "
                   "one line; deploy or resolve those first")
     new = src.plan(device, proposed=got["text"])
@@ -495,7 +496,7 @@ def _decide(network, after, device, interface, trigger, mode, src, now) -> dict:
     dialect = src.platform(device, dev) or ""
     base["steps"].append({"step": "plan", "result": "ok", "words": (
         f"intent patched ({'; '.join(p['changes'])}); the deploy's program "
-        f"{len(p['program'])} line(s), hash {p['command_hash']}")})
+        f"{config_line_count(p['program'])} line(s), hash {p['command_hash']}")})
     return dict(base, outcome="propose", program=[redact_text(x) for x in p["program"]],
                 program_hash=p["hash"],
                 dampening={"base": p["base"], "command_hash": p["command_hash"],
@@ -664,7 +665,7 @@ def apply_approved(network: str, decision: dict, approval: dict, *, now: float =
         return refuse("plan", (f"the proposal moved since it was approved (approved "
                                f"{decision.get('program_hash')}, now {p['hash']}): {device}'s "
                                "intent or its deploy changed; a later need proposes it again"))
-    step("plan", "ok", (f"intent patched and its deploy planned again: {len(p['program'])} "
+    step("plan", "ok", (f"intent patched and its deploy planned again: {config_line_count(p['program'])} "
                         f"line(s), the proposal's one hash {p['hash']}"))
     try:
         steplog.record_started(network, decision, steps + [{
