@@ -95,6 +95,16 @@ def first_action(row) -> str:
     return attention.first_action(row or {})
 
 
+@bp.app_template_filter("setting_label")
+def setting_label(key) -> str:
+    """A setting's key as its field is labelled on a Settings card (`settings_page.field_label`,
+    the one label builder; C2820's survey, item 25): a save notice or a switch preview names
+    the field a person saw, its key on hover, never the key as the text."""
+    from modules import settings_page
+
+    return settings_page.field_label(str(key or ""))
+
+
 @bp.app_template_filter("usd")
 def usd(value, exact=False) -> str:
     """An amount as every screen draws it, "$0.25" (`modules.money.usd`, the one formatter; the

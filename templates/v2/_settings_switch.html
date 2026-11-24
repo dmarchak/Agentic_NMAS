@@ -34,7 +34,7 @@
   {%- else %}
   <div class="op-part"><h3>{% if p.to == 'inherit' %}It would pick up{% else %}Today and after{% endif %}</h3><div>
     <table class="table set-table"><thead><tr><th scope="col">Setting</th><th scope="col">Today</th><th scope="col">After</th></tr></thead><tbody>
-      {%- for r in p.rows %}<tr><td>{{ r.key }}{{ setting_desc(r.key) }}</td><td><span class="mono">{{ r.today }}</span> <span class="set-origin">{{ r.today_origin }}</span></td><td><span class="mono">{{ r.after }}</span> <span class="set-origin">{{ r.after_origin }}</span></td></tr>{% endfor %}
+      {%- for r in p.rows %}<tr><td><span title="{{ r.key }}">{{ r.key | setting_label }}</span>{{ setting_desc(r.key) }}</td><td><span class="mono">{{ r.today }}</span> <span class="set-origin">{{ r.today_origin }}</span></td><td><span class="mono">{{ r.after }}</span> <span class="set-origin">{{ r.after_origin }}</span></td></tr>{% endfor %}
     </tbody></table></div></div>
   {%- endif %}
   {%- if p.to == 'not_applicable' %}

@@ -139,6 +139,10 @@ class TestTheGroupSwitch:
         assert "It would pick up" in prev and "http://192.0.2.10:3000" in prev
         assert "default-token-xyz" not in prev and "branch-token-xyz" not in prev
         assert "Inherit Default's Grafana for Branch and remove its own 2" in prev
+        # C2820's survey, item 25: each row names its field as the card labels it, the key on
+        # hover, never the key as the text.
+        assert '<td><span title="grafana_url">URL</span>' in prev, prev
+        assert "<td>grafana_url" not in prev
         out = networks["client"].post("/v2/settings/network/Branch/group/grafana/switch",
                                       data=_form(prev))
         html = out.get_data(as_text=True)
@@ -245,7 +249,8 @@ class TestSaveAndTest:
         r, html = _save(networks, "Default", "grafana",
                         {"grafana_url": "http://192.0.2.11:3000", "grafana_token": ""})
         assert r.status_code == 200
-        assert "Grafana saved" in html and "1 field (grafana_url)" in html
+        # C2820's survey, item 25: the field as its card labels it, its key on hover.
+        assert "Grafana saved" in html and '1 field (<span title="grafana_url">URL</span>)' in html, html
         assert "every network that inherits Grafana reads the new values" in html
         assert get_setting("grafana_url") == "http://192.0.2.11:3000"
         from modules.secrets_store import get_secret
@@ -259,7 +264,8 @@ class TestSaveAndTest:
         from modules.secrets_store import get_secret
         _r, html = _save(networks, "Default", "grafana", {"grafana_token": "new-token-abc"})
         assert get_secret("grafana_token") == "new-token-abc"
-        assert "new-token-abc" not in html and "1 field (grafana_token)" in html
+        assert "new-token-abc" not in html
+        assert '1 field (<span title="grafana_token">Token</span>)' in html, html
 
     def test_a_networks_own_group_saves_its_own_and_default_is_untouched(self, networks):
         from modules.settings_schema import get_setting
