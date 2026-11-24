@@ -58,6 +58,7 @@ import contextlib
 import dataclasses
 import os
 import re
+import weakref
 from html import unescape
 from typing import NamedTuple
 
@@ -197,6 +198,20 @@ def _scan(ast, reads: Reads, follow: list):
 
 _READS: dict = {}
 
+#: Each template's parsed tree, by its environment (held weakly) and then by its name AND its
+#: exact text, so a changed text is parsed again. Each page's closure parsed every template
+#: it reaches again (the base, the macros), 1,023 parses and about 13 s of a profiled walk's
+#: 93 s (the week plan's Stage 2, C4184); `_scan` reads a tree and never changes it.
+_PARSED = weakref.WeakKeyDictionary()
+
+
+def _parse(env, name: str, source: str):
+    trees = _PARSED.setdefault(env, {})
+    key = (name, source)
+    if key not in trees:
+        trees[key] = env.parse(source)
+    return trees[key]
+
 
 def template_reads(env, name: str) -> Reads:
     """*name*'s reads, with its whole closure, parsed by *env* (the app's own environment, so
@@ -211,7 +226,7 @@ def template_reads(env, name: str) -> Reads:
         out.templates.add(t)
         source, _filename, _up = env.loader.get_source(env, t)
         follow: list = []
-        _scan(env.parse(source), out, follow)
+        _scan(_parse(env, t, source), out, follow)
         if out.dynamic and True in out.dynamic:
             out.dynamic.discard(True)
             out.dynamic.add(t)
