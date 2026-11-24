@@ -7,21 +7,17 @@ MERCURY_CHARTER, "Human-facing means human-readable", rules 2 and 3).
   "Section 7's") and no "production-readiness gate": tests/test_settings_words_name_no_codes.py's
   `CODE` and `visible` (a hover, a script or a comment is not read), so Settings' check and this
   one are one rule. A code's place is the record and the source, never the screen.
-- **The manual is outside this population, stated:** its pages (`v2/help.html` and its panel)
-  quote register rows as their sources, 38 codes in 18 pages on 2026-11-24; putting them into
-  words is C4234's remainder, its own pass over docs/manual.
+- **The manual is inside the population** (C4234's remainder, 2026-11-24): its pages
+  (`v2/help.html` and its panel) said their gaps by register row, 38 codes in 18 pages, and now
+  say them in words ("a known gap, registered to be built"); the source keeps the row.
 
-Measured 2026-11-24 before the fix: 17 distinct codes in 11 templates' words (C4234's row).
+Measured 2026-11-24 before the fix: 17 distinct codes in 11 templates' words, and the manual's
+67 passages on the 2 help routes the walk reaches (C4234's row).
 """
 
+from flask import Flask
+
 from tests import v2_context as V2
-
-#: The manual's templates: outside the population, as the docstring says.
-MANUAL = frozenset({"v2/help.html", "v2/_help_panel.html"})
-
-
-def _is_manual(templates: str) -> bool:
-    return bool(set(templates.split(", ")) & MANUAL)
 
 
 def test_the_walk_reads_its_responses_and_the_scan_finds_a_planted_code():
@@ -29,16 +25,28 @@ def test_the_walk_reads_its_responses_and_the_scan_finds_a_planted_code():
     # 2015 HTML responses read on 2026-11-24 (C4234's measurement): a walk that stopped
     # reading most of them would fall below this.
     assert walked["bodies"] >= 1500, walked["bodies"]
-    # The manual quotes codes (C4234's remainder), so the scan reached it and found them: a
-    # scan that stopped finding codes would find none there either.
-    assert any(_is_manual(t) for (_r, t) in walked["codes"]), "the scan found no code at all"
+    # The planted case, through the walk's own recorder: one response whose words name a row
+    # and a plan section, and one that names them only on hover and in a script (not read).
+    app = Flask(__name__)
+    app.add_url_rule("/planted", "planted", lambda: (
+        "<p>registered for later, C1915, as PHASE8_PLAN 17.1 says</p>"))
+    app.add_url_rule("/hidden", "hidden", lambda: (
+        '<p title="C1915">in words</p><script>var row = "C1915";</script>'))
+    recorder = V2._Recorder(app)
+    with app.test_client() as client:
+        for path in ("/planted", "/hidden"):
+            recorder._people(client.get(path))
+    found = {words for hits in recorder.codes.values() for words in hits}
+    assert recorder.bodies == 2, recorder.bodies
+    assert len(recorder.codes) == 1 and any("C1915" in w for w in found), recorder.codes
+    assert all("/planted" in route for (route, _t) in recorder.codes), recorder.codes
 
 
 def test_no_screen_names_a_register_row_or_a_plan_section():
     walked = V2.measure()
     found = sorted(f"{route} [{templates}]: “{words}”"
                    for (route, templates), hits in walked["codes"].items()
-                   if not _is_manual(templates) for words in hits)
+                   for words in hits)
     assert found == [], (
         f"{len(found)} place(s) show a person a register or plan code. Say what the code stands "
         "for in words, or leave it to the record and the source:\n" + "\n".join(found))

@@ -73,8 +73,8 @@ recorded on History as that person's decision. An Auto set in Settings with an e
 days) reads **On until HH:MM**, and returns to Dry run at that time. Off is Dry run:
 self-healing still watches and says what it would fix, and sends nothing. One press, no
 dialog; the toggle is busy on itself until the answer, then the strip is drawn again with the
-state now. Switching it on is the approval for what is already open (the operator, 2026-11-16,
-C3823): the open problems Mercury can fix run as one batch, in the steps above, named after the
+state now. Switching it on is the approval for what is already open (the operator's decision,
+2026-11-16): the open problems Mercury can fix run as one batch, in the steps above, named after the
 switch-on. While self-healing is off, one line beside the switch says what turning it on does:
 "Also fixes the N open problems (2 restores, 1 saved script)", and the open incidents with no
 fix decided yet, "decided again in Auto, each fixed by itself only if its kind is allowed

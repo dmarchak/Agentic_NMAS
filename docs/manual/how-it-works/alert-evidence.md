@@ -610,7 +610,7 @@ may cite.
 **The topology class** is on for every network by default. It is the network's setting
 `ai_topology_class`; turned off, Explain sends the pack alone and says so beside the answer,
 and a setting that cannot be read counts as off. No screen turns it off yet: its control on
-the network's Settings is registered to build (C1713). A classification marking that forces AI
+the network's Settings is registered to be built. A classification marking that forces AI
 off is planned and not built yet: nothing reads one today.
 
 ## Build again {#rebuild}

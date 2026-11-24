@@ -334,7 +334,7 @@ mode and whether the loop is running.
   nothing watches it once the loop is stopped (a rate still firing opens a new row at the next
   start). The same source on several switches is one row. You may dismiss it with a reason, or press **Rate-limit this
   source…** to make it an incident awaiting you, answered as the scan rule's; AUTO never acts
-  on it (C4124). It also watches what the
+  on it. It also watches what the
   flood rule holds but does not call a flood:
   - **a TCP transfer**, its data with its ACKs returning;
   - **one large-packet stream**, whose packets average more than the flood's size (200 B by

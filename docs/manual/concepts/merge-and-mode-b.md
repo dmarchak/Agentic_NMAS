@@ -30,7 +30,7 @@ confirm is this list, byte for byte; it is computed again at apply and refused i
 A residue line that shares a setting with a line intent already has on the device (one
 setting with two spellings) is neither replaced nor plain residue: it is not offered for
 removal, and the deploy card's **What will not happen** says that such a line exists and will
-not be removed. The v2 card does not name the line itself (a gap, registered, C1359).
+not be removed. The v2 card does not name the line itself (a known gap, registered to be built).
 
 ## Why the tool never removes by default {#why}
 

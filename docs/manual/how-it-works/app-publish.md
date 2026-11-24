@@ -53,7 +53,7 @@ code. The network says so instead. A change is saved as you, with the value befo
 ## What is not checked yet {#not-yet}
 
 The gate's mutation, survivors, reconcile and `@covers` checks are not part of Publish yet
-(after the course labs; register C2728). Publish rests on a person's review and the version's
+(they come after the course labs). Publish rests on a person's review and the version's
 own tests passing.
 
 ## Publish {#publish}

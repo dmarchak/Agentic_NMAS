@@ -56,7 +56,7 @@ covers is not dropped: it is listed with the status **No login** (its words on h
 platform, kind and site), nothing opens a session to it, and Needs attention raises one row per
 network counting them until each resolves. v2 does not
 yet draw which of these a device's credential came from: the device page's Credential check
-shows its age and its rotation policy only (a gap, registered, C1360). Values are write-only:
+shows its age and its rotation policy only (a known gap, registered to be built). Values are write-only:
 none is ever shown back.
 
 ## Profiles {#profiles}
@@ -176,7 +176,7 @@ password here changes no device: the devices keep the one they were given, and n
 carries a new one to them yet. So **Replace its password…** is refused while a device whose
 read-only account comes from this profile holds it (as **On the devices** last read its golden),
 naming each device and when it was read, and while that coverage cannot be read; nothing is
-saved. It is allowed while no device holds the account (C3427's first part; its rollout to
+saved. It is allowed while no device holds the account (its first part; the rollout to
 every device holding the account comes later).
 Deleting a profile deletes its read-only account with it; retiring a device removes its intent,
 and the account with it.

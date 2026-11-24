@@ -721,7 +721,7 @@ def seed():
 
 def decline_section():
     return svg(330, (
-        "Declining a monitoring section on one device, with a reason (C718). The preview is the "
+        "Declining a monitoring section on one device, with a reason. The preview is the "
         "intent change: one profile_exclude entry with the section, your reason, you and the "
         "time. You confirm its hash; at apply the device is held, the change computed again and "
         "refused if it moved, and exactly that device's intent file is committed as you. "
@@ -1161,7 +1161,7 @@ def dhcp_exclusion():
 
 def dhcp_lease_release():
     return svg(470, (
-        "Releasing one Kea lease (C1403). The preview asks Kea for its leases and its "
+        "Releasing one Kea lease. The preview asks Kea for its leases and its "
         "configuration and names the lease, its client and whether the address is reserved. You "
         "confirm with a reason. The apply reads Kea's leases again and compares the hash, sends "
         "lease4-del or lease6-del for that address alone through Kea's control agent, and reads "

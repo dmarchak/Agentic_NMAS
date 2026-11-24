@@ -46,7 +46,7 @@ shows a subset, and **Show all** clears it.
   C8000v: a device asking for over an hour before its Pick may never take it. It must be
   restarted: it asks again as it boots and takes the Pick. v2 has no control that restarts a
   device it has not onboarded, nor one that declares a planned restart beforehand (a gap,
-  registered, C1361), so that restart is done outside the tool.
+  registered to be built), so that restart is done outside the tool.
 - **Gone quiet:** no request for over ten minutes. It is listed for 24 hours after its last
   request, then dropped. A C8000v never gives up on its own, so a quiet one was most likely
   switched off or given a configuration at its console.

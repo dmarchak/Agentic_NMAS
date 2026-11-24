@@ -74,8 +74,8 @@ capture** (the drift check's), **Intent** (whether its golden matches its intent
 startup check found its startup config carrying its credential), **Credential** (how long since
 Mercury last rotated it, or "never rotated by Mercury", and when its profile's rotation policy
 next makes it due; see [on a schedule](rotate#scheduled)) and **Alerts**. For a network that
-takes Default's monitoring profile, the profile line does not yet name Default's (a gap,
-registered, C1362).
+takes Default's monitoring profile, the profile line does not yet name Default's (a known
+gap, registered to be built).
 
 **Since last capture** is the network's last drift run's word on the device, the device
 against its golden, named for what it compares (a golden is the record of its last capture):
@@ -255,7 +255,7 @@ subtraction places a restart hours from where it was. Each shows the device's ow
 its last reload and the crash file it saved, if any, and whether it was planned: the tool's own
 reload is, and so is a window the tool was told about beforehand. v2's only control that
 declares such a window is the device's own **Reload…**; a restart made any other way can be
-declared beforehand only outside the interface (a gap, registered, C1361). Anything else is
+declared beforehand only outside the interface (a known gap, registered to be built). Anything else is
 unplanned, and is also on Needs
 attention for seven days. A device that is down is not read, so its readings around a restart
 have a gap as long as the restart; the restart is found by comparing its newest reading with

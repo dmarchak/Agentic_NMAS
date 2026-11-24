@@ -101,7 +101,7 @@ baseline tag's message states which claim it makes:
 v2 has no control that takes the working claim: no screen reaches the code that adds the
 `golden-state/<time>` tag. It is taken only by the golden-state command on the host, which
 reads and judges by default and commits nothing, and takes the baseline with its claim only
-when told to commit. This is a gap, registered (C1357). The tag's message names each
+when told to commit. This is a known gap, registered to be built. The tag's message names each
 device's state, each routing peer outside management (whose state the tool sees from one
 side only), and what the snapshot does not read.
 
@@ -113,7 +113,7 @@ never as earned: nothing says every device was at its intent.
 A baseline that records a state nobody should go back to (a deliberately broken device, for
 instance) can be withdrawn. A withdrawal is kept in the tool's own table of withdrawn
 baselines, keyed by the baseline's commit, with who decided, when and why. v2 has no control
-to withdraw one: an entry is added to that table in the code (a gap, registered, C1358).
+to withdraw one: an entry is added to that table in the code (a known gap, registered to be built).
 From then on:
 
 - every restore route refuses it, whichever screen asked, and sends nothing;

@@ -112,7 +112,7 @@ finished by running it again:
    outlives its reservation and refuses the address to the next device that asks with another
    client identifier, so it goes too; one Kea now holds for another client is left, and said.
    **Then its link's ZTP subnet** (`ztp_subnet`). Read: Mercury's IPv4 subnet file, for a
-   relayed ZTP subnet whose record says this device's Add device added it for its link (C1460),
+   relayed ZTP subnet whose record says this device's Add device added it for its link,
    with the reservations and leases still in it. Sent: nothing to the device; to Kea, the
    subnet's removal through [the subnet writer](dhcp-subnet) (its own hash, `-t` on the
    candidate, a reload, a read-back). Recorded: `dhcp/subnets.yml` in the Kea owner's
@@ -156,7 +156,7 @@ finished by running it again:
     written for installing, else the one Grafana loads), and Grafana's own rules. Sent:
     nothing. Recorded: the rules file written without the device's rule where a re-measure
     writes it, with who and why beside the re-measures, and a delete file beside it naming the
-    rule (Grafana keeps a rule its file dropped unless a file names it for deletion, C1419);
+    rule (Grafana keeps a rule its file dropped unless a file names it for deletion);
     the result names the one host step that installs both and proves the rule gone. Until then
     the hourly check names the rule EXTRA. When no rules file names the device but Grafana
     still runs its rule, the delete file alone is the work. The only rule in the file is not
@@ -164,7 +164,7 @@ finished by running it again:
 12. **Its telemetry rules** (`telemetry`). Read: the generated telemetry rules (the file
     written for installing, else the one Grafana loads), and Grafana's own rules. Sent:
     nothing. Recorded: the rules file written without the device's rules (one per
-    subscription), and a delete file beside it naming them (C1419); the result names the host
+    subscription), and a delete file beside it naming them; the result names the host
     step that installs both, `c1419-install-alert-rules.sh telemetry`. When no rules file names
     the device but Grafana still runs its rules, the delete file alone is the work. When the
     device's rules are the file's only rules, the file is not written without them (the

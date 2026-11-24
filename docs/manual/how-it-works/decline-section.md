@@ -8,7 +8,7 @@ on the gap reads **Declined**, with who, when and why, on Coverage and on the IP
 the summary counts it as declined, never as covered or missing. **Undo decline…** takes it
 back.
 
-![Declining a monitoring section on one device, with a reason (C718). The preview is the intent change: one profile_exclude entry with the section, your reason, you and the time. You confirm its hash; at apply the device is held, the change computed again and refused if it moved, and exactly that device's intent file is committed as you. Coverage and the IP SLA page then read it as declined, never as a gap. Nothing is sent; Undo decline is the same with the entry removed.](diagrams/decline-section.svg)
+![Declining a monitoring section on one device, with a reason. The preview is the intent change: one profile_exclude entry with the section, your reason, you and the time. You confirm its hash; at apply the device is held, the change computed again and refused if it moved, and exactly that device's intent file is committed as you. Coverage and the IP SLA page then read it as declined, never as a gap. Nothing is sent; Undo decline is the same with the entry removed.](diagrams/decline-section.svg)
 
 ## What it records
 

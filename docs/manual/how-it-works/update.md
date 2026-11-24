@@ -162,7 +162,7 @@ and the Update page draws each step as the updater records it:
    runs the target, every other long-running unit that runs the checkout's code (today the ZTP
    responder) is restarted with `systemctl try-restart` and confirmed by its new MainPID; one
    not running is left, and its next start loads the new code. A terminal `nmas-deploy` does
-   the same (C1404: a responder that kept its old code refused a device the new code serves).
+   the same (a responder that kept its old code once refused a device the new code serves).
 9. **Ready** (`ready`). Read: `/health` on the host, every 2 seconds for up to 100 s (about
    2.5x the 40 s the first pages after a restart waited on 2026-11-04). Sent: nothing.
    Recorded: the step, and the readiness the outcome carries (its state, the step, its

@@ -42,7 +42,7 @@ Add device. ZTP is IPv4 only: an IPv6 subnet for ZTP is refused by name. The sub
 `"match-client-id": false` (a check: "match-client-id false: a lease is matched by the device's
 MAC"): Kea then matches a lease to its device by the MAC the reservation names, never by the
 client-id the device sends, so a device redeployed with a new client-id is answered with its
-reserved address instead of meeting its own old lease as another client's (C1403, measured on
+reserved address instead of meeting its own old lease as another client's (measured on
 this installation's Kea). Without the tick the Add is as above.
 
 ## Removing a subnet {#remove}
@@ -64,7 +64,7 @@ other.
 ## Editing a subnet added for ZTP behind a relay {#edit-relayed-ztp}
 
 Its **Edit…** changes its pool, the pool's description, its domain and its lease times, as for
-any subnet, and keeps its ZTP mark and its relay address; one added before C1403 gains
+any subnet, and keeps its ZTP mark and its relay address; one added before ZTP subnets matched leases by MAC gains
 `"match-client-id": false` with its next edit, said in the change. D4 holds: such a subnet never carries
 a route or resolver option. Gateway (3) and DNS servers (6) stay on the card, and a value in
 either is refused at the preview, naming the value and what D4 allows. Option 3 may be only the
@@ -76,7 +76,7 @@ leave is checked too: a route or resolver option already on it or on a pool (`ro
 `domain-name-servers`, `static-routes`, `classless-static-route`), whoever put it there, refuses
 the edit, naming each. Its checks say D4 in place of the gateway's comparison with intent: a ZTP
 subnet carries no gateway, so intent's VRRP address is not its value. Its reservations stay
-onboarding's. The mark is IPv4's alone: ZTP is IPv4 only (C1245), so an IPv6 subnet carrying
+onboarding's. The mark is IPv4's alone: ZTP is IPv4 only, so an IPv6 subnet carrying
 it is an ordinary subnet.
 
 ## Where a subnet lives

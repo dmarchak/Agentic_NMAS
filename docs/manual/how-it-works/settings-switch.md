@@ -129,7 +129,7 @@ count:
    back.
 
 Renaming a network is not offered: every page finds a network's records by the folder its name
-derives, so a rename must move the folder and every record that names the network (C639).
+derives, so a rename must move the folder and every record that names the network.
 
 ## What a switch does not do
 
