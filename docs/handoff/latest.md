@@ -1,6 +1,36 @@
-# Handoff: the waiting patches as one stack, now 26 (2026-11-24, from 01:00 Denver)
+# Handoff: the waiting patches as one stack, now 30 (2026-11-24, from 01:00 Denver)
 
-## 0000000. The 07:48 session (2026-11-24): read this first
+## 00000000. The 08:22 session (2026-11-24): read this first
+
+- **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
+- **The stack's trees:** `tree-stack-27.txt` (with c2820-tiers), `tree-stack-28.txt` (with
+  c4234-measured), `tree-stack-29.txt` (with c4234), `tree-stack-30.txt` (with
+  c2820-departs-rid). Make the next patch against tree-stack-30; the worktree
+  `~/nmas-worktrees/c2820-sdn` holds it staged. land_all.sh now ends
+  `c2820-tiers c4234-measured c4234 c2820-departs-rid` (30 patches).
+- **A stack defect found and fixed as a patch** (`c2820-departs-rid.patch`): item 9's patch
+  changed the duplicate router-id row to "differs from its intent" and left
+  tests/test_duplicate_router_id.py expecting "departed" (red on tree-stack-26). Earlier
+  aimed sets missed it: **aimed runs over 300 s need `NMAS_TEST_TIMEOUT` raised** (the
+  default bounds the whole run: 407 files took 700 s at -n 4 with 2400).
+- **C2820 item 27 BUILT as a patch**, `~/mercury-runs/c2820-tiers.patch` and `.msg`: Fix kinds'
+  chips say who fixes each kind ("Mercury by itself", "A person approves", "No configuration
+  fix", "A person only"), the tier on hover; the security row drew "4 never" (a template
+  else) and now "A person approves". Red first, two controls; aimed 39 files, 1,624 passed,
+  C4090's loops the one red. **C2820 left:** only 31's `dampening` backtick.
+- **C4234 measured, UNKNOWN to B** (`c4234-measured.patch`, docs only): the walk's 2,015
+  responses draw 17 distinct codes in 11 templates' words; the manual 38 in 18 pages.
+- **C4234 BUILT as a patch**, `~/mercury-runs/c4234.patch` and `.msg`: the 17 in words, and
+  tests/test_codes_drawn.py over every response the walk reads (a `codes` scan in
+  tests/v2_context.py's recorder). Red first (51 places), two controls bite; four tests'
+  premises corrected (they asserted the code itself in the words); aimed 407 files, 11,733
+  passed, C4090's loops the one red left. Kept outside the
+  scan: the manual, the running commit's subject, a console profile's description (hashed:
+  changing it asks surveyed devices to survey again; decisions file).
+- **Next:** land the 30 once session-namespace is answered; meanwhile C4234's manual pass
+  (38 codes in docs/manual), C2820 31's backtick, or Stage 6's rows.
+
+## 0000000. The 07:48 session (2026-11-24)
 
 - **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
 - **The stack's trees:** `~/mercury-runs/tree-stack-24.txt` (with c2820-codes),
