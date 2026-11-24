@@ -22,8 +22,17 @@
   Ryu rows (C3925, C3929, C3936, C3938) need device measurement or hardware; C3601's last
   callers (adopt, the golden capture batch, an app's deploy) each need a page to host its job
   (adopt's form is a dialog fragment); C3902's fuller version is "after the demo".
-- **Next:** C4244 (B, the stopped card's words: needs a template change and its board
-  fidelity record), then B rows by user impact, or C4223's design.
+- **Since 14:55:** C4244 (7511a554); the landing's union merge corrected, C4226, C4228, C4230
+  closed (902954d8: a union keeps a line one side deleted; resolve the register by the
+  patch's side next time); C4184 closed (11fd8d43); C4235 Go on once (f3cdf251) and C4245 the
+  rollout's Continue once (e1569b25, 5c9e2d77), both reviewed SAFE; C4210 the save check's own
+  4 MiB cap (df96a07c); C4212 not a defect, folded into C4213, C4213 measured to C (e1c59b3b,
+  e7e0e31d); C3103's two hidden tests run (c4c20c8b; the same shape found nowhere else);
+  OPERATOR.md#c4135-age asked.
+- **Next:** C4223's design (the pointer's keep: go down to the control once the pointer left,
+  without redrawing the opened record; a browser investigation of why Right moved); C3464
+  (amounts in the AI gateway's refusals through `money.usd`: about 30 lines, the irreversible
+  tier's hand check owed); then B rows by user impact.
 
 ## 0000000000000. The operator's decisions of 2026-11-24, 13:15 Denver
 
