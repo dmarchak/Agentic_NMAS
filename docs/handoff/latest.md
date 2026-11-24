@@ -35,10 +35,12 @@
   Devices case drew no row change, so C4229 was measured next with the same harness.
 - **C4229 measured, UNKNOWN to B:** rows inside a `<form x-data>` (Devices' selection form)
   lose every tick, radio and option when one row's text changes (`morph`'s restart,
-  static/js/nmas_v2.js ~844, replaces the component whole). **The next item to build** (a
-  patch: its test goes in tests/test_live_merge.py): when the component holds a part a person
-  changed, merge into it or keep it and revisit, as the audit's cause 4 says; the scratch
-  test's `test_measure_c4229_rows_inside_a_component` is the shape of the red test.
+  static/js/nmas_v2.js ~844, replaces the component whole). **Its fix is BUILT as a patch**,
+  `~/mercury-runs/c4229.patch` and `.msg` (base 933f1c08; worktree `~/nmas-worktrees/c4229`,
+  branch fix/c4229, staged): `morph` merges a component in place while it holds a person's
+  work (`personsIn`, new; `holdsPart`). The new test is red on 933f1c08's script, and a
+  control of the select logic bites. Land it after the stage5 patch (section 1's order), and
+  add `c4229` to land_all.sh's list.
 - Committed only docs (a9d1108d and the commit after); nothing deployed.
 
 ## 0a. The late session (from 22:37 Denver, 2026-11-23)
