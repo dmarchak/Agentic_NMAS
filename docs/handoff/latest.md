@@ -1,5 +1,33 @@
 # Handoff: Stage 3 done; Stage 1's test changes built as patches, waiting on the operator (2026-11-23, evening)
 
+## 0. The night session (from 20:03 Denver, 2026-11-23): read this first
+
+- **Still blocked:** this session too has AppArmor label `unconfined` (no namespace), so every
+  test-changing commit stays a patch (OPERATOR.md#session-namespace).
+- **CI on main is red** on three tests (every run since before d24cbdc4): C3886's
+  test_heal_act (fixed in `c3886-keyed-placeholder.patch`), C4090's three loops in
+  test_v2_context_is_drawn (need captured records, or the operator's words for
+  EMPTY_IN_FIXTURE), and test_no_utc_drawn (b0c9b952's captured records): **the last fixed,
+  c6ca9163.**
+- **The assistant's hand check: DONE** in its worktree, the patch refreshed
+  (`stage4-assistant.patch`, 33 tests): 20 mutants all died by run 2, 7 new tests.
+- **C4200 found and fixed as a patch** (`~/mercury-runs/c4200.patch`, `.msg`; worktree
+  `~/nmas-worktrees/c4200-fix`, branch fix/c4200): the test before the one the probe named,
+  `test_the_tag_survives_the_declarations_expiry`, ran `decide.run` in AUTO outside
+  `acts_with`, so a real heal job outlived it and wrote a needs-a-person step into the
+  session's store. A serial full run with the fix started about 21:00 Denver in that worktree:
+  `~/mercury-runs/c4200-fix-serial.log` and `suite/c4200-fix-serial.xml` (about 90 min);
+  compare with `suite/serial.xml` (`junit_diff.py`) for C4222.
+- **Stage 2 (C4184), landed:** 7ef8673e (AI route scans once per text, 216 s summed to ~14 s),
+  a4e32125 (source index survey), 7ea5a823 (the v2 walk shared across xdist workers; C1763's
+  app log read from the store), 8c307c32 (writer-site scan once a process). Measured: 8,263 s
+  summed in the 12-worker run, so ~1,800 s must go for 10 minutes (C4184's row).
+- **Uncommitted in the checkout: modules/nsot/roundtrip.py** (render's compiled-code cache,
+  `_COMPILED`, a Jinja BytecodeCache; test_ai_intent_change 108 s to 58 s; 915 render and
+  deploy tests passed). Device-write path: its review was started about 21:05 Denver,
+  `~/Documents/nmas-reports/review-devicewrite-2026-11-24-render-cache.md`. Commit it only
+  if that says SAFE.
+
 Read CLAUDE.md, this file and the standing plan, `docs/plan/week-2026-11-23.md`, then
 `docs/handoff/OPERATOR.md` (what waits on the operator). docs/handoff/START.md is the standing
 prompt. Decisions: `docs/handoff/decisions-2026-11-23.md`. Today's report:
