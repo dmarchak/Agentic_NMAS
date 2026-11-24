@@ -8,6 +8,25 @@ and the next session unblocks the item and moves the entry to Answered.
 
 ## Open
 
+### claude-md-0230
+
+- **Asked:** CLAUDE.md is yours (the `claude-no-claude-md-edits` hook refuses the agent's edits), so
+  the 02:30 rule waits for you to paste it. Put these lines first under "### Working method"
+  (checked: tests/test_claude_md.py's `unenforced` finds none unenforced, its paths exist):
+
+  ```
+  - **Sessions run until 02:30 Denver (the operator, 2026-11-24): never end a turn before 02:30
+    America/Denver, and never stop to report, summarise or ask. Progress goes in the day's
+    report file; a question goes in docs/handoff/OPERATOR.md, its plan item marked BLOCKED, and
+    the next item is taken. At 02:30 stop at a clean point, update docs/handoff/latest.md and the
+    day's report as the morning session's handoff, then end the turn. Cost: no progress shown in
+    chat until the handoff. Prevents: work stopping for a report, or for an answer nobody is
+    there to give.** [not mechanised]
+  ```
+- **Also:** the fast lane is retired (2026-11-24), so the two rules "Temporary fast lane" and
+  "Temporary skip mode within the fast lane" under "### Git, the gate and deploys" are stale: delete
+  them both. After you paste, the agent commits CLAUDE.md as you left it.
+
 ### gui-direction
 
 - **Asked:** which GUI direction to build (the week plan's one big decision). Three drawn on the

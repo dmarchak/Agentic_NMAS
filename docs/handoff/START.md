@@ -23,9 +23,11 @@ why | how to reverse) and carry on.
 
 ## Run rules
 
-- **Keep working through the plan.** End your turn only when your context is close to its
-  limit or at the 02:30 handover, never to report progress: progress goes in the day's report
-  file, not in chat.
+- **Keep working through the plan until 02:30 Denver** (the operator, 2026-11-24). Never end a
+  turn before 02:30 America/Denver, and never stop to report, summarise or ask: progress goes
+  in the day's report file, not in chat; a question goes in OPERATOR.md with its item marked
+  BLOCKED, and the next item is taken. A full context is compacted and the work goes on. At
+  02:30, the handover below.
 - **Before you exit, every time:** update `latest.md` and the day's report.
 - Commit each item as it lands; keep latest.md so a fresh session could pick up from that
   point; keep the context small.
