@@ -367,13 +367,42 @@ def _departing_golden(base: dict, device: str, golden: dict, *, at_golden: bool)
     heal" (the operator, 2026-11-17: "a device at a golden that departs from intent is a
     departure"), and never a send: the restore to intent is C4093's build. Its one home, for a
     departure Mercury would restore, for one that leaves no unit, and for an incident settled
-    at its golden (*at_golden*: its words say the device is at that golden)."""
+    at its golden (*at_golden*: its words say the device is at that golden).
+
+    **It only stands and gives R1 its start** (C4207, the operator's ruling of 2026-11-23): it
+    carries `INTERIM`, so no Automatic saved script fires on it (`run`'s `SCRIPT_OUTCOMES`, and
+    R1's own start, `fixit.auto.fires_no_scripts`), and it raises no Alert notice, so no
+    diagnosis action, team message or analysis call starts from it (`heal_notice.due`)."""
     why = ("a restore to intent that adds lines the golden never held is not built yet: no fix "
            "of Mercury's own, so the AI investigates")
     words = (f"{device} is at its golden, which departs from its intent "
              f"({golden.get('words') or golden.get('state')}), and {why}" if at_golden else
              f"{device}'s golden departs from its committed intent, and {why}")
-    return dict(base, tier=3, outcome="cant_fix", words=words)
+    return dict(base, tier=3, outcome="cant_fix", words=words, **{INTERIM: True})
+
+
+#: The interim's mark on its decision (`_departing_golden`), kept in the step log's decision row
+#: and its entry (`steplog.record_decision`, `steplog._fold`): a can't-fix that only stands and
+#: gives R1 its start (C4207).
+INTERIM = "interim"
+
+
+def is_interim(found: dict) -> bool:
+    """Whether the incident *found* (`incident_page.resolve`'s) stands on the interim's
+    can't-fix: its newest decision in the decision store carries `INTERIM` (the store
+    `decisions.record` writes first, so a step-log row that failed to write leaves no stale
+    answer: the second review's N1), else its step-log entry's; where neither store could be
+    read it answers yes, so nothing fires on what could not be read (L1, N2). The one judgement
+    every path that fires a saved script on an incident asks (R1's start,
+    `fixit.auto.fires_no_scripts`; the script-saved retry, `heal.retry._selected`)."""
+    found = found or {}
+    decided = found.get("decisions") or []
+    if decided:
+        return bool(decided[-1].get(INTERIM))
+    entry = found.get("entry") or {}
+    if entry:
+        return bool(entry.get(INTERIM))
+    return bool(found.get("unreadable"))
 
 
 #: The outcomes whose words state the cause first (C2823): what a person reads where they
@@ -1011,7 +1040,8 @@ def run(network: str, *, now: float = None, sources=None, by: str = "heal to int
                     continue
                 out["decided"].append({"incident": inc["id"], "decision": d["id"],
                                        "outcome": d["outcome"]})
-                if d["outcome"] in SCRIPT_OUTCOMES:
+                # The interim's can't-fix only stands (C4207): no saved script fires on it.
+                if d["outcome"] in SCRIPT_OUTCOMES and not d.get(INTERIM):
                     decided_records.append(claimed)
                 if pending:
                     retried[inc["id"]] = (pending, d)

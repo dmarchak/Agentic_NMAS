@@ -150,3 +150,29 @@ def test_r1_asks_the_ai_on_a_tail_failure_attached_to_an_open_incident(  # noqa:
     closed = [ln for ln in F.read(rec)["lines"] if ln.get("state") == "closed"]
     assert closed == [], closed
     assert _of(inc_id)["state"] == "closed" and _of(other_id)["state"] in R1.OPEN
+
+
+def test_r1_start_on_an_attached_tail_fires_no_saved_script(lab, monkeypatch):  # noqa: F811
+    """C4208 (the operator's ruling of 2026-11-23: "no; an attached tail's R1 start fires no
+    scripts first"): the automatic start (`scripts` True, `fixit_investigation`'s) on the
+    attached ``tail:<decision>`` key asks the AI without firing the open incident's saved
+    scripts; the review's 3-E probe had `fire_matching` called on the watching incident. The
+    open incident's own failure still fires them first, as before."""
+    from modules import heal_notice
+    from modules.fixit import auto as R1
+
+    inc_id, d, other_id, rec = _attached(monkeypatch)
+    fired = []
+    monkeypatch.setattr("modules.nsot.saved_plans.fire_matching",
+                        lambda network, found, **kw: fired.append(found["id"]) or [])
+    asked = []
+
+    def ask(found, inc):
+        asked.append(found["id"])
+        return {"state": "answered"}
+    got = heal_notice._investigation(NET, other_id, R1.key_of("tail", d["id"]), ask,
+                                     deliver=None, trigger="auto")
+    assert (fired, asked, got) == ([], [other_id], {"state": "answered"}), (fired, got)
+    heal_notice._investigation(NET, other_id, R1.key_of("decision", other_id), ask,
+                               deliver=None, trigger="auto")
+    assert fired == [other_id], fired

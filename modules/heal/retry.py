@@ -209,6 +209,7 @@ def _selected(network: str, trigger: str, key: str, match: dict, incs: list, now
     from modules import incident_page
     from modules import problem as P
     from modules.heal import batch as B
+    from modules.heal import decide
     from modules.nsot import saved_plans
 
     plans, skip = {}, set(skip or ())
@@ -227,11 +228,16 @@ def _selected(network: str, trigger: str, key: str, match: dict, incs: list, now
             continue
         if trigger == "script_saved":
             try:
-                prob = P.classify(incident_page.resolve(network, inc["id"]))
+                found = incident_page.resolve(network, inc["id"])
+                prob = P.classify(found)
             except Exception as exc:                  # noqa: BLE001 (said; not retried)
                 log.error("heal: %s's problem could not be classified: %s", inc["id"], exc)
                 continue
             if not prob.condition or not saved_plans.matches(match or {}, prob):
+                continue
+            # The interim's can't-fix only stands (C4207; its review's M2): no saved script
+            # runs on it, so a script's save neither sends it back nor counts it.
+            if decide.is_interim(found):
                 continue
         plans[inc["id"]] = {"kind": kind, "hold": hold,
                             "decision": (inc.get("standing") or {}).get("decision") or "",

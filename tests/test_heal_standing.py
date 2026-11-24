@@ -185,8 +185,12 @@ class TestTheWalks:
         alerted("leaf-c", T0 + 249, by=by, rule="Telemetry stream lost")
         assert [m["device"] for m in the("core-b")["attached"]] == ["leaf-c"]
         assert open_devices() == ["core-b", "leaf-c"]
+        # The folded symptom raises no notice of its own. The planted can't-fix is the interim,
+        # which only stands and gives R1 its start (C4207, the operator's ruling of 2026-11-23),
+        # so no notice is due at all; a can't-fix that is told is told once
+        # (tests/test_heal_ends_at_golden.py `test_a_symptom_cant_fix_still_fires_and_is_told`).
         due = heal_notice.due("Default", now=T0 + 300)
-        assert [e["incident"] for e in due] == [the("core-b")["id"]], "one notice"
+        assert [e["incident"] for e in due] == [], "no notice for the fold, none for the interim"
 
     @pytest.mark.parametrize("by", ["label", "ipv4", "ipv6"])
     def test_a_symptom_long_after_the_decision_is_judged_on_its_own(self, fold, by):

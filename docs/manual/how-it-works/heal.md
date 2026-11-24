@@ -149,7 +149,9 @@ and raises no can't-fix: an incident whose device read finds no problem closes o
 never on a quiet timer. A device at a golden that departs from its intent is still off its
 intent, so it is never nothing to heal: with no symptom, or every symptom read gone, it is the
 Tier 3 can't-fix of [Decide](#decide) step 6, "<device> is at its golden, which departs from
-its intent (…)", and its incident stays open, needing a person.
+its intent (…)", and its incident stays open, needing a person. That can't-fix only stands, and
+starts automatic AI troubleshooting where that is turned on: no saved script fires on it and no
+alert is sent for it, so nothing is sent to the device until a person decides.
 
 ## Standing on its decision {#standing}
 

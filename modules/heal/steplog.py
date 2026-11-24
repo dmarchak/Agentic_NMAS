@@ -254,7 +254,9 @@ def record_decision(network: str, decision: dict, now: float = None) -> dict:
         # C2817, C2823 (expand: a row written before them has neither): what Mercury did or
         # would do on its own, and the cause it stated, facts first.
         outcome_words=decision.get("outcome_words") or "",
-        headline=decision.get("headline") or "", cause=decision.get("cause") or None), now)
+        headline=decision.get("headline") or "", cause=decision.get("cause") or None,
+        # C4207 (expand: only the interim's row carries it): a can't-fix that only stands.
+        **({"interim": True} if decision.get("interim") else {})), now)
 
 
 def policy_words(what: str, setter: str) -> str:
@@ -394,6 +396,8 @@ def _fold(rows: list) -> list:
         row = r.get("row")
         steps = [dict(s, row=row, decision=r.get("decision") or "") for s in r.get("steps") or []]
         if row == "decision":
+            # The latest decision's interim mark (C4207): a later decision's row clears it.
+            e["interim"] = bool(r.get("interim"))
             e.update(outcome=r.get("outcome") or "", words=r.get("words") or "",
                      state="decided", guard=r.get("guard") or {}, units=r.get("units") or [],
                      triggers=r.get("triggers") or [], person=r.get("person") or "",

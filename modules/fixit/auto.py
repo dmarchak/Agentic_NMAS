@@ -286,6 +286,22 @@ def attached_tail_failures(record: dict) -> list:
     return out
 
 
+def fires_no_scripts(found: dict, key: str) -> bool:
+    """Whether R1's start on the failure *key* of the incident *found* (`incident_page.resolve`'s)
+    fires no saved script before it asks the AI (the operator's rulings of 2026-11-23): a tail
+    attached to this incident from its own closed one (C4208: "no; an attached tail's R1 start
+    fires no scripts first": the open incident's heal decides first), and ANY failure of an
+    incident standing on the interim's can't-fix, which only stands and gives R1 its start
+    (C4207, `decide.is_interim`; its review's H1 and M1: a ``retry:``, ``act:``, ``held:`` or
+    plan key of such an incident fired them too)."""
+    from modules.heal import decide
+
+    record = (found or {}).get("incident") or {}
+    if key in {f["key"] for f in attached_tail_failures(record)}:
+        return True
+    return decide.is_interim(found)
+
+
 def plan_failures(network: str, incident) -> list:
     """*incident*'s approved plans that stopped or failed (the R1 flow's step 7), each a
     failure keyed by its run (`key_of`): read from its record's approve lines and each plan

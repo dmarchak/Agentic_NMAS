@@ -175,3 +175,101 @@ def test_the_notice_ends_no_symptom_cant_fix_at_a_departing_golden(  # noqa: F81
     assert not got.get("cleared"), got.get("cleared")
     assert I.read("Default")["incidents"][0]["state"] == "standing"
     assert [e["event"] for e in events] == ["cant_fix"], events
+
+
+def _spy_scripts(monkeypatch):
+    """`saved_plans.fire_matching` stood in: the ids of the incidents it was asked to fire on."""
+    from modules.nsot import saved_plans
+    fired = []
+    monkeypatch.setattr(saved_plans, "fire_matching", lambda network, found, **kw: fired.append(
+        (found.get("incident") or {}).get("id") or found.get("id")) or [])
+    return fired
+
+
+@pytest.mark.parametrize("state", ["departs", "unknown"])
+def test_the_interim_only_stands_and_gives_r1_its_start(lab, monkeypatch, state):  # noqa: F811
+    """C4207 (the operator's ruling of 2026-11-23: "the interim's can't-fix only stands and
+    gives R1 its start"): the decision job fires no saved script on it, no Alert notice is due
+    for it (so no diagnosis action, team message or analysis call), and R1's own start on it
+    fires none either; R1 still lists it. The review's 0-A probe: at ed71eb35 `fire_matching`
+    was called on all three new interim cases."""
+    from modules import heal_notice, incident_page
+    from modules.fixit import auto as R1
+
+    fired = _spy_scripts(monkeypatch)
+    settle(GOLDEN, how="at_golden", claim=False)
+    (ran,) = DC.run("Default", now=T0, sources=Fake(GOLDEN, state=state))["decided"]
+    assert ran["outcome"] == "cant_fix", ran
+    assert fired == [], fired
+    assert [e["incident"] for e in heal_notice.due("Default", now=T0 + 1)] == []
+    key = R1.key_of("decision", ran["incident"])
+    assert key in [f["key"] for f in R1.failures("Default")["failures"]]
+    assert R1.fires_no_scripts(incident_page.resolve("Default", ran["incident"]), key)
+
+
+@pytest.mark.parametrize("state", ["departs", "unknown"])
+def test_a_symptom_cant_fix_still_fires_and_is_told(lab, monkeypatch, state):  # noqa: F811
+    """The control for the interim's test above: a symptom can't-fix (not the interim) fires its
+    saved scripts, is due an Alert notice, and R1's start on it fires them, as before."""
+    from modules import heal_notice, incident_page
+    from modules.fixit import auto as R1
+
+    fired = _spy_scripts(monkeypatch)
+    inc = _symptom_cant_fix_at(state)
+    assert fired == [inc["id"]], fired
+    assert [e["incident"] for e in heal_notice.due("Default", now=T0 + 1)] == [inc["id"]]
+    assert not R1.fires_no_scripts(incident_page.resolve("Default", inc["id"]),
+                                   R1.key_of("decision", inc["id"]))
+
+
+@pytest.mark.parametrize("kind", ["decision", "retry", "act", "held", "run"])
+def test_no_failure_of_an_interim_incident_fires_a_script(lab, kind):  # noqa: F811
+    """C4207's review, H1 and M1: R1's start on ANY failure of an incident standing on the
+    interim's can't-fix fires no saved script (a ``retry:`` key fired them: a script's save
+    re-decided the interim, its retry failed, and R1's start on the retry fired the script)."""
+    from modules import incident_page
+    from modules.fixit import auto as R1
+
+    settle(GOLDEN, how="at_golden", claim=False)
+    (ran,) = DC.run("Default", now=T0, sources=Fake(GOLDEN, state="departs"))["decided"]
+    found = incident_page.resolve("Default", ran["incident"])
+    assert R1.fires_no_scripts(found, R1.key_of(kind, "x-1")), kind
+
+
+def test_an_unreadable_step_log_reads_the_interim_from_the_decisions(lab):  # noqa: F811
+    """C4207's reviews, L1, N1 and N2: the newest decision in the decision store (written
+    first) says whether the incident stands on the interim, over a step-log entry a failed row
+    write left stale; the entry answers only where the store holds none; and where neither
+    store could be read, it answers yes, so nothing fires on what could not be read."""
+    from modules.heal import decide
+
+    assert decide.is_interim({"entry": {}, "decisions": [{"outcome": "cant_fix"},
+                                                         {"outcome": "cant_fix", "interim": True}]})
+    assert not decide.is_interim({"entry": {}, "decisions": [
+        {"outcome": "cant_fix", "interim": True}, {"outcome": "cant_fix"}]})
+    # N1: the entry's row for the interim failed to write; the store's newest decision governs.
+    assert decide.is_interim({"entry": {"interim": False},
+                              "decisions": [{"outcome": "cant_fix", "interim": True}]})
+    assert decide.is_interim({"entry": {"interim": True}, "decisions": []})
+    # N2: neither store answered.
+    assert decide.is_interim({"entry": {}, "decisions": [], "unreadable": ["the step log"]})
+    assert not decide.is_interim({"entry": {}, "decisions": [], "unreadable": []})
+
+
+@pytest.mark.parametrize("state", ["departs", "unknown"])
+def test_a_scripts_save_neither_counts_nor_sends_back_the_interim(lab, state):  # noqa: F811
+    """C4207's review, M2: Save's "runs on" line and the script-saved retry read one selection
+    (`retry._selected`); an incident standing on the interim's can't-fix is in neither, since no
+    saved script runs on it. Its problem's own match is asked, so only the interim mark keeps
+    it out."""
+    from modules import incident_page
+    from modules import problem as P
+    from modules.heal import retry
+
+    settle(GOLDEN, how="at_golden", claim=False)
+    (ran,) = DC.run("Default", now=T0, sources=Fake(GOLDEN, state=state))["decided"]
+    found = incident_page.resolve("Default", ran["incident"])
+    prob = P.classify(found)
+    assert prob.condition, prob
+    got = retry.would_run("Default", {"condition": prob.condition}, now=T0 + 1)
+    assert got["error"] == "" and got["incidents"] == [], got

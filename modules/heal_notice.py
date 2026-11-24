@@ -335,7 +335,10 @@ def due(network: str, now: float = None) -> list:
         log.error("heal notice: %s", kept["error"])
         return []
     taken = {r.get("incident") for r in kept["rows"] if r.get("row") == "asked"}
+    # The interim's can't-fix only stands and gives R1 its start (C4207, the operator's ruling of
+    # 2026-11-23): no Alert notice, so no diagnosis action, team message or analysis call.
     return [e for e in got["entries"] if e.get("outcome") in HA.CANT_FIX and e.get("incident")
+            and not e.get("interim")
             and e["incident"] not in taken and now - float(e.get("epoch") or 0) <= NEW_WITHIN_S]
 
 
@@ -690,6 +693,7 @@ def _investigation(network: str, incident_id: str, key: str, ask, *, deliver, tr
     # nothing is asked (nor any script fired). Otherwise the read is kept in the step log, and
     # the incident is resolved after it, so the AI's evidence holds it.
     # A tail attached to this incident from its own closed one is asked here (ruling 17, C4110).
+    from modules.fixit import auto as A_
     from modules.heal import act as HA
     confirmed = HA.confirm_before_ai(network, key, on=incident_id)
     found = incident_page.resolve(network, incident_id)
@@ -717,6 +721,9 @@ def _investigation(network: str, incident_id: str, key: str, ask, *, deliver, tr
     # Start, Ask again and Modify, and G6's) fires none: it runs confirm-first and then the AI
     # with its typed words, so a press never writes to a device (the second review, C).
     from modules.nsot import saved_plans
+    # An attached tail's start (C4208) and the interim's can't-fix (C4207) fire none either
+    # (the operator's rulings of 2026-11-23): the open incident's heal decides first.
+    scripts = scripts and not A_.fires_no_scripts(found, key)
     fired = saved_plans.fire_matching(network, found) if scripts else []
     healed = next((f for f in fired if f.get("mode") == "auto" and f.get("ok")), None)
     if healed:
