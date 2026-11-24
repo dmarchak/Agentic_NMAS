@@ -326,15 +326,34 @@ def change_go_on():
     layer = (request.form.get("layer") or "").strip()
     got = capture_job.get(paused)
     run = (got or {}).get("payload") or {}
+    already = ("Go on was already pressed for that run, so the devices left are running as "
+               "their own run; nothing more was sent")
+    if run.get("continued"):
+        return _run_card({"state": "refused", "list": name, "layer": layer,
+                          "error": already}, 409)
     if run.get("state") != "paused":
         return _run_card({"state": "refused", "list": name, "layer": layer,
                           "error": "that run is not paused after its canary (it finished, "
                                    "stopped, or this server has no record of it); nothing "
                                    "was sent"}, 409)
+    # C4235: the first press takes the paused job over; a second (another person, another tab,
+    # In progress's link) is refused, so the rest of the batches never start twice.
+    continued = dict(run, state="continued", continued=True, continued_by="",
+                     words="continued: Go on ran the devices left")
+    if not capture_job.take_over(paused, "paused", continued):
+        return _run_card({"state": "refused", "list": name, "layer": layer,
+                          "error": already}, 409)
     who = identity.identify(request)
-    job = fleet_change.run_start(name, run["plan"], run["commit"], run["batches"],
-                                 after_canary="go", actor=identity.request_actor(),
-                                 actor_kind=getattr(who, "kind", ""), start_at=run["next"])
+    try:
+        job = fleet_change.run_start(name, run["plan"], run["commit"], run["batches"],
+                                     after_canary="go", actor=identity.request_actor(),
+                                     actor_kind=getattr(who, "kind", ""), start_at=run["next"])
+    except Exception:
+        # Nothing started: the run is paused again, so Go on can be pressed once more.
+        capture_job.take_over(paused, "continued", run)
+        raise
+    # Its card, and In progress's link to it, draw the continuation from now on.
+    capture_job.take_over(paused, "continued", dict(continued, continued_by=job))
     return _run_card({"state": "running", "list": name, "layer": layer, "job": job})
 
 
@@ -369,6 +388,13 @@ def _run_of_job(job: str, name: str, layer: str) -> dict:
         return {"state": "refused", "list": name, "layer": layer,
                 "error": f"the run did not finish: {got['error']}"}
     run = got["payload"] or {}
+    if run.get("state") == "continued" and run.get("continued_by") \
+            and run["continued_by"] != job:
+        # C4235: a paused run Go on continued is drawn as its continuation (the devices left,
+        # running or ended), never as done: only its canary ran in it.
+        return _run_of_job(run["continued_by"], name, layer)
+    if run.get("state") == "continued":
+        return {"state": "running", "list": name, "layer": layer, "job": job, "run": stepper()}
     if run.get("state") == "refused":
         return {"state": "refused", "list": name, "layer": layer,
                 "error": run.get("error", "")}

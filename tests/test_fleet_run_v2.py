@@ -105,6 +105,41 @@ class TestPausedAfterTheCanary:
         html = _run(page, rest)
         assert sent["calls"] == [["r2"], ["r3"], ["r4"]] and "data-fc-done" in html
 
+    def test_go_on_pressed_twice_runs_the_rest_once(self, page, sent, monkeypatch):  # noqa: F811
+        """C4235: Go on checked only that the paused job said `paused`, which it still said after
+        Go on started the rest, so a second press (another person, tab, or In progress's link)
+        started the same batches again. Now the first press takes the paused job over: the second
+        is refused naming it, nothing is sent twice, and the paused job no longer says it waits."""
+        from modules.nsot import capture_job
+        from modules.nsot import fleet_change as F
+        plan = _plan_of(["r2", "r3", "r4"], monkeypatch)
+        job = F.run_start("Lab", plan, "abc123", [["r2"], ["r3"], ["r4"]], after_canary="pause",
+                          actor="op", actor_kind="person")
+        _run(page, job)
+        form = {"job": job, "list": "Lab", "layer": "tag-blind-lab"}
+        first = page.post("/v2/intent/change/go-on", data=form)
+        second = page.post("/v2/intent/change/go-on", data=form)
+        rest = first.get_data(as_text=True).split("/v2/intent/change/run/", 1)[1].split("?", 1)[0]
+        _run(page, rest)
+        assert second.status_code == 409, second.status_code
+        assert "already" in second.get_data(as_text=True), second.get_data(as_text=True)
+        for j in list(capture_job._jobs):
+            capture_job.wait(j, 10)
+        assert sent["calls"] == [["r2"], ["r3"], ["r4"]], sent["calls"]
+        assert (capture_job.get(job)["payload"] or {}).get("state") == "continued"
+        # The paused job's own card (In progress's link to it) draws the continuation, never a
+        # second Go on, and never "done" for a run whose only device was the canary.
+        html = _run(page, job)
+        assert "Go on: the" not in html and "data-fc-paused" not in html, html
+        assert html == _run(page, rest)
+        from modules import in_flight
+        monkeypatch.setattr("modules.nsot.device_ops.in_flight", lambda name, now: [])
+        monkeypatch.setattr("modules.seen_runs.is_seen", lambda viewer, j: False)
+        rows = {f.get("job") or f.get("href"): f for f in
+                in_flight.chip([], "op")["finished"]}
+        said = [f for f in in_flight.chip([], "op")["finished"] if "continued" in f.get("words", "")]
+        assert said and said[0]["level"] == "ok", (said, rows)
+
     def test_go_on_for_a_run_that_is_not_paused_is_refused(self, page, sent):  # noqa: F811
         r = page.post("/v2/intent/change/go-on", data={"job": "nosuchjob", "list": "Lab",
                                                        "layer": "tag-blind-lab"})

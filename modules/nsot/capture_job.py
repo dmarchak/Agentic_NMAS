@@ -220,6 +220,22 @@ def mark_opened(job_id: str, viewer: str) -> bool:
     return True
 
 
+def take_over(job_id: str, state: str, payload: dict) -> bool:
+    """Compare and set (C4235): *job_id*'s finished payload replaced by *payload* only while it
+    still says *state*, under the jobs' one lock, so two presses that continue one job (a paused
+    fleet change's Go on, from two people, tabs or In progress's link) act once. The job lives in
+    this process's memory, as every press that can name it does. False when it does not say
+    *state* (or this server has no record of it)."""
+    with _lock:
+        job = _jobs.get(job_id)
+        if job is None or job.get("finished_at") is None \
+                or (job.get("payload") or {}).get("state") != state:
+            return False
+        job["payload"] = payload
+    _announce_moved()
+    return True
+
+
 def get(job_id: str):
     """The job as the page reads it, or None when this server has no record
     of it (never started here, expired, or the server restarted)."""

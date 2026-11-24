@@ -395,7 +395,9 @@ def finished_row(job: dict, viewer: str) -> dict:
 #: A page job's payload state -> its level (never green over a stop, a refusal or a pause).
 PAGE_LEVELS = {"done": "ok", "paused": "warn", "stopped": "danger", "refused": "danger",
                # A plan whose steps all passed and one leaves its own approval (plan_engine).
-               "partial": "warn"}
+               "partial": "warn",
+               # A paused run Go on continued (C4235): its rest is its own job, listed by itself.
+               "continued": "ok"}
 
 
 def page_finished_row(job: dict, viewer: str):
