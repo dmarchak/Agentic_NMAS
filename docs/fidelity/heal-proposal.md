@@ -28,7 +28,12 @@ incident open while its cause stands" (was "closes the incident"). Words only, i
 elements; no element moves and no region's verdict moved; compared by the template's diff
 (tests/test_heal_proposal_v2.py's `test_decline_says_its_incident_stays_open_while_its_cause_stands`),
 not by new shots. Templates sha256 before: `e69542e5d251967380be0929d0b9b04eee93ca8c3fe9fd8dd415e367086e9061`.
-Templates sha256: `aefbb6b253321af4d6c63f8a278545922e4e353a9ff40760746aa4d5adcbdf13`
+Compared again 2026-11-24 (C3489): the halt card's second link reads **Open <device>'s
+History** (was "Open the incident"): it opens the device's History tab, and a halt has no
+incident page. Words only, in the same element; no element moves and no region's verdict moved;
+compared by the template's diff, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md,
+"C3489: the halt card's link says what it opens"). Templates sha256 before: `aefbb6b253321af4d6c63f8a278545922e4e353a9ff40760746aa4d5adcbdf13`.
+Templates sha256: `cde54e5fd71ea1e6c034c5253888f06ef2edfd65a4d1741754dbdf89ce35c742`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_heal_proposal.html`, each place that draws a person

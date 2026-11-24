@@ -475,7 +475,9 @@ def test_needs_attention_draws_lift_the_halt_with_its_reason_outside_any_form(ap
     assert "<form" not in card
     assert (f'hx-post="{_lift_url(h)}" hx-include="#heal-halt-{h["id"]}-why"' in card)
     assert ">Lift the halt<" in card and "Lifting…" in card and 'hx-disabled-elt="this"' in card
-    assert "Edit edge-b's intent…" in card and "Open the incident" in card
+    # C3489: the second link says what it opens (a halt has no incident page).
+    assert "Edit edge-b's intent…" in card and "Open edge-b's History</a>" in card
+    assert "Open the incident" not in card
     assert "Clears when a person lifts the halt on this item with a reason" in html
     # Pressed as drawn: the button posts its own URL with the included field, and it lifts.
     url = re.search(r'hx-post="([^"]+)" hx-include="#heal-halt-', card).group(1)

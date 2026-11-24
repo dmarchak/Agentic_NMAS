@@ -21,7 +21,7 @@
     <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="heal-proposal" hx-post="{{ url_for('heal_proposal_v2.lift', list_name=list_name, halt_id=halt_id) }}" hx-include="#{{ hid }}-why" hx-target="#{{ hid }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Records your reason with your name; self-healing on {{ list_name }} then runs under its policy again. Sends nothing to a device"{{ gate('configure') }}><span class="op-idle">Lift the halt</span><span class="op-busy">Lifting…</span></button>{{ how('heal-proposal', 'halt', compact=True, op='lifting a halt') }}</span>
     {%- if device %}
     <a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=device, list=list_name, tab='intent') }}">Edit {{ device }}'s intent…</a>
-    <a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=device, list=list_name, tab='history') }}">Open the incident</a>
+    <a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=device, list=list_name, tab='history') }}">Open {{ device }}'s History</a>
     {%- endif %}
   </div>
 {%- endif %}

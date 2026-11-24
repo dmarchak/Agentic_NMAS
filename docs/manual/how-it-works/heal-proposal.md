@@ -146,7 +146,7 @@ same fix twice within the repeat window, more heals in an hour than the policy a
 heal that was rolled back or failed after sending. Self-healing then heals nothing on that
 network, makes no dry-run records and cannot run an approved proposal. The halt is a Critical
 row on **Needs attention**: "Self-healing halted on <network>: <why>", naming its guard and
-both operands. Read why: **Open the incident** opens the device's History, where the heal's
+both operands. Read why: **Open <device>'s History** opens the device's History, where the heal's
 steps are, and **Edit <device>'s intent…** opens its Intent tab, for a line that belongs in
 intent. Then press **Lift the halt…** on the row's line (or open the row), type a reason of three
 words or more, and press **Lift the halt** (a verified person's). Pressing
