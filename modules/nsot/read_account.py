@@ -1110,7 +1110,11 @@ def rollout_start(network: str, devices: list, canary: str, size: int, confirmed
 
 def go_on_refusal(run: dict, device: str = "") -> str:
     """Why a Continue for *run* is refused, or ``""``: it must be paused after its canary (the
-    plan's option; the engine never waits anywhere else)."""
+    plan's option; the engine never waits anywhere else). A run Continue already took over
+    (C4245, `capture_job.take_over`) is refused by name."""
+    if (run or {}).get("continued"):
+        return ("Continue was already pressed for that rollout, so the waves left are running as "
+                "their own run; nothing more was sent")
     if (run or {}).get("state") != "paused":
         return ("that rollout is not paused (it finished, stopped, or this server has no record "
                 "of it); nothing was sent")

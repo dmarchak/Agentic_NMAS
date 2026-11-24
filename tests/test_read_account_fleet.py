@@ -463,6 +463,29 @@ class TestTheRollout:
         run = capture_job.get(job)["payload"]
         assert run["state"] == "done" and planned["calls"] == [["b"], ["a"], ["c"]]
 
+    def test_continue_pressed_twice_runs_the_waves_left_once(self, lab, planned):
+        """C4245 (the review of C4235): Continue checked only that the paused job said `paused`,
+        which it still said after Continue started the rest, so a second press started the same
+        waves again. Now the first press takes the paused job over; the second is refused naming
+        it, and each device is sent once."""
+        from modules.nsot import capture_job
+
+        options = {"pause_after_canary": "1"}
+        p = RA.rollout_plan("Lab", ["a", "b", "c"], "b", 4, options=options)
+        job = RA.rollout_start("Lab", ["a", "b", "c"], "b", 4, p["hash"], actor="op",
+                               actor_kind="person", options=options)
+        assert capture_job.wait(job, 10)
+        url = "/v2/credentials/profiles/read-account/rollout/go-on"
+        first = lab["client"].post(url, data={"job": job})
+        second = lab["client"].post(url, data={"job": job})
+        assert first.status_code == 202, first.get_data(as_text=True)
+        assert second.status_code == 409, second.status_code
+        assert "already pressed" in second.get_data(as_text=True)
+        for j in list(capture_job._jobs):
+            capture_job.wait(j, 10)
+        assert planned["calls"] == [["b"], ["a"], ["c"]], planned["calls"]
+        assert capture_job.get(job)["payload"]["state"] == "continued"
+
     def test_a_changed_option_is_a_changed_hash_and_refuses_the_confirm(self, lab, planned):
         from modules.nsot import capture_job
 

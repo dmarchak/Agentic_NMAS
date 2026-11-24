@@ -441,9 +441,23 @@ def read_account_rollout_go_on():
     if why:
         return _op(409, op={"state": "roll_refused", "error": why, "job": paused,
                                       "network": run.get("network", "")})
+    # C4245: the first press takes the paused job over; a second (another person, another tab,
+    # In progress's link) is refused, so the waves left never start twice.
+    continued = dict(run, state="continued", continued=True, continued_by="",
+                     words="continued: Continue ran the waves left")
+    if not capture_job.take_over(paused, "paused", continued):
+        return _op(409, op={"state": "roll_refused", "job": paused,
+                            "error": RA.go_on_refusal(continued),
+                            "network": run.get("network", "")})
     who = identity.identify(request)
-    job = RA.rollout_go_on(run, actor=identity.request_actor(),
-                           actor_kind=getattr(who, "kind", ""))
+    try:
+        job = RA.rollout_go_on(run, actor=identity.request_actor(),
+                               actor_kind=getattr(who, "kind", ""))
+    except Exception:
+        # Nothing started: the rollout is paused again, so Continue can be pressed once more.
+        capture_job.take_over(paused, "continued", run)
+        raise
+    capture_job.take_over(paused, "continued", dict(continued, continued_by=job))
     return _op(202, op={"state": "roll_running", "job": job,
                                   "network": run.get("network", "")})
 
@@ -473,6 +487,14 @@ def read_account_rollout_run(job):
                        "run": stepper(got.get("list") or network)})
     _opened(job)
     run = got.get("payload") or {}
+    if run.get("state") == "continued" and run.get("continued_by") \
+            and run["continued_by"] != job:
+        # C4245: a paused rollout Continue took over is drawn as its continuation (the waves
+        # left), never as paused again or as done.
+        return read_account_rollout_run(run["continued_by"])
+    if run.get("state") == "continued":
+        return _op(op={"state": "roll_running", "job": job, "network": network,
+                       "run": stepper(got.get("list") or network)})
     if got["state"] == "failed" or run.get("state") == "refused":
         return _op(op={"state": "roll_refused", "job": job,
                                  "network": run.get("network", ""),
