@@ -178,6 +178,10 @@ answers) are exercised only by fragment tests (`:121-260`). One of those asserts
    merge into it, or keep it and revisit it later, instead of rebuilding. This is the most severe
    cause (Devices ticks). Measure: on `/v2/devices`, tick two rows, then announce
    `reachability` with one row changed.
+   **Measured 2026-11-24, a defect (C4229, now B):** keyed rows inside a `<form x-data>`, as
+   Devices' selection form holds them, merged through the page's own `mergeInto`: with nothing
+   changed every tick, radio and option kept; with one row's text changed every one of them
+   cleared, the whole form drawn again. The same rows outside a component keep them (cause 2).
 5. **New rows are placed against the window, never the scrolling panel** (`:864-868`,
    `:469-476`). This covers 31 templates. Fix once: use the nearest scrolling ancestor's
    rectangle.

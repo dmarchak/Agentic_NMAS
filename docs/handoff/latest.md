@@ -32,7 +32,13 @@
   radio and a chosen option (Devices through a real `reachability` redraw; keyed rows merged
   directly, changed and unchanged). The scratch test is `~/mercury-runs/c4227_measure_test.py`
   (run by `nmas-control`; it reuses tests/test_live_merge.py's `_merge` and a real page). Its
-  Devices case drew no row change, so C4229's (a restarted component) is still to measure.
+  Devices case drew no row change, so C4229 was measured next with the same harness.
+- **C4229 measured, UNKNOWN to B:** rows inside a `<form x-data>` (Devices' selection form)
+  lose every tick, radio and option when one row's text changes (`morph`'s restart,
+  static/js/nmas_v2.js ~844, replaces the component whole). **The next item to build** (a
+  patch: its test goes in tests/test_live_merge.py): when the component holds a part a person
+  changed, merge into it or keep it and revisit, as the audit's cause 4 says; the scratch
+  test's `test_measure_c4229_rows_inside_a_component` is the shape of the red test.
 - Committed only docs (a9d1108d and the commit after); nothing deployed.
 
 ## 0a. The late session (from 22:37 Denver, 2026-11-23)
