@@ -45,10 +45,20 @@
   "leaves the network", stopped "N of M branches not delivered", failed). Its answer was the
   trace's id only, the same red-"no reason" trap. Red first, three controls; aimed 195 files, 6,045 passed, 66 skipped, none red
   (541 s at -n 4).
-- **Next:** land the 36 once session-namespace is answered; meanwhile C3601's next caller
-  (the golden capture batch, `routes/golden.py:361`; then the logging path,
-  `modules/nsot/logging_path.py:386`), or C4235's measurement, each as a patch against
-  tree-stack-36.
+- **Next:** land the 36 once session-namespace is answered; meanwhile C3601's next callers,
+  each as a patch against tree-stack-36, or C4235's measurement. Scoped:
+  - **Reads and the logging path** (`modules/nsot/reads.py:1076`, `logging_path.py:386`):
+    both open `/v2/show-commands/run/<run>?job=…&list=…` (`reads_v2.show_commands_result`,
+    the page a `page=` should name), and both answer only `{"run": id}`: the red "refused:
+    no reason" trap. Each needs its own outcome from its record: reads' `summary.by_state`
+    (answered / failed / skipped / unknown); the logging path's results (received / not
+    received / not sent / unknown). One helper building the link, two outcomes.
+  - **The capture preview** (`routes/golden.py:361`, its one caller the device page's
+    Capture, `routes/device_v2.py:1052`): a device-page card, so it is `device=` and
+    `card="capture"` on the job, `"capture"` added to `device_actions.REOPENS` and `job_card`
+    (`capture_card` needs the viewer's confirm part, which `job_card` has no request for):
+    larger than the page-job slices.
+  - Then an app's deploy (`modules/apps/deploy_op.py:778`) and adopt (`routes/adopt_v2.py:112`).
 
 ## 000000000. The 09:06 session (2026-11-24): read this first
 
