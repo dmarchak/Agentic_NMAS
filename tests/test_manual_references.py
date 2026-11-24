@@ -89,8 +89,11 @@ def dead_routes(texts: dict, patterns: list) -> list:
     return bad
 
 
+@functools.lru_cache(maxsize=1)
 def drawn_words() -> str:
-    """Every v2 template, v2 script and the Python that builds a card's words, as one text."""
+    """Every v2 template, v2 script and the Python that builds a card's words, as one text.
+    Read once a process (a text, never changed by a caller): two tests read it, and each read
+    parses every module (the week plan's Stage 2, C4184)."""
     files = (source_index.tracked("templates/v2", suffix=".html", recursive=False) +
              [f for f in source_index.tracked("static/js", suffix=".js", recursive=False)
               if os.path.basename(f).startswith("nmas_")] +

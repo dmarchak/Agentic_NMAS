@@ -16,6 +16,7 @@ code. Structural, not incidental: the readers read git objects, so the next
 writer that fails in a new way cannot make its file authoritative.
 """
 
+import functools
 import json
 import logging
 import os
@@ -261,19 +262,35 @@ def _reads(call) -> bool:
     return True                                   # unknown mode: count it
 
 
-def _functions_calling(names):
+@functools.lru_cache(maxsize=None)
+def _every_functions_calls() -> tuple:
+    """``((relative path, function name, frozenset of the names it calls), ...)`` for every
+    function in `_trees()`, in the order the walk meets them. Computed once a process: its four
+    callers scanned the whole program and its scripts again each time, about 10.5 s a scan in
+    a profiled run (the week plan's Stage 2, C4184), and the program as git tracks it does not
+    change while the suite runs."""
     import ast
 
-    found = {}
+    out = []
     for rel, tree in _trees().items():
         for fn in ast.walk(tree):
             if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            calls = {getattr(n.func, "attr", getattr(n.func, "id", ""))
-                     for n in ast.walk(fn) if isinstance(n, ast.Call)
-                     and not (getattr(n.func, "id", "") == "open" and not _reads(n))}
-            if calls & set(names):
-                found[(rel, fn.name)] = calls
+            out.append((rel, fn.name, frozenset(
+                getattr(n.func, "attr", getattr(n.func, "id", ""))
+                for n in ast.walk(fn) if isinstance(n, ast.Call)
+                and not (getattr(n.func, "id", "") == "open" and not _reads(n)))))
+    return tuple(out)
+
+
+def _functions_calling(names):
+    """``{(relative path, function name): the names it calls}`` for each function calling one
+    of *names* (a later function of the same name in a file replaces the earlier, as the walk
+    always did); a new dict and new sets each call, so no caller changes another's."""
+    found = {}
+    for rel, name, calls in _every_functions_calls():
+        if calls & set(names):
+            found[(rel, name)] = set(calls)
     return found
 
 

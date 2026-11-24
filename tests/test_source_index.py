@@ -336,10 +336,51 @@ def survey(files=None):
                    f.walks())
         return kept[p][1], kept[p][2]
 
+    # Each round updates the exports in place, each file after the test modules it imports
+    # (`_import_order`), so a file reads their answers in the same round: rounds that read
+    # only the last round's answers rebuilt nearly every file (2,355 builds of 1,232 files,
+    # C4184). The order only saves builds; `answers` still rebuilds a file whose read exports
+    # moved. The answers settle at the same fixed point: an export only ever grows from none,
+    # and a round is repeated until nothing moves, three at most as before.
+    order = _import_order(srcs)
     exports = {}
     for _ in range(3):                     # helpers importing helpers: settles in two
-        exports = {_module(p): answers(p, s, exports)[0] for p, s in srcs.items()}
+        before = dict(exports)
+        for p in order:
+            exports[_module(p)] = answers(p, srcs[p], exports)[0]
+        if exports == before:
+            break
     return {os.path.relpath(p, ROOT): answers(p, s, exports)[1] for p, s in srcs.items()}
+
+
+def _import_order(srcs) -> list:
+    """*srcs*' paths, each after the test modules its import statements name (depth first,
+    a cycle broken where it is met): an ORDER for `survey`'s rounds, read from the parsed
+    trees alone, never an answer."""
+    by_module = {_module(p): p for p in srcs}
+    deps = {}
+    for p, s in srcs.items():
+        names = set()
+        for n in ast.walk(_parsed(s, p)):
+            if isinstance(n, ast.ImportFrom) and n.module:
+                names.add(n.module if n.module.startswith("tests.") else f"tests.{n.module}")
+            elif isinstance(n, ast.Import):
+                names |= {a.name for a in n.names}
+        deps[p] = sorted(by_module[m] for m in names if m in by_module and by_module[m] != p)
+    order, seen = [], set()
+    for start in sorted(srcs):
+        stack = [(start, iter(deps[start]))] if start not in seen else []
+        seen.add(start)
+        while stack:
+            p, it = stack[-1]
+            q = next(it, None)
+            if q is None:
+                order.append(p)
+                stack.pop()
+            elif q not in seen:
+                seen.add(q)
+                stack.append((q, iter(deps[q])))
+    return order
 
 
 def _reads(f) -> set:
