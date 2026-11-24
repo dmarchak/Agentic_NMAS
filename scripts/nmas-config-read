@@ -26,6 +26,11 @@ was: the person sees that the match was a secret line, never the secret.
 `config_repo`, never the working tree (readers take what is committed). Paths are relative
 to that repository: `golden/<device>.cfg`, `host_vars/<device>.yml`, `templates/...`.
 
+**Heal and fix-it records** (C4090; the operator authorised it, 2026-11-23): `--records
+heal-incidents|heal-decisions|heal-steps|fixit [--incident <id>] --list <network>` reads a
+network's records through the product's own path functions, every line masked the same way, so
+a fixture can be captured from a real record without a raw read of the data store.
+
 **Reads only.** It writes nothing; `sys.dont_write_bytecode` keeps a host checkout clean.
 
 Exit: 0 every path read; 1 a path is not in the revision (named on stderr); 2 the
@@ -87,6 +92,51 @@ def masked_lines(text: str, grep=None, stanza=None) -> list:
     return [redact_text(line) for line in lines]
 
 
+#: The heal and fix-it records `--records` reads (C4090, the operator's authorisation of
+#: 2026-11-23: "a read-only, masked reader for heal and fix-it records"), each a function of the
+#: network giving the files to read: the incidents store, the decisions, the heal step log, and
+#: each incident's fix-it record (one JSON file per incident).
+RECORDS = ("heal-incidents", "heal-decisions", "heal-steps", "fixit")
+
+
+def record_paths(kind: str, network: str, incident: str = "") -> list:
+    """The files *kind* names for *network* (one incident's fix-it record with *incident*),
+    resolved by the product's own path functions; nothing is created."""
+    from modules.config import list_data_path
+    from modules.fixit import incident as F
+    from modules.heal import decisions, incidents, steplog
+
+    if kind == "heal-incidents":
+        return [incidents.path(network)]
+    if kind == "heal-decisions":
+        return [decisions.path(network)]
+    if kind == "heal-steps":
+        return [steplog._path(network)]
+    folder = os.path.join(list_data_path(network), F.STORE_DIR)
+    if incident:
+        return [os.path.join(folder, f"{os.path.basename(incident)}.json")]
+    try:
+        return sorted(os.path.join(folder, n) for n in os.listdir(folder) if n.endswith(".json"))
+    except OSError:
+        return []
+
+
+def read_records(kind: str, network: str, incident: str = "", grep=None) -> tuple:
+    """``(lines, missing)``: every line of *kind*'s files for *network*, each masked by
+    `redact_text` (a search matches the raw line and prints the masked one), prefixed with its
+    file's name; *missing* the files that could not be read. Reads only."""
+    out, missing = [], []
+    for path in record_paths(kind, network, incident):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
+        except OSError as exc:
+            missing.append(f"{os.path.basename(path)}: {exc.strerror or exc}")
+            continue
+        out += [f"{os.path.basename(path)}: {line}" for line in masked_lines(text, grep)]
+    return out, missing
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("paths", nargs="*", help="paths in the list's config_repo")
@@ -94,6 +144,11 @@ def main(argv=None) -> int:
                     help="read the installation's settings file (data/user_settings.json) "
                          "instead, masked as everything here is: a sealed value prints as "
                          "enc:v1:<redacted:sealed> (C1685)")
+    ap.add_argument("--records", choices=RECORDS, default=None,
+                    help="read the network's heal or fix-it records instead (the network is "
+                         "--list's), every line masked (C4090)")
+    ap.add_argument("--incident", default="",
+                    help="with --records fixit, only this incident's record")
     ap.add_argument("--list", default="default", help="the list's folder (default: default)")
     ap.add_argument("--repo", default="", help="a repository path, in place of --list")
     ap.add_argument("--rev", default="HEAD", help="the revision to read (default: HEAD)")
@@ -122,6 +177,13 @@ def main(argv=None) -> int:
         for line in masked_lines(text, grep, stanza):
             print(f"settings: {line}")
         return 0
+    if args.records:
+        lines, missing = read_records(args.records, args.list, args.incident, grep)
+        for line in lines:
+            print(line)
+        for why in missing:
+            print(f"nmas-config-read: could not read {why}", file=sys.stderr)
+        return 1 if missing else 0
     if not args.paths:
         ap.error("name the config_repo paths to read, or --settings")
     repo = _repo(args.list, args.repo)
