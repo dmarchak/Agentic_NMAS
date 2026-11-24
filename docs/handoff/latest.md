@@ -46,7 +46,10 @@
   the focus in the field notwithstanding. **Next:** C4226's fix as a patch (a press's answer
   into a remembered region merged, held parts outside the pressed card kept: `mergeSpec`
   ~1125 and `holdWhileEditing` ~480 in nmas_v2.js), its test red first from the scratch shape;
-  then C4230. The previous handoff is
+  then C4230. **Watch:** once a region press merges (mergeSpec letting a non-live swap into a
+  remembered region through), `captureSwapped` returns early on `nmasMerged`, so C4228's
+  `markUnread` must move into that merge path too; build C4226's patch on top of c4228.patch
+  and re-run TestAPressAnswerIsKeptUntilSeen. Not started (02:10 Denver, too close to 02:30). The previous handoff is
   docs/handoff/2026-11-23.md.
 - **C4227 closed as measured** (the refresh audit's cause 2): the live merge keeps a tick, a
   radio and a chosen option (Devices through a real `reachability` redraw; keyed rows merged
