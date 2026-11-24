@@ -21,7 +21,7 @@
   {%- elif e.state == 'same' %}
   <p>Startup is already what {{ c.host }} runs: saving changes no line it boots. Persist still saves it (<span class="mono">write memory</span>) and reads startup back, checking it carries every account line running holds.</p>
   {%- elif e.gains or e.loses %}
-  <p>Saving makes startup what {{ c.host }} runs: startup gains {{ e.gains | length }} line{{ '' if e.gains | length == 1 else 's' }} and loses {{ e.loses | length }}.</p>
+  <p>Startup gains {{ e.gains | length }} line{{ '' if e.gains | length == 1 else 's' }}{% if e.loses %} and loses {{ e.loses | length }}{% endif %}, so it boots what {{ c.host }} runs now:</p>
   {%- endif %}
   {{- startup_lines(e) }}
 </div>

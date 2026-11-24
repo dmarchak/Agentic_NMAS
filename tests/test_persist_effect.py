@@ -145,7 +145,7 @@ class TestPersistsPreview:
         device(Device(running, pair["startup"]))
         html = _effect(lab)
         words = _words(html)
-        assert "startup gains 2 lines and loses 1" in words
+        assert "Startup gains 2 lines and loses 1, so it boots what r2 runs now" in words
         gains = re.findall(r'<span class="op-add">\+ ([^<]*)</span>', html)
         loses = re.findall(r'<span class="op-del">- ([^<]*)</span>', html)
         assert loses == ["logging trap notifications"], loses
