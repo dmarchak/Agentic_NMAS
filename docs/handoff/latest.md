@@ -7,11 +7,15 @@
   deployed version (outside 02:30-03:30 Denver, never on s3), capture them masked
   (`nmas-config-read --records`), and make C4090 green; (3) Stage 2's serial vs parallel
   counts; (4) Stage 5's direction-independent items, each deployed when green; (5) Stage 6.
-- **The deploy:** wait for GitHub's CI on **7fa974fa** (main's newest code-relevant sha;
-  later commits docs only). CI was about 20 runs behind at 12:20 Denver (4 at a time, ~26 min
+- **The deploy target is fad30e81** (12:55 Denver): CI on fa7e5f0a (#2097, the full run) was red
+  on C4090's loop test and on the coverage ratchet (roundtrip.py's render-cache `clear()`
+  reached by no unit test), so fad30e81 adds that test; 7fa974fa's run (#2099) was the docs-only
+  set and is no code verdict (a docs-only commit runs the doc tests alone). Wait for GitHub's
+  CI on **fad30e81**, read every job (coverage included), not only the tests.
+- (Superseded: wait for GitHub's CI on 7fa974fa.) CI was about 20 runs behind at 12:20 Denver (4 at a time, ~26 min
   each). When it completes, read its failures (`scripts/nmas-ci-log failed`): if the only one is
   tests/test_v2_context_is_drawn.py::TestTheFixturesReachTheState::test_every_loop_drew_or_is_declared,
-  deploy with `scripts/nmas-deploy --to 7fa974fa… --fast-lane "<CI run #, its result: only C4090's
+  deploy with `scripts/nmas-deploy --to fad30e81… --fast-lane "<CI run #, its result: only C4090's
   loop test failed, the operator's exception of 2026-11-24>"` (the fast lane keeps the window,
   preflight and smoke check; `--override-ci-red` cannot carry it: it needs another source
   green). Any other red: fix forward first, no exception for it. Log the deploy in the report.
