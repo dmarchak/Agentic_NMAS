@@ -21,7 +21,12 @@ send, a background job, or the updater. Read from the code on 2026-11-23. Nothin
   `tests/test_no_page_waits.py` (`NOT_YET_CONVERTED`, `PRESSES`) was used for GETs that still
   wait on a source.
 - **Judged slow:** 220 rows (182 POSTs, 38 GETs a person presses or a tab opens). 23 of them
-  have no feedback today ("none" or "page load"). Not listed: posts that only
+  had no feedback on 2026-11-23 ("none" or "page load"). **Corrected 2026-11-24 (C4216):** the
+  device Actions menu's four rows were busy already (C399's spinner on the menu row, read from
+  the stylesheet); the tabs and the DHCP, SDN and NetBox links are now busy on themselves (one
+  stylesheet rule for every pressed `hx-get` link or button, tests/test_v2_gets_busy_on_itself.py),
+  and so is a press that loads another page, until that page replaces it (nmas_v2.js
+  `markNavigating`). The panel and the console offer said so in place already. Not listed: posts that only
   write a local store or a setting (toggles, saved views, positions, display names, AI feedback,
   heal marks and lifts, acknowledge), and pages drawn from data the background already holds.
 
@@ -45,14 +50,14 @@ Routes are given as `METHOD /url` and `routes/<file>:<function>`.
 
 | Where | Route | What it does | Feedback today | Steps a person would want |
 |---|---|---|---|---|
-| Device › Actions, Plan a deploy… (also Remove lines (Mode B)…) | `GET /v2/device/<name>/deploy` · `device_v2.py:deploy` | Renders intent, diffs against the golden, builds the program ("local but slow") | none (menu link); the re-plan form has no busy | Render intent · Compare golden · Build program · Ready to confirm |
+| Device › Actions, Plan a deploy… (also Remove lines (Mode B)…) | `GET /v2/device/<name>/deploy` · `device_v2.py:deploy` | Renders intent, diffs against the golden, builds the program ("local but slow") | busy on the menu row (C399's spinner); the re-plan form has no busy | Render intent · Compare golden · Build program · Ready to confirm |
 | Device › Deploy card, Deploy (confirm) | `POST /v2/device/<name>/deploy/confirm` · `device_v2.py:deploy_confirm` | Recomputes the program, starts the deploy job (9-stage pipeline) | busy · in-place · stepper (live) | Recompute · Hold device · Send · Verify · Record |
 | Device › Deploy card, Draft change record | `POST /v2/device/<name>/deploy/change-record` · `device_v2.py:deploy_change_record` | AI drafts the change record | busy · in-place | Gather facts · Ask AI · Draft ready |
 | Device › Capture, Start | `POST /v2/device/<name>/capture/start` · `device_v2.py:capture_start` | Starts the capture-preview job (reads the running config) | busy · stepper (live) | Connect · Read config · Parse · Preview |
 | Device › Capture, Record | `POST /v2/device/<name>/capture/confirm` · `device_v2.py:capture_confirm` | Reads the device again and commits the golden | busy · in-place · stepper (after) | Read again · Compare · Commit golden · Done |
 | Device › Save…, Read the effect | `POST /v2/device/<name>/persist/read` · `device_v2.py:persist_read` | Job reading what a save would change | busy · live card | Connect · Read running · Read startup · Compare |
 | Device › Save…, Save | `POST /v2/device/<name>/persist/confirm` · `device_v2.py:persist_confirm` | write memory on the device, then reads it back | busy · in-place · stepper (after) | Hold · Save · Read back · Record |
-| Device › Actions, Re-key… | `GET /v2/device/<name>/rekey` · `device_v2.py:rekey` | Reads the device's SSH host key live | none (menu link) | Connect · Read host key · Compare |
+| Device › Actions, Re-key… | `GET /v2/device/<name>/rekey` · `device_v2.py:rekey` | Reads the device's SSH host key live | busy on the menu row (C399's spinner) | Connect · Read host key · Compare |
 | Device › Re-key, Keep the new key | `POST /v2/device/<name>/rekey/confirm` · `device_v2.py:rekey_confirm` | Reads the key again and records it | busy · in-place | Read key · Match preview · Keep |
 | Device › Reload…, Preview | `POST /v2/device/<name>/reload/start` · `device_v2.py:reload_start` | Starts the reload preview (reads the device) | busy · in-place · live card | Connect · Read state · Plan window |
 | Device › Reload, Reload (confirm) | `POST /v2/device/<name>/reload/confirm` · `device_v2.py:reload_confirm` | Declares the window, reloads, waits, verifies | busy · in-place · stepper (live) | Declare window · Reload · Wait for return · Verify |
@@ -61,7 +66,7 @@ Routes are given as `METHOD /url` and `routes/<file>:<function>`.
 | Device › Rotate, Rotate (confirm) | `POST /v2/device/<name>/rotate/confirm` · `device_v2.py:rotate_confirm` | Job: sends the new credential and proves it | busy · in-place · stepper (live) | Read again · Send · Log in with new · Record |
 | Device › Restore, choose a version | `GET /v2/device/<name>/restore/preview` · `device_v2.py:restore_preview` | Plans the restore program (local; unverified slow) | busy (form button) · in-place | Load version · Compare · Build program |
 | Device › Restore, Restore (confirm) | `POST /v2/device/<name>/restore/confirm` · `device_v2.py:restore_confirm` | Deploy job restoring a golden | busy · in-place · stepper (live) | Recompute · Hold · Send · Verify · Record |
-| Device › Actions, Retire… | `GET /v2/device/<name>/retire` · `device_v2.py:retire` | Preview reads NetBox and Kea live | none (menu link); busy on the re-plan form | Read NetBox · Read Kea · List artefacts |
+| Device › Actions, Retire… | `GET /v2/device/<name>/retire` · `device_v2.py:retire` | Preview reads NetBox and Kea live | busy on the menu row (C399's spinner); busy on the re-plan form | Read NetBox · Read Kea · List artefacts |
 | Device › Retire, Retire (confirm) | `POST /v2/device/<name>/retire/confirm` · `device_v2.py:retire_confirm` | Removes per-device artefacts (NetBox, Kea, Prometheus targets, git) | busy · in-place · stepper (after) | Plan again · NetBox · DHCP · Monitoring · Archive files |
 | Device › Seed intent, Commit | `POST /v2/device/<name>/seed/confirm` · `device_v2.py:seed_confirm` | Parses the golden and commits intent | busy · in-place | Parse golden · Write intent · Commit |
 | Device › Revert, Commit | `POST /v2/device/<name>/revert/confirm` · `device_v2.py:revert_confirm` | Computes a revert of intent and commits it | busy · in-place | Compute revert · Commit · Ready to deploy |
@@ -69,7 +74,7 @@ Routes are given as `METHOD /url` and `routes/<file>:<function>`.
 | Device › Drift, Check now | `POST /v2/device/<name>/drift/check/now` · `device_v2.py:drift_check_now` | Reads the device and compares it with the golden | busy · in-place | Connect · Read config · Compare · Result |
 | Device › Diagnose, Run | `POST /v2/device/<name>/diagnose/run` · `device_v2.py:diagnose_run` | Starts the diagnosis job (device reads) | busy · in-place · live card | Reach · Read interfaces · Read neighbours · Verdict |
 | Device › History, Reveal | `POST /v2/device/<name>/golden/reveal` · `device_v2.py:golden_reveal` | Reads a golden from git and records the reveal (unverified slow) | busy · in-place | Read commit · Record reveal |
-| Device › Actions, Privileged… | `GET /v2/device/<name>/privileged` · `privileged_v2.py:privileged` | Opens the privileged-read card (plan) | none (menu link) | Plan · Ready |
+| Device › Actions, Privileged… | `GET /v2/device/<name>/privileged` · `privileged_v2.py:privileged` | Opens the privileged-read card (plan) | busy on the menu row (C399's spinner) | Plan · Ready |
 | Device › Privileged, Start the read | `POST /v2/device/<name>/privileged/preview` · `privileged_v2.py:preview` | Job: runs the read before the send | busy · in-place · live card | Connect · Read · Preview |
 | Device › Privileged, Send | `POST /v2/device/<name>/privileged/confirm` · `privileged_v2.py:confirm` | Job: sends the privileged commands | busy · in-place · live card | Hold · Send · Read back · Record |
 | Device › Ask, Run | `POST /v2/device/<name>/ask` · `reads_v2.py:ask_run` | Starts an allowlisted read on the device | busy · in-place · live card | Check command · Connect · Read · Answer |
@@ -82,21 +87,21 @@ Routes are given as `METHOD /url` and `routes/<file>:<function>`.
 | Device › Intent, Draft from words | `POST /v2/device/<name>/intent/words` · `intent_v2.py:words` | AI drafts an intent change from text | busy · in-place | Ask AI · Draft · Check |
 | Device › Intent, Commit the draft | `POST /v2/device/<name>/intent/words/commit` · `intent_v2.py:words_commit` | Commits the AI draft | busy · in-place | Check · Commit |
 | Device › Intent secrets, Store | `POST /v2/device/<name>/intent/secrets/set` · `intent_v2.py:secrets_set` | Stores a secret value (unverified slow) | busy · in-place | Encrypt · Store |
-| Device › Overview tab | `GET /v2/device/<name>/overview` · `device_v2.py:overview` | git log and intent render (in `NOT_YET_CONVERTED`) | none (tab marked chosen at once) | Read history · Render |
-| Device › NetBox tab | `GET /v2/device/<name>/netbox` · `device_v2.py:netbox` | Three NetBox reads | none (tab marked chosen at once) | Read NetBox · Compare |
-| Device › Monitoring tab | `GET /v2/device/<name>/monitoring` · `device_v2.py:monitoring` | Grafana dashboard variables | none (tab marked chosen at once) | Read dashboard · Draw panels |
-| Device › Monitoring, a panel | `GET /v2/device/<name>/panel/<uid>/<panel_id>` · `device_v2.py:panel` | Grafana panel data | none | Query · Draw |
-| Device › History tab | `GET /v2/device/<name>/history` · `device_v2.py:history` | git log and about 50 stores | none (tab marked chosen at once) | Read git · Read records · Merge |
+| Device › Overview tab | `GET /v2/device/<name>/overview` · `device_v2.py:overview` | git log and intent render (in `NOT_YET_CONVERTED`) | busy on the tab (C4216's spinner) | Read history · Render |
+| Device › NetBox tab | `GET /v2/device/<name>/netbox` · `device_v2.py:netbox` | Three NetBox reads | busy on the tab (C4216's spinner) | Read NetBox · Compare |
+| Device › Monitoring tab | `GET /v2/device/<name>/monitoring` · `device_v2.py:monitoring` | Grafana dashboard variables | busy on the tab (C4216's spinner) | Read dashboard · Draw panels |
+| Device › Monitoring, a panel | `GET /v2/device/<name>/panel/<uid>/<panel_id>` · `device_v2.py:panel` | Grafana panel data | in-place words while it loads ("Reading from Grafana…") | Query · Draw |
+| Device › History tab | `GET /v2/device/<name>/history` · `device_v2.py:history` | git log and about 50 stores | busy on the tab (C4216's spinner) | Read git · Read records · Merge |
 | Device › Saved actions, Run | `POST /v2/saved-plans/device/<device>/run` · `saved_plans_v2.py:device_run` | Runs a saved fix on a port (job) | busy · in-place · live card | Preview · Hold · Send · Verify |
 
 ## Fleet / devices list
 
 | Where | Route | What it does | Feedback today | Steps a person would want |
 |---|---|---|---|---|
-| Devices › ticked, Save… | `GET /v2/devices/save` · `v2.py:save` | Plans Save All for the ticked devices | page load | Plan · Ready |
+| Devices › ticked, Save… | `GET /v2/devices/save` · `v2.py:save` | Plans Save All for the ticked devices | page load; busy on the pressed control until the page replaces it (C4216) | Plan · Ready |
 | Devices › Save, Save N devices | `POST /v2/devices/save/confirm` · `v2.py:save_confirm` | Job: write memory and capture golden, per device | busy · in-place · stepper (live) | Plan again · Save · Read back · Commit |
-| Devices › ticked, Deploy… | `GET /v2/devices/deploy` · `v2.py:devices_deploy` | Plans a fleet deploy ("local but slow") | page load | Render each · Compare · Order · Ready |
-| Devices › ticked, Change across… | `GET /v2/intent/change` · `intent_layers_v2.py:change` | Opens the fleet change form | page load | Load layers · Ready |
+| Devices › ticked, Deploy… | `GET /v2/devices/deploy` · `v2.py:devices_deploy` | Plans a fleet deploy ("local but slow") | page load; busy on the pressed control until the page replaces it (C4216) | Render each · Compare · Order · Ready |
+| Devices › ticked, Change across… | `GET /v2/intent/change` · `intent_layers_v2.py:change` | Opens the fleet change form | page load; busy on the pressed control until the page replaces it (C4216) | Load layers · Ready |
 | Fleet change, Plan | `POST /v2/intent/change/plan` · `intent_layers_v2.py:change_plan` | Job planning the change on each device | busy · live card | Render each · Diff · Plan |
 | Fleet change, Approve and run | `POST /v2/intent/change/approve` · `intent_layers_v2.py:change_approve` | Commits and starts the run | busy · in-place · live card | Commit · Canary · Waves · Verify |
 | Fleet change, Go on | `POST /v2/intent/change/go-on` · `intent_layers_v2.py:change_go_on` | Continues after the canary | busy · live card | Next wave · Verify · Done |
@@ -110,7 +115,7 @@ Routes are given as `METHOD /url` and `routes/<file>:<function>`.
 |---|---|---|---|---|
 | Onboard › Add, Review | `POST /v2/onboard/preview` · `onboard_v2.py:preview` | Plans the onboarding (NetBox and Kea reads) | busy · in-place | Check name · Read NetBox · Read DHCP · Plan |
 | Onboard › Add, Create | `POST /v2/onboard/create` · `onboard_v2.py:create` | Creates the device in NetBox and the reservation in Kea | busy · in-place | NetBox device · Address · Reservation · Intent |
-| Onboard › Add, console offer (on load) | `GET /v2/onboard/console/offer` · `console_ztp_v2.py:offer_view` | Reads NetBox's console path | none (loads by itself) | Read console path |
+| Onboard › Add, console offer (on load) | `GET /v2/onboard/console/offer` · `console_ztp_v2.py:offer_view` | Reads NetBox's console path | in-place words while it loads ("Reading NetBox's console path…", aria-busy) | Read console path |
 | Onboard › Add, out-of-band source | `GET /v2/onboard/oob/source` · `oob_onboard_v2.py:source_view` | Reads the planned device from NetBox | busy (select) · in-place | Read NetBox · Eligibility |
 | Onboard › Pending device, Verify (preview) | `POST /v2/onboard/<name>/verify/preview` · `onboard_v2.py:verify_preview` | Reaches the device with its staged credential | busy · in-place | Reach · Log in · Read · Fingerprint |
 | Onboard › Pending device, Verify | `POST /v2/onboard/<name>/verify` · `onboard_v2.py:verify` | Phase two: reads, compares intent, commits | busy · in-place · stepper (after) | Reach · Read · Match intent · Commit |
@@ -122,7 +127,7 @@ Routes are given as `METHOD /url` and `routes/<file>:<function>`.
 | Onboard › Out-of-band, Start | `POST /v2/onboard/oob/confirm` · `oob_onboard_v2.py:confirm` | Job over the console server | busy · in-place · stepper (live) | Console · Bootstrap · Settle · Reach · Verify |
 | NetBox › Import, Preview | `POST /v2/netbox/preview` · `netbox_v2.py:preview` | Job reading NetBox (dry run) | busy · in-place · stepper (live) | Read NetBox · Compare · Plan |
 | NetBox › Import, Import | `POST /v2/netbox/job/<job_id>/confirm` · `netbox_v2.py:confirm` | Import job | busy · in-place · stepper (live) | Read again · Write list · Done |
-| NetBox › removals link | `GET /v2/netbox/removals` · `netbox_v2.py:removals` | Reads recorded removals | none | Read record |
+| NetBox › removals link | `GET /v2/netbox/removals` · `netbox_v2.py:removals` | Reads recorded removals | busy on the link (C4216's spinner) | Read record |
 | Devices › Adopt, Review | `POST /v2/adopt/preview` · `adopt_v2.py:preview` | Plans the adoption (reads) | busy · in-place | Reach · Read · Plan |
 | Devices › Adopt, Adopt | `POST /v2/adopt/confirm` · `adopt_v2.py:confirm` | Adoption job | busy · in-place · stepper (live) | Read · Capture golden · Intent · Commit |
 
@@ -196,7 +201,7 @@ Routes are given as `METHOD /url` and `routes/<file>:<function>`.
 | SDN › Switches, Template preview | `POST /v2/sdn/switches/template/preview` · `sdn_switches_v2.py:template_preview` | Plans the template | busy · in-place | Render · Diff |
 | SDN › Switches, Template commit | `POST /v2/sdn/switches/template/confirm` · `sdn_switches_v2.py:template_confirm` | Commits the template | busy · in-place | Commit |
 | SDN › Switches, Verify | `POST /v2/sdn/switches/verify` · `sdn_switches_v2.py:verify` | Asks the reader to run now | busy · in-place | Run reader · Redraw |
-| SDN › DHCP steering, Edit settings… | `GET /v2/sdn/dhcp/settings` · `sdn_dhcp_v2.py:settings` | Reads the switches | none | Read switches |
+| SDN › DHCP steering, Edit settings… | `GET /v2/sdn/dhcp/settings` · `sdn_dhcp_v2.py:settings` | Reads the switches | busy on the link (C4216's spinner) | Read switches |
 | SDN › DHCP steering, Preview | `POST /v2/sdn/dhcp/preview` · `sdn_dhcp_v2.py:preview` | Reads the switches for steering | busy · in-place | Read switches · Plan |
 | SDN › DHCP steering, Steer | `POST /v2/sdn/dhcp/confirm` · `sdn_dhcp_v2.py:confirm` | Sends the steering flows | busy · in-place | Send · Read back |
 | SDN › DHCP steering, Remove preview | `POST /v2/sdn/dhcp/remove/preview` · `sdn_dhcp_v2.py:remove_preview` | Reads the switches | busy · in-place | Read switches · Plan |
@@ -213,13 +218,13 @@ Routes are given as `METHOD /url` and `routes/<file>:<function>`.
 
 | Where | Route | What it does | Feedback today | Steps a person would want |
 |---|---|---|---|---|
-| DHCP, Add a reservation… / Edit | `GET /v2/dhcp/reservation` · `dhcp_v2.py:reservation_preview` | Preview reads Kea live | none (link); busy on the form's re-ask | Ask Kea · Plan |
+| DHCP, Add a reservation… / Edit | `GET /v2/dhcp/reservation` · `dhcp_v2.py:reservation_preview` | Preview reads Kea live | busy on the link (C4216's spinner); busy on the form's re-ask | Ask Kea · Plan |
 | DHCP, Reserve (confirm) | `POST /v2/dhcp/reservation` · `dhcp_v2.py:reservation_confirm` | Writes, reloads Kea, reads back | busy · in-place · stepper (after) | Write · Reload Kea · Read back |
-| DHCP, Add subnet… | `GET /v2/dhcp/subnet` · `dhcp_v2.py:subnet_preview` | Preview reads Kea live | none (link); busy on the form | Ask Kea · Plan |
+| DHCP, Add subnet… | `GET /v2/dhcp/subnet` · `dhcp_v2.py:subnet_preview` | Preview reads Kea live | busy on the link (C4216's spinner); busy on the form | Ask Kea · Plan |
 | DHCP, Subnet (confirm) | `POST /v2/dhcp/subnet` · `dhcp_v2.py:subnet_confirm` | Tests, writes, reloads Kea, reads back | busy · in-place · stepper (after) | Test · Write · Reload Kea · Read back |
-| DHCP, Exclude a range… | `GET /v2/dhcp/exclusion` · `dhcp_v2.py:exclusion_preview` | Preview reads Kea live | none (link); busy on the form | Ask Kea · Plan |
+| DHCP, Exclude a range… | `GET /v2/dhcp/exclusion` · `dhcp_v2.py:exclusion_preview` | Preview reads Kea live | busy on the link (C4216's spinner); busy on the form | Ask Kea · Plan |
 | DHCP, Exclude (confirm) | `POST /v2/dhcp/exclusion` · `dhcp_v2.py:exclusion_confirm` | Tests, writes, reloads Kea, reads back | busy · in-place · stepper (after) | Test · Write · Reload Kea · Read back |
-| DHCP, Release a lease… | `GET /v2/dhcp/lease` · `dhcp_v2.py:lease_preview` | Preview reads Kea live | none (link) | Ask Kea · Plan |
+| DHCP, Release a lease… | `GET /v2/dhcp/lease` · `dhcp_v2.py:lease_preview` | Preview reads Kea live | busy on the link (C4216's spinner) | Ask Kea · Plan |
 | DHCP, Release (confirm) | `POST /v2/dhcp/lease` · `dhcp_v2.py:lease_confirm` | Releases and reads back | busy · in-place · stepper (after) | Release · Read back |
 | Onboard › Console ZTP, Survey preview | `POST /v2/onboard/console/<id>/survey/preview` · `console_ztp_v2.py:survey_preview` | Reads NetBox's console model | busy · in-place | Read NetBox · Plan |
 | Onboard › Console ZTP, Survey | `POST /v2/onboard/console/<id>/survey` · `console_ztp_v2.py:survey_confirm` | Console survey job | busy · in-place · stepper (live) | Console · Read device · Record |
@@ -236,14 +241,14 @@ Routes are given as `METHOD /url` and `routes/<file>:<function>`.
 | History › Ask metrics, Ask | `GET /v2/history/query/ask/metrics` · `v2.py:history_ask_metrics` | Prometheus and Loki queries | busy (`#lq-ask`) · in-place | Build query · Ask Prometheus · Draw |
 | History › Ask logs, Reveal | `POST /v2/history/query/ask/logs/reveal` · `v2.py:history_ask_logs_reveal` | Reads the raw Loki line and records the reveal | busy · in-place | Ask Loki · Record · Show |
 | History › metric | `GET /v2/history/query/metric/<key>` · `v2.py:history_query_metric` | Grafana or Loki query | unverified | Query · Draw |
-| History page (filters, export) | `GET /v2/history` · `v2.py:history_page` | git log and about 50 stores | page load | Read git · Read records · Merge |
+| History page (filters, export) | `GET /v2/history` · `v2.py:history_page` | git log and about 50 stores | page load; busy on the pressed control until the page replaces it (C4216) | Read git · Read records · Merge |
 | Monitoring › Alerts history, Build the evidence | `POST /v2/monitoring/alerts/history/<ep>/evidence` · `v2.py:monitoring_alert_history_evidence` | Builds an evidence pack (Grafana, Loki, Prometheus) | busy · in-place | Alerts · Logs · Metrics · Seal pack |
 | Monitoring › Evidence pack, Build again | `POST /v2/monitoring/alerts/pack/<id>/rebuild` · `v2.py:monitoring_alert_pack_rebuild` | Rebuilds the pack | busy · in-place | Alerts · Logs · Metrics · Seal pack |
-| Monitoring › Heartbeat (page) | `GET /v2/monitoring/heartbeat` · `v2.py:heartbeat` | Loki and Prometheus per device | page load | Read arrivals · Measure · Draw |
+| Monitoring › Heartbeat (page) | `GET /v2/monitoring/heartbeat` · `v2.py:heartbeat` | Loki and Prometheus per device | page load; busy on the pressed control until the page replaces it (C4216) | Read arrivals · Measure · Draw |
 | Monitoring › Heartbeat, Apply | `POST /v2/monitoring/heartbeat/apply` · `v2.py:heartbeat_apply` | Re-measures and writes rules (JS `ipslaPost`) | busy (Alpine label) · in-place or reload | Measure again · Write rules · Host step |
 | Monitoring › IP SLA, Set policy | `POST /v2/monitoring/ip-sla/policy` · `v2.py:ip_sla_policy_set` | Commits the profile's policy (JS) | busy (Alpine label) · in-place | Check · Commit |
 | Monitoring › IP SLA, Commit suggestions | `POST /v2/monitoring/ip-sla/commit` · `v2.py:ip_sla_commit` | Commits into devices' intent (JS) | busy (Alpine label) · redirect to Apply | Check · Commit · Open Apply |
-| Monitoring › Coverage, Apply… | `GET /v2/monitoring/apply` · `v2.py:profile_apply` | Plans the monitoring apply ("local but slow") | page load | Plan each · Order · Ready |
+| Monitoring › Coverage, Apply… | `GET /v2/monitoring/apply` · `v2.py:profile_apply` | Plans the monitoring apply ("local but slow") | page load; busy on the pressed control until the page replaces it (C4216) | Plan each · Order · Ready |
 | Monitoring › Apply, Leave out / Move | `GET /v2/monitoring/apply/preview` · `v2.py:profile_apply_preview` | Re-renders the apply preview | busy · in-place | Re-plan · Draw |
 | Monitoring › Apply, Deploy | `POST /v2/monitoring/apply/confirm` · `v2.py:profile_apply_confirm` | Batch deploy job | busy · in-place · stepper (live) | Order · Each device · Verify · Record |
 | Monitoring › Apply, Deploy the pair | `POST /v2/monitoring/apply/confirm-pair` · `v2.py:pair_apply_confirm` | Paired batch deploy job | busy · in-place · stepper (live) | Both ends · Verify link · Record |
@@ -251,7 +256,7 @@ Routes are given as `METHOD /url` and `routes/<file>:<function>`.
 | Monitoring, Decline (commit) | `POST /v2/monitoring/decline/confirm` · `v2.py:decline_confirm` | Commits a decline | busy · in-place | Commit |
 | History, Re-apply… | `GET /v2/history/reapply` · `v2.py:history_reapply` | Plans the re-apply ("local but slow") | unverified | Plan · Ready |
 | History › Re-apply, Start | `POST /v2/history/reapply/confirm` · `v2.py:history_reapply_confirm` | Restore deploy job | busy · in-place · stepper (live) | Plan again · Each device · Verify |
-| Monitoring › Coverage (page) | `GET /v2/monitoring/coverage` · `v2.py:coverage` | `monitoring_coverage.fleet` ("local but slow") | page load | Compute · Draw |
+| Monitoring › Coverage (page) | `GET /v2/monitoring/coverage` · `v2.py:coverage` | `monitoring_coverage.fleet` ("local but slow") | page load; busy on the pressed control until the page replaces it (C4216) | Compute · Draw |
 
 ## Settings / Installation (including Credentials, Notify, Remote, Console servers)
 

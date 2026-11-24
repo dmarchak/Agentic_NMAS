@@ -2969,6 +2969,51 @@
     root.addEventListener('pageshow', function (e) { reloadIfRestored(e, root.location); });
   }
 
+  /* A press that sends the browser to another page is busy on itself until that page replaces
+     this one (C4216: Devices' Save… and Deploy…, History, Heartbeat and Coverage waited on
+     their source with only the browser's own loading to show for it). A link this page
+     follows, or the button that submitted a form htmx does not send, is marked `aria-busy`,
+     which the stylesheet draws as a menu row's or a reading control's spinner. The mark ends
+     with the page: a page restored from the back/forward cache is loaded again
+     (`reloadIfRestored`), so no mark outlives its press. Never marked, because no page
+     replaces this one: a press something else handled (`defaultPrevented`), a new tab or
+     window (`target`, a modifier, not the main button), a `download` (a file never unloads
+     the page; tests/test_v2_gets_busy_on_itself.py holds every attachment route's link
+     declares it), another origin, a link to a place on this page, and htmx's own requests. */
+  function navigatingControl(e, loc) {
+    if (!e || e.defaultPrevented) return null;
+    var t = e.target;
+    if (e.type === 'submit') {
+      if (!t || t.tagName !== 'FORM' || t.hasAttribute('hx-get') || t.hasAttribute('hx-post')
+          || (t.target && t.target !== '_self')) return null;
+      var s = e.submitter;
+      if (!s || s.hasAttribute('hx-get') || s.hasAttribute('hx-post')
+          || (s.getAttribute('formtarget') || '_self') !== '_self') return null;
+      return s;
+    }
+    if (e.type !== 'click' || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+      return null;
+    }
+    var a = t && t.closest ? t.closest('a[href]') : null;
+    if (!a || a.hasAttribute('download') || a.hasAttribute('hx-get') || a.hasAttribute('hx-post')
+        || (a.target && a.target !== '_self') || a.getAttribute('aria-disabled') === 'true') {
+      return null;
+    }
+    var href = a.getAttribute('href') || '';
+    if (href.charAt(0) === '#' || !loc || a.origin !== loc.origin) return null;
+    if (a.pathname === loc.pathname && a.search === loc.search && a.hash) return null;
+    return a;
+  }
+  function markNavigating(e) {
+    var c = navigatingControl(e, root.location);
+    if (c) c.setAttribute('aria-busy', 'true');
+  }
+  if (root.document && root.document.addEventListener) {
+    // Bubbling, so a handler on the control itself has had its say (`defaultPrevented`).
+    root.document.addEventListener('click', markNavigating);
+    root.document.addEventListener('submit', markNavigating);
+  }
+
   if (root.document && root.document.addEventListener) {
     root.document.addEventListener('alpine:init', registerAlpine);
     root.document.addEventListener('DOMContentLoaded', function () {
@@ -3079,6 +3124,7 @@
                   isFragment: isFragment,
                   failWords: failWords, couldntWords: couldntWords, injectedScripts: injectedScripts,
                   rewrittenWords: rewrittenWords, openKeys: openKeys, submitterOf: submitterOf,
+                  navigatingControl: navigatingControl,
                   reasonsTyped: reasonsTyped, holdReason: holdReason, pressKey: pressKey,
                   citeTarget: citeTarget, jumpToCite: jumpToCite, modalPlace: modalPlace,
                   // C2810's merge, for its tests in a real browser.

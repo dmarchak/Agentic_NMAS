@@ -1866,6 +1866,21 @@ input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft);
   animation: nmas-spin .8s linear infinite; }
 @keyframes nmas-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .menu-item.htmx-request::after { animation: none; } }
+/* A pressed link or button that reads (`hx-get`: a tab, a DHCP or SDN dialog's link, Preview
+   it again) and has no busy words of its own is busy on itself as a menu row is: the progress
+   cursor and the same spinner after its label, from the press until htmx takes `htmx-request`
+   off it once its answer is drawn (C4216: a device's NetBox or History tab, waiting on NetBox
+   or git, showed nothing while it was asked). Busy words, where a control has them, say it.
+   A link or plain form's button that sends the browser to another page is drawn the same
+   while `aria-busy` (nmas_v2.js `markNavigating`), until that page replaces this one. */
+:is(:is(a, button)[hx-get].htmx-request, :is(a, button)[aria-busy="true"]):not(.menu-item):not(:has(.op-busy)) {
+  cursor: progress; }
+:is(:is(a, button)[hx-get].htmx-request, :is(a, button)[aria-busy="true"]):not(.menu-item):not(:has(.op-busy))::after {
+  content: ""; display: inline-block; flex: none; width: 10px; height: 10px; margin-left: 6px;
+  vertical-align: -1px; border: 2px solid var(--line); border-top-color: var(--accent);
+  border-radius: 50%; animation: nmas-spin .8s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  :is(a, button):is([hx-get].htmx-request, [aria-busy="true"])::after { animation: none; } }
 /* A status line while Mercury works on it (a saved script's run, an AI investigation): its
    spinner before the words, the live step after them (the operator, 2026-11-15). */
 .working-now::before { content: ""; display: inline-block; width: 10px; height: 10px;
