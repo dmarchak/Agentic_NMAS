@@ -149,7 +149,7 @@ def g6_many(incidents: list, now: float, grace_s: float, most: int, *, at: float
                       and anchor - grace_s <= float(i.get("opened_epoch") or 0)
                       <= min(anchor + grace_s, now)})
     if len(devices) > int(most):
-        return hit(6, "held", (f"{len(devices)} devices of the network departed within "
+        return hit(6, "held", (f"{len(devices)} devices of the network changed within "
                                f"{int(grace_s)} s of each other ({', '.join(devices[:6])}"
                                f"{'…' if len(devices) > 6 else ''}), more than "
                                f"{int(most)}: a fleet-wide departure is escalated, never healed"),

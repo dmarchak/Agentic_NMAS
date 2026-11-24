@@ -192,7 +192,7 @@ def heal_stage_table(act_prefix: str = "") -> tuple:
 
 #: What the first trigger was, as the Detected stage says it.
 SEEN_WORDS = {"config_change": "{device}'s configuration changed outside Mercury",
-              "drift": "{device} departed from its golden",
+              "drift": "{device} differs from its golden",
               "alert": "An alert fired on {device}",
               "adjacency": "An adjacency went down on {device}",
               "adjacency_log": "{device} logged an adjacency drop",

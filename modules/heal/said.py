@@ -227,7 +227,7 @@ _THINGS = tuple((re.compile(p), w) for p, w in (
 _VERBS = {"remove": "added", "add": "removed", "change": "changed"}
 #: What a symptom fact is, by its kind, when the trigger behind it is not held.
 _FACT_TITLES = {"config_change": "configuration changed outside Mercury",
-                "departure": "departed from its approved configuration",
+                "departure": "differs from its approved configuration",
                 "adjacency_log": "routing neighbour lost", "adjacency": "routing adjacency down",
                 "alert": "an alert firing", "duplicate_router_id": "duplicate router-id"}
 
@@ -359,7 +359,7 @@ def title(device: str, units: list = (), triggers: list = (), facts: list = (), 
             kinds = [t.get("kind") for t in trig] + [f.get("kind") for f in facts]
             first = next((k for k in kinds if k in ("config_change", "drift", "departure")), "")
             what = (_FACT_TITLES["config_change"] if first == "config_change" else
-                    "departed from its golden" if first == "drift" else
+                    "differs from its golden" if first == "drift" else
                     _FACT_TITLES["departure"] if first == "departure" else "")
     if not what:
         return ""

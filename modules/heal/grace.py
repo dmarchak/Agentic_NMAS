@@ -91,7 +91,7 @@ def judge(reads: list, changes: list, grace_seconds: float, now: float, *,
     if newest.get("state") == "clean":
         return {"state": "at_golden", "due_at": None, "first": i_new, "second": None,
                 "operands": operands,
-                "words": "the read found the device at its golden: nothing departed"}
+                "words": "the read found the device at its golden: nothing differs"}
     if newest.get("state") == "skipped":
         return {"state": "not_checkable", "due_at": None, "first": i_new, "second": None,
                 "operands": operands,
@@ -119,7 +119,7 @@ def judge(reads: list, changes: list, grace_seconds: float, now: float, *,
                         apart_seconds=0, departure=newest.get("departure", ""), no_grace=once)
         return {"state": "persisted", "due_at": None, "first": i_new, "second": i_new,
                 "operands": operands,
-                "words": f"the read found it departed, and there is no grace: {once}"}
+                "words": f"the read found it differing from its golden, and there is no grace: {once}"}
     # The first read of the run of drifted reads holding the newest one's departure, errors
     # between them skipped (they say nothing of the device's state).
     i_first, how = i_new, ""
@@ -148,5 +148,5 @@ def judge(reads: list, changes: list, grace_seconds: float, now: float, *,
                  else "")
     return {"state": "waiting", "due_at": due, "first": i_first, "second": None,
             "operands": operands,
-            "words": (f"departed at the read at {_iso(first.get('epoch'))}; a second "
+            "words": (f"it differed at the read at {_iso(first.get('epoch'))}; a second "
                       f"read at least {_s(grace)} after it is due at {_iso(due)}{restarted}")}

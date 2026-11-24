@@ -467,14 +467,14 @@ def kind_of(u: dict, *, mgmt_ifaces: set, mgmt_routes: dict, related: bool, plat
                 f"{words} {'removed' if u['op'] == 'remove' else 'changed'} on one side, and "
                 f"an adjacency is down: {(revert or {}).get('words') or 'the network allows it'}")
         if cls == ACL_CLASS:
-            return "security_acl", ("an ACL, its entries or its application departed: a person "
+            return "security_acl", ("an ACL, its entries or its application changed: a person "
                                     "decides whether it goes back to intent or into it (C2839)")
         if u["op"] in ("remove", "change"):
             return "security_control", (
                 f"{words} added or changed outside intent: a person decides whether it goes "
                 "back to intent or into it (C2839)" if cls != UNDECLARED else words)
     if any(_QOS.search(t) for t in texts):
-        return "qos_policy", "a service policy, policy map or class map departed"
+        return "qos_policy", "a service policy, policy map or class map changed"
     if u["op"] == "change" and u["chain"] and _ROUTER.search(u["chain"][0]) and any(
             _ROUTER_ID.search(l) for l in u["lines"]):
         return "process_reset", "a router-id takes effect only through a process reset"

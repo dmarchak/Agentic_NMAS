@@ -366,7 +366,7 @@ def liveness(reader, got: dict, now: float) -> list:
                              "self-healing; the drift check compares each device with its "
                              "golden. Clears a day after detection read again."),
                      action={"label": ("Run a drift check with Check now in Settings › "
-                                       "Installation › Diagnostics, and read each departed "
+                                       "Installation › Diagnostics, and read each differing "
                                        "device"),
                              "href": "/v2/settings/installation?tab=diagnostics"})]
     lag = value.get("behind_seconds") or 0

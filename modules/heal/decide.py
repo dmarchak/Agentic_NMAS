@@ -692,7 +692,7 @@ def _decide_one(network: str, incident: dict, *, now: float, sources=None, mode=
             # interim's can't-fix, ruling 0), never nothing to heal with the link still down.
             return _departing_golden(base, device, golden, at_golden=False)
         return dict(base, outcome="nothing",
-                    words=(f"nothing to heal: what departed is not from the approved state "
+                    words=(f"nothing to heal: what differs is not from the approved state "
                            f"({c['left_out']['intent_only']} line(s) only intent holds: an "
                            f"intent edit not deployed; {c['left_out']['golden_behind']} the "
                            "golden lacks while intent holds them)"))

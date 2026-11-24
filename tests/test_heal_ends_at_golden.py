@@ -104,7 +104,7 @@ def test_a_departure_that_leaves_no_unit_at_a_departing_golden_is_a_cant_fix(
     """The correctness review's MEDIUM-C (review-devicewrite-fixes-2.md), as it holds on this
     code: an incident settled on a departure (not at its golden), read at the decision with no
     unit Mercury would restore, its golden departing from intent (or unknown), was "nothing to
-    heal: what departed is not from the approved state" and closed, with its link still down.
+    heal: what differs is not from the approved state" and closed, with its link still down.
     It is the interim's can't-fix (ruling 0), as the same golden with a unit is
     (tests/test_heal_decide.py's `test_4_a_golden_that_departs_from_intent_n5`)."""
     trig = ([{"kind": "adjacency", "key": "adj:1", "epoch": T0 - 900, "at": iso(T0 - 900),

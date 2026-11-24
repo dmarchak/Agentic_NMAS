@@ -823,7 +823,7 @@ def after_drift_record(network: str, result: dict, now: float = None) -> dict:
             "kind": "drift", "key": f"drift:{host}@{at}", "epoch": at, "at": _iso(at),
             "source": "drift-check", "read": read,
             "words": (f"the drift check ({(result or {}).get('triggered_by') or '?'}) found "
-                      f"{host} departed from its golden ({e.get('changed_lines')} line(s))")}))
+                      f"{host} differs from its golden ({e.get('changed_lines')} line(s))")}))
     return _deliver(ctx, out, counts)
 
 

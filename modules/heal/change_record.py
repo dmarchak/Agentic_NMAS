@@ -74,7 +74,7 @@ def markdown(network: str, decision: dict, result: dict, f: dict, *, policy: dic
            f"{decision.get('incident')}: deterministic, written by Mercury's code, no AI call. "
            f"Program {f['program_hash'][:12]}: the program is the change.", "",
            "## Summary", "",
-           (f"Self-healing on {network} found {host} departed from its approved state "
+           (f"Self-healing on {network} found {host} differing from its approved state "
             f"({KIND_WORDS.get(kind, kind) or 'no kind recorded'}"
             + (f": {'; '.join(units)}" if units else "") + ") and "
             + ("returned it to intent" if outcome in ("healed", "symptom_remains", "partial")
