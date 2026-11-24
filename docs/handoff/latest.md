@@ -6,6 +6,8 @@
   started (C4226's fix needs a red test first and the C4228 merge-path interaction, below).
   This file was kept as `docs/handoff/2026-11-24.md`; nothing else changed. **The next
   session (03:35) starts at section 0's Next: C4226's fix as a patch on top of c4228.patch.**
+- A second session started at 02:13 Denver: still label `unconfined`, OPERATOR.md unanswered
+  (session-namespace, c4090-records); the handover only again, nothing else changed.
 
 ## 0. The small-hours session (from 01:02 Denver, 2026-11-24): read this first
 
