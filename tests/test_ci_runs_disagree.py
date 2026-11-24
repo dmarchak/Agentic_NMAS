@@ -174,6 +174,28 @@ class TestTheDisagreement:
         assert row["action"]["run_url"] == URL_1680 and row["action"]["run"] == "1680"
         assert "open" not in row["action"]
 
+    def test_a_red_the_agreement_draws_after_deploy_is_said_once(self, repo, github,
+                                                                  monkeypatch):
+        """C3432: the running commit's GitHub red, when the host runs it on another runner's
+        green, is `ci_agreement`'s red-after-deploy row; this source draws no second row for
+        the same fact. Where the agreement says nothing of it, this source's row stands."""
+        from modules import reader_job
+        from modules.readers import ci_agreement as CA
+        from tests.test_ci_agreement import _cached as agreement, _commit, _value
+        v = _read(repo, github, "failed")
+        tip = repo["tip"]
+        said = _value([_commit(tip, "FAILED", "passed", 9)], running=tip, deployed=(tip, "b" * 40))
+        assert [r["kind"] for r in CA.judge(said["commits"] and said)] == ["red-after-deploy"]
+        real = reader_job.read_cached
+        monkeypatch.setattr(reader_job, "read_cached",
+                            lambda name, *a, **k: agreement(said) if name == CA.NAME
+                            else real(name, *a, **k))
+        assert _rows(repo, v) == []
+        monkeypatch.setattr(reader_job, "read_cached",
+                            lambda name, *a, **k: agreement(_value([], running=tip))
+                            if name == CA.NAME else real(name, *a, **k))
+        assert len(_rows(repo, v)) == 1
+
     def test_update_only_when_a_newer_release_ci_passed_exists(self, repo, github):
         v = _read(repo, github, "failed")
         newer = "b" * 40

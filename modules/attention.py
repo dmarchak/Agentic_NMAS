@@ -3536,7 +3536,12 @@ def ci_source(cached=None, pushed=None) -> dict:
                                      f"{str(health._COMMIT)[:10]}: not judged yet")
     rows = []
     red = v.get("red") or None
-    if red and (v.get("state") == "failed" or red.get("rerun")):
+    if (v.get("state") == "failed" or (red and red.get("rerun"))) \
+            and _agreement_says_red_after_deploy(commit):
+        # C3432: the same red is `ci_agreement`'s red-after-deploy row when the host runs this
+        # commit on another runner's green; one fact, one row (its action the fuller one).
+        pass
+    elif red and (v.get("state") == "failed" or red.get("rerun")):
         rows.append(_ci_red_row(commit, v, red, pushed))
     elif v.get("state") in _CI_ROWS:
         words, level = _CI_ROWS[v["state"]]
@@ -3604,6 +3609,24 @@ def _ci_run_said(r: dict) -> str:
     state = r.get("conclusion") if r.get("status") == "completed" else r.get("status")
     return (f"#{r.get('number')} attempt {r.get('attempt') or 1} "
             f"{_RUN_WORDS.get(state, state or 'unknown')}")
+
+
+def _agreement_says_red_after_deploy(commit: str) -> bool:
+    """Whether `ci_agreement_source` draws *commit*'s GitHub red as its red-after-deploy row
+    (C3432): read from the same reader's stored value and the same judgement
+    (`ci_agreement.judge`); False when it cannot be read, so the red is never left unsaid."""
+    from modules import reader_job
+    from modules.readers import ci_agreement as CA
+
+    try:
+        got = reader_job.read_cached(CA.NAME)
+        v = (((got.get("doc") or {}).get("last_good") or {}).get("value") or {})
+        return got.get("state") == "ok" and any(
+            r.get("kind") == "red-after-deploy" and r.get("sha") == commit for r in CA.judge(v))
+    except Exception:                                 # noqa: BLE001 (drawn by both, as before)
+        log.warning("attention: whether CI agreement draws %s's red could not be read", commit,
+                    exc_info=True)
+        return False
 
 
 def _ci_red_row(commit: str, v: dict, red: dict, pushed) -> dict:
