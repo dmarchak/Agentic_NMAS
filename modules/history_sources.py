@@ -1295,6 +1295,7 @@ def ai_calls(ctx):
     sent and the answer as received (`/v2/history/ai-call/<id>`). A device's tab shows the
     calls whose subject names the device; the installation's own calls are no device's."""
     from modules.ai import calls
+    from modules.ai.triggers import JOB_PREFIX
     # One kept read (`calls.kept_all`), its calls and their use rows both: the whole record
     # read twice (`read` and `uses`) was this page's 13 s on the host (2026-10-29).
     got = calls.kept_all()
@@ -1362,12 +1363,16 @@ def ai_calls(ctx):
                 f"out, cache {int(t.get('cache_creation_input_tokens') or 0)} written, "
                 f"{int(t.get('cache_read_input_tokens') or 0)} read") if t else "none (not sent)"
     def event(r):
+        # A background call's actor is its job (`triggers.actor_of`: ``job:<job>``), an id: the
+        # row says who in words, and the job's id is the record's.
+        actor = str(r.get("actor") or "")
+        job = actor if actor.startswith(JOB_PREFIX) else ""
         e = _event(r.get("at"), "ai_call", what(r),
                    list((r.get("subject") or {}).get("devices") or []),
-                   who=r.get("actor", ""),
+                   who="Mercury's background AI" if job else actor,
                    detail=r.get("detail", "") or f"prompt {r.get('prompt', '?')}",
                    outcome=outcome(r), call=r.get("joined") or r.get("id", ""),
-                   record=[("Call", r.get("id")), ("Joined call", r.get("joined")),
+                   record=[("Call", r.get("id")), ("Job", job), ("Joined call", r.get("joined")),
                            ("About", subject_words(r.get("subject"))),
                            ("Prompt", r.get("prompt")), ("Schema", r.get("schema")),
                            ("Model", r.get("model")), ("Batch", batched(r)),
@@ -1383,6 +1388,10 @@ def ai_calls(ctx):
         # What the answer produced (15.14's links both ways): the last use row's page and
         # anchor, drawn as "Open what it produced".
         e["produced"] = produced((used.get(r.get("id")) or [{}])[-1].get("links"))
+        # Its identifiers (the call's id, the job that asked) are the record's, under a
+        # collapsed "Details for the record" (the charter's "Human-facing means
+        # human-readable", rule 2).
+        e["record_closed"] = True
         return e
     return _out([event(r) for r in rows[:ctx["limit"]]],
                 cut=[f"the AI calls' newest {ctx['limit']}"] if len(rows) > ctx["limit"] else [])
@@ -2676,6 +2685,8 @@ def notifications(ctx):
                     ("Incident", r.get("incident")), ("Attempt", f"{r.get('attempt')} of "
                                                                  f"{r.get('of')}"),
                     ("Took", f"{r.get('duration_s')} s"), ("Error", r.get("error"))]))
+        # The delivery's and the incident's ids are the record's, collapsed (as the AI calls').
+        events[-1]["record_closed"] = True
         if len(events) >= ctx["limit"]:
             break
     return _out(events)

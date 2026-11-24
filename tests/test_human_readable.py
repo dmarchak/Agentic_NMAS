@@ -425,21 +425,10 @@ def _surfaces(drawn):
 #: (2026-11-09) took out the heal records' own: their ids, hashes and steps under a collapsed
 #: "Details for the record" on Needs attention and History, the email's steps by what they do,
 #: and the two lookups drawn in place: 12 in 12 keys, the AI call's and the notification's
-#: History rows and the email's foot.
+#: History rows and the email's foot. The week plan's Stage 5 human-readable pass (2026-11-24)
+#: took out the last 11: the AI call's and the notification's records collapsed, and a
+#: background call's "By" said in words, its job's id in the record.
 KNOWN_BARE_IDENTIFIERS = {
-    # The device page: edge-d's History tab (the AI call and notification rows).
-    ('device', 'hex', 'By job:heal-notice-<incident_id> Call ai-<hex> About heal_incident Prompt heal_analysis.v#'): 1,
-    ('device', 'hex', 'by email: sent attempt # of # Delivery d-<hex> Team Network ops Channel email'): 1,
-    ('device', 'incident_id', '(claude-sonnet-#-#, $#.#) job:heal-notice-<incident_id> the background feature heal_analysis'): 1,
-    ('device', 'incident_id', 'Channel email Recipient …@example.com Incident <incident_id> Attempt # of # Took #.# s # min'): 1,
-    ('device', 'incident_id', 'estimate; nothing was sent By job:heal-notice-<incident_id> Call ai-<hex> About heal_incident'): 1,
-    # History: the AI call and notification rows, and the Person filter's choice.
-    ('history', 'hex', 'By job:heal-notice-<incident_id> Call ai-<hex> About heal_incident Prompt heal_analysis.v#'): 1,
-    ('history', 'hex', 'by email: sent attempt # of # Delivery d-<hex> Team Network ops Channel email'): 1,
-    ('history', 'incident_id', '(claude-sonnet-#-#, $#.#) job:heal-notice-<incident_id> the background feature heal_analysis'): 1,
-    ('history', 'incident_id', 'Channel email Recipient …@example.com Incident <incident_id> Attempt # of # Took #.# s Open'): 1,
-    ('history', 'incident_id', 'self-healing · policy set by admin job:heal-notice-<incident_id> Kind Every kind The repository'): 1,
-    ('history', 'incident_id', 'estimate; nothing was sent By job:heal-notice-<incident_id> Call ai-<hex> About heal_incident'): 1,
 }
 
 
