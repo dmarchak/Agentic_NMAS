@@ -7333,7 +7333,9 @@ def first_action(r: dict) -> str:
         opens = None
     if opens in ("ai_spend_panel",) + IN_PLACE:
         return opens
-    if opens == "app_update" and r.get("source") == "host_steps":
+    if opens == "app_update":
+        # Every row whose one action opens the Update page draws it on its line: the host
+        # steps owed (C3136), the running commit's CI verdict and a pushed release (C3139).
         return "update_page"
     if r.get("likely"):
         return "likely"

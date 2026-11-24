@@ -196,6 +196,15 @@ class TestTheDisagreement:
                             if name == CA.NAME else real(name, *a, **k))
         assert len(_rows(repo, v)) == 1
 
+    def test_its_update_is_drawn_on_its_line(self, repo, github):
+        """C3139: a row whose one action opens the Update page (here the running commit's CI
+        verdict offering a newer release) draws that action on its line, as the host steps'
+        row does (C3136), never nothing."""
+        v = _read(repo, github, "failed")
+        (row,) = _rows(repo, v, target="b" * 40)
+        assert row["action"]["open"] == "app_update"
+        assert A.first_action(row) == "update_page", A.first_action(row)
+
     def test_update_only_when_a_newer_release_ci_passed_exists(self, repo, github):
         v = _read(repo, github, "failed")
         newer = "b" * 40
