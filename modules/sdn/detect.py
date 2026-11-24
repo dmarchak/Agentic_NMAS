@@ -1012,7 +1012,7 @@ def _destinations(d: dict) -> set:
     return {_canon_addr(t) for t in list(d.get("targets") or []) + list(d.get("dst_hosts") or [])}
 
 
-def mark_replies(detections: list, collected: dict) -> list:
+def mark_replies(detections: list, collected: dict, waiting=()) -> list:
     """*detections* with each rate detection whose source is the DESTINATION of another
     rate detection's traffic (a different source) marked as replying, never a source (C2237:
     F3's victim named as the source of its echo replies, BF1 to BF3's receivers of their ACKs,
@@ -1020,7 +1020,15 @@ def mark_replies(detections: list, collected: dict) -> list:
     ``source`` and ``sources`` are emptied, the addresses kept as ``replying_hosts``, and
     ``replying_to`` names the sender and why. In a two-way pair the side whose mean received
     packet is at least SENDER_SIZE_RATIO times the other's is the sender and stays a source;
-    otherwise neither side is named a source, and a person decides from the evidence."""
+    otherwise neither side is named a source, and a person decides from the evidence.
+
+    A scan Mercury's tripwires confirmed is answered by `scan_replies` over both of its
+    candidate populations at once: this pass's rate detections and *waiting*, the flood
+    incidents awaiting a person (``[(source, detection, window_s)]``, the loop's; C4195). Its
+    decision rides on the scan detection as ``scan_replies`` (``{"taken", "unsure"}``, host
+    addresses), which `loop._replies_to` reads, so the two populations are counted once; a
+    candidate of this pass whose host is unsure keeps its source and carries
+    ``scan_target_unsure``, and no response is proposed against it (C4196)."""
     rate = [d for d in detections if d.get("basis") == "rate" and d.get("source")]
     marks = {}
     for d in rate:
@@ -1059,26 +1067,60 @@ def mark_replies(detections: list, collected: dict) -> list:
         s = scan_replied(d, scans, _mean_packet(collected, d), peers=rate)
         if s is not None:
             found.append((d, s))
-    # A scan of one host has one target: where nothing names their destinations, two or more
-    # hosts mirroring one scan are not all its replies, so none is taken for them (the review
-    # of 7437d140): each stays its own, answered as any is.
-    unnamed = {}
-    for d, s in found:
-        if not (_destinations(d) - {""}):
-            unnamed.setdefault(_canon_addr(s["source"]), []).append(id(d))
-    for d, s in found:
-        several = unnamed.get(_canon_addr(s["source"])) or []
-        if len(several) > 1 and id(d) in several:
-            continue
-        marks[id(d)] = {
-            "source": s["source"], "rule": "scan", "port": s.get("port"),
-            "dpid_hex": s.get("dpid_hex"), "neither": False,
-            "words": (f"{d['source']} is in the subnet {s['source']}'s scan was watched in by "
-                      f"Mercury's tripwires, its packets small, so what its port sends is its "
-                      f"replies to the scan's probes. Mercury proposes no response against a "
-                      "scan's target")}
+    # Each scan's replies decided once, over this pass's candidates and the floods already
+    # waiting as incidents (C4195): `scan_replies`.
+    unsure, decided = {}, {}
+    keys = {d.get("key") for d in rate}
+    for s in scans:
+        scanner = _canon_addr(s["source"])
+        # The scanner's candidates on every switch that saw its scan, so each sighting of it
+        # carries one decision.
+        mine = [d for d, of in found if _canon_addr(of["source"]) == scanner]
+        theirs = [(who, w, win) for who, w, win in waiting or () if w.get("key") not in keys]
+        floods = ([p for p in rate if _canon_addr(p["source"]) == scanner
+                   and p.get("rule") == "flood"]
+                  + [w for who, w, _win in waiting or () if _canon_addr(who) == scanner])
+        # The hosts this pass already marked replying to the scanner's own traffic (C2237):
+        # the scan's target accounted for, and its waiting card closes into the scan (the
+        # device-write review of the C4195 and C4196 patch, 2026-11-24, findings 1 and 2).
+        replying = {_canon_addr(d["source"]) for d in rate
+                    if id(d) in marks and _canon_addr(marks[id(d)]["source"]) == scanner}
+        got = scan_replies(s, mine, theirs, floods,
+                           own=[p for p in rate if _canon_addr(p["source"]) == scanner],
+                           replying=replying)
+        decided[id(s)] = got
+        # Every sighting of a host decided, whichever switch's the incident chooses: an unsure
+        # host's carries it (the first device-write review of this change, finding 3), and a
+        # taken host's is marked its replies, the sighting `scan_replied` could not read too
+        # (the second review, N3); a sighting already marked replying keeps its mark. A host
+        # neither is a mirror told from the target (C4196), its own.
+        for d in rate:
+            host = _canon_addr(d["source"])
+            if id(d) in marks or id(d) in unsure:
+                continue
+            if host in got["unsure"]:
+                unsure[id(d)] = {"source": s["source"], "hosts": got["unsure"],
+                                 "words": _unsure_words(d["source"], s["source"],
+                                                        got["unsure"])}
+                continue
+            if host not in got["taken"]:
+                continue
+            marks[id(d)] = {
+                "source": s["source"], "rule": "scan", "port": s.get("port"),
+                "dpid_hex": s.get("dpid_hex"), "neither": False,
+                "words": (f"{d['source']} is in the subnet {s['source']}'s scan was watched in "
+                          f"by Mercury's tripwires, its packets small, so what its port sends "
+                          f"is its replies to the scan's probes. Mercury proposes no response "
+                          "against a scan's target")}
     out = []
     for d in detections:
+        if id(d) in decided:
+            out.append(dict(d, scan_replies=decided[id(d)]))
+            continue
+        if id(d) in unsure:
+            out.append(dict(d, scan_target_unsure=unsure[id(d)],
+                            words=f"{d.get('words', '')}; {unsure[id(d)]['words']}"))
+            continue
         m = marks.get(id(d))
         if m is None:
             out.append(d)
@@ -1131,15 +1173,129 @@ def scan_replied(d: dict, scans: list, mean, max_mean: float = None, peers=()):
         if not dests and not any(_canon_addr(p.get("source")) == scanner
                                  and mirrors(_rate_of(d), _rate_of(p)) for p in peers):
             continue
-        nets = []
-        for n in (s.get("measurement") or {}).get("watched") or []:
-            try:
-                nets.append(ipaddress.ip_network(str(n), strict=False))
-            except ValueError:
-                continue
-        if any(addr.version == n.version and addr in n for n in nets):
+        if _in_watched(addr, s):
             return s
     return None
+
+
+def _unsure_words(host, scanner, hosts) -> str:
+    """Why *host* (one of *hosts*) may be the target of *scanner*'s scan (`scan_replies`)."""
+    others = [h for h in hosts if h != _canon_addr(host)]
+    beside = f", nor told from {', '.join(others)} beside it" if others else ""
+    return (f"{host} may be the target of {scanner}'s scan: it is in the subnet the scan's "
+            "tripwires watched and sends small packets at the scanner's own rate, its "
+            f"destinations unnamed, and nothing names it or another host as the target{beside}; "
+            "so it is not taken as the scan's replies and no response is proposed against it: "
+            "a person decides from the evidence")
+
+
+def _watched_host(host: str, scan: dict) -> bool:
+    """Whether *host*, an address in any spelling, lies in a subnet *scan*'s tripwires
+    watched; a value that is no address does not."""
+    try:
+        return _in_watched(ipaddress.ip_address(str(host)), scan)
+    except ValueError:
+        return False
+
+
+def _in_watched(addr, scan: dict) -> bool:
+    """Whether address *addr* lies in a subnet *scan*'s tripwires watched."""
+    nets = []
+    for n in (scan.get("measurement") or {}).get("watched") or []:
+        try:
+            nets.append(ipaddress.ip_network(str(n), strict=False))
+        except ValueError:
+            continue
+    return any(addr.version == n.version and addr in n for n in nets)
+
+
+def waiting_replied(who: str, d: dict, window_s, scan: dict, floods: list):
+    """Whether the flood *d* from *who*, awaiting a person as its own incident (*window_s* its
+    window), is the replies to the confirmed *scan*, judged alone: None when it is not; else
+    whether its destinations are named. It is when *who* is not the scanner and lies in a
+    subnet the scan's tripwires watched, its destinations include the scanner where named
+    (where unnamed, its rate mirroring one of the scanner's own *floods*, `mirrors`), and it
+    began within its window of one of those floods (the scanner's traffic and its target's
+    replies begin together; a flood that did not is its own). Whether it is taken is
+    `scan_replies`'."""
+    src, scanner = _canon_addr(who), _canon_addr(scan.get("source"))
+    began = [_epoch((f.get("measurement") or {}).get("since")) for f in floods]
+    began = [b for b in began if b is not None]
+    if not src or src == scanner or not began:
+        return None
+    try:
+        addr = ipaddress.ip_address(src)
+    except ValueError:
+        return None
+    if not _in_watched(addr, scan):
+        return None
+    dests = _destinations(d) - {""}
+    if dests and scanner not in dests:
+        return None
+    # Destinations unnamed: its rate must mirror one of the scanner's own floods (the review
+    # of 37e377db, 1), so a second host of the subnet flooding is its own.
+    if not dests and not any(mirrors(_rate_of(d), _rate_of(f)) for f in floods):
+        return None
+    since = _epoch((d.get("measurement") or {}).get("since"))
+    window = int(window_s or 0)
+    if since is None or not any(abs(since - b) <= window for b in began):
+        return None
+    return bool(dests)
+
+
+def scan_replies(scan: dict, mine: list, theirs: list, floods: list, own=(),
+                 replying=()) -> dict:
+    """Which hosts' traffic is the replies to the confirmed *scan*, decided once over both of
+    its candidate populations (C4195): *mine*, this pass's rate detections `scan_replied`
+    named its replies, and *theirs*, the floods awaiting a person as their own incidents
+    (``[(source, detection, window_s)]``, each judged by `waiting_replied` against the
+    scanner's *floods*); *replying* the hosts this pass already marked replying to the
+    scanner's own traffic (`mark_replies`' C2237 pairing). ``{"taken", "unsure"}``, sorted
+    host addresses.
+
+    A host whose destinations name the scanner is taken, and so is each of *replying* (its
+    waiting card closes into the scan). One whose destinations are unnamed is told by the
+    scan's own destinations, those the scanner's own traffic names (*own* and *floods*,
+    `_destinations`; C4196): a host among them is its target and taken. One not among them
+    mirrors the scan beside it, and is its own, answered as any is, only once the scan's
+    target is accounted for among those destinations (a host of them taken, or one of
+    *replying*; never a host whose own flows name the scanner, which shows only that the
+    scanner reaches hosts its flows do not name: the second review, N1):
+    the scanner's named destinations are never its whole set (`targets` only its IP-matched
+    flows', `dst_hosts` only the MACs the topology lists), so otherwise it may be the target
+    and is ``unsure`` (the device-write review of the C4195 and C4196 patch, 2026-11-24,
+    finding 1). Where the scanner's traffic names no destination, a scan of one host has one
+    target: one such host is taken, and where two or more mirror the scan (the review of
+    7437d140) none is taken and each is ``unsure``. No response is proposed against an
+    unsure host, since it may be the scan's target and nothing says which (the review of
+    6f023dc3, 2)."""
+    named, unnamed = set(), set()
+    for d in mine:
+        host = _canon_addr(d.get("source"))
+        (named if _destinations(d) - {""} else unnamed).add(host)
+    for who, d, window_s in theirs:
+        got = waiting_replied(who, d, window_s, scan, floods)
+        if got is not None:
+            (named if got else unnamed).add(_canon_addr(who))
+    unnamed -= named
+    scanned = set()
+    for x in list(own) + list(floods):
+        scanned |= _destinations(x) - {""}
+    # Only a host of the watched subnet can be the scan's target: one elsewhere replying to the
+    # scanner's other traffic (a resolver) accounts for nothing.
+    replying = {h for h in (_canon_addr(x) for x in replying) if _watched_host(h, scan)}
+    unnamed -= replying
+    taken, unsure = named | replying, set()
+    if scanned:
+        told = unnamed & scanned                         # its target
+        taken |= told
+        if not (told or (replying & scanned)):
+            unsure = unnamed - scanned                   # its target not accounted for
+    elif len(unnamed) <= 1:
+        taken |= unnamed
+    else:
+        unsure = unnamed
+    return {"taken": sorted(taken - {""}), "unsure": sorted(unsure - {""})}
 
 
 def _canon_addr(value) -> str:
@@ -1427,7 +1583,7 @@ def _stored_topology(network: str) -> dict:
 
 
 def observe(network: str, collected: dict, *, values: dict = None, intent: dict = None,
-            topo: dict = None, clock=time.monotonic) -> dict:
+            topo: dict = None, clock=time.monotonic, waiting=()) -> dict:
     """Run the three rules over *collected* (`collect_threat_data(network)`'s answer) and
     make each detection an alert: fired when first seen (a transition in the alert history and
     its evidence pack), resolved when a collection that judged its subject no longer shows it.
@@ -1438,7 +1594,8 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
     baseline yet, and what was not judged; *kept* each fired detection's pack as kept, by its
     key, so the loop classifies the pack in hand rather than reading every kept pack to find
     it again (C1970); *took* the seconds each fired detection's pack took to build and keep,
-    by its key, by *clock* (the loop's timing line, C1970)."""
+    by its key, by *clock* (the loop's timing line, C1970). *waiting* the flood incidents
+    awaiting a person, `mark_replies`' (C4195)."""
     from modules import alert_history, evidence_pack
     from modules.filestore import PathLock, StoreUnreadable, read_json_for_write, write_atomic
     from modules.sdn import flow_intent, link_failure
@@ -1498,7 +1655,8 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
             # collection's link status (`link_failure.rule`).
             linked = link_failure.rule(collected, net.get("links"), topo=topo)
             detections = mark_replies(scanned["detections"] + flooded["detections"],
-                                      collected) + unauth["detections"] + linked["detections"]
+                                      collected, waiting=waiting) \
+                + unauth["detections"] + linked["detections"]
             judged = scanned["judged"] | flooded["judged"] | unauth["judged"] | linked["judged"]
             if unauth["error"]:
                 out["notes"].append(unauth["error"])

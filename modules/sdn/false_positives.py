@@ -225,6 +225,11 @@ def handled(d: dict, collected: dict) -> str:
     if rule in detect.LINK_RULES:
         return ("a link-failure card: HITL awaits a person, AUTO verifies the reroute; nothing "
                 "is sent")
+    unsure = d.get("scan_target_unsure")
+    if unsure:
+        # The loop's `scan_target_unsure`: a host that may be a scan's target (C4196).
+        return (f"no response proposed: it may be the target of {unsure.get('source')}'s scan "
+                "and nothing tells which host is; a person's card, AUTO never acts")
     section = detect.section(d, collected, detect._switch_of(collected, d))
     got = benign.decide(section)
     if got["decided"]:

@@ -348,7 +348,7 @@ def propose(network: str, detection: dict, action: str, risk: str, *, why: str,
     preview's failure (C2159) or its confirm's refusal before any request (C2195): the
     response is a person's as if AUTO were off, and the failure is kept on it, for its card
     and its Needs attention row."""
-    from modules.sdn import closed_loop, incidents
+    from modules.sdn import incidents
 
     now = time.time() if now is None else now
     for row in awaiting(network)["rows"]:
@@ -362,11 +362,7 @@ def propose(network: str, detection: dict, action: str, risk: str, *, why: str,
     # The other actions a person may preview (the operator, 2026-11-20: a scan's card offered
     # only its proposal): the policy's for the rule, a source drop only where the protected
     # set allows it, read once here so the card's page load reads nothing.
-    try:
-        row.update(closed_loop.response_choices(network, detection, action))
-    except Exception as exc:                          # noqa: BLE001 (said on the card)
-        row.update(choices=[], withheld=[{"action": "", "label": "Other actions",
-                                          "why": f"could not be checked ({type(exc).__name__})"}])
+    row.update(_choices(network, detection, action))
     if auto_failed:
         row["auto_failed"] = auto_failed
     if incident:
@@ -516,6 +512,15 @@ def awaiting(network: str) -> dict:
         elif kind == "began":
             open_rows[rid] = dict(open_rows[rid], began_as={
                 k: r.get(k) for k in ("watch", "since", "words")})
+        elif kind == "unsure":
+            # Its host may be a scan's target (`unsure`): no action proposed against it.
+            row = open_rows[rid]
+            open_rows[rid] = dict(row, action="", risk="", params={}, why=r.get("why") or "",
+                                  choices=r.get("choices") or [],
+                                  withheld=r.get("withheld") or [],
+                                  scan_target_unsure=r.get("scan_target_unsure"),
+                                  detection=dict(row.get("detection") or {},
+                                                 scan_target_unsure=r.get("scan_target_unsure")))
         elif kind in CLOSED:
             open_rows.pop(rid, None)
     return dict(got, rows=list(open_rows.values()))
@@ -626,6 +631,22 @@ def began(network: str, response_id: str, row: dict, *, now: float = None) -> di
     now = time.time() if now is None else now
     out = {"kind": "began", "id": response_id, "at": _iso(now), "watch": row["id"],
            "since": row.get("at"), "words": f"began as High packet rate at {row.get('at')}"}
+    _append(network, PENDING_FILE, out)
+    return out
+
+
+def unsure(network: str, response_id: str, record: dict, *, choices: dict,
+           now: float = None) -> dict:
+    """Mark the flood response *response_id*, awaiting a person, as one whose host may be a
+    scan's target (*record*, `detect.mark_replies`' ``scan_target_unsure``; C4196, the second
+    device-write review of this change, N2): its proposal becomes no action, *record*'s words
+    its why, and *choices* (`closed_loop.response_choices` for no action) the actions a person
+    may still preview. A row kind the previous release does not read, so its fold leaves the
+    response as it was (expand, then contract)."""
+    now = time.time() if now is None else now
+    out = {"kind": "unsure", "id": response_id, "at": _iso(now), "scan_target_unsure": record,
+           "why": unsure_why(record), "choices": list(choices.get("choices") or []),
+           "withheld": list(choices.get("withheld") or [])}
     _append(network, PENDING_FILE, out)
     return out
 
@@ -1168,7 +1189,17 @@ def _scan_supersedes(network: str, proposed: list, now: float, line) -> list:
         # confirmed it (the Lab 9 hardware, 2026-11-20: the target's RSTs, its own Flood):
         # a flood from the watched subnet that began within its window of the scanner's own
         # (`_replies_to`) joins too, never answered against the target.
-        for r in _replies_to(rows, scan, src, floods):
+        decided = _replies_to(rows, scan, src, floods)
+        # A waiting flood whose host may be the scan's target proposes nothing against it
+        # from now on (the second device-write review of this change, N2).
+        for r, record in decided["unsure"]:
+            unsure(network, r["id"], record, now=now,
+                   choices=_choices(network, r.get("detection") or {}, ""))
+            line("incident", (
+                f"incident {r['id']} ({incidents.key_of(r).partition('|')[2]}) proposes no "
+                f"response from now on: {record['words']}"),
+                response=r["id"], incident=scan["id"])
+        for r in decided["taken"]:
             seen_also(network, scan["id"], [r.get("detection") or {}], now=now)
             closed_by(network, r["id"], "joined", incident=scan["id"], now=now,
                       why=f"joined scan incident {scan['id']}: its traffic is the replies to "
@@ -1183,57 +1214,65 @@ def _scan_supersedes(network: str, proposed: list, now: float, line) -> list:
     return out
 
 
-def _replies_to(rows: list, scan: dict, src: str, floods: list) -> list:
-    """The flood incidents awaiting a person (among *rows*) that are the replies to the
-    confirmed *scan* from *src*: from a host in a subnet its tripwires watched, other than
-    *src*, whose destinations include *src* where named (where unnamed, its rate mirroring
-    one of *src*'s own *floods*, `detect.mirrors`), and whose flood began within its window
-    of one of *src*'s own *floods* (the scanner's traffic and its target's replies begin
-    together; a flood that did not is its own)."""
-    import ipaddress
+def _choices(network: str, detection: dict, action: str) -> dict:
+    """The actions a person may preview on a response to *detection* proposing *action*
+    (`closed_loop.response_choices`), or none, saying why, when they cannot be checked:
+    ``{"choices", "withheld"}``. Read when the response is proposed, or proposes no action."""
+    from modules.sdn import closed_loop
 
-    from modules.sdn import detect, incidents
+    try:
+        return closed_loop.response_choices(network, detection, action)
+    except Exception as exc:                          # noqa: BLE001 (said on the card)
+        return {"choices": [], "withheld": [{"action": "", "label": "Other actions",
+                                             "why": f"could not be checked "
+                                                    f"({type(exc).__name__})"}]}
 
-    nets = []
-    for n in ((scan.get("detection") or {}).get("measurement") or {}).get("watched") or []:
-        try:
-            nets.append(ipaddress.ip_network(str(n), strict=False))
-        except ValueError:
-            continue
-    began = [incidents._epoch(((f.get("detection") or {}).get("measurement") or {})  # noqa
-                              .get("since")) for f in floods]
-    began = [b for b in began if b is not None]
+
+def _waiting_floods(rows: list) -> list:
+    """The flood incidents awaiting a person among *rows* (`awaiting`'s), as
+    `detect.mark_replies` takes them: ``[(source, detection, window_s)]`` (C4195)."""
+    from modules.sdn import incidents
+
     out = []
     for r in rows:
-        key = incidents.key_of(r)
-        rule, _bar, who = key.partition("|")
-        d = r.get("detection") or {}
-        if rule != "flood" or who == src or not nets or not began:
-            continue
-        try:
-            addr = ipaddress.ip_address(who)
-        except ValueError:
-            continue
-        if not any(addr.version == n.version and addr in n for n in nets):
-            continue
-        dests = detect._destinations(d) - {""}           # noqa: SLF001 (its own reading)
-        if dests and src not in dests:
-            continue
-        # Destinations unnamed: its rate must mirror one of the scanner's own floods (the
-        # review of 37e377db, 1), so a second host of the subnet flooding is its own.
-        if not dests and not any(detect.mirrors(detect._rate_of(d),  # noqa: SLF001
-                                                detect._rate_of(f.get("detection") or {}))
-                                 for f in floods):
-            continue
-        since = incidents._epoch((d.get("measurement") or {}).get("since"))  # noqa: SLF001
-        window = int((r.get("incident") or {}).get("window_s") or 0)
-        if since is not None and any(abs(since - b) <= window for b in began):
-            out.append((r, bool(dests)))
-    # A scan of one host has one target: two or more floods naming no destination that mirror
-    # the scan are not all its replies, so none of them is taken (the review of 7437d140).
-    if sum(1 for _r, named in out if not named) > 1:
-        out = [(r, named) for r, named in out if named]
-    return [r for r, _named in out]
+        rule, _bar, who = incidents.key_of(r).partition("|")
+        if rule == "flood" and who:
+            out.append((who, r.get("detection") or {},
+                        int((r.get("incident") or {}).get("window_s") or 0)))
+    return out
+
+
+def _replies_to(rows: list, scan: dict, src: str, floods: list) -> dict:
+    """The flood incidents awaiting a person (among *rows*) that the confirmed *scan* from
+    *src* decides: ``{"taken": [row], "unsure": [(row, record)]}``. *taken* its replies: each
+    judged alone by `detect.waiting_replied` (from a host in a subnet its tripwires watched,
+    other than *src*, whose destinations include *src* where named, where unnamed its rate
+    mirroring one of *src*'s own *floods*, and whose flood began within its window of one of
+    them), and taken where the scan's replies were decided to be its host's
+    (`detect.scan_replies`, C4195): as the pass decided them over its own candidates and these
+    floods together, carried on the scan's detection; a scan detection carrying no decision
+    (kept before it) is decided here over these floods. *unsure* each one whose host the
+    decision names as maybe the scan's target, not already proposing nothing, with its
+    ``scan_target_unsure`` record (the second device-write review of this change, N2)."""
+    from modules.sdn import detect
+
+    sd = scan.get("detection") or {}
+    sd = dict(sd, source=sd.get("source") or src)
+    mine = [f.get("detection") or {} for f in floods]
+    theirs = [(r,) + got for r in rows for got in _waiting_floods([r])]
+    decided = sd.get("scan_replies")
+    if not isinstance(decided, dict):
+        decided = detect.scan_replies(sd, [], [t[1:] for t in theirs], mine)
+    taken = set(decided.get("taken") or [])
+    hosts = list(decided.get("unsure") or [])
+    canon = detect._canon_addr                                  # noqa: SLF001 (its own)
+    return {"taken": [r for r, who, d, window_s in theirs if canon(who) in taken
+                      and detect.waiting_replied(who, d, window_s, sd, mine) is not None],
+            "unsure": [(r, {"source": sd["source"], "hosts": hosts,
+                            "words": detect._unsure_words(who, sd["source"],  # noqa: SLF001
+                                                          hosts)})
+                       for r, who, _d, _w in theirs if canon(who) in hosts
+                       and r.get("action") != "" and not r.get("scan_target_unsure")]}
 
 
 def attacks(new: list) -> list:
@@ -1505,6 +1544,28 @@ def scan_rate(network: str, d: dict, verdict: dict) -> dict:
                        "it where the protected set allows it").lstrip("; "))
 
 
+def unsure_why(unsure: dict) -> str:
+    """Why no response is proposed against a host that may be a scan's target (*unsure*,
+    ``scan_target_unsure``): the words its card says."""
+    return (f"no response proposed: {', '.join(unsure.get('hosts') or [])} may be the "
+            f"target of {unsure.get('source')}'s scan, and nothing tells which host is; a "
+            "person decides from the evidence")
+
+
+def scan_target_unsure(d: dict, verdict: dict) -> dict:
+    """*verdict* (`verdict_of`'s) for a detection whose host may be a scan's target
+    (``scan_target_unsure``, `detect.scan_replies`; C4196; every sighting of such a host
+    carries it, so whichever the incident chooses does): nothing tells which host is the
+    scan's target, so no response is proposed against it, AUTO's never, and a person decides
+    from the evidence; its other actions stay on the card. Any other verdict is unchanged."""
+    unsure = d.get("scan_target_unsure")
+    if not unsure:
+        return verdict
+    why = unsure_why(unsure)
+    return dict(verdict, action="", risk="", params={}, person=True, why=why,
+                words=f"{verdict.get('words') or ''}; {why}".lstrip("; "))
+
+
 #: A rate limit's parameters a drop does not take (`capable`).
 _RATE_PARAMS = ("unit", "rate", "burst", "meter_id", "targets", "not_metered", "ports_from")
 
@@ -1581,6 +1642,7 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         """Detection *d*'s response in the network's mode (the module's docstring, step 4),
         on its classification *verdict*, for its new incident *inc* (*rec* its record)."""
         verdict = scan_rate(network, d, verdict)
+        verdict = scan_target_unsure(d, verdict)
         verdict = capable(network, d, verdict)
         if verdict.get("capability_words"):
             line("respond", verdict["capability_words"])
@@ -1648,10 +1710,14 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         s = collected.get("summary") or {}
         line("read", f"read {s.get('switches', 0)} switch(es): {s.get('flows', 0)} flows, port "
                      f"rates over {interval:g} s ({collected.get('state')})")
+        # The incidents awaiting a person, read once before the rules judge: a scan's replies
+        # are decided over this pass's candidates and the floods already waiting (C4195).
+        rows_waiting = awaiting(network)["rows"]
         began = clock()
         detected_at = began                       # the timing line's start (C1970)
         seen = (observe(network, collected) if observe else
-                detect.observe(network, collected, clock=clock))
+                detect.observe(network, collected, clock=clock,
+                               waiting=_waiting_floods(rows_waiting)))
         judged_s = clock() - began
         if not seen.get("ok"):
             line("detect", f"nothing judged: {seen.get('error')}")
@@ -1668,7 +1734,6 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                  and d.get("rule") not in detect.LINK_RULES]
         resolved = list(seen.get("resolved") or [])
         # Each detection key an incident awaiting a person holds: its own and each seen also.
-        rows_waiting = awaiting(network)["rows"]
         waiting = {k: r for r in rows_waiting
                    for k in r.get("members") or [(r.get("detection") or {}).get("key")]}
         held = [waiting[k] for k in resolved if k in waiting]

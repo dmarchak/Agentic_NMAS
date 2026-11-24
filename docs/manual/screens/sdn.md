@@ -436,8 +436,19 @@ mode and whether the loop is running.
   and why. A scan Mercury's tripwires confirmed is proposed as a rate limit in packets a second
   (20 a second, a burst of 10); its target's replies to the probes (from the watched subnet,
   small packets, sent to the scanner, or where nothing names their destination at a rate
-  within twice the scanner's own and beginning with it, and then only one such host) join its
-  incident, never a flood of their own. Where the loop has logged the threat as no longer active,
+  within twice the scanner's own and beginning with it) join its incident, never a flood of
+  their own. Where the scanner's own traffic names the hosts it sends to and one of them is
+  replying, that host is its target; another host mirroring the scan beside it is a flood of
+  its own. Where the named hosts are not the ones replying (a scanner's named destinations are
+  never all of them), a replying host may be the target: its incident has **no response
+  proposed**. Where the scanner's traffic names none, only one such host is taken, counted
+  across the pass and the floods already waiting; where two or more mirror the scan, each
+  stays its own incident with **no response proposed**, since one of them is the scan's
+  target and nothing says which. The card says so, on every switch that saw the host, and the
+  rule's actions stay offered for you to choose; a card already waiting for such a host
+  proposes nothing from then on, saying why. A host whose own traffic names the scanner says
+  nothing about which host is the target. Where the loop has logged the
+  threat as no longer active,
   the preview says **No longer active**, when, and that no switch has shown it since, above
   **Send**: sending is still your choice. **Dismiss with this reason** closes it, sending nothing
   (on an incident seen on several switches, **Dismiss the incident (N switches) with this
