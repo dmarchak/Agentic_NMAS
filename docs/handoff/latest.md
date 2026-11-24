@@ -1,6 +1,34 @@
 # Handoff: the waiting patches as one stack, now 19 (2026-11-24, from 01:00 Denver)
 
-## 00000. The 06:10 session (2026-11-24): read this first
+## 000000. The 07:11 session (2026-11-24): read this first
+
+- **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
+- **The stack's trees:** `~/mercury-runs/tree-stack-20.txt` (all 20 patches, made by
+  applying c4232 and c2820-departs onto tree-stack-18) and `tree-stack-21.txt` (with the new
+  one; tree-stack-22 with the next). Make the next patch against tree-stack-22
+  (`git read-tree -u --reset <tree>` in a
+  fresh worktree, then `git diff --cached --binary <tree>`).
+- **C2820 items 15 and 16 BUILT as a patch**, `~/mercury-runs/c2820-sdn.patch` and `.msg`
+  (worktree `~/nmas-worktrees/c2820-sdn`, staged): SDN's Needs attention rows and SDN ›
+  Responses name the switch (one namer, `sdn_ops_page.switch_namer`, lifted from
+  `incident_rows`), the action by its catalogue label and the escalation threshold by its
+  setting's title; ids and keys in the row's operands or on hover; the attack row loses
+  "C2279:" and its ids. Red first (17 tests), four controls bite; aimed 114 files, 3,429
+  passed, the one red C4090's loops. docs/fidelity/sdn.md compared by the diff, one approval
+  log line. Not device-write (display only).
+- **C2820 item 25 in part BUILT as a patch**, `~/mercury-runs/c2820-settings.patch` and
+  `.msg` (same worktree, against `tree-stack-21.txt`; `tree-stack-22.txt` is the stack with
+  it): a `setting_label` filter (routes/v2.py, over `settings_page.field_label`) names each
+  field in Settings' save notices and a switch preview as its card labels it, the key on
+  hover. Red first (3 tests), a control bites; aimed 26 files, 817 passed, C4090's loops the
+  one red. docs/fidelity/settings.md compared by the diff. land_all.sh now ends
+  `c2820-departs c2820-sdn c2820-settings` (22 patches).
+- **Next:** land the 22 patches once session-namespace is answered; meanwhile item 25's
+  refusals (`list_settings.py`, `heal/policy.py`) and Settings › AI's words, items 26 to 35,
+  or "departed" in self-healing's words; or Stage 6's rows. New patches against
+  tree-stack-22.
+
+## 00000. The 06:10 session (2026-11-24)
 
 - **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md). This
   session's host read was refused too (`Permission denied (publickey)`: no SSH key in its
