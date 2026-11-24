@@ -905,6 +905,35 @@ def _no_module_leaves_a_reader_store(request):
         f"{', '.join(left)}. They are put back; a module fixture removes what it wrote (C1522).")
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _no_module_leaves_device_holds():
+    """The device holds' store (`device_ops`' lock files and their kept record of interrupted
+    operations, under the session's `device_ops/`) put back as each module found it (C4222).
+    Tests that hold a device in a child process and let it end holding (test_device_ops,
+    test_device_holds_index, test_interrupted_operations, test_device_hold_key_and_probe,
+    test_intent_match, measured 2026-11-24) left each record there, and every Needs attention
+    page a later module computed in the same process drew it as "A deploy on r1 did not
+    finish: the process ended while it held the device": 22 such rows moved a row's Open link
+    in test_no_control_moves in the serial suite. A module may share its holds between its
+    own tests; none outlives it. Put back, not failed: a hold a child leaves is often the
+    test's own case."""
+    import os
+
+    from modules import config
+    from tests import store_contents
+
+    root = os.path.join(config.DATA_DIR, "device_ops")
+    kept = store_contents.contents(root) if os.path.isdir(root) else {}
+    yield
+    now = store_contents.contents(root) if os.path.isdir(root) else {}
+    store_contents.restore(kept, store_contents.changes(kept))
+    for path in sorted(set(now) - set(kept)):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
 def _restart_record():
     """``{path: bytes or None}``: each of the restart record's files (`restarts.LINE_STORES`,
     the owner's own table) in the session's store, None when absent."""
