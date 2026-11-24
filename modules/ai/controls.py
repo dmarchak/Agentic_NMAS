@@ -28,7 +28,7 @@ without the mark.
 """
 import logging
 
-from modules import money as _money
+from modules.money import exact_usd as _usd
 from modules.ai import calls, gateway, profiles, provider_limit
 
 log = logging.getLogger(__name__)
@@ -243,7 +243,7 @@ def mark_title(task: str) -> str:
     pin = profiles.task(task)
     model = profiles.profile(pin["model"])
     return (f"AI: {pin['words']}. Pinned model: {model['words']} ({pin['model']}). "
-            f"About {_money.usd(profiles.cap_per_call(task), exact=True)} a call "
+            f"About {_usd(profiles.cap_per_call(task))} a call "
             f"({profiles.PER_CALL_LABEL}); the spending limits stop it.")
 
 
@@ -284,8 +284,8 @@ def readiness(task: str, today: str = None, spent=None) -> dict:
         # When the day starts again is drawn by the reason's macro from `resets` (calls'
         # one answer), in the viewer's time and in UTC.
         return dict(out, kind="day_cap", spent=usd, resets=calls.reset_info(),
-                    reason=f"today's AI spend ${usd:.4f} plus this task's per-call cap "
-                           f"${cap['per_call']:.4f} is over the day cap ${cap['per_day']:.4f}")
+                    reason=f"today's AI spend {_usd(usd)} plus this task's per-call cap "
+                           f"{_usd(cap['per_call'])} is over the day cap {_usd(cap['per_day'])}")
     return dict(out, ready=True, spent=usd)
 
 

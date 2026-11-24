@@ -55,6 +55,8 @@ import logging
 import os
 import time
 
+from modules.money import exact_usd as _usd
+
 log = logging.getLogger(__name__)
 
 #: The store's file name, beside the record of AI calls.
@@ -137,7 +139,7 @@ def late_row(row: dict, *, verdict: str, cost_usd: float) -> dict:
     return dict(kept, verdict=verdict, cost_usd=float(cost_usd), recorded_late=True,
                 detail=("recorded late (C2047): the record of AI calls refused this call's "
                         "row when it was made; its request, answer and tokens were not kept, "
-                        f"and its cost ${float(cost_usd):.4f} was held against the caps "
+                        f"and its cost {_usd(float(cost_usd))} was held against the caps "
                         "until this row was taken"))
 
 

@@ -54,6 +54,8 @@ import math
 import threading
 import time
 
+from modules.money import exact_usd as _usd
+
 log = logging.getLogger(__name__)
 
 #: The setting holding every network's switches.
@@ -326,9 +328,9 @@ def over_cap(trigger: dict, worst: float, day: str, reserved: dict = None):
             period = "today" if which == "day" else "this month"
             return {"kind": "feature_cap", "cap": which,
                     "why": (f"{r['name']}'s spend on {r['network']} {period} "
-                            f"${r['spent']:.4f} plus ${r['held']:.4f} reserved by its "
-                            f"{r['calls']} call(s) in flight plus this call's ${worst:.4f} is "
-                            f"over its {which} cap ${r['cap']:.4f}; it stops until the {which} "
+                            f"{_usd(r['spent'])} plus {_usd(r['held'])} reserved by its "
+                            f"{r['calls']} call(s) in flight plus this call's {_usd(worst)} is "
+                            f"over its {which} cap {_usd(r['cap'])}; it stops until the {which} "
                             "ends or an admin raises the cap; nothing was sent")}
     return None
 
@@ -626,8 +628,8 @@ def _caps(day_cap_usd, month_cap_usd) -> dict:
                           "nothing was changed")
     overall = gateway.day_cap()
     if overall is not None and out["day"] > overall:
-        raise Refused(f"the feature's day cap ${out['day']:.4f} is over the installation's day "
-                      f"cap ${overall:.4f}: a feature's caps are within the overall cap; "
+        raise Refused(f"the feature's day cap {_usd(out['day'])} is over the installation's day "
+                      f"cap {_usd(overall)}: a feature's caps are within the overall cap; "
                       "nothing was changed")
     return out
 

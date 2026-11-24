@@ -506,7 +506,7 @@ def test_the_day_cap_counts_what_today_spent(world):
     # The refusal names the cap, what was spent, what calls in flight hold and what remains
     # (7b0bb884: a start is refused only when a remaining cannot cover its hold).
     assert "the installation's day cap $1.4999: spent $1.4999" in got["detail"]
-    assert "held by 0 call(s) in flight leaves $0.0000" in got["detail"]
+    assert "held by 0 call(s) in flight leaves $0.00, under" in got["detail"]
 
 
 def test_an_unreadable_record_refuses_rather_than_count_nothing(world, monkeypatch):

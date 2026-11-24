@@ -13,7 +13,8 @@ Two precisions, one function (`usd`), because a figure and a cost are read diffe
   is still said.
 
 Templates reach it as the `usd` filter (routes/v2.py); Python that builds a screen's words
-calls it. What it is not: a parser (a typed amount is `installation_settings._value`'s), and
+calls it, and `exact_usd` is its exact form by one name, for the AI gateway's long refusals
+and records, where an amount sits inside a sentence of several (C3464). What it is not: a parser (a typed amount is `installation_settings._value`'s), and
 no caller passes it None: "no cap" and "unknown" are their callers' words.
 """
 
@@ -28,3 +29,8 @@ def usd(value, exact: bool = False) -> str:
     if (exact and not cent_exact) or (not exact and 0 < four < 0.01):
         return f"{sign}${four:,.4f}"
     return f"{sign}${round(v, 2):,.2f}"
+
+
+def exact_usd(value) -> str:
+    """`usd(value, exact=True)`: one call's cost, a cap or a sum a cap is compared with."""
+    return usd(value, exact=True)

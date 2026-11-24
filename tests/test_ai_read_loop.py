@@ -628,10 +628,10 @@ def test_with_the_class_off_and_no_plain_pass_every_read_is_refused_naming_it(mo
 
 
 @pytest.mark.parametrize("kind,detail,said", [
-    ("over_cap", "today's spend $1.5000 plus $0.0000 reserved by 0 call(s) in flight plus this "
-     "call's worst case $0.0003 is over the day cap $1.5000",
-     "second pass not run: a cap is reached: today's spend $1.5000"),
-    ("feature_cap", "the feature's day cap $1.0000 is reached",
+    ("over_cap", "today's spend $1.50 plus $0.00 reserved by 0 call(s) in flight plus this "
+     "call's worst case $0.0003 is over the day cap $1.50",
+     "second pass not run: a cap is reached: today's spend $1.50"),
+    ("feature_cap", "the feature's day cap $1.00 is reached",
      "second pass not run: this feature's cap is reached: the feature's day cap"),
     ("feature_off", "heal_analysis is off for lab",
      "second pass not run: feature_off: heal_analysis is off for lab"),
@@ -688,9 +688,9 @@ def test_the_day_cap_reached_by_pass_1_stops_pass_2_recorded_with_no_second_requ
     assert got["ok"] is True and got["pass"] == 1 and got["state"] == "first_pass"
     assert got["second"]["error"] == "over_cap"
     # The cap's refusal names the cap and its spend (7b0bb884's words).
-    assert "the installation's day cap $1.5000: spent $" in got["second"]["detail"]
+    assert "the installation's day cap $1.50: spent $" in got["second"]["detail"]
     assert got["words"].startswith("AI analysis: asked for 1 read; 1 run; second pass not run: "
-                                   "a cap is reached: the installation's day cap $1.5000: "
+                                   "a cap is reached: the installation's day cap $1.50: "
                                    "spent $")
     rows = [r for r in calls.read()["rows"] if "verdict" in r]
     assert sorted((r["schema"], r["verdict"]) for r in rows) == [

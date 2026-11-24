@@ -4993,3 +4993,52 @@ seven survivors again: each died. Baseline after the new tests: **209 passed**.
 gateway's egress mask itself and `redact` (unchanged but for the canary), `readonly_commands`
 and the read scope's allowlist (unchanged; the assistant reaches them only through
 `router_reads.scope_for`).
+
+## 2026-11-24: the AI gateway's refusal amounts through `money.usd` (C3464), by hand
+
+**The change.** Words only. Every amount a person reads in the gateway's refusals and records'
+details (`modules/ai/gateway.py`: a call over a cap, the thinking budget a cap leaves, a budget
+that ran out mid-answer, a call that raised after its reservation, a partial answer, a batch over
+the evaluation's stop or the day cap, a batch's worst case counted), and in
+`modules/ai/background.py` (a feature over its cap, a feature's cap over the installation's),
+`modules/ai/reservations.py` (a late row's detail) and `modules/ai/controls.py` (the control's day
+cap), is written by `money.exact_usd` ("$5,000.00", "$1.50", "$0.1251") where it was `${x:.4f}`
+("$5000.0000"). No comparison, cap, reservation or decision moved: each refusal is decided as
+before, and only its words changed.
+
+**The method.** One throwaway worktree (`scripts/nmas-control`, snapshot fb86a7f5b8) running
+`~/mercury-runs/c3464_hand_check.py` (its log beside it, `c3464_hand_check.log`): the baseline,
+then each mutant applied alone (its text present exactly once), every `tests/test_ai_*.py` file,
+tests/test_money.py, tests/test_fixit_catch_up.py and tests/test_settings_ai_v2.py run with `-x`
+at four workers, the file restored and compared byte for byte. 23:00 to 23:28 UTC.
+
+| # | Mutant | Result |
+|---|---|---|
+| 0 | the canary: `money.exact_usd` raises | **died**: `test_ai_day_cap.py::test_80_and_5000_save` |
+| 1 | `exact_usd` not exact (`usd(value)`) | **died**: `test_ai_explain.py::test_explain_is_an_ai_control_and_the_pack_stays_drawn` |
+| 2 | a call's cap refusal names its spend as its cap | **died**: `test_ai_gateway_ask.py::test_with_no_day_cap_a_call_is_sent_whatever_today_s_spend` |
+| 3 | its room left floored at 1.0, not 0.0 | **died**: `test_ai_background.py::test_the_features_day_cap_stops_it_naming_both_operands` |
+| 4 | its typical answer's cost `typ + rate` | **died**: `test_ai_gateway_ask.py::test_the_day_cap_is_refused_with_its_three_operands` |
+| 5 | its need said as the prompt's cost | **died**: `test_ai_background.py::test_the_features_caps_count_on_the_calls_own_day_and_record_its_worst_case` |
+| 6 | the thinking budget's cap words name the room as the cap | survived: words only |
+| 7 | a budget run out mid-answer says its running cost $0.00 | survived: words only |
+| 8 | a call that raised says it was held at $0.00 | survived: words only |
+| 9 | a partial answer says $0.00 recorded | survived: words only |
+| 10 | a batch over its stop names its count as its worst case | **died**: `test_ai_batch.py::test_a_batch_over_the_evaluations_stop_is_refused_naming_both` |
+| 11 | a batch over its stop names its worst case as the stop | **died**: the same |
+| 12 | a batch over the day cap names in-flight as today's spend | **died**: `test_ai_batch.py::test_the_day_cap_counts_todays_spend_and_whats_in_flight` |
+| 13 | a batch over the day cap names its worst case as the cap | survived: equivalent under the test's amounts (its worst case and 0.9 of it both round to "$0.0003") |
+| 14 | a batch's unknown result says its worst case $0.00 | survived: words only |
+| 15 | a batch that raised says its worst case $0.00 | survived: words only |
+| 16 | a feature over its cap names held as spent | survived: words only |
+| 17 | a feature over its cap says this call's $0.00 | survived: words only |
+| 18 | a feature's day cap said as the installation's | **died**: `test_ai_background.py::test_caps_must_be_positive_and_within_the_installations_day_cap[...]` |
+| 19 | a late row's detail says its cost $0.00 | survived: words only |
+| 20 | the control's day cap says today's spend $0.00 | **died**: `test_ai_controls.py::test_the_day_cap_counts_today_s_spend_and_names_both_operands` |
+| 21 | the control's day cap named as the per-call cap | **died**: `test_ai_day_cap.py::test_with_no_cap_an_ai_control_is_ready_whatever_today_s_spend` |
+
+**The result: the canary and 11 of 21 mutants died; 10 survived, none a verdict.** Each survivor
+changes only an amount in a sentence a person reads after the decision is made (the refusal, or
+a record's detail), which no test asserts; the decisions themselves are unchanged and their tests
+pass. They are registered, not worked (the mutation rule: only a verdict survivor is chased):
+C4249, the tests that would assert those sentences' amounts.

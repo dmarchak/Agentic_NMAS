@@ -31,6 +31,7 @@ import re
 
 import pytest
 
+from modules import money
 from modules.ai import calls, controls, profiles
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -389,7 +390,7 @@ def test_ready_through_the_real_chain_and_the_hover_names_task_model_and_cap(cha
     title = got["title"]
     assert pin["words"] in title and pin["model"] in title, title
     assert profiles.MODELS[pin["model"]]["words"] in title, title
-    assert f"${profiles.cap_per_call(task):.4f}" in title, title
+    assert f"{money.usd(profiles.cap_per_call(task), exact=True)}" in title, title
 
 
 def test_hosted_ai_off_is_said_first(chain):
@@ -423,8 +424,8 @@ def test_the_day_cap_counts_today_s_spend_and_names_both_operands(chain):
     got = controls.readiness("explain", today="2026-10-25")
     assert (got["ready"], got["kind"]) == (False, "day_cap")
     spent = 1.50 - per_call + 0.0001
-    assert f"${spent:.4f}" in got["reason"] and f"${per_call:.4f}" in got["reason"]
-    assert "$1.5000" in got["reason"] and "is over the day cap" in got["reason"]
+    assert f"{money.usd(spent, exact=True)}" in got["reason"] and f"{money.usd(per_call, exact=True)}" in got["reason"]
+    assert got["reason"].endswith("is over the day cap $1.50"), got["reason"]
     # A cheaper task's call may still fit what is left.
     assert controls.readiness("nl_query", today="2026-10-25")["ready"] is True
 

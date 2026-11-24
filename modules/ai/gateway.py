@@ -85,6 +85,7 @@ from pydantic import ValidationError
 
 from modules.ai import (anthropic_adapter, background, calls, profiles, prompts, provider_limit,
                         schemas, triggers)
+from modules.money import exact_usd as _usd
 
 log = logging.getLogger(__name__)
 
@@ -1180,12 +1181,12 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
         for c in caps_left:
             if need > c["remaining"]:
                 return {"kind": c["kind"], "cap_kind": c["cap_kind"], "hold_usd": need, "why": (
-                    f"{c['name']} ${c['cap']:.4f}: spent ${c['spent']:.4f} plus "
-                    f"${c['held']:.4f} held by {c['calls']} call(s) in flight leaves "
-                    f"${max(0.0, c['remaining']):.4f}, under this call's counted prompt "
-                    f"(${prompt_usd:.4f}, {size['tokens']:,} tokens, each priced as a cache "
-                    f"write) plus its typical answer ({typ:,} tokens, ${typ * rate:.4f}; "
-                    f"{typical['basis']}), ${need:.4f}{uncapped}"
+                    f"{c['name']} {_usd(c['cap'])}: spent {_usd(c['spent'])} plus "
+                    f"{_usd(c['held'])} held by {c['calls']} call(s) in flight leaves "
+                    f"{_usd(max(0.0, c['remaining']))}, under this call's counted prompt "
+                    f"({_usd(prompt_usd)}, {size['tokens']:,} tokens, each priced as a cache "
+                    f"write) plus its typical answer ({typ:,} tokens, {_usd(typ * rate)}; "
+                    f"{typical['basis']}), {_usd(need)}{uncapped}"
                     + (f"; {c['clears']}" if c.get("clears") else "")
                     + "; nothing was sent")}
         if not thinking:
@@ -1199,8 +1200,8 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
             afford = int((c["remaining"] - prompt_usd) / rate)
             if afford < top:
                 top, kind, tight = max(1, afford), "cap", c
-                cap_words = (f"{c['name']}, ${c['cap']:.4f}, "
-                             f"${max(0.0, c['remaining']):.4f} remaining after other calls' "
+                cap_words = (f"{c['name']}, {_usd(c['cap'])}, "
+                             f"{_usd(max(0.0, c['remaining']))} remaining after other calls' "
                              "holds")
                 by = f"what {cap_words} can pay"
         sized.clear()
@@ -1309,10 +1310,10 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
                     state["stopped"] = dict(c, running_usd=running, output_tokens=out_n,
                                             how=lv.get("how") or "estimated")
                     return {"stop": (
-                        f"budget ran out mid-answer ({c['name']}, ${c['cap']:.4f}, "
-                        f"${max(0.0, c['remaining']):.4f} remained after ${c['spent']:.4f} "
-                        f"spent and ${c['held']:.4f} held by {c['calls']} other call(s)): "
-                        f"its running cost ${running:.4f} at about {out_n:,} output tokens "
+                        f"budget ran out mid-answer ({c['name']}, {_usd(c['cap'])}, "
+                        f"{_usd(max(0.0, c['remaining']))} remained after {_usd(c['spent'])} "
+                        f"spent and {_usd(c['held'])} held by {c['calls']} other call(s)): "
+                        f"its running cost {_usd(running)} at about {out_n:,} output tokens "
                         f"({lv.get('how') or 'estimated'}) left under {slack:,} tokens' room, "
                         "so the stream was closed")}
                 step = min(step, max(1, int(room / rate / 2) - slack))
@@ -1362,7 +1363,7 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
                                 cost_known=False,
                                 detail=f"the call raised {type(exc).__name__} after it was "
                                        "reserved; whether the provider billed it is unknown, "
-                                       f"so what it was last held at, ${most:.4f}, is counted"))
+                                       f"so what it was last held at, {_usd(most)}, is counted"))
         recorded = bool(got.get("recorded"))
         raise
     finally:
@@ -1413,7 +1414,7 @@ def _broken(row, exc, model, prompt_usd, rate, state) -> dict:
     lead = ("budget ran out mid-answer: " if kind == "budget_ran_out"
             and not str(exc).startswith("budget ran out") else "")
     why = (lead + f"{exc} (partial: {'the cost is an estimate, ' if estimated else ''}"
-           f"${cost:.4f} recorded; nothing of the answer was parsed)")
+           f"{_usd(cost)} recorded; nothing of the answer was parsed)")
     extra = {"partial": True, "partial_reason": kind, "cost_usd": round(cost, 6),
              "cost_estimated": estimated, "tokens": tokens, "stream": stream,
              "attempts": exc.attempts, "ratelimit": exc.headers}
@@ -1764,8 +1765,8 @@ def ask_batch(requests: list, *, actor: str, trigger: dict, today: str = None,
                           f"provider's {BATCH_MAX_BYTES} a batch; nothing was sent")
     if stop_usd is not None and total > float(stop_usd):
         return refuse_all("over_stop", (
-            f"this batch's worst case ${total:.4f} ({n} requests at the batch rate) is over "
-            f"the evaluation's stop ${float(stop_usd):.4f}; nothing was sent"))
+            f"this batch's worst case {_usd(total)} ({n} requests at the batch rate) is over "
+            f"the evaluation's stop {_usd(float(stop_usd))}; nothing was sent"))
     cap = day_cap()
     uncapped = "" if cap is not None else f"; {NO_DAY_CAP_WORDS}"
     day = today or calls.today()
@@ -1778,10 +1779,10 @@ def ask_batch(requests: list, *, actor: str, trigger: dict, today: str = None,
         flying = reservations.in_flight(held)
         if cap is not None and spent["usd"] + flying["usd"] + total > cap:
             return {"kind": "over_cap", "why": (
-                f"today's spend ${spent['usd']:.4f} plus ${flying['usd']:.4f} reserved by "
+                f"today's spend {_usd(spent['usd'])} plus {_usd(flying['usd'])} reserved by "
                 f"{flying['calls']} call(s) in flight plus this batch's worst case "
-                f"${total:.4f} ({n} requests at the batch rate) is over the day cap "
-                f"${cap:.4f}: a round that would pass the day cap is asked for first; "
+                f"{_usd(total)} ({n} requests at the batch rate) is over the day cap "
+                f"{_usd(cap)}: a round that would pass the day cap is asked for first; "
                 "nothing was sent")}
         return None
 
@@ -1809,7 +1810,7 @@ def ask_batch(requests: list, *, actor: str, trigger: dict, today: str = None,
         # Whether the provider billed it is unknown: its worst case is what the record counts.
         done(p, _answered(dict(p["row"], cost_usd=p["worst"], worst_usd=p["worst"]), kind,
                           f"{why}; whether the provider billed it is unknown, so its worst "
-                          f"case ${p['worst']:.4f} is counted"))
+                          f"case {_usd(p['worst'])} is counted"))
 
     def summary(ok, kind="", detail="", batch_id=""):
         return {"ok": ok, "error": kind, "detail": detail, "batch_id": batch_id,
@@ -1909,7 +1910,7 @@ def ask_batch(requests: list, *, actor: str, trigger: dict, today: str = None,
                                     worst_usd=p["worst"], detail=(
                                         f"the batch raised {type(exc).__name__} after it was "
                                         "reserved; whether the provider billed it is unknown, "
-                                        f"so its worst case ${p['worst']:.4f} is counted")))
+                                        f"so its worst case {_usd(p['worst'])} is counted")))
             pending.pop(p["custom_id"], None)
             if not got.get("recorded"):
                 unrecorded.append(reservations.late_row(p["row"], verdict="exception",

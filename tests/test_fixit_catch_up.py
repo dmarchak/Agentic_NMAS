@@ -31,6 +31,7 @@ from html import unescape
 
 import pytest
 
+from modules import money
 from modules.fixit import auto as A
 from modules.fixit import incident as F
 from modules.fixit import section as S
@@ -417,7 +418,7 @@ class TestTheCaps:
         assert counted == [] and world.sent == []
         (line,) = F.starts(inc_of(got["stream"]))["starts"]
         assert (line["state"], line["which"], line["trigger"]) == ("capped", "day", "person")
-        assert "fixit_auto's spend on" in line["words"] and "day cap $0.0100" in line["words"]
+        assert "fixit_auto's spend on" in line["words"] and "day cap $0.01;" in line["words"]
 
     def test_three_ticked_room_for_two_under_the_features_day_cap(self, world, counted):
         """Premise corrected (Gate 2, C3769: no ticks; the name predates it): with room for two
@@ -434,7 +435,7 @@ class TestTheCaps:
         assert [i for i, _k, _kw in counted] == order[:2], "2 start, in the list's order"
         (line,) = F.starts(inc_of(order[2]))["starts"]
         assert (line["state"], line["which"]) == ("capped", "day")
-        assert (f"day cap ${float(day):.4f}" in line["words"]
+        assert (f"day cap {money.usd(float(day), exact=True)};" in line["words"]
                 and "reserved by its 2 call(s) in flight" in line["words"]), line["words"]
 
     @pytest.mark.parametrize("room, ticked, starts", [(2, 3, 2), (1, 2, 1)])

@@ -396,7 +396,7 @@ def test_with_no_cap_an_ai_control_is_ready_whatever_today_s_spend(monkeypatch):
     monkeypatch.setattr(gateway, "day_cap", lambda: 5000.0)
     got = controls.readiness("connection_check", today="2026-10-27", spent=spent)
     assert got["ready"] is False and got["kind"] == "day_cap"
-    assert "is over the day cap $5000.0000" in got["reason"]
+    assert "is over the day cap $5,000.00" in got["reason"]
 
 
 def test_cap_state_reads_the_gateway_s_day_cap(monkeypatch):

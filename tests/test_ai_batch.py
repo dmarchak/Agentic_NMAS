@@ -35,6 +35,7 @@ import random
 
 import pytest
 
+from modules import money
 from modules.ai import anthropic_adapter as A
 from modules.ai import calls, connection, gateway, profiles, reservations, triggers
 from tests.ai_person import pressed_by
@@ -283,9 +284,9 @@ def test_a_batch_that_would_pass_the_day_cap_is_refused_whole_naming_both(world)
     got = _batch(reqs, fake)
     assert got["ok"] is False and got["error"] == "over_cap" and fake.created == []
     assert got["detail"] == (
-        f"today's spend $0.0000 plus $0.0000 reserved by 0 call(s) in flight plus this "
-        f"batch's worst case ${total:.4f} (3 requests at the batch rate) is over the day cap "
-        f"${total * 0.9:.4f}: a round that would pass the day cap is asked for first; "
+        f"today's spend $0.00 plus $0.00 reserved by 0 call(s) in flight plus this "
+        f"batch's worst case {money.usd(total, exact=True)} (3 requests at the batch rate) is over the day cap "
+        f"{money.usd(total * 0.9, exact=True)}: a round that would pass the day cap is asked for first; "
         "nothing was sent")
     rows = _rows()
     assert len(rows) == 3 and {r["verdict"] for r in rows} == {"over_cap"}
@@ -312,8 +313,8 @@ def test_the_day_cap_counts_todays_spend_and_whats_in_flight(world):
     got = _batch(reqs, FakeBatches())
     assert got["error"] == "over_cap", got
     assert got["detail"].startswith(
-        f"today's spend ${total * 1.5:.4f} plus ${total:.4f} reserved by 1 call(s) in flight "
-        f"plus this batch's worst case ${total:.4f}")
+        f"today's spend {money.usd(total * 1.5, exact=True)} plus {money.usd(total, exact=True)} reserved by 1 call(s) in flight "
+        f"plus this batch's worst case {money.usd(total, exact=True)}")
 
 
 def test_a_batch_reaching_the_day_cap_exactly_is_sent(world, monkeypatch):
@@ -387,8 +388,8 @@ def test_a_batch_over_the_evaluations_stop_is_refused_naming_both(world):
     fake = FakeBatches()
     got = _batch(reqs, fake, stop_usd=total * 0.5)
     assert got["error"] == "over_stop" and fake.created == []
-    assert got["detail"] == (f"this batch's worst case ${total:.4f} (2 requests at the batch "
-                             f"rate) is over the evaluation's stop ${total * 0.5:.4f}; nothing "
+    assert got["detail"] == (f"this batch's worst case {money.usd(total, exact=True)} (2 requests at the batch "
+                             f"rate) is over the evaluation's stop {money.usd(total * 0.5, exact=True)}; nothing "
                              "was sent")
     assert _batch(reqs, FakeBatches(), stop_usd=total * 1.01)["ok"] is True
 
@@ -573,7 +574,7 @@ def test_a_missing_or_unknown_result_counts_its_worst_case(world, caplog):
     for c in ("r0", "r1"):
         assert by[c]["cost_usd"] == by[c]["worst_usd"] > 0
         assert by[c]["detail"].endswith(f"whether the provider billed it is unknown, so its "
-                                        f"worst case ${by[c]['worst_usd']:.4f} is counted")
+                                        f"worst case {money.usd(by[c]['worst_usd'], exact=True)} is counted")
     assert got["cost_usd"] == round(by["r0"]["cost_usd"] + by["r1"]["cost_usd"], 6)
     assert ("ai: the batch msgbatch_0test's result for 'zz' matches no request waiting on "
             "one: ignored") in caplog.text

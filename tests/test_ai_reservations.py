@@ -175,7 +175,7 @@ def test_a_reservation_another_process_makes_under_the_lock_is_waited_for_and_co
         child.wait(10)
     got = out["got"]
     assert got["error"] == "over_cap" and world.sent == []
-    assert (f"the installation's day cap ${worst * 1.5:.4f}: spent $0.0000 plus ${worst:.4f} "
+    assert (f"the installation's day cap {_money.usd(worst * 1.5, exact=True)}: spent $0.00 plus {_money.usd(worst, exact=True)} "
             "held by 1 call(s) in flight") in got["detail"], got
 
 
@@ -200,8 +200,8 @@ def test_a_background_features_day_cap_counts_its_calls_in_flight_and_only_those
     plant()
     got = TB._call(w)
     assert got["error"] == "feature_cap" and len(w.sent) == 2
-    assert ("fake_loop's day cap on lab $0.5000: spent $0.0000 plus $0.5000 held by 1 call(s) "
-            "in flight leaves $0.0000, under this call's counted prompt") in got["detail"], got
+    assert ("fake_loop's day cap on lab $0.50: spent $0.00 plus $0.50 held by 1 call(s) "
+            "in flight leaves $0.00, under this call's counted prompt") in got["detail"], got
 
 
 # ── settled to the actual cost ────────────────────────────────────────────────────────────
@@ -299,12 +299,12 @@ def test_an_unrecorded_call_still_counts_against_the_day_cap_after_its_reservati
     world.settings["ai_cap_usd_per_day"] = cost + worst * 0.99
     second = _ask(world, "b", send=world.send)
     assert second["error"] == "over_cap" and world.sent == []
-    assert (f"the installation's day cap ${cost + worst * 0.99:.4f}: spent $0.0000 plus "
-            f"${cost:.4f} held by 1 call(s) in flight") in second["detail"], second["detail"]
+    assert (f"the installation's day cap {_money.usd(cost + worst * 0.99, exact=True)}: spent $0.00 plus "
+            f"{_money.usd(cost, exact=True)} held by 1 call(s) in flight") in second["detail"], second["detail"]
     # How the cap clears, then nothing was sent (the correctness review's test audit, half 1
     # row 11: the words e4e09698 dropped, restored).
     assert second["detail"].endswith(
-        f", ${worst:.4f}; it stops until the day ends or an admin raises the cap in "
+        f", {_money.usd(worst, exact=True)}; it stops until the day ends or an admin raises the cap in "
         "Settings › AI; nothing was sent"), second["detail"]
     # The control: the cap with room for both, the second is sent (it, too, unrecorded).
     world.settings["ai_cap_usd_per_day"] = cost + worst * 1.01
@@ -521,7 +521,7 @@ def test_a_reservation_not_yet_expired_is_held_against_the_cap(world):
     _plant(1.50, 60)
     got = _ask(world)
     assert got["error"] == "over_cap" and world.sent == []
-    assert ("the installation's day cap $1.5000: spent $0.0000 plus $1.5000 held by 1 call(s) "
+    assert ("the installation's day cap $1.50: spent $0.00 plus $1.50 held by 1 call(s) "
             "in flight") in got["detail"]
     assert list(reservations.open_reservations()["held"]) == ["ai-deadprocess00001"], \
         "a refused call reserves nothing and drops nothing live"
@@ -639,5 +639,5 @@ def test_two_background_calls_at_once_cannot_pass_the_features_day_cap_together(
     th.join(10)
     assert first["got"]["ok"] is True and len(bg.sent) == 1, "only the first was sent"
     assert second["error"] == "feature_cap", second
-    assert (f"fake_loop's day cap on lab ${worst * 1.5:.4f}: spent $0.0000 plus ${worst:.4f} "
+    assert (f"fake_loop's day cap on lab {_money.usd(worst * 1.5, exact=True)}: spent $0.00 plus {_money.usd(worst, exact=True)} "
             "held by 1 call(s) in flight") in second["detail"], second

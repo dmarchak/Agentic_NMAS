@@ -249,7 +249,7 @@ def test_an_unverified_request_is_refused_by_the_gate_and_nothing_is_written(ai,
 
 
 @pytest.mark.parametrize("day, month, words", [
-    ("8.00", "10", "the feature's day cap $8.0000 is over the installation's day cap $1.5000"),
+    ("8.00", "10", "the feature's day cap $8.00 is over the installation's day cap $1.50"),
     ("0", "10", "the day cap 0.0 is not a positive amount"),
     ("0.50", "-1", "the month cap -1.0 is not a positive amount"),
     ("lots", "10", "the day cap 'lots' is not a positive amount"),
@@ -266,7 +266,7 @@ def test_change_caps_out_of_range_is_refused_and_the_caps_stand(ai):
     _turn_on(ai)
     r, html = _post(ai, f"{BASE}/{NET}/fake_loop/caps",
                     {"day_cap_usd": "9", "month_cap_usd": "10"})
-    assert r.status_code == 409 and "over the installation's day cap $1.5000" in html
+    assert r.status_code == 409 and "over the installation's day cap $1.50:" in html
     assert B.entry_of("branch", "fake_loop")["day_cap_usd"] == 0.5
 
 

@@ -86,6 +86,12 @@ class TestTheFilter:
                 a=0.1251, b=2400, c="0.0015")
         assert out == "$0.13 $0.1251 $2,400.00 $0.0015"
 
+    def test_exact_usd_is_the_exact_form_by_one_name(self):
+        """C3464: the AI gateway's refusals write a cap, a spend and a cost by `exact_usd`."""
+        from modules import money
+        got = [money.exact_usd(v) for v in (5000, 1.5, 0, 0.1251, "0.0003")]
+        assert got == ["$5,000.00", "$1.50", "$0.00", "$0.1251", "$0.0003"]
+
 
 class TestNoTemplateDrawsAnAmountAnotherWay:
     def _templates(self):

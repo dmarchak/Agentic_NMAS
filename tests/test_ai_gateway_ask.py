@@ -12,6 +12,7 @@ import logging
 import pytest
 from pydantic import ValidationError
 
+from modules import money
 from modules.ai import triggers
 from tests.ai_person import pressed_by
 from modules.ai import anthropic_adapter as A
@@ -132,12 +133,12 @@ def _hold_words(body, cap_name, cap, spent, held=0.0, calls_=0, uncapped=""):
     # half 1 row 11, 2026-11-18): the installation's day cap's own words.
     clears = ("; it stops until the day ends or an admin raises the cap in Settings › AI"
               if cap_name == "the installation's day cap" else "")
-    return (f"{cap_name} ${cap:.4f}: spent ${spent:.4f} plus ${held:.4f} held by {calls_} "
-            f"call(s) in flight leaves ${remaining:.4f}, under this call's counted prompt "
-            f"(${prompt_usd:.4f}, {tokens:,} tokens, each priced as a cache write) plus its "
-            f"typical answer ({typ:,} tokens, ${answer_usd:.4f}; not measured yet: no "
+    return (f"{cap_name} {money.usd(cap, exact=True)}: spent {money.usd(spent, exact=True)} plus {money.usd(held, exact=True)} held by {calls_} "
+            f"call(s) in flight leaves {money.usd(remaining, exact=True)}, under this call's counted prompt "
+            f"({money.usd(prompt_usd, exact=True)}, {tokens:,} tokens, each priced as a cache write) plus its "
+            f"typical answer ({typ:,} tokens, {money.usd(answer_usd, exact=True)}; not measured yet: no "
             f"connection_check call on {MODEL} in the last 30 days; the pin's max_tokens "
-            f"({typ:,}) stands in), ${need:.4f}{uncapped}{clears}; nothing was sent"), need
+            f"({typ:,}) stands in), {money.usd(need, exact=True)}{uncapped}{clears}; nothing was sent"), need
 
 
 def _request(world, **kw):

@@ -27,6 +27,7 @@ import types
 
 import pytest
 
+from modules import money
 from modules import config
 from modules import installation_settings as I
 from modules.ai import background as B
@@ -156,7 +157,7 @@ def test_an_estimate_that_moved_since_it_was_shown_is_refused_naming_both(bg):
     (0.5, 0, "the month cap 0 is not a positive amount"),
     (True, 10, "the day cap True is not a positive amount"),
     ("1", 10, "the day cap '1' is not a positive amount"),
-    (2.0, 10, "the feature's day cap $2.0000 is over the installation's day cap $1.5000"),
+    (2.0, 10, "the feature's day cap $2.00 is over the installation's day cap $1.50"),
 ])
 def test_caps_must_be_positive_and_within_the_installations_day_cap(bg, day, month, said):
     with pytest.raises(B.Refused) as got:
@@ -244,8 +245,8 @@ def test_the_features_day_cap_stops_it_naming_both_operands(bg):
     # The refusal names the cap, what was spent, what calls in flight hold, what remains and
     # this call's hold (7b0bb884: its counted prompt plus its task's typical answer).
     detail = got.get("detail", "")
-    assert ("fake_loop's day cap on lab $0.5000: spent $0.5000 plus $0.0000 held by 0 call(s) "
-            "in flight leaves $0.0000, under this call's counted prompt") in detail
+    assert ("fake_loop's day cap on lab $0.50: spent $0.50 plus $0.00 held by 0 call(s) "
+            "in flight leaves $0.00, under this call's counted prompt") in detail
     assert "plus its typical answer" in detail and detail.endswith("; nothing was sent")
     # How it clears and where it is changed (restored by the correctness review's test audit,
     # half 1 row 11, 2026-11-18: e4e09698 dropped it with no decision; C3873 asks for "where
@@ -271,7 +272,7 @@ def test_the_features_month_cap_stops_it_on_an_ordinary_day(bg, monkeypatch):
     _plant(0.999999, at="2026-11-01T00:30:00Z")
     got = _call(bg)
     assert got.get("error") == "feature_cap"
-    assert "fake_loop's month cap on lab $1.0000: spent $1.0000" in got.get("detail", "")
+    assert "fake_loop's month cap on lab $1.00: spent $1.00" in got.get("detail", "")
     assert calls.read()["rows"][0]["cap_kind"] == "month"
 
 
@@ -285,7 +286,7 @@ def test_on_the_months_first_day_the_month_cap_counts_today_and_not_last_month(b
     _plant(0.999999, at="2026-11-01T00:30:00Z")
     got = _call(bg, job="j2")
     assert got.get("error") == "feature_cap"
-    assert "fake_loop's month cap on lab $1.0000: spent $1.0000" in got.get("detail", "")
+    assert "fake_loop's month cap on lab $1.00: spent $1.00" in got.get("detail", "")
     assert calls.read()["rows"][0]["cap_kind"] == "month"
 
 
@@ -304,7 +305,7 @@ def test_the_installations_day_cap_still_comes_first(bg):
                   "verdict": "ok", "cost_usd": 1.499999})
     got = _call(bg)
     assert got.get("error") == "over_cap"
-    assert "the installation's day cap $1.5000: spent $1.5000" in got.get("detail", "")
+    assert "the installation's day cap $1.50: spent $1.50" in got.get("detail", "")
 
 
 def test_raising_the_cap_is_how_a_stopped_feature_runs_again(bg):
@@ -437,14 +438,14 @@ def test_the_features_caps_count_on_the_calls_own_day_and_record_its_worst_case(
     got = gateway.ask(TASK, ("ping", 1), connection.Ping, {"word": "w"},
                       actor=triggers.actor_of(t), trigger=t, send=bg.send, today="2026-01-15")
     assert got.get("error") == "feature_cap" and bg.sent == []
-    assert "fake_loop's day cap on lab $0.5000: spent $0.5000" in got.get("detail", "")
+    assert "fake_loop's day cap on lab $0.50: spent $0.50" in got.get("detail", "")
     # The refusal's row keeps the call's hold (7b0bb884: its counted prompt plus its typical
     # answer, in place of a worst case), the figure the detail compares.
     row = calls.read()["rows"][0]
     assert isinstance(row.get("hold_usd"), float) and row["hold_usd"] > 0
     # How the cap clears, then nothing was sent (the correctness review's test audit, half 1
     # row 11: the words e4e09698 dropped, restored).
-    assert (f"${row['hold_usd']:.4f}; it stops until the day ends or an admin raises the cap "
+    assert (f"{money.usd(row['hold_usd'], exact=True)}; it stops until the day ends or an admin raises the cap "
             "in Settings › AI; nothing was sent") in got["detail"], got["detail"]
 
 
@@ -540,8 +541,8 @@ def test_the_month_caps_refusal_names_this_month(bg):
                       actor=triggers.actor_of(t), trigger=t, send=bg.send, today="2026-01-15")
     assert got.get("error") == "feature_cap" and bg.sent == []
     # The month's cap named as the month's, with its spend this month (7b0bb884's words).
-    assert ("fake_loop's month cap on lab $1.0000: spent $1.0000 plus $0.0000 held by 0 "
-            "call(s) in flight leaves $0.0000") in got.get("detail", ""), got
+    assert ("fake_loop's month cap on lab $1.00: spent $1.00 plus $0.00 held by 0 "
+            "call(s) in flight leaves $0.00") in got.get("detail", ""), got
     # Restored (the test audit, half 1 row 11): how it clears and where it is changed.
     assert ("it stops until the month ends or an admin raises the cap in Settings › AI"
             in got["detail"]), got["detail"]
