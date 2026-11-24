@@ -449,8 +449,8 @@ def read_account_rollout_go_on():
         return _op(409, op={"state": "roll_refused", "job": paused,
                             "error": RA.go_on_refusal(continued),
                             "network": run.get("network", "")})
-    who = identity.identify(request)
     try:
+        who = identity.identify(request)
         job = RA.rollout_go_on(run, actor=identity.request_actor(),
                                actor_kind=getattr(who, "kind", ""))
     except Exception:

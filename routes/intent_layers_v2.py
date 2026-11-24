@@ -343,8 +343,8 @@ def change_go_on():
     if not capture_job.take_over(paused, "paused", continued):
         return _run_card({"state": "refused", "list": name, "layer": layer,
                           "error": already}, 409)
-    who = identity.identify(request)
     try:
+        who = identity.identify(request)
         job = fleet_change.run_start(name, run["plan"], run["commit"], run["batches"],
                                      after_canary="go", actor=identity.request_actor(),
                                      actor_kind=getattr(who, "kind", ""), start_at=run["next"])
