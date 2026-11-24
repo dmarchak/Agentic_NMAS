@@ -396,7 +396,7 @@ def test_turn_off_in_the_panel_is_settings_turn_off_answered_in_the_panel(spend)
     r, html = _post(spend, OFF)
     assert r.status_code == 200 and r.headers["Content-Security-Policy"] == csp.STRICT_POLICY
     text = _text(html)
-    assert 'data-result="off"' in html and "fake_loop turned off for Branch" in text
+    assert 'data-result="off"' in html and "Turned off for Branch: The fake loop" in text, text
     assert "AI spend" in text and "Background features on" in text, "the panel is the answer"
     assert 'id="ai-bg"' not in html, "not the Settings section"
     assert "settings" in r.headers["X-NMAS-Invalidates"], "the chip reads again"
@@ -405,7 +405,7 @@ def test_turn_off_in_the_panel_is_settings_turn_off_answered_in_the_panel(spend)
     assert [x["kind"] for x in _record(spend)] == ["ai_background_on", "ai_background_off"]
     # Off already: nothing written, said in the panel.
     r, html = _post(spend, OFF)
-    assert "Already off:" in unescape(html) and len(_record(spend)) == 2
+    assert "Already off for Branch: The fake loop;" in _text(html) and len(_record(spend)) == 2
 
 
 def test_a_service_is_refused_in_the_panel_and_nothing_is_written(spend, monkeypatch):

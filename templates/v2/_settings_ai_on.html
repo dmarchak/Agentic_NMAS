@@ -10,7 +10,7 @@
 {%- set known = est.usd_per_day is not none -%}
 {%- macro usd(v, places=2) -%}{% if v is none %}unknown{% else %}{{ v | usd(places == 4) }}{% endif %}{%- endmacro -%}
 <div class="ai-feature ai-feature-open" role="listitem" id="bg-{{ o.feature }}" data-state="opening">
-  <h3 class="ai-open-head">Turn on <span class="mono">{{ o.feature }}</span>: {{ o.words }} · network {{ o.network }}</h3>
+  <h3 class="ai-open-head">Turn on: <span title="{{ o.feature }}">{{ o.words }}</span> · network {{ o.network }}</h3>
   <p class="small muted ai-open-lead">Trigger: {{ o.trigger_words }}; {{ est.calls_per_finding }} call per finding, the task <span class="mono">{{ est.task }}</span> on <span class="mono">{{ est.model }}</span>. Nothing calls the model for this feature on {{ o.network }} until you turn it on.</p>
   {%- if form_refused %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not turned on:</strong> {{ form_refused }}{% if 'estimate moved' in form_refused %} The estimate now is below.{% endif %}</div></div>

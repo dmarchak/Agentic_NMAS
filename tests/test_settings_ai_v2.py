@@ -166,6 +166,8 @@ def test_turn_on_draws_the_estimate_labelled_with_the_digest_the_form_sends(ai):
     assert f"Estimate {est['digest'][:8]}" in text and "the provider bills" in text
     assert 'name="day_cap_usd"' in html and 'name="month_cap_usd"' in html
     assert 'name="accept"' in html and "Turn on with this estimate" in text
+    # C2820's survey, item 25: the heading names the feature by its words, the key on hover.
+    assert '>Turn on: <span title="fake_loop">The fake loop</span> · network Branch<' in html
     assert B.switches() == {}, "opening the estimate writes nothing"
 
 
@@ -185,6 +187,8 @@ def test_the_estimate_shown_is_the_one_confirmed_and_recorded(ai):
                     {"shown": shown, "day_cap_usd": "$0.50", "month_cap_usd": "10",
                      "accept": "on"})
     assert r.status_code == 200 and 'data-result="on"' in html
+    # C2820's survey, item 25: the feature by its words, its key on hover, never the key.
+    assert 'On for Branch: <span title="fake_loop">The fake loop</span>' in html, html
     entry = B.entry_of("branch", "fake_loop")
     assert entry["estimate"]["digest"] == shown and entry["by"] == TEST_PERSON
     assert (entry["day_cap_usd"], entry["month_cap_usd"]) == (0.5, 10.0)
@@ -271,7 +275,10 @@ def test_turn_off_stops_the_next_call_through_the_gateway(ai):
     assert _call(ai)["ok"] is True and len(ai.sent) == 1
     r, html = _post(ai, f"{BASE}/{NET}/fake_loop/off")
     assert r.status_code == 200 and 'data-result="off"' in html
-    assert "turned off for Branch" in html and _row(html, "fake_loop")[0] == "off"
+    # C2820's survey, item 25: the feature by its words, its key on hover.
+    assert ('Turned off for Branch: <span title="fake_loop">' in html
+            and _row(html, "fake_loop")[0] == "off"), html
+    assert "fake_loop turned off" not in html
     got = _call(ai)
     assert got["ok"] is False and got.get("error") == "feature_off" and len(ai.sent) == 1
     assert [x["kind"] for x in _record(ai)] == ["ai_background_on", "ai_background_off"]
@@ -303,7 +310,7 @@ def test_turn_off_removes_a_switch_whose_approval_ended(ai, monkeypatch):
     _turn_on(ai)
     monkeypatch.setattr(B, "_now", lambda: time.time() + 15 * 86400)
     r, html = _post(ai, f"{BASE}/{NET}/fake_loop/off")
-    assert r.status_code == 200 and "turned off for Branch" in html
+    assert r.status_code == 200 and "Turned off for Branch: " in html
     assert B.switches() == {} and _row(html, "fake_loop")[0] == "off"
     assert [x["kind"] for x in _record(ai)] == ["ai_background_on", "ai_background_off"]
 
@@ -346,6 +353,8 @@ def test_changing_caps_is_recorded_with_both_values_and_never_extends_the_approv
     r, html = _post(ai, f"{BASE}/{NET}/fake_loop/caps",
                     {"day_cap_usd": "1.00", "month_cap_usd": "20"})
     assert r.status_code == 200 and 'data-result="caps"' in html
+    assert ('Caps set on Branch</strong> for <span title="fake_loop">The fake loop</span>: now '
+            in html), html
     after = B.entry_of("branch", "fake_loop")
     assert (after["day_cap_usd"], after["month_cap_usd"]) == (1.0, 20.0)
     assert after["at"] == before["at"], "the approval's start, and so its end, unchanged"

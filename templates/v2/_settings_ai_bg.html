@@ -23,17 +23,17 @@
   {%- if turned_on %}
   {%- set e = turned_on.entry %}
   <div class="notice notice-ok set-result" role="status" data-result="on">{{ icon('tick', 16) }}<div>
-    <strong>{{ turned_on.feature }} is on for {{ ai.network }}</strong>, by {{ e.by | people }} {{ stamp(e.at) }}, with estimate <span class="mono">{{ e.estimate.digest[:8] }}</span> ({{ usd(e.estimate.usd_per_day) }} a day) and caps {{ e.day_cap_usd | usd }} a day, {{ e.month_cap_usd | usd }} a month. Recorded in History{% if not turned_on.recorded %}, and its record could not be written: {{ turned_on.record_error }}{% endif %}.</div></div>
+    <strong>On for {{ ai.network }}: <span title="{{ turned_on.feature }}">{{ turned_on.feature | ai_feature }}</span></strong>, by {{ e.by | people }} {{ stamp(e.at) }}, with estimate <span class="mono">{{ e.estimate.digest[:8] }}</span> ({{ usd(e.estimate.usd_per_day) }} a day) and caps {{ e.day_cap_usd | usd }} a day, {{ e.month_cap_usd | usd }} a month. Recorded in History{% if not turned_on.recorded %}, and its record could not be written: {{ turned_on.record_error }}{% endif %}.</div></div>
   {%- endif %}
   {%- if turned_off %}
   <div class="notice notice-muted set-result" role="status" data-result="off">{{ icon('tick', 16) }}<div>
-    {%- if turned_off.nothing %}<strong>Already off:</strong> {{ turned_off.feature }} was not on for {{ ai.network }}; nothing was written.
-    {%- else %}<strong>{{ turned_off.feature }} turned off for {{ ai.network }}</strong> by {{ (turned_off.actor_label or turned_off.actor) | people }} {{ stamp(turned_off.at_iso) }}: its next call is refused; a call already sent finishes and is recorded. Recorded in History{% if not turned_off.recorded %}, and its record could not be written: {{ turned_off.record_error }}{% endif %}.{% endif %}</div></div>
+    {%- if turned_off.nothing %}<strong>Already off for {{ ai.network }}:</strong> <span title="{{ turned_off.feature }}">{{ turned_off.feature | ai_feature }}</span>; nothing was written.
+    {%- else %}<strong>Turned off for {{ ai.network }}: <span title="{{ turned_off.feature }}">{{ turned_off.feature | ai_feature }}</span></strong> by {{ (turned_off.actor_label or turned_off.actor) | people }} {{ stamp(turned_off.at_iso) }}: its next call is refused; a call already sent finishes and is recorded. Recorded in History{% if not turned_off.recorded %}, and its record could not be written: {{ turned_off.record_error }}{% endif %}.{% endif %}</div></div>
   {%- endif %}
   {%- if caps_set %}
   {%- set e = caps_set.entry %}
   <div class="notice notice-muted set-result" role="status" data-result="caps">{{ icon('tick', 16) }}<div>
-    <strong>{{ caps_set.feature }}'s caps on {{ ai.network }}</strong> are now {{ e.day_cap_usd | usd }} a day and {{ e.month_cap_usd | usd }} a month, by {{ e.caps_by | people }} {{ stamp(e.caps_at) }}; its approval still ends when it did. Recorded in History, old and new{% if not caps_set.recorded %}, and its record could not be written: {{ caps_set.record_error }}{% endif %}.</div></div>
+    <strong>Caps set on {{ ai.network }}</strong> for <span title="{{ caps_set.feature }}">{{ caps_set.feature | ai_feature }}</span>: now {{ e.day_cap_usd | usd }} a day and {{ e.month_cap_usd | usd }} a month, by {{ e.caps_by | people }} {{ stamp(e.caps_at) }}; its approval still ends when it did. Recorded in History, old and new{% if not caps_set.recorded %}, and its record could not be written: {{ caps_set.record_error }}{% endif %}.</div></div>
   {%- endif %}
   {%- if not ai.hosted_allowed %}
   <div class="notice notice-warn set-result">{{ icon('warn', 16) }}<div><strong>Hosted AI is off for the installation</strong>, so no AI call runs, background or pressed, whatever is on here. It is allowed, with a recorded reason, on <a href="{{ ai.card_href }}">the AI (hosted) card</a> above.</div></div>

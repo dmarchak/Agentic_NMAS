@@ -105,6 +105,17 @@ def setting_label(key) -> str:
     return settings_page.field_label(str(key or ""))
 
 
+@bp.app_template_filter("ai_feature")
+def ai_feature(key) -> str:
+    """A background AI feature as Settings › AI's list names it (`background.FEATURES`'
+    ``words``, "Self-healing analyses what it could not fix"; C2820's survey, item 25): a
+    notice names the feature a person turned on, its key on hover, never the key as the text;
+    a key not listed is said as it is."""
+    from modules.ai import background
+
+    return (background.FEATURES.get(str(key or "")) or {}).get("words") or str(key or "")
+
+
 @bp.app_template_filter("usd")
 def usd(value, exact=False) -> str:
     """An amount as every screen draws it, "$0.25" (`modules.money.usd`, the one formatter; the
