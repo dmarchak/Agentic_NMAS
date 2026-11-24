@@ -1302,3 +1302,25 @@ class TestACosmeticHeal:
     def test_which_units_are_read_back_only(self, lines, words):
         units = [{"op": "change", "add": lines, "remove": []}]
         assert A.readback_only(units) == words
+
+
+class TestTheConfirmationTakesNoNetworkLock:
+    """C3864 (the operator's rehearsal, 2026-11-16: r6's act, its golden step's read refused by
+    another act's list-wide drift check, "DriftRunning: A drift check is already running for
+    this list", ended "partial" and read as needing a person). A heal's confirmation reads its
+    own device and judges it against its golden under no network lock (`Sources.read_at_golden`):
+    with the drift check's own one-run lock held, as a running check holds it, it reads clean."""
+
+    def test_a_running_drift_check_never_refuses_the_confirmation(self, lab, monkeypatch):
+        from modules import drift_check
+        from modules.heal import act
+        monkeypatch.setattr("modules.goldens._golden_record",
+                            lambda ip, network: {"text": GOLDEN})
+        src = act.Sources("Lab")
+        monkeypatch.setattr(src, "read", lambda dev: (GOLDEN, ""))
+        with drift_check._OneRun(drift_check._run_lock_path("Lab"), "another act's check"):
+            with pytest.raises(drift_check.DriftRunning):
+                with drift_check._OneRun(drift_check._run_lock_path("Lab"), "a second check"):
+                    pass
+            got = src.read_at_golden("r2", {"hostname": "r2", "ip": "192.0.2.12"})
+        assert got["state"] == "clean", got
