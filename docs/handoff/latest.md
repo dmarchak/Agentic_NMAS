@@ -1,6 +1,28 @@
 # Handoff: the waiting patches landed; main red only on C4090 (2026-11-24, 10:45 Denver)
 
-## 000000000000. The operator's decisions of 2026-11-24, 11:50 Denver: read this first
+## 0000000000000. The operator's decisions of 2026-11-24, 13:15 Denver: read this first
+
+They supersede the 11:50 deploy order below (decisions file, 13:15 lines, the words verbatim).
+- **No fast lane: it is retired. No deploy until CI is fully green.** CI #2102 on fad30e81 is
+  red only on C4090's loop test (coverage and every other job green): main's code is ready.
+- **1. C4090's records:** make them on the sandbox device through Mercury (outside 02:30-03:30
+  Denver, never on s3): main's current code if it can run against the sandbox, otherwise the
+  deployed version, checking the records' shape matches what main's loops write today (the
+  three loops: `_fixit_section.html` `(F.more or ())` two saved fixes matching one incident;
+  `_inc_proof.html` `P.net_zero.lines` and `P.reads`, a Fixed command-plan run with a net-zero
+  difference and its reads; C4090's row). Capture them masked (`nmas-config-read --records`,
+  2ab64859), add the providers in tests/v2_context.py from them, C4090 green, then
+  `nmas-deploy --wait` on a fully green CI. This touches devices: a planned-restart window
+  only if a restart is involved; nothing staged on s3.
+- **2. CI shards** (authorised in the operator's words, decisions file): ci.yml's test matrix
+  and scripts/nmas-shards to 10 shards, each runner at the worker count a 4-core hosted runner
+  supports; no other ci.yml change; show the pass/fail/skip counts equal before and after.
+  ci.yml is a protected guard: quote the words in the commit's `Approved-By:`.
+- **Never ask in a dialog:** a question goes in OPERATOR.md, the item BLOCKED, then the next item.
+- Then, as before: Stage 5's direction-independent items (each deployed when green), Stage 6.
+  Stage 2 is DONE (587 s at 10 workers; serial and parallel agree, C4222 closed, cf819581).
+
+## 000000000000. The operator's decisions of 2026-11-24, 11:50 Denver (superseded at 13:15)
 
 - **The order:** (1) deploy, C4090 the only allowed failure (decisions file, 11:50 line, the
   operator's words); (2) then make C4090's records on the sandbox device through Mercury on the
