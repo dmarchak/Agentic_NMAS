@@ -28,9 +28,11 @@ is reported separately — it answers "does the config reproduce", which is a
 different question from "do we understand it".
 """
 
+import collections
 import logging
 import os
 import re
+import threading
 
 from modules.nsot import ifnames, normalize
 from modules.nsot.parsers.base import split_blocks
@@ -154,15 +156,72 @@ def _sections(config: str) -> dict:
     return out
 
 
+#: How many compiled templates `_COMPILED` keeps, newest last (a library is two or three
+#: templates; a test suite's temporary repositories pass through and are dropped oldest
+#: first, so a process's memory stays flat).
+COMPILED_KEPT = 256
+
+
+class _Compiled:
+    """Jinja's bytecode cache, in this process's memory (`jinja2.BytecodeCache`'s two
+    methods): a template's compiled code by Jinja's own key (its name and file) and checked by
+    Jinja against the sha1 of the text it is about to compile, so a template whose text
+    changed compiles again and one whose text did not is never compiled twice. Compiling took
+    about 0.13 s of each render's 0.14 s (the week plan's Stage 2, C4184, profiled 2026-11-24),
+    and every preview, deploy and check renders. Only the compile step is kept: each render
+    still has its own environment, globals and filters. **Only `render`'s one environment
+    shape may use it** (its loader, `trim_blocks`, `lstrip_blocks`, `keep_trailing_newline`):
+    Jinja's key holds no environment settings, and code compiled under other settings would
+    render differently; a second shape needs its own instance. **A filter or test `render`
+    adds that reads per-render state must be `pass_context`**, as `resolve_secrets` is:
+    Jinja folds a plain one over constant arguments into the kept code."""
+
+    def __init__(self):
+        self._kept = collections.OrderedDict()
+        self._lock = threading.Lock()
+
+    def __call__(self):
+        from jinja2 import BytecodeCache
+
+        outer = self
+
+        class Cache(BytecodeCache):
+            def load_bytecode(self, bucket):
+                with outer._lock:
+                    code = outer._kept.get(bucket.key)
+                    if code is not None:
+                        outer._kept.move_to_end(bucket.key)
+                if code is not None:
+                    bucket.bytecode_from_string(code)
+
+            def dump_bytecode(self, bucket):
+                code = bucket.bytecode_to_string()
+                with outer._lock:
+                    outer._kept[bucket.key] = code
+                    outer._kept.move_to_end(bucket.key)
+                    while len(outer._kept) > COMPILED_KEPT:
+                        outer._kept.popitem(last=False)
+
+            def clear(self):
+                with outer._lock:
+                    outer._kept.clear()
+        return Cache()
+
+
+_COMPILED = _Compiled()()
+
+
 def render(host_vars: dict, platform: str, secret_lookup=None,
            template_root: str = TEMPLATE_ROOT, template_name: str = "base.j2") -> str:
     """Render host_vars through a platform template.
 
     *template_root* lets the caller point at a network's own template library
     in its repo instead of the built-in seeds; *template_name* selects a
-    non-default template within the platform directory.
+    non-default template within the platform directory. Each render has its own
+    environment, as always; only the compiled code of a template whose text it has compiled
+    before is reused (`_COMPILED`).
     """
-    from jinja2 import Environment, FileSystemLoader, StrictUndefined
+    from jinja2 import Environment, FileSystemLoader, StrictUndefined, pass_context
     from jinja2.exceptions import UndefinedError
 
     secrets = dict(host_vars.get("secrets") or {})
@@ -179,9 +238,16 @@ def render(host_vars: dict, platform: str, secret_lookup=None,
     env = Environment(
         loader=FileSystemLoader([os.path.join(template_root, platform), template_root]),
         undefined=_named_undefined(StrictUndefined), trim_blocks=True, lstrip_blocks=False,
-        keep_trailing_newline=True,
+        # `_COMPILED` serves this one environment shape alone (its docstring).
+        keep_trailing_newline=True, bytecode_cache=_COMPILED,
     )
-    def _resolve_markers(text):
+    # `pass_context`: a filter Jinja may call at compile time is folded into the compiled code
+    # when its argument is constant (`{{ "__secret__:x" | resolve_secrets }}`), and compiled
+    # code is kept across renders (`_COMPILED`), so one device's secret would be every later
+    # device's. A context filter is never folded: it runs at each render, with its own lookup
+    # (the device-write review of 2026-11-24, HIGH).
+    @pass_context
+    def _resolve_markers(_context, text):
         """Expand ``__secret__:ref`` markers inside an otherwise opaque string."""
         import re as _re
         # The reference's own characters only (C477): a marker inside a URL is followed by

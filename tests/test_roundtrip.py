@@ -524,3 +524,40 @@ class TestAMissingVariableIsRefused:
             roundtrip.render(missing, platform)
         words = roundtrip.undefined_words(exc.value, missing, platform=platform)
         assert "`hostname`" in words and "the intent does not hold it" in words, words
+
+
+class TestTheCompiledCodeIsKept:
+    """`roundtrip._COMPILED` (C4184, the week plan's Stage 2): a template's compiled code is
+    kept across renders, so nothing compiled may carry one render's values into another's,
+    and a template whose text changed compiles again."""
+
+    @staticmethod
+    def _library(tmp_path, text):
+        root = tmp_path / "library"
+        (root / "cisco_ios").mkdir(parents=True, exist_ok=True)
+        (root / "cisco_ios" / "base.j2").write_text(text, encoding="utf-8")
+        return str(root)
+
+    def test_a_constant_secret_line_resolves_each_devices_own_value(self, tmp_path):
+        """The device-write review of 2026-11-24, HIGH: Jinja folds a filter over a constant
+        at compile time, so a kept compile of `"__secret__:enable" | resolve_secrets` held
+        the first device's value for every later one. Each render resolves its own."""
+        root = self._library(tmp_path, 'enable secret {{ "__secret__:enable" | resolve_secrets }}\n')
+        first, second = (roundtrip.render({"hostname": h, "secrets": {"enable": v}},
+                                          "cisco_ios", template_root=root)
+                         for h, v in (("r1", "S1-ONE"), ("r2", "S2-TWO")))
+        assert (first, second) == ("enable secret S1-ONE\n", "enable secret S2-TWO\n"), (
+            first, second)
+
+    def test_a_template_edited_in_place_renders_its_new_text(self, tmp_path):
+        """A rewrite that keeps the file's mtime (two saves inside one tick of the clock)
+        compiles again: the kept code is checked against the text, never the time."""
+        root = self._library(tmp_path, "one {{ vars.hostname }}\n")
+        path = os.path.join(root, "cisco_ios", "base.j2")
+        mtime = os.stat(path).st_mtime_ns
+        assert roundtrip.render({"hostname": "r1"}, "cisco_ios", template_root=root) == "one r1\n"
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("two {{ vars.hostname }}\n")
+        os.utime(path, ns=(mtime, mtime))
+        assert os.stat(path).st_mtime_ns == mtime, "the premise: the same mtime"
+        assert roundtrip.render({"hostname": "r1"}, "cisco_ios", template_root=root) == "two r1\n"
