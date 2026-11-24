@@ -786,8 +786,10 @@ def close_pool(key: str) -> None:
 def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "person",
         purpose: str = "", progress=None, session=None, run_id: str = "", pool: str = "",
         reason: str = "", drivers: dict = None, inline: bool = False,
-        keyed: bool = False) -> dict:
+        keyed: bool = False, cap_kib: int = 0) -> dict:
     """Ask *hosts* of *list_name* each of *commands*; the run's record (also written).
+    *cap_kib*, when given, is this run's answer cap in place of the network's
+    `reads_answer_cap_kib` (C4210: the heal confirm's save check reads whole configurations).
     *keyed* masks this run's answers with each secret's keyed fingerprint
     (`redact.KEYED_PLACEHOLDER`, C3886): only for a caller that compares two answers of one
     run (the heal confirm's save check); every other run keeps the plain placeholder, so its
@@ -845,7 +847,7 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
     from modules.nsot import listref
     inventory = {d.get("hostname"): d for d in load_saved_devices(listref.resolve(list_name).csv_path)}
     values = known_secret_values()
-    cap = cap_bytes(list_name)
+    cap = max(1, int(cap_kib)) * 1024 if cap_kib else cap_bytes(list_name)
     # Read once for the run (C3661): the AI's reads sign in as Mercury's account, exactly as
     # Show commands does, unless the installation chose the read-only account (or the setting
     # cannot be read: the closed side).

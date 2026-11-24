@@ -1619,6 +1619,11 @@ def _act_began(network: str, decision: dict) -> tuple:
 #: The confirm's save check, asked of the reads engine (C3886, the operator's ruling of
 #: 2026-11-23: one apply path, every read recorded and masked).
 SAVED_READS = ("show running-config", "show startup-config")
+#: The save check's own answer cap (C4210): a whole configuration, never the engine's 32 KiB
+#: for a person's reads, so a production-sized device can pass. Lab configurations are 5.5 to
+#: 9.3 KB and a large production one about 1 MB; 4 MiB holds either, and still bounds a read
+#: that never ends.
+SAVE_CHECK_CAP_KIB = 4096
 
 
 def _engine_answers(network: str, device: str, commands, purpose: str) -> dict:
@@ -1631,7 +1636,7 @@ def _engine_answers(network: str, device: str, commands, purpose: str) -> dict:
     try:
         # keyed: running and startup compared tell different secrets apart (C3886, C4204).
         rec = reads.run(network, [device], list(commands), CONFIRM_BY, by="heal", inline=True,
-                        purpose=purpose, keyed=True)
+                        purpose=purpose, keyed=True, cap_kib=SAVE_CHECK_CAP_KIB)
     except reads.Refused as exc:
         return {"": str(exc)}
     r = (rec.get("results") or {}).get(device) or {}
@@ -1642,8 +1647,8 @@ def _engine_answers(network: str, device: str, commands, purpose: str) -> dict:
             # The cap and the answer's size, both named (C4204's review, MEDIUM): a device whose
             # configuration is over the engine's answer cap is unread here, never judged.
             return {"": (f"{c} was not answered whole: its answer, {a.get('bytes') or 0} bytes,"
-                         f" was cut at the reads engine's cap of"
-                         f" {reads.cap_bytes(network)} bytes (reads_answer_cap_kib)")}
+                         f" was cut at the save check's cap of"
+                         f" {SAVE_CHECK_CAP_KIB * 1024} bytes")}
         if not a or a.get("state") != reads.ANSWERED:
             return {"": (f"{c} was not answered whole"
                          f" ({(a or {}).get('why') or r.get('why') or r.get('state') or 'none'})")}

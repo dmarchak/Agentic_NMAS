@@ -126,7 +126,16 @@ def test_a_cut_answer_names_its_size_and_the_cap(engine):
                               ("meta", "show running-config"): {"cut": True, "bytes": 48000}})
     got = act._saved_read("Lab", {}, "s1")
     assert got["state"] == "unread", got
-    assert "48000 bytes" in got["words"] and f"{reads.cap_bytes('Lab')} bytes" in got["words"], got
+    assert "48000 bytes" in got["words"] and f"{act.SAVE_CHECK_CAP_KIB * 1024} bytes" in got["words"], got
+
+
+def test_the_save_check_reads_with_its_own_cap_never_the_engines(engine):
+    """C4210: the engine's cap for a person's reads (32 KiB) made every production-sized
+    configuration unread here; the save check asks its own, a whole configuration's."""
+    engine["answers"].update({"show running-config": CONFIG, "show startup-config": CONFIG})
+    act._saved_read("Lab", {"hostname": "s1"}, "s1")
+    (one,) = engine["asked"]
+    assert one["cap_kib"] == act.SAVE_CHECK_CAP_KIB and act.SAVE_CHECK_CAP_KIB * 1024 > 2 ** 20
 
 
 def _with_values(community: str, hashed: str) -> str:

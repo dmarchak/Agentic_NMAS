@@ -157,6 +157,16 @@ class TestARun:
         assert per["show clock"]["distinct"] == 1 and per["show clock"]["answered"] == 3
         assert per["show clock"]["groups"] == [["r1", "r2", "r3"]]
 
+    def test_a_run_s_own_cap_keeps_the_answer_whole_past_the_network_s(self, lab):
+        """C4210: a run given `cap_kib` (the heal confirm's save check) answers past the
+        network's `reads_answer_cap_kib` whole; one not given it is cut there."""
+        lab["settings"]["reads_answer_cap_kib"] = 1
+        r, _ = _run(["r2"], ["show running-config"], cap_kib=64)
+        a = r["results"]["r2"]["answers"][0]
+        assert a["bytes"] > 1024 and not a["cut"], (a["bytes"], a["cut"])
+        r, _ = _run(["r2"], ["show running-config"])
+        assert r["results"]["r2"]["answers"][0]["cut"]
+
     def test_an_answer_past_the_cap_is_cut_and_says_so(self, lab):
         lab["settings"]["reads_answer_cap_kib"] = 1
         r, _ = _run(["r2"], ["show running-config"])
