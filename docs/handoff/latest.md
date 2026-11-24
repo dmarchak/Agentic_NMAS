@@ -1,6 +1,36 @@
-# Handoff: Stage 3 done; Stage 1's test changes built as patches, waiting on the operator (2026-11-23, evening)
+# Handoff: Stage 3 done; Stage 1's test changes built as patches, waiting on the operator (2026-11-23, late)
 
-## 0. The night session (from 20:03 Denver, 2026-11-23): read this first
+## 0. The late session (from 22:37 Denver, 2026-11-23): read this first
+
+- **Still blocked the same way:** AppArmor label `unconfined`, no answer in OPERATOR.md, so
+  test-changing work stays patches. Every patch's code still applies on 1c6d3687; each
+  conflicts only in docs/OPEN_FINDINGS.md (checked 23:00 Denver in a scratch worktree).
+- **Landed (pushed):** 3e5c9b51 (C4222's History case: the `planted` fixture keeps the AI call
+  record in its own folder; reproduced red then green), d5d966d1 (C4184: three scans once a
+  process, each answer compared equal: readers 22.4 to 5.9 s, manual references 18.6 to 14.1 s,
+  source survey 48.2 to 24.8 s), 1c6d3687 (C2974 fixed: dns_blacklist's TESTING.md item 1;
+  C4225 closed, measured: the request lines land, the host had one page visit in 400 hours),
+  bb7fdb14 (C4184: the v2 walk parses each template once, 58.4 to 50.0 s), b5ce81b7 (C2820:
+  the bare-identifier backlog 11 to 0, History's AI-call and notification rows), b0afda01
+  (C4222's last case: conftest puts the device-holds store back per module; five modules'
+  children left 22 interrupted-operation rows on every later Needs attention page).
+- **C4222 now waits only on C4200's patch**; after it lands, one serial run confirms the
+  serial and parallel counts match (Stage 2 item 1).
+- **Main's CI still red** on C3886's test_heal_act and C4090's three loops (the host's fix-it
+  records re-read: the same 14 files as the 00:51 UTC capture, so no new kinds).
+- **C3709** (the assistant's manual diagram) waits for the Stage 4 patch: that patch changes
+  the assistant's steps (`place` first) but not `manual_diagrams.assistant`, so the diagram is
+  redrawn from the steps after it lands.
+- **Measured (Stage 2):** b0afda01 with the render-cache and C4200 patches, `-n 12 --dist
+  worksteal` (CI's scheduler): **774 s wall**, 7,738 s summed (`suite/ws12-b0afda01.xml`); the
+  default scheduler on d5d966d1 gave 832 s. So once the patches land about 175 s remain over
+  10 minutes; the tail is the longest single tests (the v2 walk 70 s, the source survey's
+  population 56 s, the swap clicks 50 s) and collection (27 s a process). A 12-worker run
+  needs `NMAS_TEST_TIMEOUT=1470` (the 300 s default stopped the first one).
+- **Next:** land the patches (latest's section 1 order) once session-namespace is answered;
+  then Stage 2's tail (split the walk's long single tests?) and Stage 6's rows.
+
+## 0b. The night session (from 20:03 Denver, 2026-11-23)
 
 - **Still blocked:** this session too has AppArmor label `unconfined` (no namespace), so every
   test-changing commit stays a patch (OPERATOR.md#session-namespace).
