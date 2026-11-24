@@ -136,8 +136,9 @@ class TestTheRefusals:
         assert p["units"] == [] and p["commands"] == []
         (r,) = p["refused"]
         assert "ip sla 1 is running" in r["reason"] and "refuses to modify" in r["reason"]
-        assert "global.ip-sla-operation" in r["reason"]
-        assert "nmas-removal-probe" in r["reason"]
+        assert "a global `ip sla` line" in r["reason"]
+        # C3506: the shape in words, never the host command that measures it.
+        assert "a global `ip sla` line" in r["reason"] and "nmas-removal-probe" not in r["reason"]
 
     def test_measured_broader_is_refused(self, monkeypatch):
         bad = json.loads(json.dumps(MEASURED))
@@ -149,7 +150,7 @@ class TestTheRefusals:
 
     def test_measured_on_another_platform_is_not_this_one(self, measured):
         (r,) = _plan(dialect="cisco_iosxe")["refused"]
-        assert "has not been measured on cisco_iosxe" in r["reason"]
+        assert "has not been measured on IOS-XE" in r["reason"]
 
     def test_configuration_naming_the_operation_refuses_naming_it(self, measured):
         tracked = S3.replace(SCHED, SCHED + "\ntrack 1 ip sla 1 reachability")
@@ -165,7 +166,7 @@ class TestTheShapeIsMeasured:
         from modules.nsot import removal
         shape = removal.shape_for((), "ip sla 1", "stanza")
         assert shape is not None and shape.key == "global.ip-sla-operation"
-        assert "has not been measured on cisco_ios" in removal._unmeasured(
+        assert "has not been measured on IOS" in removal._unmeasured(
             [], "ip sla 1", "stanza", "cisco_ios")
 
     def _probe(self):
@@ -271,7 +272,7 @@ class TestThePlanRoute:
     def test_unmeasured_blocks_the_device_and_sends_nothing(self, client, unmeasured):
         _out, d = _route_plan(client)
         assert d["deployable"] is False
-        assert any("global.ip-sla-operation" in r for r in d["blocking_reasons"])
+        assert any("a global `ip sla` line" in r for r in d["blocking_reasons"])
         assert " frequency 60" not in d["commands"], "never the edit the device refuses"
 
     def test_the_shipped_renderer_draws_what_it_replaces(self, client, measured):
@@ -331,7 +332,7 @@ class TestThePathThatConnects:
         artifact = build_artifact("s3", S3, "cisco_ios", template_approved=True)
         out = rd._deploy_one({"artifact": artifact, "fresh": S3}, "Lab",
                              {"s3": {"hostname": "s3", "ip": "192.0.2.23"}}, {"s3": []})
-        assert out["stage"] == "recreate" and "global.ip-sla-operation" in out["reason"]
+        assert out["stage"] == "recreate" and "a global `ip sla` line" in out["reason"]
 
 
 def _ctx(**kw):

@@ -270,27 +270,59 @@ def shape_for(chain, line: str, kind: str):
     return None
 
 
+#: Where a shape's line sits, as a person says it (`shape_words`).
+CONTEXT_WORDS = {"global": "a global", "interface": "an interface's",
+                 "ip access-list": "an access list's", "router ospf": "OSPF's",
+                 "ipv6 router ospf": "OSPFv3's", "router bgp": "BGP's", "router rip": "RIP's",
+                 "telemetry ietf subscription": "a telemetry subscription's"}
+
+
+def shape_words(shape: "Shape") -> str:
+    """A shape as a person reads it (C3506): where its line sits and the command it starts with,
+    "an interface's `ip access-group` line", never its key; a line that starts with no fixed
+    command ("permit ..." or "deny ...") is said by its key's last part, "an access list's
+    entry"."""
+    command = []
+    for token in shape.pattern.lstrip("^").split(" "):
+        # A word the pattern ends on ("shutdown$"), or one an optional group of further words
+        # follows ("authentication( message-digest| null)?"), is whole; a word a group changes
+        # ("ip(v6)?") is not, and ends the command before it.
+        word, group = re.match(r"([^($]*)(.*)", token).groups()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", word) or group not in ("", "$", "("):
+            break
+        command.append(word)
+        if group:
+            break
+    where = CONTEXT_WORDS.get(shape.context, f"a {shape.context}")
+    if command:
+        return f"{where} `{' '.join(command)}` line"
+    return f"{where} {shape.key.split('.', 1)[-1].replace('-', ' ')}"
+
+
 def _unmeasured(chain, line: str, kind: str, dialect: str) -> str:
-    """Why this unit may not be removed on *dialect* yet, or ""."""
+    """Why this unit may not be removed on *dialect* yet, or "". In a person's words (C3506):
+    the shape by `shape_words` and the platform by its name, never a shape's key or the host
+    command that measures it, since no Mercury screen runs that measurement yet (C1366)."""
+    from modules.nsot.platform import FACT_WORDS
+
     shape = shape_for(chain, line, kind)
     if shape is None:
         return ("no measured shape covers this line: what `no` does to it on the platform "
-                "is not known, so nothing is sent. A shape is added to removal.SHAPES and "
-                "measured with scripts/nmas-removal-probe first")
+                "is not known, so nothing is sent")
     if not dialect:
         return "the device's platform is not known, and removal is measured per platform"
+    named = FACT_WORDS.get(dialect, dialect)
     record = measured()
     if record["state"] == "unreadable":
         return f"the removal measurements could not be read ({record.get('error')})"
     row = (record["by_dialect"].get(dialect) or {}).get(shape.key)
     if not row:
         why = ((record.get("unmeasured") or {}).get(dialect) or {}).get(shape.key) or {}
-        return (f"`{shape.key}` has not been measured on {dialect}"
+        return (f"removing {shape_words(shape)} has not been measured on {named}"
                 + (f" ({why.get('device')}, {why.get('at')}: {why.get('reason')})"
-                   if why.get("reason") else "")
-                + f": run scripts/nmas-removal-probe --shape {shape.key} on a {dialect} device")
+                   if why.get("reason") else ""))
     if row.get("result") != "exact":
-        return (f"measured on {dialect} ({row.get('device')}, {row.get('at')}): `no <line>` "
+        return (f"measured on {named} ({row.get('device')}, {row.get('at')}): `no <line>` "
                 f"{RESULT_WORDS.get(row.get('result'), row.get('result'))}"
                 + (f": {row['detail']}" if row.get("detail") else ""))
     return ""

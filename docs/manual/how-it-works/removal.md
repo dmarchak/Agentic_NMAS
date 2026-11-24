@@ -58,8 +58,8 @@ supersedes, never ticked for you.
 So a line is removable only if it matches a SHAPE that was measured on its platform to remove
 exactly itself and nothing else. The record, per platform, is
 `modules/nsot/removal_measured.json`, which ships with the program: a new measurement takes
-effect with a release. An unmeasured shape is refused, naming the probe run that would measure
-it; a shape measured to do more is refused with what was measured; an unreadable record
+effect with a release. An unmeasured shape is refused, naming its kind of line in words and the
+platform it is not measured on; a shape measured to do more is refused with what was measured; an unreadable record
 allows nothing.
 
 The interface has no control that measures a shape. The operator measures one on the host with `scripts/nmas-removal-probe`, on one device of

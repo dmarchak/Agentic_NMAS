@@ -301,14 +301,14 @@ class TestOnlyWhatWasMeasured:
         if (rows.get("interface.load-interval") or {}).get("result") != "exact":
             out = program(R2_BROKEN, self.LOAD)
             assert out["commands"] == []
-            assert "scripts/nmas-removal-probe --shape interface.load-interval" in \
-                out["refused"][0]["reason"]
+            assert ("removing an interface's `load-interval` line has not been measured on "
+                    "IOS-XE") in out["refused"][0]["reason"]
 
     def test_not_measured_on_this_platform_is_refused_naming_the_probe(self, monkeypatch):
         _measure(monkeypatch, dialect="cisco_ios")
         out = program(R2_BROKEN, self.LOAD, dialect="cisco_iosxe")
         assert out["commands"] == []
-        assert "has not been measured on cisco_iosxe" in out["refused"][0]["reason"]
+        assert "has not been measured on IOS-XE" in out["refused"][0]["reason"]
 
     def test_a_shape_measured_broader_is_refused_with_what_was_measured(self, monkeypatch):
         _measure(monkeypatch, result="broader")
@@ -368,7 +368,7 @@ class TestTheCommittedRecord:
         xe = program(running, unit, mgmt_ip="10.255.1.24", dialect="cisco_iosxe")
         assert xe["commands"] == [acl, " no 10 permit 192.0.2.1", "exit"], xe
         ios = program(running, unit, mgmt_ip="10.255.1.24", dialect="cisco_ios")
-        assert ios["commands"] == [] and "not been measured on cisco_ios" in \
+        assert ios["commands"] == [] and "not been measured on IOS" in \
             ios["refused"][0]["reason"]
 
     @pytest.mark.real_measurements
@@ -542,7 +542,7 @@ class TestTheCdpRunFlag:
         assert [(c["chain"], c["line"]) for c in cands] == [([], "cdp run")]
         out = program(self.R6_LIKE, [_unit([], "cdp run")])
         assert out["commands"] == []
-        assert "scripts/nmas-removal-probe --shape global.cdp-run" in out["refused"][0]["reason"]
+        assert "a global `cdp run` line has not been measured on IOS-XE" in out["refused"][0]["reason"]
 
     def test_removable_once_measured_exact(self):
         out = program(self.R6_LIKE, [_unit([], "cdp run")])
@@ -560,7 +560,7 @@ class TestTheCdpRunFlag:
         assert xe["commands"] == ["no cdp run"] and not xe["refused"], xe
         ios = program(self.R6_LIKE, [_unit([], "cdp run")], dialect="cisco_ios")
         assert ios["commands"] == []
-        assert "scripts/nmas-removal-probe --shape global.cdp-run" in ios["refused"][0]["reason"]
+        assert "a global `cdp run` line has not been measured on IOS" in ios["refused"][0]["reason"]
 
 
 class TestTheHoldQueue:
@@ -596,7 +596,7 @@ class TestTheHoldQueue:
         _intent, running = self._configs()
         out = program(running, [_unit([self.PORT], self.LINE)], dialect="cisco_ios")
         assert out["commands"] == []
-        assert "scripts/nmas-removal-probe --shape interface.hold-queue" in \
+        assert "removing an interface's `hold-queue` line has not been measured on IOS" in \
             out["refused"][0]["reason"]
 
     def test_once_measured_exact_it_is_no_plus_the_line(self, monkeypatch):
@@ -605,3 +605,16 @@ class TestTheHoldQueue:
         out = program(running, [_unit([self.PORT], self.LINE)], dialect="cisco_ios")
         assert not out["refused"], out
         assert out["commands"][:2] == [self.PORT, " no hold-queue 256 out"], out
+
+
+def test_every_shape_is_said_in_words_never_by_its_key():
+    """C3506: a refusal names the shape it compared in a person's words (where its line sits
+    and the command it starts with), never the shape's key or the probe that measures it."""
+    for shape in RM.SHAPES:
+        words = RM.shape_words(shape)
+        assert shape.key not in words and "_" not in words, (shape.key, words)
+        assert words.startswith(tuple(RM.CONTEXT_WORDS.values())), (shape.key, words)
+    by = {s.key: RM.shape_words(s) for s in RM.SHAPES}
+    assert by["interface.ip-access-group"] == "an interface's `ip access-group` line"
+    assert by["interface.ospf-authentication"] == "an interface's `ip ospf authentication` line"
+    assert by["global.cdp-run"] == "a global `cdp run` line"

@@ -219,7 +219,8 @@ class TestKinds:
         # until 2026-11-07, are measured exact now: C2373).
         got = classify(changed((" ip ospf cost 10\n", " ip ospf cost 10\n ip ospf "
                                 "hello-interval 5\n")))
-        assert "scripts/nmas-removal-probe" in got["blocked"]["why"]
+        assert got["blocked"]["why"].startswith("no measured shape covers this line")
+        assert "nmas-removal-probe" not in got["blocked"]["why"], "C3506: no host command"
 
     def test_the_strictest_unit_is_the_incidents_tier(self):
         # An account is Tier 4 (an ACL, this test's example until C2839, is Tier 2 now).
@@ -402,7 +403,8 @@ class TestOutcomes:
         # A line no measured shape covers (C2373 measured the OSPF authentication shapes).
         d = one(changed((" ip ospf cost 10\n", " ip ospf cost 10\n ip ospf hello-interval "
                          "5\n")))
-        assert d["outcome"] == "cant_fix" and "nmas-removal-probe" in d["words"]
+        assert d["outcome"] == "cant_fix" and "no measured shape covers this line" in d["words"]
+        assert "nmas-removal-probe" not in d["words"], "C3506: no host command"
 
     def test_a_program_that_would_cut_mercurys_path_is_tier_4(self, lab, monkeypatch):
         monkeypatch.setattr("modules.nsot.expected_effects.for_device",

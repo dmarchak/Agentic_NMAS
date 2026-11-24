@@ -96,8 +96,9 @@ each result is one of:
 
 A line no shape covers, a shape not yet measured on this platform, a device whose platform
 is not known, and a measurement record that cannot be read all refuse, naming why. The
-measurements are taken by `scripts/nmas-removal-probe`, and the refusal names the command
-that would measure the shape. The list is an allowlist: a line added to the device later
+measurements are taken by `scripts/nmas-removal-probe`, and the refusal names the kind of
+line in words ("removing an interface's `ip access-group` line has not been measured on
+IOS-XE") and its platform by name. The list is an allowlist: a line added to the device later
 cannot outgrow it.
 
 ## Refused whatever was measured {#refused}

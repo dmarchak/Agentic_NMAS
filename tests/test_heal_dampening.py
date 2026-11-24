@@ -397,7 +397,7 @@ class TestTheCard:
         assert v["confirmable"] is False and v["program"] == PROGRAM
         (why,) = v["refusals"]
         assert "not confirmable until measured" in why and "interface.dampening" in why
-        assert "has not been measured on cisco_iosxe" in why
+        assert "has not been measured on IOS-XE" in why
         assert v["steps"] == [w for _n, w in D().STEPS]
         assert any("gains `dampening: true` on GigabitEthernet2" in u for u in v["units"])
         assert any(u.endswith("not measured on cisco_iosxe") for u in v["units"])
@@ -429,7 +429,7 @@ class TestTheCard:
 
     def test_unmeasured_the_rollback_is_refused_by_name(self, unmeasured):
         undo = D().rollback_program(GI2, "cisco_iosxe")
-        assert undo["commands"] == [] and "has not been measured on cisco_iosxe" in \
+        assert undo["commands"] == [] and "has not been measured on IOS-XE" in \
             undo["refused"]
         assert "interface.dampening" in D().rollback_refusal("cisco_iosxe", GI2)
         assert "the device's platform is not known" in D().rollback_refusal("", GI2)

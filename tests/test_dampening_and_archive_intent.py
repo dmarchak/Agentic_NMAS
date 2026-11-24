@@ -143,10 +143,11 @@ class TestDampening:
         out = RM.removal_program(_with_line(port), [{"chain": chain, "line": " dampening"}],
                                  mgmt_ip="192.0.2.1", dialect=dialect)
         assert out["commands"] == [], out
-        assert (f"`interface.dampening` has not been measured on {dialect}"
+        # C3506: the shape and the platform in words, never a key or the host command.
+        named = {"cisco_ios": "IOS", "cisco_iosxe": "IOS-XE"}[dialect]
+        assert (f"removing an interface's `dampening` line has not been measured on {named}"
                 in out["refused"][0]["reason"]), out
-        assert "scripts/nmas-removal-probe --shape interface.dampening" in \
-            out["refused"][0]["reason"]
+        assert "nmas-removal-probe" not in out["refused"][0]["reason"]
 
 
 def _with_archive(device, children=None):

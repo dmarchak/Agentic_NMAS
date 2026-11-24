@@ -437,8 +437,8 @@ class TestThePlan:
                              for d, rows in rec["by_dialect"].items()}
         monkeypatch.setattr(removal, "measured", lambda: rec)
         p = R.plan(NET, "r2", ["101"], sources=Src())
-        assert not p["ok"] and "`telemetry.receiver` has not been measured on cisco_iosxe" in \
-            p["refusals"][0]
+        assert not p["ok"] and ("a telemetry subscription's `receiver ip address` line has not "
+                                "been measured on IOS-XE") in p["refusals"][0]
 
     def test_the_shape_is_mode_bs_and_measured(self):
         from modules.nsot import removal
