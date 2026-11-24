@@ -144,6 +144,29 @@ class TestAcknowledgingWithinTheBand:
         assert ", and this came after, at " in r["cause"], r["cause"]
 
 
+class TestTheBandAndTheRowsItAnswersFor:
+    """C3103: two tests that sat indented inside a module-level function, so they were
+    collected by nothing; they run here, beside the acknowledgement they test, unchanged."""
+
+    _acknowledge = TestAcknowledgingWithinTheBand._acknowledge
+
+    def test_a_band_that_cannot_be_measured_is_refused(self, store, inventory, monkeypatch):
+        class Down(_Prom):
+            def _get(self, path, **params):
+                return {"ok": False, "error": "connection refused"}
+
+        out, _r = self._acknowledge(monkeypatch, _firing(), Down())
+        assert out["ok"] is False and "connection refused" in out["error"]
+        from modules import acknowledgements as ACK
+        assert ACK.read()["rows"] == []
+
+    def test_an_incident_row_is_still_not_acknowledged_here(self, store, monkeypatch):
+        monkeypatch.setattr(A, "grafana_source", lambda cached=None: {"rows": [
+            {"id": "grafana:incident:x", "acknowledge": False}]})
+        out = A.acknowledge("grafana:incident:x", "", "a reason with words", by="a", verified="t")
+        assert out["ok"] is False and "clears when its condition resolves" in out["error"]
+
+
 class TestTheStuckAcknowledgeC533:
     """C533 (the operator, 2026-10-06, s3's discards): the row re-raised above its band; three
     acknowledgements were RECORDED (bands 3.717, values 4.44, 5.92, 4.75, read on the host), each
@@ -271,19 +294,3 @@ def test_the_button_is_never_left_busy_with_nothing_said():
     assert stays == {"busy": False, "isOpen": False, "said": "", "note": "Recorded. above it"}
     refused = answer(409, {"ok": False, "error": "a reason"})
     assert refused["busy"] is False and refused["said"] == "Not acknowledged: a reason"
-
-    def test_a_band_that_cannot_be_measured_is_refused(self, store, inventory, monkeypatch):
-        class Down(_Prom):
-            def _get(self, path, **params):
-                return {"ok": False, "error": "connection refused"}
-
-        out, _r = self._acknowledge(monkeypatch, _firing(), Down())
-        assert out["ok"] is False and "connection refused" in out["error"]
-        from modules import acknowledgements as ACK
-        assert ACK.read()["rows"] == []
-
-    def test_an_incident_row_is_still_not_acknowledged_here(self, store, monkeypatch):
-        monkeypatch.setattr(A, "grafana_source", lambda cached=None: {"rows": [
-            {"id": "grafana:incident:x", "acknowledge": False}]})
-        out = A.acknowledge("grafana:incident:x", "", "a reason with words", by="a", verified="t")
-        assert out["ok"] is False and "clears when its condition resolves" in out["error"]
