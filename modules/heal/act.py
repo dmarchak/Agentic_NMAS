@@ -1615,22 +1615,66 @@ def _act_began(network: str, decision: dict) -> tuple:
     return began, last
 
 
-def _saved_read(dev: dict, device: str) -> dict:
-    """Whether *device* boots what it runs, read on one session as Reload's gate reads it
-    (`reload_op.read_boot_pair`: the running configuration, `show startup-config`, and `dir
-    nvram:` where startup keeps a certificate there) and judged as it judges it
-    (`roundtrip.startup_is_running`): ``{"state": "pass"|"fail"|"unread", "words"}``. A read;
-    nothing is sent but reads."""
-    from modules.connection import with_temp_connection
-    from modules.nsot import reload_op, roundtrip
+#: The confirm's save check, asked of the reads engine (C3886, the operator's ruling of
+#: 2026-11-23: one apply path, every read recorded and masked).
+SAVED_READS = ("show running-config", "show startup-config")
+
+
+def _engine_answers(network: str, device: str, commands, purpose: str) -> dict:
+    """*commands* asked of *device* through the reads engine, in this thread (`inline`: the
+    act's own hold is re-entrant), as self-healing's reads (`by="heal"`): ``{command: answer}``,
+    or ``{"": why}`` when the run was refused or a command was not answered whole (a cut answer
+    is never judged)."""
+    from modules.nsot import reads
 
     try:
-        pair = with_temp_connection(dev, lambda conn: reload_op.read_boot_pair(conn, device))
-    except Exception as exc:                          # noqa: BLE001 (said: unread, no proof)
-        return {"state": "unread", "words": f"its startup could not be read ({exc})"}
-    if not (pair or {}).get("startup") or not (pair or {}).get("running"):
+        # keyed: running and startup compared tell different secrets apart (C3886, C4204).
+        rec = reads.run(network, [device], list(commands), CONFIRM_BY, by="heal", inline=True,
+                        purpose=purpose, keyed=True)
+    except reads.Refused as exc:
+        return {"": str(exc)}
+    r = (rec.get("results") or {}).get(device) or {}
+    out = {}
+    for c in commands:
+        a = next((x for x in r.get("answers") or [] if x.get("command") == c), None)
+        if a and a.get("state") == reads.ANSWERED and a.get("cut"):
+            # The cap and the answer's size, both named (C4204's review, MEDIUM): a device whose
+            # configuration is over the engine's answer cap is unread here, never judged.
+            return {"": (f"{c} was not answered whole: its answer, {a.get('bytes') or 0} bytes,"
+                         f" was cut at the reads engine's cap of"
+                         f" {reads.cap_bytes(network)} bytes (reads_answer_cap_kib)")}
+        if not a or a.get("state") != reads.ANSWERED:
+            return {"": (f"{c} was not answered whole"
+                         f" ({(a or {}).get('why') or r.get('why') or r.get('state') or 'none'})")}
+        out[c] = a.get("answer") or ""
+    return out
+
+
+def _saved_read(network: str, dev: dict, device: str) -> dict:
+    """Whether *device* boots what it runs, read through the reads engine (recorded and masked,
+    C3886: the act opens no session of its own): the running configuration and `show
+    startup-config`, and `dir nvram:` where startup keeps a certificate there
+    (`normalize.certificate_pointers`), judged as Reload's gate judges them
+    (`roundtrip.startup_is_running`, the same verdict on masked text as on raw: measured on
+    an IOS-XE and an IOS device's captures, 2026-11-23):
+    ``{"state": "pass"|"fail"|"unread", "words"}``. A read; nothing is sent but reads."""
+    from modules.nsot import normalize, roundtrip
+
+    got = _engine_answers(network, device, SAVED_READS,
+                          "self-healing's confirm: does startup hold what runs")
+    if "" in got:
+        return {"state": "unread", "words": f"its startup could not be read ({got['']})"}
+    running, startup = got[SAVED_READS[0]], got[SAVED_READS[1]]
+    if not startup or not running:
         return {"state": "unread", "words": "its startup or running configuration read empty"}
-    same = roundtrip.startup_is_running(pair["startup"], pair["running"], pair.get("nvram") or "")
+    nvram = ""
+    if normalize.certificate_pointers(startup):
+        more = _engine_answers(network, device, ("dir nvram:",),
+                               "self-healing's confirm: the certificates startup keeps in nvram")
+        if "" in more:
+            return {"state": "unread", "words": f"its nvram could not be read ({more['']})"}
+        nvram = more["dir nvram:"]
+    same = roundtrip.startup_is_running(startup, running, nvram)
     if same.get("equal"):
         return {"state": "pass", "words": "startup holds what it runs, so the save held"}
     return {"state": "fail", "words": (
@@ -1685,7 +1729,7 @@ def _confirm_read(network: str, src, device: str, tail_step: str = None,
             return {"state": "fail", "at": _iso(time.time()), "words": nothing}
         got = src.read_at_golden(device, dev)
         at = _iso(time.time())
-        saved = _saved_read(dev, device) if (tail_step == "saved" or check_saved) and \
+        saved = _saved_read(network, dev, device) if (tail_step == "saved" or check_saved) and \
             got.get("state") == "clean" else None
     finally:
         device_ops.release(network, device)

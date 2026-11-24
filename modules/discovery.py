@@ -379,11 +379,13 @@ def mask_lines(text: str) -> str:
     return "\n".join(out)
 
 
-def masked(text: str, values: dict, device_type) -> str:
+def masked(text: str, values: dict, device_type, keyed: bool = False) -> str:
     """A device's answer as it leaves the reads engine: `redact.redact_text`, and on a
-    discovery driver's session `mask_lines` after it."""
+    discovery driver's session `mask_lines` after it. *keyed* (C3886, a run that compares two
+    of its own answers): each placeholder carries its value's fingerprint, so the two tell
+    different secrets apart."""
     from modules.redact import redact_text
-    out = redact_text(text, values)
+    out = redact_text(text, values, keyed=keyed)
     return mask_lines(out) if is_driver(device_type) else out
 
 

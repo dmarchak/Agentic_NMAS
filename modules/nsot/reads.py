@@ -434,9 +434,11 @@ def runs(list_name: str, device: str = "", actor: str = "", limit: int = 50,
 
 # --------------------------------------------------------------------------- the run
 
-def _answer(conn, command: str, values: dict, cap: int, driver: str = "") -> dict:
-    """One command's answer, masked by `redact_text`; on a discovery driver's session
-    (`modules/discovery.py`) also by `discovery.mask_lines`, whose rules are not IOS's."""
+def _answer(conn, command: str, values: dict, cap: int, driver: str = "",
+            keyed: bool = False) -> dict:
+    """One command's answer, masked by `redact_text` (*keyed*: each secret's placeholder with
+    its fingerprint, `run`'s); on a discovery driver's session (`modules/discovery.py`) also
+    by `discovery.mask_lines`, whose rules are not IOS's."""
     from modules.commands import run_device_command
     from modules.discovery import masked
 
@@ -454,7 +456,7 @@ def _answer(conn, command: str, values: dict, cap: int, driver: str = "") -> dic
         return {"command": command, "state": FAILED,
                 "why": kept_reason(masked(error_text(exc), values, driver)),
                 "took_s": round(time.time() - started, 2), "at": round(time.time(), 3)}
-    text = masked(raw, values, driver)
+    text = masked(raw, values, driver, keyed=keyed)
     data = text.encode("utf-8")
     kept = data[:cap].decode("utf-8", errors="ignore") if len(data) > cap else text
     return {"command": command, "state": ANSWERED, "answer": kept, "bytes": len(data),
@@ -783,8 +785,13 @@ def close_pool(key: str) -> None:
 
 def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "person",
         purpose: str = "", progress=None, session=None, run_id: str = "", pool: str = "",
-        reason: str = "", drivers: dict = None, inline: bool = False) -> dict:
+        reason: str = "", drivers: dict = None, inline: bool = False,
+        keyed: bool = False) -> dict:
     """Ask *hosts* of *list_name* each of *commands*; the run's record (also written).
+    *keyed* masks this run's answers with each secret's keyed fingerprint
+    (`redact.KEYED_PLACEHOLDER`, C3886): only for a caller that compares two answers of one
+    run (the heal confirm's save check); every other run keeps the plain placeholder, so its
+    answers group and compare as before and show nothing about which devices share a secret.
 
     Asked by a thread that is `within` a run, the read is that run's: kept with ``part_of``,
     and never ``by`` a person (a read an operation asks is the operation's, `OPERATION`,
@@ -887,7 +894,7 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
                 with device_ops.hold(list_name, host, "read", holder,
                                      detail=f"{len(commands)} command(s)", ip=dev.get("ip", "")):
                     answers = session(signed, lambda conn: [_answer(conn, c, values, cap,
-                                                                    driver)
+                                                                    driver, keyed)
                                                             for c in commands])
                 failed = [a for a in answers if a["state"] != ANSWERED]
                 out = {"state": FAILED if len(failed) == len(answers) else ANSWERED,

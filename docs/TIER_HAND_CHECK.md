@@ -4901,3 +4901,41 @@ tests/test_ai_background.py, test_ai_gateway_ask.py and test_ai_reservations.py,
 test_ai_reservations, test_ai_gateway, test_ai_day_cap, test_ai_provider_limit,
 test_fixit_troubleshoot, test_ai_presses, test_settings_ai_v2, test_attention_badge): **404
 passed, 6 skipped**.
+
+## 2026-11-24: the reads engine's keyed placeholder (C3886), by hand, on 3f9c6b0d
+
+**The change.** Masking (`modules/redact.py`): `redact_text(..., keyed=True)` draws each
+placeholder as `<redacted:<label>:<fp>>`, `fp` eight hex characters of an HMAC-SHA256 of the
+value without its surrounding spaces, keyed by an HMAC of the application key under a fixed
+purpose (`fingerprint`, `_fingerprint_key`; read only: no key file, a random key for the
+process, none created). Only a reads-engine run asked `keyed` uses it (`reads.run` →
+`_answer` → `discovery.masked`), and only the heal confirm's save check asks; every other
+run's and every other caller's placeholder is unchanged. The value is never drawn. Its
+device-write review (review-devicewrite-2026-11-24-c3886.md) moved it from every engine answer
+to the save check's run alone (MEDIUM 2, LOW 1, LOW 2), from four characters to eight (LOW 3),
+and trims the value (LOW 4); this check is of that final code.
+
+**The method.** As above: each mutant applied in a throwaway worktree (`scripts/nmas-control`),
+then tests/test_redact_fingerprint.py, tests/test_heal_saved_read.py and
+tests/test_reads_engine.py.
+
+| # | Mutant | Result |
+|---|---|---|
+| 0 | the canary: `keyed` ignored (the plain placeholder always) | **died**: 7 failed |
+| 1 | the fingerprint unkeyed (a fixed HMAC key) | **died**: 1 failed |
+| 2 | the fingerprint of the label, not the value | **died**: 4 failed |
+| 3 | the positional pass unkeyed | **died**: 5 failed |
+| 4 | the known-value pass unkeyed | **died**: 1 failed |
+| 5 | the value drawn as the fingerprint | **died**: 7 failed |
+| 6 | a diff's marked line masked unkeyed | **died**: 1 failed (after its test was aimed at a line only that pass masks; it survived the first round) |
+| 7 | seven hex characters, not eight | **died**: 6 failed |
+| 8 | the value not trimmed | **died**: 1 failed (after its test was aimed at a server key, whose capture runs to the line's end; it survived the first round) |
+| 9 | the engine's answer masked unkeyed | **died**: 1 failed |
+| 10 | every engine run keyed | **died**: 2 failed |
+| 11 | the run's `keyed` not passed to its answers | **died**: 1 failed |
+| 12 | the save check's run not asked keyed | **died**: 1 failed |
+| 13 | `discovery.masked` ignores `keyed` | **died**: 4 failed |
+
+**14 of 14 died**, the canary first. The engine-adjacent tests (every reads, show-command,
+masking, heal and discovery file, test_ovs_reads, the register): **3,462 passed**, the save
+check's tests and test_reads_engine's keyed test among them.

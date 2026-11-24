@@ -51,6 +51,72 @@ _TOKEN_CHAR = r"[A-Za-z0-9_]"
 
 PLACEHOLDER = "<redacted:{label}>"
 
+#: The reads engine's placeholder (C3886, the operator's ruling of 2026-11-23: "the masking
+#: placeholder carries a short keyed fingerprint of the secret, so running against startup
+#: tells different secrets apart"): the label and eight hex characters of an HMAC of the
+#: value, keyed from this installation's key (`fingerprint`). Two answers holding the same
+#: secret draw the same placeholder, and a changed secret a different one; the value is never
+#: drawn. 32 bits: one changed secret in about four billion draws its old fingerprint (the
+#: ruling's example had four characters; its review's LOW 3 measured one in 65,536 as too
+#: many for a save check). What it does show: whether two masked values in the same keyed
+#: answers are equal, and a guess typed into a device's answer by someone who can (a
+#: neighbour's name, a failed login) is fingerprinted with the same key; so only a run that
+#: compares two of its own answers asks for it (`reads.run`'s *keyed*, the heal confirm's
+#: save check), never a run a person or the AI reads.
+KEYED_PLACEHOLDER = "<redacted:{label}:{fp}>"
+
+_fp_lock = threading.Lock()
+_fp_key: dict = {}
+
+
+def _fingerprint_key() -> bytes:
+    """The fingerprints' key: an HMAC of ``data/key.key``'s bytes under a fixed purpose, so the
+    application key itself never keys a digest that is drawn. Read only: where no key file
+    exists yet a key is drawn at random for this process (fingerprints then compare within
+    it), and none is created (a read writes nothing)."""
+    import hashlib
+    import hmac
+    import os
+
+    from modules.config import KEY_FILE
+
+    try:
+        stamp = os.stat(KEY_FILE).st_mtime_ns
+    except OSError:
+        stamp = None
+    with _fp_lock:
+        got = _fp_key.get((KEY_FILE, stamp))
+        if got is not None:
+            return got
+        raw = None
+        if stamp is not None:
+            try:
+                with open(KEY_FILE, "rb") as fh:
+                    raw = fh.read().strip()
+            except OSError:
+                raw = None
+        if not raw:
+            raw = _fp_key.setdefault(("random", None), os.urandom(32))
+        key = hmac.new(raw, b"nmas redact fingerprint v1", hashlib.sha256).digest()
+        _fp_key[(KEY_FILE, stamp)] = key
+        return key
+
+
+def fingerprint(value: str) -> str:
+    """Eight hex characters naming *value* without showing it: an HMAC-SHA256 keyed by
+    `_fingerprint_key`, of the value without the spaces around it (a value running to its
+    line's end can carry the line's trailing spaces on one side only: the review's LOW 4)."""
+    import hashlib
+    import hmac
+
+    return hmac.new(_fingerprint_key(), str(value).strip().encode("utf-8"),
+                    hashlib.sha256).hexdigest()[:8]
+
+
+def _placeholder(label: str, value: str, keyed: bool) -> str:
+    return (KEYED_PLACEHOLDER.format(label=label, fp=fingerprint(value)) if keyed
+            else PLACEHOLDER.format(label=label))
+
 #: **Positional** redaction: the token that occupies a secret's syntactic slot,
 #: whatever its length and whether or not this installation has ever seen it.
 #:
@@ -428,13 +494,13 @@ _ALREADY = re.compile(r"^<(?:redacted|missing-secret)[:>]")
 _DIFF_MARKED = re.compile(r"^([+\-])([^\r\n]*)$", re.M)
 
 
-def _positional(text: str) -> str:
+def _positional(text: str, keyed: bool = False) -> str:
     def _sub(label):
         def _replace(match):
             token = match.group(2)
             if _ALREADY.match(token):
                 return match.group(0)
-            return match.group(1) + PLACEHOLDER.format(label=label) + match.group(3)
+            return match.group(1) + _placeholder(label, token, keyed) + match.group(3)
         return _replace
 
     for label, pattern in _POSITIONAL:
@@ -442,7 +508,7 @@ def _positional(text: str) -> str:
     return text
 
 
-def redact_positional(text: str) -> str:
+def redact_positional(text: str, keyed: bool = False) -> str:
     """Mask whatever occupies a secret position, regardless of length.
 
     Structure-preserving: ``snmp-server community`` and the trailing ``RO`` both
@@ -452,8 +518,8 @@ def redact_positional(text: str) -> str:
     """
     if not text:
         return text
-    text = _positional(text)
-    return _DIFF_MARKED.sub(lambda m: m.group(1) + _positional(m.group(2)), text)
+    text = _positional(text, keyed)
+    return _DIFF_MARKED.sub(lambda m: m.group(1) + _positional(m.group(2), keyed), text)
 
 
 def replace_positional_values(text: str, replace) -> str:
@@ -615,7 +681,7 @@ def _compile(values: dict):
     return pattern, values
 
 
-def redact_text(text: str, values: dict = None) -> str:
+def redact_text(text: str, values: dict = None, *, keyed: bool = False) -> str:
     """Redact *text* both ways: by known value, and by syntactic position.
 
     The two are complementary and neither subsumes the other. Value-based
@@ -626,17 +692,20 @@ def redact_text(text: str, values: dict = None) -> str:
     surrounding syntax is recognised.
 
     Positional runs first so that value-based cannot re-wrap a placeholder.
+
+    *keyed* draws each placeholder with its value's `fingerprint` (`KEYED_PLACEHOLDER`): the
+    reads engine's answers, so two answers compared tell different secrets apart (C3886).
     """
     if not text:
         return text
-    text = redact_positional(text)
+    text = redact_positional(text, keyed)
 
     values = known_secret_values() if values is None else values
     pattern, table = _compile(values)
     if pattern is None:
         return text
     return pattern.sub(
-        lambda m: PLACEHOLDER.format(label=table.get(m.group(1), "secret")), text)
+        lambda m: _placeholder(table.get(m.group(1), "secret"), m.group(1), keyed), text)
 
 
 def redact_payload(payload, values: dict = None):

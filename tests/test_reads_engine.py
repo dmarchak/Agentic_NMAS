@@ -168,6 +168,20 @@ class TestARun:
         assert a["sha256"] == hashlib.sha256(
             redact_text(ANSWERS["show running-config"]).encode()).hexdigest()
 
+    def test_a_keyed_run_fingerprints_its_secrets_and_no_other_run_does(self, lab):
+        """C3886 (the operator's ruling of 2026-11-23; its review's MEDIUM 2): a run asked
+        *keyed* (the heal confirm's save check) draws each secret's placeholder with its keyed
+        fingerprint; a run not asked keeps the plain one, so answers group and compare as
+        before."""
+        import re
+        keyed = re.compile(r"<redacted:[a-z_]+:[0-9a-f]{8}>")
+        r, _ = _run(["r2"], ["show running-config"], keyed=True)
+        a = r["results"]["r2"]["answers"][0]["answer"]
+        assert keyed.search(a) and "community public" not in a, a
+        r, _ = _run(["r2"], ["show running-config"])
+        a = r["results"]["r2"]["answers"][0]["answer"]
+        assert not keyed.search(a) and "<redacted:" in a, a
+
     def test_the_concurrency_bound_holds(self, lab):
         # Each session waits for a third to open (0.5 s at most): under a bound of 2 none does.
         lab["settings"]["reads_max_workers"] = 2
