@@ -28,7 +28,9 @@ and the next session unblocks the item and moves the entry to Answered.
 
 ## Answered
 
-- **2026-11-24, session-namespace:** no longer blocking. The operator retired the overnight loop,
+### session-namespace
+
+- **2026-11-24:** no longer blocking. The operator retired the overnight loop,
   and a session from VS Code (whose label makes the namespace) landed every waiting patch,
   eac546ae to d030f04a, the hook's red-green run on each. Its option (a), the AppArmor profile,
   stays open only if a session outside VS Code is wanted again.
