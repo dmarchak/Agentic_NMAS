@@ -112,7 +112,11 @@ def test_each_run_has_its_own_base_folder_removed_at_its_end(tmp_path):
         assert where["base"] == os.path.join(where["inflight"], "t"), where
         # No longer than pytest's own root (`/tmp/pytest-of-<user>/pytest-<n>`): a test's Unix
         # socket under its tmp_path has 107 bytes in all (test_no_pattern_kill's did not fit).
-        assert len(where["base"]) <= len(f"/tmp/pytest-of-{os.environ.get('USER', 'u')}/pytest-0000"), where
+        # Premise corrected (C4231): pytest names that root by `get_user()` (getpass's, which
+        # reads LOGNAME and the password file when USER is unset), never by USER alone; read
+        # as `'u'` where USER was unset (a session the loop starts), the bound was 5 short.
+        from _pytest.tmpdir import get_user
+        assert len(where["base"]) <= len(f"/tmp/pytest-of-{get_user() or 'unknown'}/pytest-0000"), where
         assert not os.path.exists(where["inflight"]), f"run {n}'s folder is left: {where}"
         seen.append(where["base"])
     assert len(set(seen)) == 3, seen
