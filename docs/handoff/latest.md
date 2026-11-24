@@ -50,9 +50,10 @@ line by `~/mercury-runs/register_count.py`, run from the checkout), run the aime
 - C4195-C4196 revised after its review (the HIGH and both MEDIUMs fixed, C4221 registered in the
   patch); its second review was started at about 19:00 Denver:
   `review-devicewrite-2026-11-24-c4195-c4196-r2.md`.
-- The assistant patch's hand check (data to the model) was being done by an agent in
-  `~/nmas-worktrees/assistant`, writing into that worktree's docs/TIER_HAND_CHECK.md and
-  refreshing the patch.
+- The assistant patch's hand check (data to the model) is NOT done: an agent started it in
+  `~/nmas-worktrees/assistant` at about 18:45 Denver and had written no entry when this session
+  ended (20:05). Check that worktree's `git status` and docs/TIER_HAND_CHECK.md; redo it if no
+  entry "2026-11-24: the toolbar assistant's stage 2" is there, then refresh the patch.
 - `stage4-assistant.patch` (base b0e450c2; applies on 64ed46b2): Stage 4, the assistant to
   `docs/design/assistant.md`; 26 tests, the model mocked, 21 controls shown failing. Owed
   before its deploy: the irreversible tier's hand check (new data to the model,
