@@ -97,6 +97,19 @@ def _preview_and_confirm(n, network, data, reason="Lab 10's walk"):
 
 # ── The tab ───────────────────────────────────────────────────────────────────────────────
 
+def test_the_hard_stops_labels_read_as_phrases(networks):
+    """C2820's survey, item 29: a hard stop's label, drawn on its Edit… field and in its
+    value's words, says what it counts in a person's words: no log mnemonic ("UPDOWN") and no
+    broken phrase ("removal units a heal", "sections a heal")."""
+    r, html = _get(networks, BASE.format(n="Default") + "/tab")
+    assert r.status_code == 200
+    assert "updown" not in html.lower(), "drawn through `capitalize`, which lowers the rest"
+    assert "A flap: times one interface went down or up" in html
+    assert "A flap: within (minutes), also how long a port must stay steady" in html
+    odd = [w for w in H.GUARD_WORDS.values()
+           if re.search(r"\b[A-Z]{3,}\b", w) or re.search(r"\b(?:units|sections) a heal$", w)]
+    assert not odd, odd
+
 def test_the_tab_draws_every_control_the_board_draws(networks):
     from modules import csp
 
