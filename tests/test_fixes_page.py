@@ -74,3 +74,19 @@ def test_a_fix_for_either_cause_labels_each_and_an_undeclared_check_says_its_rea
     recovery = {"name": "The switch does not recover the cause itself",
                 "read": "show errdisable recovery", "expect": "errdisable.not_recovering_itself"}
     assert FP._check({}, t, recovery)["reads"] == ED.SAYS["check_no_recovery"]["reads"]
+
+
+def test_a_condition_is_said_in_words_never_its_key_spliced_in():
+    """C4032: Fixes' column said the two telemetry built-ins' condition as "its telemetry
+    telemetry-lost"; every matchable condition is said by the plain-words table, its key never
+    in the words (only err-disabled's, whose words are the key's own, keeps it)."""
+    from modules import problem as P
+    assert FP._cond_words({"condition": "telemetry_lost"}) == "its telemetry lost"
+    assert FP._cond_words({"condition": "neighbour_down"}) == "a routing neighbour down"
+    for cond in P.MATCHABLE:
+        words = FP._cond_words({"condition": cond})
+        if cond != "err_disabled":
+            assert cond.replace("_", "-") not in words, (cond, words)
+    assert FP._cond_words({"condition": "err_disabled", "cause": "BPDU guard",
+                           "port_role": "access"}) == \
+        "a switch port err-disabled by BPDU guard, on an access port"

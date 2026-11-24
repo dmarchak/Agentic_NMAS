@@ -120,11 +120,19 @@ def _short(iface: str) -> str:
 def _cond_words(problem: dict) -> str:
     """A classified problem (or a match) in words: "a switch port err-disabled by BPDU guard,
     on an access port"."""
-    from modules import problem as P
+    from modules import bluf, problem as P
 
     cond = str(problem.get("condition") or "")
     noun = (P.CONDITIONS.get(cond) or ("something", ""))[0]
-    out = f"{noun} {cond.replace('_', '-')}"
+    # C4032: the condition said by THE plain-words table (`bluf.TABLE`'s what, "{device}:
+    # {object} lost" → "its telemetry lost"), never its key spliced in ("its telemetry
+    # telemetry-lost"); only a what that leads otherwise (err-disabled's) keeps the key's words.
+    what = str((bluf.TABLE.get(cond) or {}).get("what") or "")
+    lead = "{device}: {object}"
+    if what.startswith(lead):
+        out = f"{noun} {what[len(lead):].split('{')[0].strip(' ,:')}".strip()
+    else:
+        out = f"{noun} {cond.replace('_', '-')}"
     if problem.get("cause"):
         out += f" by {problem['cause']}"
     role = str(problem.get("port_role") or "")
