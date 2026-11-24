@@ -546,6 +546,21 @@ def _test(lab, **fields):  # noqa: F811
 class TestTheLoggingPath:
     """Board F, approved 2026-10-08: from Show commands' card, a line sent, Loki watched."""
 
+    def test_a_test_is_listed_by_in_progress_and_ends_in_its_counts(self, lp, monkeypatch):
+        """C3601's logging path: a test pressed and left is listed by In progress with its run's
+        page as the link, its finished row its own counts, amber when a line did not arrive
+        (r9's never does), never green over it."""
+        from modules import in_flight
+        monkeypatch.setattr("modules.nsot.device_ops.in_flight", lambda name, now: [])
+        monkeypatch.setattr("modules.seen_runs.is_seen", lambda viewer, job: False)
+        _r, target = _test(lp)
+        run_id = re.search(r"/show-commands/run/([^?]+)\?", target).group(1)
+        rows = [f for f in in_flight.chip([], "test-person@example.invalid")["finished"]
+                if f.get("href", "").startswith(f"/v2/show-commands/run/{run_id}?job=")]
+        assert len(rows) == 1, rows
+        assert (rows[0]["level"], rows[0]["words"]) == ("warn", "1 not received, 1 received"), rows
+        assert lp["client"].get(rows[0]["href"]).status_code == 200
+
     def test_the_button_is_off_and_says_why_without_loki(self, sc):
         _r, html = _get(sc, "/v2/show-commands?list=Lab")
         assert re.search(r'<button type="submit" class="btn" data-op="logging-path"[^>]* disabled '

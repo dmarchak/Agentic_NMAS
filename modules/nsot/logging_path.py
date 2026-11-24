@@ -372,7 +372,10 @@ def start(list_name: str, hosts: list, actor: str) -> dict:
 
     def work(job_id):
         try:
-            return {"run": run(list_name, hosts, actor, run_id=run_id)["id"]}
+            record = run(list_name, hosts, actor, run_id=run_id)
+            # Said in words (C3601): a page job's finished row is green only on `done`, so an
+            # answer of the run's id alone would be drawn red, "refused: no reason".
+            return dict(ended(record), run=record["id"])
         except Refused as exc:
             # Refused in the job, before any line was sent: the record begun above says so.
             reads.refuse_begun(list_name, run_id, str(exc))
@@ -383,7 +386,24 @@ def start(list_name: str, hosts: list, actor: str) -> dict:
             reads.fail(list_name, run_id, exc)
             raise
 
+    from urllib.parse import quote
+    # Its page is the test's own (the reads run's page), so In progress lists it (C3601).
     job = capture_job.start(list_name, label, actor, work,
                             kind="logging path", announce_keys=reads.ANNOUNCE_KEYS,
-                            announcer=reads.ANNOUNCER)
+                            announcer=reads.ANNOUNCER,
+                            page=(f"/v2/show-commands/run/{run_id}?job={{job}}"
+                                  f"&list={quote(list_name)}"))
     return {"job": job, "run": run_id}
+
+
+def ended(record: dict) -> dict:
+    """How a finished test ended, as In progress draws it (``state`` and ``words``, its own
+    counts): ``done`` only when every device's line was received; ``partial`` (amber) when
+    some were; ``stopped`` when none was. Never green over a line that did not arrive."""
+    counts = (record.get("logging_path") or {}).get("counts") or {}
+    n = sum(counts.values())
+    got = counts.get(RECEIVED, 0)
+    words = ", ".join(f"{v} {k}" for k, v in sorted(counts.items())) or "nothing"
+    if n and got == n:
+        return {"state": "done", "words": words}
+    return {"state": "partial" if got else "stopped", "words": words}

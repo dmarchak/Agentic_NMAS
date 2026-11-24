@@ -31,7 +31,8 @@ you; a name already taken is refused.
 level every chosen device's logging trap forwards (read from its golden, informational at
 most), and watches Loki for it, 30 seconds per device; it needs no command and changes no
 configuration. It needs a verified person, and it is off, saying why on hover, when Loki is
-not configured. How it works:
+not configured. **In progress** lists the test too and opens its page; its finished row counts
+the lines received and not, green only when every line arrived. How it works:
 [Test the logging path](logging-path).
 
 ## The result {#the-result}
