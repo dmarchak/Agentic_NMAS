@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings · Lab · Network · Mercury</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../_shared/tokens.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="home.html"><svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="6" fill="var(--brand)"/><ellipse cx="11" cy="11" rx="10" ry="4" fill="none" stroke="var(--brand-hi)" stroke-width="1.5" transform="rotate(-20 11 11)"/></svg>Mercury</a>
+  <span class="net">Network <b>Lab</b> &#9662;</span>
+  <div class="go"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l4 4" stroke="currentColor" stroke-width="1.6"/></svg>Go to a device, page or setting<kbd>/</kbd></div>
+  <div class="top-right">
+    <a class="top-need" href="home.html">3 critical</a>
+    <span class="ai-chip"><span class="ai-tag">AI</span> $0.21 today &middot; 1 background on</span>
+    <a href="assistant.html">Ask</a>
+    <span class="live">Live</span>
+    <span class="me" title="alex@example.com">AL</span>
+  </div>
+</header>
+<div class="frame">
+<nav class="nav" aria-label="Main">
+  <h4>Now</h4>
+  <a href="home.html">Needs attention <span class="n">10</span></a>
+  <a href="worst-2.html">Incidents</a>
+  <a href="#">Fixes</a>
+  <a href="#">Running now</a>
+  <h4>Fleet</h4>
+  <a href="#">Devices</a>
+  <a href="#">History</a>
+  <a href="#">Monitoring</a>
+  <a href="#">Topology</a>
+  <a href="#">Logs</a>
+  <a href="#">Show commands</a>
+  <a href="#">SDN</a>
+  <h4>Source of truth</h4>
+  <a href="#">Intent</a>
+  <a href="#">Templates</a>
+  <a href="#">NetBox</a>
+  <a href="#">DHCP</a>
+  <a href="#">Credentials</a>
+  <h4>Mercury</h4>
+  <a class="on" href="settings.html">Settings</a>
+  <a href="#">Help</a>
+</nav>
+
+<div class="page">
+<main class="doc">
+  <div class="crumbs"><a href="settings.html">Settings</a><span>/</span>Network</div>
+  <div class="head">
+    <h1>Network<span class="kind">settings for Lab</span></h1>
+    <div class="acts"><span class="field sel">Lab</span></div>
+  </div>
+  <p class="summary"><strong>Lab's 912 devices come from NetBox, read 4 min ago;</strong> 4 of Lab's 18 network settings are its own, the rest come from Default.</p>
+
+  <div class="filters" style="margin:12px 0 4px">
+    <div class="field grow" role="search"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l4 4" stroke="currentColor" stroke-width="1.6"/></svg><span class="ph">Search settings</span></div>
+    <span class="field sel">Every setting</span>
+  </div>
+
+  <dl class="facts">
+    <dt>Inherits from</dt><dd>Default <span class="muted">&middot; <a href="#">Make Lab standalone&hellip;</a></span></dd>
+    <dt>Own values</dt><dd>4 <span class="muted">&middot; marked &ldquo;Lab's own&rdquo; below</span></dd>
+    <dt>Devices from</dt><dd>NetBox <span class="muted">&middot; site lab</span></dd>
+    <dt>Code repository</dt><dd>main <span class="muted">&middot; review on</span></dd>
+  </dl>
+
+  <details class="sec" id="inventory" open>
+    <summary><h2>Where devices come from</h2><span class="line">the one setting that decides what Lab is</span><span class="st ok">912 read</span></summary>
+    <div class="body">
+      <div class="set">
+        <div class="name">Inventory source</div>
+        <div class="desc">NetBox, filtered by site <span class="mono">lab</span>, read every 5 minutes; credentials from the Routers and Switches profiles.</div>
+        <div class="from">Lab's own &middot; read 4 min ago: 912 devices, 3 skipped, 1 loaded with a warning</div>
+        <div class="ctl"><a class="btn sm" href="#">Refresh now</a> <a class="btn sm" href="#">Change&hellip;</a></div>
+      </div>
+      <details class="ev"><summary>3 skipped (no primary address) &middot; 1 warning (s9: platform unknown, read as IOS)</summary><div class="evb">s7, s8 and r11 have no primary address in NetBox. They join Lab on the first read after one is set.</div></details>
+      <div class="set" style="margin-top:6px">
+        <div class="name">NetBox VRFs left out</div>
+        <div class="desc">Addresses in these VRFs are never used to reach a device.</div>
+        <div class="from">from Default</div>
+        <div class="ctl"><span class="mono small">MGMT-OOB</span> &nbsp;<a class="btn sm" href="#">Edit</a></div>
+      </div>
+    </div>
+  </details>
+
+  <details class="sec" id="reading" open>
+    <summary><h2>Reading devices</h2><span class="line">how hard Mercury reads, and how long it keeps answers</span><span class="st plain">6 settings</span></summary>
+    <div class="body">
+      <div class="set"><div class="name">Devices read at once</div><div class="desc">Show commands and checks read this many devices in parallel.</div><div class="from">from Default</div><div class="ctl"><span class="num-in"><b>6</b></span></div></div>
+      <div class="set"><div class="name">Largest answer kept</div><div class="desc">A show command's answer is cut at this size; the cut is said on the answer.</div><div class="from">from Default</div><div class="ctl"><span class="num-in"><b>32</b> KiB</span></div></div>
+      <div class="set"><div class="name">Answers kept for</div><div class="desc">Then moved to the archive.</div><div class="from">from Default</div><div class="ctl"><span class="num-in"><b>30</b> days</span></div></div>
+      <div class="set changed"><div class="name">Wait for a full configuration</div><div class="desc">How long a read of the running config may take after a deploy, when a device is slow from saving.</div><div class="from">Lab's own &middot; <a href="#">use Default's (120 s)</a></div><div class="ctl"><span class="num-in"><b>180</b> s</span></div></div>
+      <div class="set"><div class="name">Read endpoints every</div><div class="desc">Where each connected endpoint is, from the switches' tables.</div><div class="from">from Default</div><div class="ctl"><span class="num-in"><b>15</b> min</span></div></div>
+      <div class="set"><div class="name">An endpoint location is stale after</div><div class="desc">A location not seen again in this time is drawn as stale, not current.</div><div class="from">from Default</div><div class="ctl"><span class="num-in"><b>24</b> h</span></div></div>
+    </div>
+  </details>
+
+  <details class="sec" id="deploy" open>
+    <summary><h2>Deploying</h2><span class="line">pace, safety stop, and how long verify waits per protocol</span><span class="st plain">3 settings</span></summary>
+    <div class="body">
+      <div class="set"><div class="name">Devices deployed at once</div><div class="desc">1 is one after another, so the safety stop below can act before the next.</div><div class="from">from Default</div><div class="ctl"><span class="num-in"><b>1</b></span></div></div>
+      <div class="set"><div class="name">Stop a deploy after</div><div class="desc">Failed devices before the rest of a batch is not attempted.</div><div class="from">from Default</div><div class="ctl"><span class="num-in"><b>2</b> failures</span></div></div>
+      <div class="set" style="grid-template-columns:1fr"><div class="name">How long verify waits</div><div class="desc">Per protocol: the first read after, the longest wait, and the time between reads. From Default.</div>
+        <table class="t" style="max-width:520px;margin-top:6px"><thead><tr><th>Protocol</th><th class="num">First read</th><th class="num">Up to</th><th class="num">Every</th></tr></thead>
+        <tbody><tr><td>OSPF</td><td class="num">5 s</td><td class="num">45 s</td><td class="num">5 s</td></tr><tr><td>BGP</td><td class="num">10 s</td><td class="num">60 s</td><td class="num">10 s</td></tr><tr><td>RIP</td><td class="num">15 s</td><td class="num">90 s</td><td class="num">15 s</td></tr><tr><td>Interfaces</td><td class="num">2 s</td><td class="num">20 s</td><td class="num">4 s</td></tr></tbody></table>
+      </div>
+    </div>
+  </details>
+
+  <details class="sec" id="history">
+    <summary><h2>Keeping history</h2><span class="line">golden tags kept 50 per device &middot; alert transitions 90 days</span><span class="st plain">from Default</span></summary>
+  </details>
+  <details class="sec" id="heal">
+    <summary><h2>Self-healing and SDN</h2><span class="line">Automatic lasts 1 h &middot; escalate an unanswered SDN incident after 15 min</span><span class="st plain">from Default</span></summary>
+  </details>
+  <details class="sec" id="repo">
+    <summary><h2>Code repository</h2><span class="line">git.example.com/lab/apps.git &middot; branch main &middot; review on</span><span class="st plain">Lab's own</span></summary>
+  </details>
+  <details class="sec" id="ai">
+    <summary><h2>What AI may send</h2><span class="line">topology: on &middot; device state: off</span><span class="st plain">2 switches</span></summary>
+    <div class="body">
+      <div class="set"><div class="name">The topology</div><div class="desc">Device names, links and roles may go to the AI provider with a question.</div><div class="from">Lab's own &middot; turned on by alex@example.com, 2026-11-02, reason recorded</div><div class="ctl"><span class="sw" role="switch" aria-checked="true"><i></i>On</span></div></div>
+      <div class="set"><div class="name">Device state</div><div class="desc">Interface, routing and neighbour reads may go too; secrets are masked before they leave.</div><div class="from">from Default</div><div class="ctl"><span class="sw" role="switch" aria-checked="false"><i></i>Off</span></div></div>
+    </div>
+  </details>
+  <details class="sec" id="delete">
+    <summary><h2>Delete Lab</h2><span class="line">its data is kept on this host; nothing in NetBox is deleted</span></summary>
+  </details>
+</main>
+
+<aside class="outline" aria-label="Sections">
+  <h4>Lab's network settings</h4>
+  <ol>
+    <li><a class="on" href="#inventory">Where devices come from<span class="st ok">912 read</span></a></li>
+    <li><a href="#reading">Reading devices<span class="st plain">1 own</span></a></li>
+    <li><a href="#deploy">Deploying<span class="st plain">from Default</span></a></li>
+    <li><a href="#history">Keeping history<span class="st plain">from Default</span></a></li>
+    <li><a href="#heal">Self-healing and SDN<span class="st plain">from Default</span></a></li>
+    <li><a href="#repo">Code repository<span class="st plain">Lab's own</span></a></li>
+    <li><a href="#ai">What AI may send<span class="st plain">1 on</span></a></li>
+    <li><a href="#delete">Delete Lab</a></li>
+  </ol>
+  <p class="aside">Each value says where it comes from. A changed value saves on its own, in place; &ldquo;use Default's&rdquo; puts it back.</p>
+</aside>
+</div>
+</div>
+</body>
+</html>

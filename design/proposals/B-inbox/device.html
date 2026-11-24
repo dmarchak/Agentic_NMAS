@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>r2 · Devices · Mercury (B, Inbox)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../_shared/tokens.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+<nav class="side" aria-label="Views">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--brand-hi)" stroke-width="1.6"><circle cx="12" cy="12" r="5" fill="var(--brand)" stroke="none"/><ellipse cx="12" cy="12" rx="10.5" ry="4" transform="rotate(-20 12 12)"/></svg>
+    <b>Mercury</b>
+  </div>
+  <div class="netpick"><span><small>Network</small>Lab</span><span>▾</span></div>
+  <a class="view" href="home.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 9h3l1 2h4l1-2h3M2 9l2-6h8l2 6v4H2z"/></svg>Inbox<span class="n crit">10</span></a>
+  <a class="view on" href="device.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="4" rx="1"/><rect x="2" y="9" width="12" height="4" rx="1"/></svg>Devices<span class="n">912</span></a>
+  <a class="view" href="change.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5h10l-3-3M13 11H3l3 3"/></svg>Changes<span class="n">2</span></a>
+  <a class="view" href="#"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>History</a>
+  <a class="view" href="settings.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="5" cy="4" r="1.5" fill="var(--side)"/><circle cx="11" cy="8" r="1.5" fill="var(--side)"/><circle cx="7" cy="12" r="1.5" fill="var(--side)"/></svg>Settings</a>
+  <div class="side-rule"></div>
+  <a class="view" href="assistant.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>Ask or go to<span class="key">Ctrl K</span></a>
+  <div class="side-foot">
+    <div>Go to a view: <span class="kbd">g</span> then <span class="kbd">i</span> <span class="kbd">d</span> <span class="kbd">c</span> <span class="kbd">h</span> <span class="kbd">s</span></div>
+    <div style="margin-top:6px">All keys: <span class="kbd">?</span></div>
+  </div>
+</nav>
+
+<div class="main">
+  <header class="top">
+    <span class="crumbs"><a href="#">Devices</a> / <b>r2</b></span>
+    <span class="palette-trigger"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>Search, go to a device, or ask<span class="kbd">Ctrl K</span></span>
+    <span class="chip ai">AI $0.04 today · 1 background on</span>
+    <span class="chip"><span class="dot ok"></span>Live</span>
+    <span class="avatar" title="alex@example.com">AL</span>
+  </header>
+
+  <div class="scroll">
+  <div class="page">
+
+    <div class="head" style="padding-bottom:0">
+      <h1>r2 <span class="sub">IOS-XE router · C8000V · Lab</span></h1>
+      <div class="facts"><span class="mono">192.0.2.12</span> · <span class="mono">2001:db8:0:12::1</span> · signs in as <span class="mono">mercury-ro</span> (profile lab-routers) · NetBox #2041 · reachable, checked 20 s ago</div>
+
+      <div class="nextline run">
+        <span class="dot run"></span>
+        <div>
+          <div class="what"><b>Change #141 is verifying on r2:</b> waiting out BGP's hold time, 38 s of 90 s.</div>
+          <div class="next">Nothing to do now. Mercury records it when verify passes, or rolls back the 7 lines it sent if verify fails. r2 is held until then.</div>
+        </div>
+        <div class="acts">
+          <a class="btn primary" href="change.html">Open change #141 <span class="kbd">e</span></a>
+          <span class="btn">Actions ▾</span>
+        </div>
+      </div>
+
+      <nav class="tabsbar" aria-label="r2">
+        <a class="on" href="#">Overview <span class="kbd">1</span></a>
+        <a href="#">Intent <span class="tag warn">7 lines</span></a>
+        <a href="#">History</a>
+        <a href="#">Monitoring</a>
+        <a href="#">Logs</a>
+        <a href="#">NetBox</a>
+        <a href="#">Neighbours <span class="tag">3</span></a>
+        <a href="#">Ask the device</a>
+      </nav>
+    </div>
+
+    <div class="layout" style="grid-template-columns: minmax(0,1fr) 330px; margin-top:20px">
+      <section>
+        <div class="section-title">Intent against what r2 runs <span class="right">golden d574748 captured 2 h ago · intent a46031e committed 15 min ago</span></div>
+        <div class="card-free" style="padding:10px 14px; margin-bottom:22px">
+          <div class="row" style="font-size:13.5px"><span class="state warn"><span class="dot warn"></span>Differs by 7 lines</span><span class="muted">· all 7 from change #141, sent 1 min ago; they match once it records</span><span class="spacer"></span><a href="#">Open Intent</a></div>
+<pre class="code" style="margin-top:8px"><span class="dim"> router bgp 65012</span>
+<span class="add">+ neighbor 2001:db8:12::2 remote-as 65013</span>
+<span class="add">+ neighbor 2001:db8:12::2 password <span class="mask">‹masked›</span></span>
+<span class="add">+ neighbor 2001:db8:12::2 description to r3</span>
+<span class="dim">  … 4 more lines in address-family ipv6 unicast</span></pre>
+        </div>
+
+        <div class="section-title">What happened <span class="right">newest first · <a href="#">All</a> · Changes · Checks · Logs · Restarts</span></div>
+        <div class="card-free">
+          <ol class="tl">
+            <li><span class="when">now</span><span class="mk"><span class="dot run"></span></span>
+              <div class="what">Verify running for change #141: QUICK reads passed; BGP session to 2001:db8:12::2 Established; waiting out the hold time <span class="by">· Mercury</span></div></li>
+            <li><span class="when">1 min</span><span class="mk"><span class="dot ok"></span></span>
+              <div class="what"><details><summary>Applied change #141: 7 lines sent, r2 held <span class="by">· approved by alex@example.com</span></summary>
+                <div class="ev">Program hash <span class="hash">9f3c…e21a</span> matched the confirmed preview · sent over SSH in 2.1 s · no error lines in the echo · <a href="change.html">Open the change</a></div></details></div></li>
+            <li><span class="when">3 min</span><span class="mk"><span class="dot ok"></span></span>
+              <div class="what">Change #141 confirmed by hash <span class="hash">9f3c…e21a</span> <span class="by">· alex@example.com, verified by the access proxy</span></div></li>
+            <li><span class="when">15 min</span><span class="mk"><span class="dot"></span></span>
+              <div class="what">Intent edited: BGP neighbour 2001:db8:12::2 added to <span class="mono">host_vars/r2.yml</span> (commit a46031e) <span class="by">· sam@example.com</span></div></li>
+            <li><span class="when">41 min</span><span class="mk"><span class="dot ok"></span></span>
+              <div class="what">Startup check: startup matches running <span class="by">· hourly job</span></div></li>
+            <li><span class="when">2 h</span><span class="mk"><span class="dot ok"></span></span>
+              <div class="what"><details><summary>Golden captured, d574748: no change from the last one <span class="by">· nightly capture</span></summary>
+                <div class="ev">412 lines · 3 secrets kept verbatim in the golden, masked on every screen · <a href="#">Open golden</a></div></details></div></li>
+            <li><span class="when">09:12</span><span class="mk"><span class="dot warn"></span></span>
+              <div class="what">Syslog: BGP neighbour 192.0.2.41 (r4) went Idle, then Established 38 s later, when r4 restarted <span class="by">· syslog, received 09:12:07</span></div></li>
+            <li class="daysep" style="display:block">Yesterday</li>
+            <li><span class="when">16:40</span><span class="mk"><span class="dot ok"></span></span>
+              <div class="what">Credential rotated for profile lab-routers; r2 signs in with the new one <span class="by">· alex@example.com</span></div></li>
+          </ol>
+          <div class="note" style="padding:6px 0 8px 98px"><a href="#">Show older</a> · 214 events in 30 days</div>
+        </div>
+      </section>
+
+      <aside class="rail">
+        <section class="panel">
+          <h3>Checks <span class="right">each its own job's result</span></h3>
+          <div class="body">
+            <div class="prow"><span class="dot ok"></span><div class="t">Reachable<div class="m">SSH on IPv4 and IPv6</div></div><span class="r">20 s ago</span></div>
+            <div class="prow"><span class="dot warn"></span><div class="t">Intent<div class="m">7 lines differ: change #141 in verify</div></div><span class="r">1 min ago</span></div>
+            <div class="prow"><span class="dot ok"></span><div class="t">Reboot-safe<div class="m">startup matches running</div></div><span class="r">41 min ago</span></div>
+            <div class="prow"><span class="dot ok"></span><div class="t">Credential<div class="m">rotated 1 d ago · policy every 90 d</div></div><span class="r">1 d ago</span></div>
+            <div class="prow"><span class="dot muted"></span><div class="t">Alerts<div class="m">unreadable: Grafana not answering; last read showed none firing</div></div><span class="r">2 min ago</span></div>
+            <div class="prow"><span class="dot ok"></span><div class="t">Neighbours<div class="m">3 of 3 expected up: r1, r3, s1</div></div><span class="r">1 min ago</span></div>
+          </div>
+        </section>
+        <section class="panel">
+          <h3>About r2</h3>
+          <div class="body">
+            <dl class="kv">
+              <dt>Model</dt><dd>C8000V <span class="muted">· from the golden</span></dd>
+              <dt>Platform</dt><dd>cisco_iosxe <span class="muted">· inventory</span></dd>
+              <dt>Software</dt><dd>17.12.3</dd>
+              <dt>Site · role</dt><dd>Lab-core · router</dd>
+              <dt>Restart</dt><dd>none in 30 days</dd>
+            </dl>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+  </div>
+  </div>
+</div>
+</div>
+</body>
+</html>

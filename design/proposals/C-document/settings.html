@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings · Lab · Mercury</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../_shared/tokens.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="home.html"><svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="6" fill="var(--brand)"/><ellipse cx="11" cy="11" rx="10" ry="4" fill="none" stroke="var(--brand-hi)" stroke-width="1.5" transform="rotate(-20 11 11)"/></svg>Mercury</a>
+  <span class="net">Network <b>Lab</b> &#9662;</span>
+  <div class="go"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l4 4" stroke="currentColor" stroke-width="1.6"/></svg>Go to a device, page or setting<kbd>/</kbd></div>
+  <div class="top-right">
+    <a class="top-need" href="home.html">3 critical</a>
+    <span class="ai-chip"><span class="ai-tag">AI</span> $0.21 today &middot; 1 background on</span>
+    <a href="assistant.html">Ask</a>
+    <span class="live">Live</span>
+    <span class="me" title="alex@example.com">AL</span>
+  </div>
+</header>
+<div class="frame">
+<nav class="nav" aria-label="Main">
+  <h4>Now</h4>
+  <a href="home.html">Needs attention <span class="n">10</span></a>
+  <a href="worst-2.html">Incidents</a>
+  <a href="#">Fixes</a>
+  <a href="#">Running now</a>
+  <h4>Fleet</h4>
+  <a href="#">Devices</a>
+  <a href="#">History</a>
+  <a href="#">Monitoring</a>
+  <a href="#">Topology</a>
+  <a href="#">Logs</a>
+  <a href="#">Show commands</a>
+  <a href="#">SDN</a>
+  <h4>Source of truth</h4>
+  <a href="#">Intent</a>
+  <a href="#">Templates</a>
+  <a href="#">NetBox</a>
+  <a href="#">DHCP</a>
+  <a href="#">Credentials</a>
+  <h4>Mercury</h4>
+  <a class="on" href="settings.html">Settings</a>
+  <a href="#">Help</a>
+</nav>
+
+<div class="page">
+<main class="doc">
+  <div class="head">
+    <h1>Settings<span class="kind">for Lab &middot; unset values come from Default</span></h1>
+  </div>
+  <p class="summary"><strong>Self-healing proposes and never applies by itself;</strong> AI troubleshooting starts only when a person asks.</p>
+
+  <div class="filters" style="margin:14px 0 4px">
+    <div class="field grow" role="search"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l4 4" stroke="currentColor" stroke-width="1.6"/></svg>heal<span class="ph" style="margin-left:auto">&times;</span></div>
+    <span class="field sel">Lab</span>
+  </div>
+  <p class="asof">&ldquo;heal&rdquo; matches 7 settings: 6 in Automation, 1 in AI. Settings that do not match are folded away; <a href="#">show every setting</a>.</p>
+
+  <details class="sec" id="me">
+    <summary><h2>Me</h2><span class="line">theme, time zone, what the home page shows</span><span class="st plain">no match</span></summary>
+  </details>
+  <details class="sec" id="network">
+    <summary><h2>Network</h2><span class="line">NetBox, devices' credentials, DHCP, monitoring targets</span><span class="st plain">no match</span></summary>
+  </details>
+
+  <details class="sec" id="automation" open>
+    <summary><h2>Automation</h2><span class="line">what Mercury may do by itself, and its limits</span><span class="st plain">6 of 14 match</span></summary>
+    <div class="body">
+      <div class="set">
+        <div class="name">Self-<mark>heal</mark>ing</div>
+        <div class="desc">What Mercury does when a device drifts from intent: nothing, propose a fix for a person, or fix the kinds you allow by itself.</div>
+        <div class="from">set on Lab by alex@example.com, 3 days ago, confirmed by hash 4be1&hellip;09</div>
+        <div class="ctl"><span class="seg" role="radiogroup" aria-label="Self-healing"><span>Off</span><span class="on" aria-checked="true">Propose</span><span>Automatic</span></span></div>
+      </div>
+      <div class="set">
+        <div class="name">Stop all <mark>heal</mark>ing</div>
+        <div class="desc">The kill switch: no heal starts on any network until it is turned off again. One press, no confirm.</div>
+        <div class="from">installation-wide</div>
+        <div class="ctl"><span class="sw" role="switch" aria-checked="false"><i></i>Off</span></div>
+      </div>
+      <div class="set">
+        <div class="name">Kinds <mark>heal</mark>ed automatically</div>
+        <div class="desc">Only these kinds of drift are fixed without a person, and only while Self-healing is Automatic.</div>
+        <div class="from">inherited from Default &middot; none</div>
+        <div class="ctl"><a class="btn sm" href="#">Choose kinds&hellip;</a></div>
+      </div>
+      <div class="set">
+        <div class="name">Wait before a <mark>heal</mark></div>
+        <div class="desc">How long a drift must last before a fix is proposed, so a person's change in progress is not undone.</div>
+        <div class="from">inherited from Default</div>
+        <div class="ctl"><span class="num-in"><b>15</b> minutes</span></div>
+      </div>
+      <div class="set changed">
+        <div class="name">Stop when a problem keeps coming back</div>
+        <div class="desc">After the same problem is <mark>heal</mark>ed 3 times in 24 hours, stop and ask a person instead.</div>
+        <div class="from">changed, not saved &middot; was On</div>
+        <div class="ctl"><span class="sw" role="switch" aria-checked="false"><i></i>Off</span></div>
+      </div>
+      <div class="set">
+        <div class="name">Hold while a person is working</div>
+        <div class="desc">No <mark>heal</mark> starts on a device where a person made 3 changes in the last 10 minutes.</div>
+        <div class="from">inherited from Default</div>
+        <div class="ctl"><span class="sw" role="switch" aria-checked="true"><i></i>On</span></div>
+      </div>
+      <p class="small muted" style="margin:10px 0 0">8 more Automation settings do not match &ldquo;heal&rdquo; (verify, roll back, deploy batch size&hellip;) &middot; <a href="#">show them</a></p>
+    </div>
+  </details>
+
+  <details class="sec" id="ai">
+    <summary><h2>AI</h2><span class="line">Start troubleshooting when a <mark>heal</mark> cannot fix it</span><span class="st plain">1 match</span></summary>
+  </details>
+  <details class="sec" id="system">
+    <summary><h2>System</h2><span class="line">sign-in, update, records store, backups of Mercury itself</span><span class="st plain">no match</span></summary>
+  </details>
+
+  <div class="savebar">
+    <span class="grow"><b>1 change not saved.</b> A self-healing change is previewed, then confirmed by hash.</span>
+    <a class="btn sm" href="#">Discard</a>
+    <a class="btn sm primary" href="#">Preview the change</a>
+  </div>
+</main>
+
+<aside class="outline" aria-label="Sections">
+  <h4>Sections</h4>
+  <ol>
+    <li><a href="#me">Me<span class="st plain">no match</span></a></li>
+    <li><a href="#network">Network<span class="st plain">no match</span></a></li>
+    <li><a class="on" href="#automation">Automation<span class="st plain">6 matches &middot; 1 unsaved</span></a></li>
+    <li><a href="#ai">AI<span class="st plain">1 match</span></a></li>
+    <li><a href="#system">System<span class="st plain">no match</span></a></li>
+  </ol>
+  <p class="aside">A setting shows where its value comes from: this network, Default, or the installation.</p>
+</aside>
+</div>
+</div>
+</body>
+</html>

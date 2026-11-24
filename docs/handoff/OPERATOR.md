@@ -18,6 +18,15 @@ and the next session unblocks the item and moves the entry to Answered.
   terminal; (c) let red-green pass `--allow-unconfined` (a protected guard: your words).
 - **Recommendation:** (a). C3886's finished work waits as `~/mercury-runs/c3886-keyed-placeholder.patch`.
 
+### gui-direction
+
+- **Asked:** which GUI direction to build (the week plan's one big decision). Three drawn on the
+  same six screens: A Workbench (list and detail), B Inbox (triage first), C Document (one
+  readable page per object). Open `design/proposals/README.md` (the comparison), or the zip
+  `design/proposals.zip` (mockups, shots at both sizes, the research and inventories).
+- **Options:** A, B, C, or C with B's Needs attention queue and step timeline.
+- **Recommendation:** C with B's queue and timeline (about 30 build days by its estimate).
+
 ## Answered
 
 - **2026-11-23, loop-script:** the script arrived (3f9c6b0d) and the crontab runs it at 03:35.

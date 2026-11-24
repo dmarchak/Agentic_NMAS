@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Needs attention · Mercury (A, Workbench)</title>
+<link rel="stylesheet" href="../_shared/tokens.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-att" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></symbol>
+  <symbol id="i-dev" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+  <symbol id="i-his" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></symbol>
+  <symbol id="i-inc" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-fix" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></symbol>
+  <symbol id="i-heal" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-mon" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></symbol>
+  <symbol id="i-top" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8 7.5l3 8M16 7.5l-3 8M8.5 6h7"/></symbol>
+  <symbol id="i-sdn" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-4h12v4"/></symbol>
+  <symbol id="i-show" viewBox="0 0 24 24"><path d="m5 7 5 5-5 5M12 17h7"/></symbol>
+  <symbol id="i-logs" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+  <symbol id="i-int" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
+  <symbol id="i-tpl" viewBox="0 0 24 24"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M10 13l-2 2 2 2M14 13l2 2-2 2"/></symbol>
+  <symbol id="i-nb" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+  <symbol id="i-dhcp" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h6M7 16h8"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></symbol>
+  <symbol id="i-set" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></symbol>
+  <symbol id="i-exp" viewBox="0 0 24 24"><path d="m13 6 6 6-6 6M5 6l6 6-6 6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-act" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 8v4l2.5 2.5"/></symbol>
+  <symbol id="i-ai" viewBox="0 0 24 24"><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/></symbol>
+  <symbol id="i-open" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+</svg>
+
+<div class="app">
+  <header class="top">
+    <a class="brand" href="home.html" title="Mercury"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="var(--brand)"/><ellipse cx="12" cy="12" rx="10.5" ry="4" fill="none" stroke="var(--brand-hi)" stroke-width="1.4" transform="rotate(-20 12 12)"/></svg></a>
+    <span class="wordmark">Mercury</span>
+    <span class="net">Network <b>Lab</b> <svg class="i sm"><use href="#i-down"/></svg></span>
+    <span class="find"><svg class="i sm"><use href="#i-search"/></svg>Go to a device, page or setting<kbd>/</kbd></span>
+    <span class="sp"></span>
+    <button class="tb ai" title="AI spend today; opens the spend panel"><span class="tag">AI</span>$0.42 today · 1 background on</button>
+    <span class="tb live">Live</span>
+    <button class="tb" title="Running and recent work"><svg class="i"><use href="#i-act"/></svg>Activity <span class="n">2 running</span><svg class="i sm"><use href="#i-down"/></svg></button>
+    <button class="tb" title="Theme: follows the system"><svg class="i"><use href="#i-theme"/></svg></button>
+    <span class="who"><span class="av">AL</span>alex</span>
+  </header>
+
+  <nav class="rail" aria-label="Main">
+    <a class="on" href="home.html" title="Needs attention" aria-current="page"><svg class="i"><use href="#i-att"/></svg><span class="badge">10</span></a>
+    <a href="device.html" title="Devices"><svg class="i"><use href="#i-dev"/></svg></a>
+    <a href="#" title="History"><svg class="i"><use href="#i-his"/></svg></a>
+    <hr>
+    <a href="assistant.html" title="Incidents"><svg class="i"><use href="#i-inc"/></svg></a>
+    <a href="#" title="Fixes"><svg class="i"><use href="#i-fix"/></svg></a>
+    <a href="#" title="Self-healing"><svg class="i"><use href="#i-heal"/></svg></a>
+    <hr>
+    <a href="#" title="Monitoring"><svg class="i"><use href="#i-mon"/></svg></a>
+    <a href="#" title="Topology"><svg class="i"><use href="#i-top"/></svg></a>
+    <a href="#" title="SDN"><svg class="i"><use href="#i-sdn"/></svg></a>
+    <a href="#" title="Show commands"><svg class="i"><use href="#i-show"/></svg></a>
+    <a href="#" title="Logs"><svg class="i"><use href="#i-logs"/></svg></a>
+    <hr>
+    <a href="change.html" title="Intent"><svg class="i"><use href="#i-int"/></svg></a>
+    <a href="#" title="Templates"><svg class="i"><use href="#i-tpl"/></svg></a>
+    <a href="#" title="NetBox"><svg class="i"><use href="#i-nb"/></svg></a>
+    <a href="#" title="DHCP"><svg class="i"><use href="#i-dhcp"/></svg></a>
+    <a href="#" title="Credentials"><svg class="i"><use href="#i-key"/></svg></a>
+    <div class="bottom">
+      <a href="#" title="Help"><svg class="i"><use href="#i-help"/></svg></a>
+      <a href="settings.html" title="Settings"><svg class="i"><use href="#i-set"/></svg></a>
+      <a href="#" title="Show labels"><svg class="i"><use href="#i-exp"/></svg></a>
+    </div>
+  </nav>
+
+  <main class="work">
+    <!-- LIST: what needs a person now, counts by outcome first. -->
+    <section class="list" aria-label="Needs attention">
+      <div class="list-hd">
+        <div class="t1"><h1>Needs attention</h1><span class="age">47 sources · checked 20 s ago</span></div>
+        <div class="sum" role="tablist">
+          <a class="on"><b>10</b>All</a>
+          <a class="crit"><b>3</b>Critical</a>
+          <a class="warn"><b>5</b>Warning</a>
+          <a><b>2</b>Waiting on a person</a>
+        </div>
+        <div class="fleet">
+          <div><b>Fleet</b> · 912 devices</div>
+          <div class="stack" title="912 devices by state"><i class="s-ok" style="width:97.5%"></i><i class="s-warn" style="width:1.5%"></i><i class="s-crit" style="width:.7%"></i><i class="s-unk" style="width:.3%"></i></div>
+          <div class="lg"><span class="w-ok">889 healthy</span><span class="w-warn">14 drifting</span><span class="w-crit">6 not answering</span><span class="w-unk">3 not read yet</span></div>
+          <div class="running"><b>Running · 2</b> &nbsp;<span class="d run"></span> <a href="change.html">r2 change</a> verifying 38/90 s &nbsp;<span class="d run"></span> drift check 412/912</div>
+        </div>
+        <div class="tools">
+          <span class="search"><svg class="i sm"><use href="#i-search"/></svg>Search rows, devices</span>
+          <span class="ib"><svg class="i sm"><use href="#i-filter"/></svg>Device</span>
+          <span class="ib"><svg class="i sm"><use href="#i-sort"/></svg>Severity</span>
+        </div>
+      </div>
+      <div class="rows">
+        <div class="grp"><svg class="i sm"><use href="#i-down"/></svg>Critical <span class="c">3</span><span class="r">oldest 2 h</span></div>
+        <div class="row sel">
+          <span class="d crit"></span><span class="t">r3 OSPF neighbour to r4 down</span><span class="r">11 min</span>
+          <span class="m">Open the incident · clears when the neighbour is Full</span>
+        </div>
+        <div class="row">
+          <span class="d crit"></span><span class="t">s3 would lose 2 changes on a reload</span><span class="r">42 min</span>
+          <span class="m">Save running to startup · clears when they match</span>
+        </div>
+        <div class="row">
+          <span class="d crit"></span><span class="t">Nightly backup could not read s2, s4</span><span class="r">2 h</span>
+          <span class="m">Retry the backup · clears when both are read</span>
+        </div>
+        <div class="grp"><svg class="i sm"><use href="#i-down"/></svg>Waiting on a person <span class="c">2</span></div>
+        <div class="row">
+          <span class="d wait"></span><span class="t">Heal proposal for r1's QoS policy</span><span class="r">9 min</span>
+          <span class="m">Review and approve by hash · any admin · clears when decided</span>
+        </div>
+        <div class="row">
+          <span class="d wait"></span><span class="t">s4 VLAN 30 change waits on sam@example.com</span><span class="r">35 min</span>
+          <span class="m">Open the change · sam confirms by hash · clears when confirmed or withdrawn</span>
+        </div>
+        <div class="grp"><svg class="i sm"><use href="#i-down"/></svg>Warning <span class="c">5</span><span class="r">oldest 1 d</span></div>
+        <div class="row">
+          <span class="d warn"></span><span class="t">r2 runs 1 section different from its intent</span><span class="r">6 min</span>
+          <span class="m">Review the logging line · clears when r2 matches its intent</span>
+        </div>
+        <div class="row">
+          <span class="d warn"></span><span class="t">s1 Gi0/3 flapped 4 times in 10 min</span><span class="r">14 min</span>
+          <span class="m">Open the interface · clears after 10 quiet minutes</span>
+        </div>
+        <div class="row">
+          <span class="d unk"></span><span class="t">Grafana alerts could not be read</span><span class="r">4 min</span>
+          <span class="m">Check the integration · clears when read again (unreadable, not clear)</span>
+        </div>
+        <div class="row">
+          <span class="d warn"></span><span class="t">r6 CPU above 80% for 15 min</span><span class="r">15 min</span>
+          <span class="m">Open monitoring · clears below 70% for 10 min</span>
+        </div>
+        <div class="row">
+          <span class="d warn"></span><span class="t">r5's credential expires in 6 days</span><span class="r">1 d</span>
+          <span class="m">Rotate the credential · clears when rotated</span>
+        </div>
+      </div>
+      <div class="list-ft">10 rows · 3 acknowledged hidden<a href="#">Show acknowledged</a></div>
+    </section>
+
+    <!-- DETAIL: the selected row; the answer first, the evidence one level down. -->
+    <section class="detail" aria-label="r3 OSPF neighbour to r4 down">
+      <div class="d-hd">
+        <div class="crumb">Needs attention › Critical</div>
+        <div class="d-title">
+          <h2>r3 OSPF neighbour to r4 down</h2>
+          <span class="pill crit">Critical</span>
+        </div>
+        <div class="d-state"><span class="one">r3 lost its adjacency to r4 on Gi0/2, 11 min ago; traffic to r4's subnets now goes by r5.</span></div>
+        <div class="d-state" style="margin-top:-4px">
+          <a class="btn pri" href="assistant.html">Open the incident</a>
+          <span class="btn">Acknowledge…</span>
+          <a class="btn ghost" href="assistant.html"><svg class="i sm" style="color:var(--ai)"><use href="#i-ai"/></svg>Ask the assistant</a>
+          <span class="muted small">Clears by itself when r3 reports r4 Full again (read every 30 s).</span>
+        </div>
+      </div>
+      <div class="d-body">
+        <nav class="outline" aria-label="On this row">
+          <div class="oh">ON THIS ROW</div>
+          <a class="on" href="#wrong">What is wrong</a>
+          <a href="#clears">How it clears</a>
+          <a href="#evidence">Evidence <span class="c">3</span></a>
+          <a href="#related">Related <span class="c">1</span></a>
+          <a href="#trail">This row's history</a>
+        </nav>
+        <div class="secs">
+          <div class="sec" id="wrong">
+            <div class="sec-h"><h3>What is wrong</h3><span class="r">first seen 07:42 UTC · 00:42 Denver</span></div>
+            <dl class="kv">
+              <dt>Adjacency</dt><dd>r3 Gi0/2 → r4 (192.0.2.14), OSPF process 1, area 0: <span class="w-crit">Down</span>, was Full for 9 d</dd>
+              <dt>Effect</dt><dd>0 prefixes lost; 6 prefixes now reached through r5 (cost 30, was 20)</dd>
+              <dt>r4 itself</dt><dd><span class="w-crit">not answering</span> on SSH or SNMP for 6 min · reachability read 20 s ago</dd>
+              <dt>Incident</dt><dd><a href="assistant.html">INC-0412</a>, opened by detection · no person assigned · self-healing is off on Lab</dd>
+            </dl>
+          </div>
+          <div class="sec" id="clears">
+            <div class="sec-h"><h3>How it clears</h3></div>
+            <p>By itself when r3's next read shows r4 Full. Acknowledging hides it for a time you choose, with a reason, and it comes back if still down then.</p>
+          </div>
+          <div class="sec" id="evidence">
+            <div class="sec-h"><h3>Evidence</h3><span class="r">each read's own age</span></div>
+            <table class="t">
+              <tr><th style="width:150px">Source</th><th>What it says</th><th style="width:90px">Read</th></tr>
+              <tr><td>Syslog from r3</td><td class="mono">%OSPF-5-ADJCHG: Process 1, Nbr 192.0.2.14 on GigabitEthernet0/2 from FULL to DOWN, Neighbor Down: Dead timer expired</td><td>07:42:10 UTC</td></tr>
+              <tr><td><span class="mono">show ip ospf neighbor</span> on r3</td><td>2 neighbours Full (r1, r5); r4 absent</td><td>20 s ago</td></tr>
+              <tr><td>Reachability of r4</td><td>SSH timed out (10 s), SNMP no answer; 192.0.2.14 and 2001:db8::14 both tried</td><td>20 s ago</td></tr>
+            </table>
+          </div>
+          <div class="sec" id="related">
+            <div class="sec-h"><h3>Related</h3></div>
+            <p>r4 not answering is folded into this row as its likely cause; it is one incident, not two rows.</p>
+          </div>
+          <div class="sec" id="trail">
+            <div class="sec-h"><h3>This row's history</h3></div>
+            <p class="muted">07:42 raised by detection · 07:43 incident INC-0412 opened · no acknowledgement</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ASSISTANT: docked, collapsed; its context will be the selected row. -->
+    <aside class="asst-strip" aria-label="Assistant (collapsed)">
+      <svg class="i"><use href="#i-ai"/></svg>
+      <span class="vt">Ask about this row</span>
+      <span class="key">.</span>
+    </aside>
+  </main>
+</div>
+</body>
+</html>

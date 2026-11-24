@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Assistant on INC-0412 · Mercury (A, Workbench)</title>
+<link rel="stylesheet" href="../_shared/tokens.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-att" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></symbol>
+  <symbol id="i-dev" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+  <symbol id="i-his" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></symbol>
+  <symbol id="i-inc" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-fix" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></symbol>
+  <symbol id="i-heal" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-mon" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></symbol>
+  <symbol id="i-top" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8 7.5l3 8M16 7.5l-3 8M8.5 6h7"/></symbol>
+  <symbol id="i-sdn" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-4h12v4"/></symbol>
+  <symbol id="i-show" viewBox="0 0 24 24"><path d="m5 7 5 5-5 5M12 17h7"/></symbol>
+  <symbol id="i-logs" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+  <symbol id="i-int" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
+  <symbol id="i-tpl" viewBox="0 0 24 24"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M10 13l-2 2 2 2M14 13l2 2-2 2"/></symbol>
+  <symbol id="i-nb" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+  <symbol id="i-dhcp" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h6M7 16h8"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></symbol>
+  <symbol id="i-set" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></symbol>
+  <symbol id="i-exp" viewBox="0 0 24 24"><path d="m13 6 6 6-6 6M5 6l6 6-6 6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-act" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 8v4l2.5 2.5"/></symbol>
+  <symbol id="i-ai" viewBox="0 0 24 24"><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/></symbol>
+  <symbol id="i-open" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+</svg>
+
+<div class="app">
+  <header class="top">
+    <a class="brand" href="home.html" title="Mercury"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="var(--brand)"/><ellipse cx="12" cy="12" rx="10.5" ry="4" fill="none" stroke="var(--brand-hi)" stroke-width="1.4" transform="rotate(-20 12 12)"/></svg></a>
+    <span class="wordmark">Mercury</span>
+    <span class="net">Network <b>Lab</b> <svg class="i sm"><use href="#i-down"/></svg></span>
+    <span class="find"><svg class="i sm"><use href="#i-search"/></svg>Go to a device, page or setting<kbd>/</kbd></span>
+    <span class="sp"></span>
+    <button class="tb ai" title="AI spend today; opens the spend panel"><span class="tag">AI</span>$0.42 today · 1 background on</button>
+    <span class="tb live">Live</span>
+    <button class="tb" title="Running and recent work"><svg class="i"><use href="#i-act"/></svg>Activity <span class="n">2 running</span><svg class="i sm"><use href="#i-down"/></svg></button>
+    <button class="tb" title="Theme: follows the system"><svg class="i"><use href="#i-theme"/></svg></button>
+    <span class="who"><span class="av">AL</span>alex</span>
+  </header>
+
+  <nav class="rail" aria-label="Main">
+    <a href="home.html" title="Needs attention"><svg class="i"><use href="#i-att"/></svg><span class="badge">10</span></a>
+    <a href="device.html" title="Devices"><svg class="i"><use href="#i-dev"/></svg></a>
+    <a href="#" title="History"><svg class="i"><use href="#i-his"/></svg></a>
+    <hr>
+    <a class="on" href="assistant.html" title="Incidents" aria-current="page"><svg class="i"><use href="#i-inc"/></svg></a>
+    <a href="#" title="Fixes"><svg class="i"><use href="#i-fix"/></svg></a>
+    <a href="#" title="Self-healing"><svg class="i"><use href="#i-heal"/></svg></a>
+    <hr>
+    <a href="#" title="Monitoring"><svg class="i"><use href="#i-mon"/></svg></a>
+    <a href="#" title="Topology"><svg class="i"><use href="#i-top"/></svg></a>
+    <a href="#" title="SDN"><svg class="i"><use href="#i-sdn"/></svg></a>
+    <a href="#" title="Show commands"><svg class="i"><use href="#i-show"/></svg></a>
+    <a href="#" title="Logs"><svg class="i"><use href="#i-logs"/></svg></a>
+    <hr>
+    <a href="change.html" title="Intent"><svg class="i"><use href="#i-int"/></svg></a>
+    <a href="#" title="Templates"><svg class="i"><use href="#i-tpl"/></svg></a>
+    <a href="#" title="NetBox"><svg class="i"><use href="#i-nb"/></svg></a>
+    <a href="#" title="DHCP"><svg class="i"><use href="#i-dhcp"/></svg></a>
+    <a href="#" title="Credentials"><svg class="i"><use href="#i-key"/></svg></a>
+    <div class="bottom">
+      <a href="#" title="Help"><svg class="i"><use href="#i-help"/></svg></a>
+      <a href="settings.html" title="Settings"><svg class="i"><use href="#i-set"/></svg></a>
+      <a href="#" title="Show labels"><svg class="i"><use href="#i-exp"/></svg></a>
+    </div>
+  </nav>
+
+  <main class="work asst-open">
+    <!-- LIST: incidents, counts by outcome first. -->
+    <section class="list" aria-label="Incidents">
+      <div class="list-hd">
+        <div class="t1"><h1>Incidents</h1><span class="age">checked 20 s ago</span></div>
+        <div class="sum">
+          <a class="on"><b>3</b>Open</a>
+          <a class="crit"><b>1</b>Critical</a>
+          <a><b>1</b>Waiting</a>
+          <a class="ok"><b>23</b>Closed · 30 d</a>
+        </div>
+        <div class="tools">
+          <span class="search"><svg class="i sm"><use href="#i-search"/></svg>Device, kind, id</span>
+          <span class="ib"><svg class="i sm"><use href="#i-filter"/></svg>Kind</span>
+        </div>
+        <div class="chips"><span class="chip">Self-healing: Dry run</span><span class="chip">AI starts by itself: off</span></div>
+      </div>
+      <div class="rows">
+        <div class="grp"><svg class="i sm"><use href="#i-down"/></svg>Open <span class="c">2</span></div>
+        <div class="row sel">
+          <span class="d crit"></span><span class="t">r3 OSPF neighbour to r4 down</span><span class="r">11 min</span>
+          <span class="m">INC-0412 · r3, r4 · nobody assigned</span>
+        </div>
+        <div class="row">
+          <span class="d warn"></span><span class="t">s1 Gi0/3 flapping</span><span class="r">14 min</span>
+          <span class="m">INC-0410 · s1 · watching for 10 quiet min</span>
+        </div>
+        <div class="grp"><svg class="i sm"><use href="#i-down"/></svg>Waiting on a person <span class="c">1</span></div>
+        <div class="row">
+          <span class="d wait"></span><span class="t">r1 QoS policy differs</span><span class="r">9 min</span>
+          <span class="m">INC-0409 · fix proposed, approve by hash</span>
+        </div>
+        <div class="grp closed"><svg class="i sm"><use href="#i-right"/></svg>Closed · 30 d <span class="c">23</span><span class="r">17 healed · 4 by a person · 2 AI</span></div>
+      </div>
+      <div class="list-ft">3 open on Lab<a href="#">Self-healing settings</a></div>
+    </section>
+
+    <!-- DETAIL: the incident; the outline folds away while the assistant is open. -->
+    <section class="detail" aria-label="INC-0412">
+      <div class="d-hd">
+        <div class="crumb">Incidents › INC-0412</div>
+        <div class="d-title">
+          <h2>r3 OSPF neighbour to r4 down</h2>
+          <span class="pill crit">Critical</span>
+          <span class="acts"><span class="btn">Take it</span></span>
+        </div>
+        <div class="d-state"><span class="one">Open 11 min · r4 also not answering · no fix proposed yet</span></div>
+        <nav class="tabs"><a class="on" href="#">Story</a><a href="#">Evidence <span class="c">3</span></a><a href="#">Timeline <span class="c">5</span></a><a href="#">Record</a></nav>
+      </div>
+      <div class="d-body no-outline">
+        <div class="secs">
+          <div class="sec">
+            <div class="sec-h"><h3>What is wrong</h3><span class="r">since 07:42 UTC</span></div>
+            <p>r3 Gi0/2 → r4 (192.0.2.14), OSPF area 0, went from Full to Down: dead timer expired. 6 prefixes now go by r5; none lost.</p>
+          </div>
+          <div class="sec">
+            <div class="sec-h"><h3>What Mercury has done</h3><span class="r">from its own record, no AI</span></div>
+            <ul class="checks">
+              <li><span class="mk ok"><svg class="i"><use href="#i-check"/></svg></span><span class="k">r3 Gi0/2</span><span>up, up; no input errors</span><span class="age">20 s ago</span></li>
+              <li><span class="mk ok"><svg class="i"><use href="#i-check"/></svg></span><span class="k">r3 OSPF config</span><span>same as its golden</span><span class="age">20 s ago</span></li>
+              <li><span class="mk crit"><svg class="i"><use href="#i-x"/></svg></span><span class="k">r4 reachable</span><span>no SSH, no SNMP, both addresses</span><span class="age">20 s ago</span></li>
+            </ul>
+            <p class="small muted" style="margin-top:6px">Self-healing is in Dry run and has no fix for a device it cannot reach.</p>
+          </div>
+          <div class="sec">
+            <div class="sec-h"><h3>Seen before</h3></div>
+            <p class="muted">Not on r3 or r4 in the last 90 days.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ASSISTANT: docked, open, its context the selected incident. -->
+    <aside class="asst" aria-label="Assistant">
+      <div class="asst-h">
+        <svg class="i" style="color:var(--ai)"><use href="#i-ai"/></svg><b>Assistant</b><span class="pill ai">AI</span>
+        <span class="r"><span class="btn ghost sm" title="New conversation">New</span><span class="btn ghost sm" title="Collapse (.)"><svg class="i sm"><use href="#i-exp"/></svg></span></span>
+      </div>
+      <div class="ctx">Looking at <span class="chip">INC-0412 · r3 OSPF neighbour to r4 down</span> <span class="chip">r3</span> <span class="chip">r4</span><br><span class="small muted">Page: Incidents · it reads through Mercury's read-only account</span></div>
+      <div class="conv">
+        <div class="msg-q"><span class="who">alex · 07:53</span>Why is the neighbour down, and what should I check first?</div>
+        <div class="msg-a">
+          <div class="meta"><span class="pill ai">AI</span><span>claude-sonnet · $0.004 so far</span><span class="spin" style="width:10px;height:10px"></span><span>answering</span></div>
+          <p>r3 lost r4 because r4 stopped sending hellos: the 40 s dead timer expired at 07:42:10<span class="sup">1</span>. r3's side looks healthy: Gi0/2 is up and r4 is simply absent from its neighbour table<span class="sup">2</span>.</p>
+          <p>r4 stopped answering at the same moment, which points at r4 itself or the link beyond Gi0/2, not at r3's configuration.</p>
+          <ol><li>Check r4's power and console state; Mercury cannot reach it.</li><li>Compare r3 Gi0/2's counters with <span class="cursor"></span></li></ol>
+          <div class="src"><span class="n">1</span><span>Manual › Troubleshooting OSPF › Dead timer expired<span class="s">Mercury's manual</span></span><a class="btn sm" href="#">Open</a></div>
+          <div class="src"><span class="n">2</span><span><span class="mono">show ip ospf neighbor</span><span class="s">r3 · read 20 s ago through Mercury</span></span><a class="btn sm" href="#">Open</a></div>
+        </div>
+      </div>
+      <div class="handoff">
+        <span class="btn ai-btn"><svg class="i sm"><use href="#i-fix"/></svg>Propose a fix</span>
+        <div class="why">Opens the gated fix: a preview of the exact commands, confirmed by hash by a person. The assistant never applies a change.</div>
+      </div>
+      <div class="compose"><span class="in">Ask a follow-up…</span><span class="btn busy"><span class="spin"></span>Stop</span></div>
+    </aside>
+  </main>
+</div>
+</body>
+</html>

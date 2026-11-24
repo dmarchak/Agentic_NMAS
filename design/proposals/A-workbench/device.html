@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>r2 · Devices · Mercury (A, Workbench)</title>
+<link rel="stylesheet" href="../_shared/tokens.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg class="sprite" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-att" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></symbol>
+  <symbol id="i-dev" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+  <symbol id="i-his" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></symbol>
+  <symbol id="i-inc" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-fix" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></symbol>
+  <symbol id="i-heal" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-mon" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></symbol>
+  <symbol id="i-top" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8 7.5l3 8M16 7.5l-3 8M8.5 6h7"/></symbol>
+  <symbol id="i-sdn" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><rect x="15" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M6 16v-4h12v4"/></symbol>
+  <symbol id="i-show" viewBox="0 0 24 24"><path d="m5 7 5 5-5 5M12 17h7"/></symbol>
+  <symbol id="i-logs" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+  <symbol id="i-int" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
+  <symbol id="i-tpl" viewBox="0 0 24 24"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M10 13l-2 2 2 2M14 13l2 2-2 2"/></symbol>
+  <symbol id="i-nb" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+  <symbol id="i-dhcp" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h6M7 16h8"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></symbol>
+  <symbol id="i-set" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></symbol>
+  <symbol id="i-exp" viewBox="0 0 24 24"><path d="m13 6 6 6-6 6M5 6l6 6-6 6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-act" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 8v4l2.5 2.5"/></symbol>
+  <symbol id="i-ai" viewBox="0 0 24 24"><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/></symbol>
+  <symbol id="i-open" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+</svg>
+
+<div class="app">
+  <header class="top">
+    <a class="brand" href="home.html" title="Mercury"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="var(--brand)"/><ellipse cx="12" cy="12" rx="10.5" ry="4" fill="none" stroke="var(--brand-hi)" stroke-width="1.4" transform="rotate(-20 12 12)"/></svg></a>
+    <span class="wordmark">Mercury</span>
+    <span class="net">Network <b>Lab</b> <svg class="i sm"><use href="#i-down"/></svg></span>
+    <span class="find"><svg class="i sm"><use href="#i-search"/></svg>Go to a device, page or setting<kbd>/</kbd></span>
+    <span class="sp"></span>
+    <button class="tb ai" title="AI spend today; opens the spend panel"><span class="tag">AI</span>$0.42 today · 1 background on</button>
+    <span class="tb live">Live</span>
+    <button class="tb open" title="Running and recent work"><svg class="i"><use href="#i-act"/></svg>Activity <span class="n">2 running</span><svg class="i sm"><use href="#i-down"/></svg></button>
+    <button class="tb" title="Theme: follows the system"><svg class="i"><use href="#i-theme"/></svg></button>
+    <span class="who"><span class="av">AL</span>alex</span>
+
+    <!-- The Activity tray, drawn open on this screen: every running job, then the last finished. -->
+    <div class="tray" role="dialog" aria-label="Activity">
+      <div class="tray-h">Running · 2<span class="r">each line updates as its steps land</span></div>
+      <div class="tray-i">
+        <span class="d run"></span>
+        <span><b>Change to r2</b> · BGP neighbour 192.0.2.6</span>
+        <span class="mini" title="Preview, Confirm, Apply done; Verify running; Record waiting"><i class="done"></i><i class="done"></i><i class="done"></i><i class="run"></i><i></i></span>
+        <span class="m">Verify: waiting out BGP hold time, 38 s of 90 s · alex · <a href="change.html">Open</a></span>
+      </div>
+      <div class="tray-i">
+        <span class="d run"></span>
+        <span><b>Drift check</b> · every device in Lab</span>
+        <span class="small muted">412 of 912</span>
+        <span class="m">started 3 min ago by the schedule · 2 differ so far · <a href="#">Open</a></span>
+      </div>
+      <div class="tray-h" style="border-top:1px solid var(--line-2)">Finished · last hour</div>
+      <div class="tray-i">
+        <span class="d ok"></span>
+        <span>Golden captured for s1</span>
+        <span class="small muted">4 min ago</span>
+        <span class="m">1 section changed (interface Gi0/3 description) · committed 8c41d2e</span>
+      </div>
+      <div class="tray-i">
+        <span class="d warn"></span>
+        <span>Self-healing dry run on r1</span>
+        <span class="small muted">9 min ago</span>
+        <span class="m">proposed, not applied: QoS policy differs · waits for a person</span>
+      </div>
+      <div class="tray-f">Nothing queued.<a href="#">All activity in History</a></div>
+    </div>
+  </header>
+
+  <nav class="rail" aria-label="Main">
+    <a href="home.html" title="Needs attention"><svg class="i"><use href="#i-att"/></svg><span class="badge">10</span></a>
+    <a class="on" href="device.html" title="Devices" aria-current="page"><svg class="i"><use href="#i-dev"/></svg></a>
+    <a href="#" title="History"><svg class="i"><use href="#i-his"/></svg></a>
+    <hr>
+    <a href="assistant.html" title="Incidents"><svg class="i"><use href="#i-inc"/></svg></a>
+    <a href="#" title="Fixes"><svg class="i"><use href="#i-fix"/></svg></a>
+    <a href="#" title="Self-healing"><svg class="i"><use href="#i-heal"/></svg></a>
+    <hr>
+    <a href="#" title="Monitoring"><svg class="i"><use href="#i-mon"/></svg></a>
+    <a href="#" title="Topology"><svg class="i"><use href="#i-top"/></svg></a>
+    <a href="#" title="SDN"><svg class="i"><use href="#i-sdn"/></svg></a>
+    <a href="#" title="Show commands"><svg class="i"><use href="#i-show"/></svg></a>
+    <a href="#" title="Logs"><svg class="i"><use href="#i-logs"/></svg></a>
+    <hr>
+    <a href="change.html" title="Intent"><svg class="i"><use href="#i-int"/></svg></a>
+    <a href="#" title="Templates"><svg class="i"><use href="#i-tpl"/></svg></a>
+    <a href="#" title="NetBox"><svg class="i"><use href="#i-nb"/></svg></a>
+    <a href="#" title="DHCP"><svg class="i"><use href="#i-dhcp"/></svg></a>
+    <a href="#" title="Credentials"><svg class="i"><use href="#i-key"/></svg></a>
+    <div class="bottom">
+      <a href="#" title="Help"><svg class="i"><use href="#i-help"/></svg></a>
+      <a href="settings.html" title="Settings"><svg class="i"><use href="#i-set"/></svg></a>
+      <a href="#" title="Show labels"><svg class="i"><use href="#i-exp"/></svg></a>
+    </div>
+  </nav>
+
+  <main class="work">
+    <!-- LIST: the fleet, counts by outcome first, filtered to a page of rows. -->
+    <section class="list" aria-label="Devices">
+      <div class="list-hd">
+        <div class="t1"><h1>Devices</h1><span class="muted">912</span><span class="age">read 20 s ago</span></div>
+        <div class="sum">
+          <a class="on"><b>912</b>All</a>
+          <a class="ok"><b>889</b>Healthy</a>
+          <a class="warn"><b>14</b>Drifting</a>
+          <a class="crit"><b>6</b>Not answering</a>
+          <a class="unk"><b>3</b>Not read</a>
+        </div>
+        <div class="tools">
+          <span class="search"><svg class="i sm"><use href="#i-search"/></svg>Name, address, model</span>
+          <span class="ib on"><svg class="i sm"><use href="#i-filter"/></svg>Filters · 1</span>
+          <span class="ib">Add device…</span>
+        </div>
+        <div class="chips"><span class="chip">Site: core <span class="x">×</span></span><span class="chip">Group by: role</span><span class="muted small" style="align-self:center">10 of 912 match</span></div>
+      </div>
+      <div class="rows">
+        <div class="trow hd"><span></span><span class="sorted">Name ↑</span><span>Address</span><span>Intent</span><span>Read</span></div>
+        <div class="grp"><svg class="i sm"><use href="#i-down"/></svg>Routers · IOS-XE <span class="c">6</span><span class="r">1 not answering</span></div>
+        <div class="trow"><span class="d ok"></span><span class="nm">r1</span><span class="mono cut">192.0.2.11</span><span class="w-ok">matches</span><span class="muted">2 min</span></div>
+        <div class="trow sel"><span class="d warn"></span><span class="nm">r2</span><span class="mono cut">192.0.2.12</span><span class="w-warn">1 differs</span><span class="muted">20 s</span></div>
+        <div class="trow"><span class="d crit"></span><span class="nm">r3</span><span class="mono cut">192.0.2.13</span><span class="w-ok">matches</span><span class="muted">20 s</span></div>
+        <div class="trow"><span class="d crit"></span><span class="nm">r4</span><span class="mono cut">192.0.2.14</span><span class="w-unk">not read</span><span class="w-crit">6 min</span></div>
+        <div class="trow"><span class="d ok"></span><span class="nm">r5</span><span class="mono cut">192.0.2.15</span><span class="w-ok">matches</span><span class="muted">1 min</span></div>
+        <div class="trow"><span class="d warn"></span><span class="nm">r6</span><span class="mono cut">192.0.2.16</span><span class="w-ok">matches</span><span class="muted">1 min</span></div>
+        <div class="grp"><svg class="i sm"><use href="#i-down"/></svg>Switches · IOS <span class="c">4</span><span class="r">1 not read</span></div>
+        <div class="trow"><span class="d warn"></span><span class="nm">s1</span><span class="mono cut">192.0.2.21</span><span class="w-ok">matches</span><span class="muted">4 min</span></div>
+        <div class="trow"><span class="d unk"></span><span class="nm">s2</span><span class="mono cut">192.0.2.22</span><span class="w-unk">not read</span><span class="w-warn">2 h</span></div>
+        <div class="trow"><span class="d crit"></span><span class="nm">s3</span><span class="mono cut">192.0.2.23</span><span class="w-ok">matches</span><span class="muted">3 min</span></div>
+        <div class="trow"><span class="d ok"></span><span class="nm">s4</span><span class="mono cut">192.0.2.24</span><span class="w-warn">1 pending</span><span class="muted">3 min</span></div>
+        <div class="grp closed"><svg class="i sm"><use href="#i-right"/></svg>Other sites <span class="c">902</span><span class="r">filtered out</span></div>
+      </div>
+      <div class="list-ft">Tick rows to act on several · 0 ticked<a href="#">Export the 10</a></div>
+    </section>
+
+    <!-- DETAIL: r2, its state in one line, tabs, then hairline sections with an outline. -->
+    <section class="detail" aria-label="r2">
+      <div class="d-hd">
+        <div class="crumb">Devices › Routers</div>
+        <div class="d-title">
+          <h2 class="mono">r2</h2>
+          <span class="pill warn">1 section differs</span>
+          <span class="muted small">C8000V · IOS-XE 17.9 · 192.0.2.12 · 2001:db8::12</span>
+          <span class="acts"><a class="btn pri" href="change.html">Change intent…</a><span class="btn">Actions <svg class="i sm"><use href="#i-down"/></svg></span></span>
+        </div>
+        <div class="d-state"><span class="one">Reachable · 1 logging line differs · 4 of 6 checks pass</span></div>
+        <div class="band run small" style="margin:0 0 8px;display:flex;gap:10px;align-items:center">
+          <span class="mini"><i class="done"></i><i class="done"></i><i class="done"></i><i class="run"></i><i></i></span>
+          <span><b>Change to r2 running:</b> Verify, waiting out BGP hold time, 38 s of 90 s · r2 is held</span>
+          <a href="change.html" style="margin-left:auto">Open the change</a>
+        </div>
+        <nav class="tabs">
+          <a class="on" href="#">Overview</a><a href="#">Intent <span class="c">1</span></a><a href="#">History</a><a href="#">Monitoring</a><a href="#">Logs</a><a href="#">NetBox</a><a href="#">Neighbours <span class="c">3</span></a><a href="#">Ask the device</a>
+        </nav>
+      </div>
+      <div class="d-body">
+        <nav class="outline" aria-label="On this tab">
+          <div class="oh">OVERVIEW</div>
+          <a class="on" href="#intent">Intent vs running <span class="c bad">1</span></a>
+          <a href="#checks">Checks <span class="c">6</span></a>
+          <a href="#changes">Recent changes</a>
+          <a href="#about">About r2</a>
+        </nav>
+        <div class="secs">
+          <div class="sec" id="intent">
+            <div class="sec-h"><h3>Intent against what it runs</h3><span class="r">intent a46031e · golden d574748 · read 20 s ago</span></div>
+            <table class="t">
+              <tr><th style="width:150px">Section</th><th>Result</th><th style="width:120px"></th></tr>
+              <tr class="hl"><td><b>Logging</b></td><td><span class="w-warn">differs:</span> running has <span class="mono">logging host 192.0.2.50</span>; intent does not. Added outside Mercury, 06:58 UTC.</td><td><a href="#">Adopt into intent…</a><br><a href="#">Remove…</a></td></tr>
+              <tr><td>BGP 65010</td><td><span class="w-run">matches the new intent;</span> neighbour 192.0.2.6 added 07:51, verify running</td><td><a href="change.html">Open the change</a></td></tr>
+              <tr><td>Banner</td><td><span class="w-unk">not compared:</span> no parser reads this section</td><td></td></tr>
+              <tr><td class="muted" colspan="3"><svg class="i sm"><use href="#i-right"/></svg> 8 sections match: hostname, AAA, NTP, SNMP, interfaces (6), OSPF 1, static routes, VRFs</td></tr>
+            </table>
+          </div>
+          <div class="sec" id="checks">
+            <div class="sec-h"><h3>Checks</h3><span class="r">each the stored result of its own job</span></div>
+            <ul class="checks">
+              <li><span class="mk ok"><svg class="i"><use href="#i-check"/></svg></span><span class="k">Reachable</span><span>SSH answers in 0.4 s; SNMP answers</span><span class="age">20 s ago</span></li>
+              <li><span class="mk warn"><svg class="i"><use href="#i-x"/></svg></span><span class="k">Intent</span><span>1 section differs (logging)</span><span class="age">20 s ago</span></li>
+              <li><span class="mk ok"><svg class="i"><use href="#i-check"/></svg></span><span class="k">Reboot-safe</span><span>startup equals running</span><span class="age">34 min ago</span></li>
+              <li><span class="mk ok"><svg class="i"><use href="#i-check"/></svg></span><span class="k">Credential</span><span>rotated 12 days ago by profile core-routers</span><span class="age">1 h ago</span></li>
+              <li><span class="mk unk"></span><span class="k">Alerts</span><span><span class="w-unk">Grafana could not be read;</span> last good read: none firing</span><span class="age">4 min ago</span></li>
+              <li><span class="mk ok"><svg class="i"><use href="#i-check"/></svg></span><span class="k">Backup</span><span>golden captured 06:10 UTC, 1 section changed</span><span class="age">1 h ago</span></li>
+            </ul>
+          </div>
+          <div class="sec" id="changes">
+            <div class="sec-h"><h3>Recent changes</h3><a class="r" href="#">All in History</a></div>
+            <table class="t">
+              <tr><th style="width:120px">When</th><th>What</th><th style="width:150px">Who</th><th style="width:110px">Result</th></tr>
+              <tr><td>07:51 UTC</td><td>BGP neighbour 192.0.2.6 (r6) added</td><td>alex@example.com</td><td><span class="pill run">verifying</span></td></tr>
+              <tr><td>Yesterday 16:20</td><td>Interface Gi2 description</td><td>sam@example.com</td><td><span class="pill ok">verified</span></td></tr>
+              <tr><td>20 Nov 10:02</td><td>NTP server 192.0.2.1 and 2001:db8::1 added</td><td>alex@example.com</td><td><span class="pill ok">verified</span></td></tr>
+              <tr><td>18 Nov 22:40</td><td>Self-healing: reset a stuck process (dry run)</td><td>Mercury</td><td><span class="pill">declined by sam</span></td></tr>
+            </table>
+          </div>
+          <div class="sec" id="about">
+            <div class="sec-h"><h3>About r2</h3><a class="r" href="#">Open in NetBox tab</a></div>
+            <dl class="kv">
+              <dt>Model</dt><dd>C8000V · from the golden's chassis line</dd>
+              <dt>Software</dt><dd>IOS-XE 17.9.4a</dd>
+              <dt>Management</dt><dd class="mono">192.0.2.12 · 2001:db8::12</dd>
+              <dt>Signs in as</dt><dd>mercury-ro for reads; profile core-routers for changes</dd>
+              <dt>Site and role</dt><dd>core · router · NetBox ID 1042</dd>
+            </dl>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="asst-strip" aria-label="Assistant (collapsed)">
+      <svg class="i"><use href="#i-ai"/></svg>
+      <span class="vt">Ask about r2</span>
+      <span class="key">.</span>
+    </aside>
+  </main>
+</div>
+</body>
+</html>

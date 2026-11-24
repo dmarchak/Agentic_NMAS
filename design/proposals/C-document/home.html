@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Needs attention · Lab · Mercury</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../_shared/tokens.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="home.html"><svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="6" fill="var(--brand)"/><ellipse cx="11" cy="11" rx="10" ry="4" fill="none" stroke="var(--brand-hi)" stroke-width="1.5" transform="rotate(-20 11 11)"/></svg>Mercury</a>
+  <span class="net">Network <b>Lab</b> &#9662;</span>
+  <div class="go"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l4 4" stroke="currentColor" stroke-width="1.6"/></svg>Go to a device, page or setting<kbd>/</kbd></div>
+  <div class="top-right">
+    <a class="top-need" href="home.html">3 critical</a>
+    <span class="ai-chip"><span class="ai-tag">AI</span> $0.21 today &middot; 1 background on</span>
+    <a href="assistant.html">Ask</a>
+    <span class="live">Live</span>
+    <span class="me" title="alex@example.com">AL</span>
+  </div>
+</header>
+<div class="frame">
+<nav class="nav" aria-label="Main">
+  <h4>Now</h4>
+  <a class="on" href="home.html">Needs attention <span class="n">10</span></a>
+  <a href="worst-2.html">Incidents</a>
+  <a href="#">Fixes</a>
+  <a href="#">Running now</a>
+  <h4>Fleet</h4>
+  <a href="#">Devices</a>
+  <a href="#">History</a>
+  <a href="#">Monitoring</a>
+  <a href="#">Topology</a>
+  <a href="#">Logs</a>
+  <a href="#">Show commands</a>
+  <a href="#">SDN</a>
+  <h4>Source of truth</h4>
+  <a href="#">Intent</a>
+  <a href="#">Templates</a>
+  <a href="#">NetBox</a>
+  <a href="#">DHCP</a>
+  <a href="#">Credentials</a>
+  <h4>Mercury</h4>
+  <a href="settings.html">Settings</a>
+  <a href="#">Help</a>
+</nav>
+
+<div class="page">
+<main class="doc">
+  <div class="head">
+    <h1>Needs attention<span class="kind">Lab &middot; 912 devices</span></h1>
+    <div class="acts"><a class="btn sm" href="#">Check every source again</a></div>
+  </div>
+  <p class="summary"><strong>Three things need you now:</strong> r3 lost its OSPF neighbour to r4, r5 stopped answering, and s4 lost its management access list. Two changes wait on a person; five warnings can wait.</p>
+  <p class="asof">47 sources read &middot; 45 within their promise, 2 stale &middot; page updated 4 s ago</p>
+
+  <dl class="facts">
+    <dt>Critical</dt><dd><span class="st crit">3</span> <span class="muted">oldest 14 min</span></dd>
+    <dt>Running now</dt><dd><span class="st run">2</span> <span class="muted">a change on r2, a capture</span></dd>
+    <dt>Waiting on a person</dt><dd><span class="st wait">2</span> <span class="muted">a change, a heal proposal</span></dd>
+    <dt>Self-healing</dt><dd>Propose only <span class="muted">&middot; nothing applied by itself</span></dd>
+    <dt>Warnings</dt><dd><span class="st warn">5</span> <span class="muted">none older than a day</span></dd>
+    <dt>Fleet</dt><dd>898 of 912 healthy <span class="muted">&middot; <a href="#fleet">by outcome</a></span></dd>
+  </dl>
+
+  <details class="sec" id="critical" open>
+    <summary><h2>Critical</h2><span class="line">each row: what is wrong, the one action, how it clears</span><span class="st crit">3 open</span></summary>
+    <div class="body">
+      <table class="t">
+        <thead><tr><th>What is wrong</th><th>Since</th><th>Clears when</th><th class="act"></th></tr></thead>
+        <tbody>
+          <tr><td><span class="st crit"></span><span class="what">r3's OSPF neighbour to r4 is down</span><span class="sub">r3 Gi2 to r4 Gi2 &middot; adjacency left FULL at 10:42; no hello since</span></td><td class="nowrap">14 min</td><td class="small">the adjacency is FULL again</td><td class="act"><a class="btn sm primary" href="assistant.html">Open incident</a></td></tr>
+          <tr><td><span class="st crit"></span><span class="what">r5 does not answer</span><span class="sub">no ping or SSH reply at 192.0.2.15 or 2001:db8::15 for 6 min</span></td><td class="nowrap">6 min</td><td class="small">r5 answers a read</td><td class="act"><a class="btn sm" href="#">Diagnose r5</a></td></tr>
+          <tr><td><span class="st crit"></span><span class="what">s4 lost its management access list</span><span class="sub">ACL MGMT-IN is in intent a46031e, absent from s4's running config read 3 min ago</span></td><td class="nowrap">3 min</td><td class="small">s4 runs its intent again</td><td class="act"><a class="btn sm" href="#">Review the fix</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+
+  <details class="sec" id="waiting" open>
+    <summary><h2>Waiting on a person</h2><span class="line">a decision only a person makes</span><span class="st wait">2</span></summary>
+    <div class="body">
+      <table class="t">
+        <tbody>
+          <tr><td><span class="what">Approve: r2, add BGP neighbour 2001:db8:0:12::2</span><span class="sub">asked by sam@example.com 12 min ago &middot; needs a second person; sam cannot approve their own</span></td><td class="small">clears when approved or declined</td><td class="act"><a class="btn sm" href="change.html">Review and approve</a></td></tr>
+          <tr><td><span class="what">Heal proposal: s2, put port-security back on Gi1/0/7</span><span class="sub">proposed by self-healing 21 min ago &middot; one unit, one section</span></td><td class="small">clears when accepted or declined; expires in 39 min</td><td class="act"><a class="btn sm" href="#">Review proposal</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+
+  <details class="sec" id="running">
+    <summary><h2>Running now</h2><span class="line">r2 verifying (38 s of 90 s) &middot; capture 604 of 912</span><span class="st run">2</span></summary>
+  </details>
+
+  <details class="sec" id="warnings">
+    <summary><h2>Warnings</h2><span class="line">r1 certificate in 12 days &middot; s1 CPU 82% &middot; 3 not captured in 26 h &middot; and 2 more</span><span class="st warn">5</span></summary>
+  </details>
+
+  <details class="sec" id="fleet" open>
+    <summary><h2>The fleet</h2><span class="line">912 devices, as last measured</span><span class="st ok">898 healthy</span></summary>
+    <div class="body">
+      <table class="t">
+        <thead><tr><th>Outcome</th><th class="num">Devices</th><th>Example</th><th class="act"></th></tr></thead>
+        <tbody>
+          <tr><td><span class="st ok">Healthy</span></td><td class="num">898</td><td class="muted">reachable, runs its intent</td><td class="act"><a href="#">List</a></td></tr>
+          <tr><td><span class="st warn">Drifted from intent</span></td><td class="num">9</td><td>s4, r6, and 7 more</td><td class="act"><a href="#">List</a></td></tr>
+          <tr><td><span class="st crit">Unreachable</span></td><td class="num">3</td><td>r5, and 2 more</td><td class="act"><a href="#">List</a></td></tr>
+          <tr><td><span class="st unk">Not read yet</span></td><td class="num">2</td><td class="muted">onboarded in the last hour</td><td class="act"><a href="#">List</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+
+  <details class="sec" id="checked">
+    <summary><h2>What was checked</h2><span class="line">Loki read 9 min ago (promise 2 min) &middot; Grafana alerts 6 min ago</span><span class="st warn">2 stale</span></summary>
+  </details>
+</main>
+
+<aside class="outline" aria-label="On this page">
+  <h4>On this page</h4>
+  <ol>
+    <li><a class="on" href="#critical">Critical<span class="st crit">3 open</span></a></li>
+    <li><a href="#waiting">Waiting on a person<span class="st wait">2</span></a></li>
+    <li><a href="#running">Running now<span class="st run">2</span></a></li>
+    <li><a href="#warnings">Warnings<span class="st warn">5</span></a></li>
+    <li><a href="#fleet">The fleet<span class="st ok">898 of 912</span></a></li>
+    <li><a href="#checked">What was checked<span class="st warn">2 stale</span></a></li>
+  </ol>
+  <p class="aside">A row leaves this page when its cause clears, by acknowledgement, or when its time passes; each says which.</p>
+</aside>
+</div>
+</div>
+</body>
+</html>

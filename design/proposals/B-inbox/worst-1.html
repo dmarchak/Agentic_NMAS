@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings · Network · Mercury (B, Inbox) · worst card page 1, redrawn</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../_shared/tokens.css">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* Where a value comes from: one quiet word per row, a menu on click (inherit, own, not applicable). */
+  .origin { font-size: 12px; color: var(--ink-3); border-bottom: 1px dotted var(--ink-3); white-space: nowrap; }
+  .origin.own { color: var(--ok); border-bottom-color: var(--ok); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .chips .tag { font-family: var(--mono); }
+  .mini { border-collapse: collapse; font-size: 12.5px; }
+  .mini td { padding: 1px 8px; border-bottom: 1px solid var(--line-2); }
+  .mini td:last-child { text-align: right; font-family: var(--mono); }
+  .setting.big { grid-template-columns: minmax(0, 1fr) 300px; padding: 14px 16px; }
+  .setting .ctl.col { flex-direction: column; align-items: flex-end; gap: 4px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+<nav class="side" aria-label="Views">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--brand-hi)" stroke-width="1.6"><circle cx="12" cy="12" r="5" fill="var(--brand)" stroke="none"/><ellipse cx="12" cy="12" rx="10.5" ry="4" transform="rotate(-20 12 12)"/></svg>
+    <b>Mercury</b>
+  </div>
+  <div class="netpick"><span><small>Network</small>Lab</span><span>▾</span></div>
+  <a class="view" href="home.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 9h3l1 2h4l1-2h3M2 9l2-6h8l2 6v4H2z"/></svg>Inbox<span class="n crit">10</span></a>
+  <a class="view" href="device.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="4" rx="1"/><rect x="2" y="9" width="12" height="4" rx="1"/></svg>Devices<span class="n">912</span></a>
+  <a class="view" href="change.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5h10l-3-3M13 11H3l3 3"/></svg>Changes<span class="n">2</span></a>
+  <a class="view" href="#"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>History</a>
+  <a class="view on" href="settings.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="5" cy="4" r="1.5" fill="var(--side-on)"/><circle cx="11" cy="8" r="1.5" fill="var(--side-on)"/><circle cx="7" cy="12" r="1.5" fill="var(--side-on)"/></svg>Settings</a>
+  <div class="side-rule"></div>
+  <a class="view" href="assistant.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>Ask or go to<span class="key">Ctrl K</span></a>
+  <div class="side-foot">
+    <div>Go to a view: <span class="kbd">g</span> then <span class="kbd">i</span> <span class="kbd">d</span> <span class="kbd">c</span> <span class="kbd">h</span> <span class="kbd">s</span></div>
+    <div style="margin-top:6px">All keys: <span class="kbd">?</span></div>
+  </div>
+</nav>
+
+<div class="main">
+  <header class="top">
+    <span class="crumbs"><b>Settings</b> / Network</span>
+    <span class="palette-trigger"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>Search, go to a device, or ask<span class="kbd">Ctrl K</span></span>
+    <span class="chip ai">AI $0.04 today · 1 background on</span>
+    <span class="chip"><span class="dot ok"></span>Live</span>
+    <span class="avatar" title="alex@example.com">AL</span>
+  </header>
+
+  <div class="scroll">
+  <div class="page">
+
+    <div class="head" style="padding-bottom:18px">
+      <h1>Settings <span class="sub">for network Lab</span></h1>
+      <div class="facts">Lab inherits from Default: 8 of these 18 settings take Default's value, 9 are Lab's own, 1 is not applicable · <a href="#">Make Lab standalone…</a></div>
+      <div class="row" style="margin-top:14px; gap:14px">
+        <span class="search" style="min-width:380px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>Search every setting<span class="spacer"></span><span class="kbd">/</span></span>
+        <span class="seg" aria-label="Which settings"><span class="on">Lab</span><span>Default for every network</span></span>
+        <span class="spacer"></span>
+        <span class="keys"><span><span class="kbd">j</span><span class="kbd">k</span> move</span><span><span class="kbd">Enter</span> edit</span><span><span class="kbd">o</span> where it comes from</span></span>
+      </div>
+    </div>
+
+    <div class="set-layout">
+      <nav class="secnav" aria-label="Sections">
+        <a href="#">Me</a>
+        <a class="on" href="#">Network <span class="none">18</span></a>
+        <a href="#">Automation</a>
+        <a href="#">AI</a>
+        <a href="#">System</a>
+        <div class="note" style="padding:12px 10px 4px">In Network</div>
+        <a href="#inv" style="font-size:13px; padding:4px 10px">Inventory</a>
+        <a href="#dep" style="font-size:13px; padding:4px 10px">Deploys and verify</a>
+        <a href="#rd" style="font-size:13px; padding:4px 10px">Show commands</a>
+        <a href="#kept" style="font-size:13px; padding:4px 10px">What is kept</a>
+        <a href="#inc" style="font-size:13px; padding:4px 10px">Incidents and AI</a>
+        <a href="#code" style="font-size:13px; padding:4px 10px">Code and removal</a>
+      </nav>
+
+      <section>
+        <div class="setgroup" id="inv">
+          <h2>Inventory <small>where Lab's devices come from</small></h2>
+          <div class="setting big">
+            <div><div class="lbl">Inventory source</div>
+              <div class="desc">Lab's devices come from NetBox, filtered by site "Lab": 912 devices today. Changing it previews which devices join or leave first.</div>
+              <div class="prov">Lab's own · set 2 Oct by alex@example.com</div></div>
+            <div class="ctl col"><span class="seg"><span>Its own list</span><span class="on">NetBox</span></span><a href="#" style="font-size:12.5px">Change the filter…</a></div>
+          </div>
+          <div class="setting">
+            <div><div class="lbl">NetBox VRFs left out</div>
+              <div class="desc">Addresses in these VRFs are never taken as a device's management address.</div></div>
+            <div class="ctl"><span class="chips"><span class="tag">mgmt-oob</span><span class="tag">clab-mgmt</span><span class="tag">+ add</span></span><span class="origin">Default</span></div>
+          </div>
+          <div class="setting">
+            <div><div class="lbl">Read endpoints every</div>
+              <div class="desc">How often Mercury reads where each host is attached (MAC and ARP tables).</div></div>
+            <div class="ctl"><span class="field">60</span><span class="muted">min</span><span class="origin">Default</span></div>
+          </div>
+          <div class="setting">
+            <div><div class="lbl">An endpoint's location is stale after</div>
+              <div class="desc">A host not seen for this long is shown as last seen, not as where it is.</div></div>
+            <div class="ctl"><span class="field">24</span><span class="muted">hours</span><span class="origin">Default</span></div>
+          </div>
+        </div>
+
+        <div class="setgroup" id="dep">
+          <h2>Deploys and verify <small>how a change reaches Lab's devices</small></h2>
+          <div class="setting">
+            <div><div class="lbl">Devices deployed at once</div>
+              <div class="desc">A deploy to many devices works on this many together.</div></div>
+            <div class="ctl"><span class="field">4</span><span class="origin own">Lab's own</span></div>
+          </div>
+          <div class="setting">
+            <div><div class="lbl">Stop a batch after</div>
+              <div class="desc">A batch stops after this many devices fail verify; the rest are left untouched.</div></div>
+            <div class="ctl"><span class="field">2</span><span class="muted">failures</span><span class="origin">Default</span></div>
+          </div>
+          <div class="setting">
+            <div><div class="lbl">Verify waits for things to settle</div>
+              <div class="desc">After a change touching a protocol, verify waits this long before it reads.</div></div>
+            <div class="ctl"><table class="mini"><tr><td>BGP</td><td>90 s</td></tr><tr><td>OSPF</td><td>40 s</td></tr><tr><td>Spanning tree</td><td>30 s</td></tr></table><span class="origin own">Lab's own</span></div>
+          </div>
+          <div class="setting">
+            <div><div class="lbl">Configuration read times out after</div>
+              <div class="desc">A device that has not sent its whole configuration by then is read as unreadable, never as empty.</div></div>
+            <div class="ctl"><span class="field">60</span><span class="muted">s</span><span class="origin">Default</span></div>
+          </div>
+        </div>
+
+        <div class="setgroup" id="rd">
+          <h2>Show commands <small>reads people and the AI run</small></h2>
+          <div class="setting">
+            <div><div class="lbl">Devices read at once</div><div class="desc">A read across many devices asks this many together.</div></div>
+            <div class="ctl"><span class="field">8</span><span class="origin">Default</span></div>
+          </div>
+          <div class="setting">
+            <div><div class="lbl">Largest answer kept</div><div class="desc">A longer answer is cut here and says it was cut.</div></div>
+            <div class="ctl"><span class="field">256</span><span class="muted">KiB</span><span class="origin">Default</span></div>
+          </div>
+          <div class="setting">
+            <div><div class="lbl">Answers kept for</div><div class="desc">Older answers are removed from History.</div></div>
+            <div class="ctl"><span class="field">30</span><span class="muted">days</span><span class="origin own">Lab's own</span></div>
+          </div>
+        </div>
+
+        <div class="setgroup" id="kept">
+          <h2>What is kept</h2>
+          <div class="setting">
+            <div><div class="lbl">Golden tags kept per device</div><div class="desc">The oldest tag beyond this is removed; the golden's history in git stays.</div></div>
+            <div class="ctl"><span class="field">50</span><span class="origin own">Lab's own</span></div>
+          </div>
+          <div class="setting">
+            <div><div class="lbl">Alert history kept for</div><div class="desc">Each alert's firing and resolving times, for the Monitoring page's history.</div></div>
+            <div class="ctl"><span class="field">90</span><span class="muted">days</span><span class="origin">Default</span></div>
+          </div>
+        </div>
+
+        <div class="setgroup" id="inc">
+          <h2>Incidents and AI</h2>
+          <div class="setting">
+            <div><div class="lbl">Self-healing's Auto lasts</div><div class="desc">Turning Auto on from the top bar turns it on for this long, then back to Dry run.</div></div>
+            <div class="ctl"><span class="field">4</span><span class="muted">hours</span><span class="origin own">Lab's own</span></div>
+          </div>
+          <div class="setting">
+            <div><div class="lbl">Escalate an unanswered SDN incident after</div><div class="desc">An SDN incident nobody has answered becomes critical in the Inbox.</div></div>
+            <div class="ctl"><span class="muted" style="font-size:12.5px">Not applicable: Lab has no SDN controller</span><span class="origin">n/a</span></div>
+          </div>
+          <div class="setting">
+            <div><div class="lbl">AI may read the topology</div><div class="desc">Send Lab's links and neighbours to the AI with a question. Masked; never credentials.</div></div>
+            <div class="ctl"><span class="swlbl">On</span><span class="switch on"></span><span class="origin own">Lab's own</span></div>
+          </div>
+          <div class="setting">
+            <div><div class="lbl">AI may read device state</div><div class="desc">Send interface, routing and log reads to the AI. Turning it on asks for a reason, recorded with who and when.</div></div>
+            <div class="ctl"><span class="swlbl">Off</span><span class="switch"></span><span class="origin own">Lab's own</span></div>
+          </div>
+        </div>
+
+        <div class="setgroup" id="code">
+          <h2>Code and removal</h2>
+          <div class="setting">
+            <div><div class="lbl">Code repository</div><div class="desc">Where Lab's SDN apps are fetched from, its branch, and whether a person reviews each fetch. Last fetch 3 h ago.</div></div>
+            <div class="ctl" style="flex-direction:column; align-items:flex-end; gap:2px"><span class="mono" style="font-size:12px">git.example.com/lab/apps · main</span><span class="muted" style="font-size:12px">review: on · <a href="#">Edit…</a></span></div>
+          </div>
+          <div class="setting">
+            <div><div class="lbl" style="color:var(--danger)">Delete Lab</div><div class="desc">Removes Lab from every page. Its data is kept on the host, never erased; the preview names what stops.</div></div>
+            <div class="ctl"><span class="btn danger small">Delete Lab…</span></div>
+          </div>
+        </div>
+        <div class="note">A value saves when you leave its field or press Enter; the row then says "Saved just now by you". Each row's origin word opens its menu: take Default's, Lab's own, or not applicable with a reason. Who changed it and when is on hover.</div>
+      </section>
+    </div>
+
+  </div>
+  </div>
+</div>
+</div>
+</body>
+</html>

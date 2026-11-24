@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings · Automation · Mercury (B, Inbox)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../_shared/tokens.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+<nav class="side" aria-label="Views">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--brand-hi)" stroke-width="1.6"><circle cx="12" cy="12" r="5" fill="var(--brand)" stroke="none"/><ellipse cx="12" cy="12" rx="10.5" ry="4" transform="rotate(-20 12 12)"/></svg>
+    <b>Mercury</b>
+  </div>
+  <div class="netpick"><span><small>Network</small>Lab</span><span>▾</span></div>
+  <a class="view" href="home.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 9h3l1 2h4l1-2h3M2 9l2-6h8l2 6v4H2z"/></svg>Inbox<span class="n crit">10</span></a>
+  <a class="view" href="device.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="4" rx="1"/><rect x="2" y="9" width="12" height="4" rx="1"/></svg>Devices<span class="n">912</span></a>
+  <a class="view" href="change.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5h10l-3-3M13 11H3l3 3"/></svg>Changes<span class="n">2</span></a>
+  <a class="view" href="#"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>History</a>
+  <a class="view on" href="settings.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="5" cy="4" r="1.5" fill="var(--side-on)"/><circle cx="11" cy="8" r="1.5" fill="var(--side-on)"/><circle cx="7" cy="12" r="1.5" fill="var(--side-on)"/></svg>Settings</a>
+  <div class="side-rule"></div>
+  <a class="view" href="assistant.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>Ask or go to<span class="key">Ctrl K</span></a>
+  <div class="side-foot">
+    <div>Go to a view: <span class="kbd">g</span> then <span class="kbd">i</span> <span class="kbd">d</span> <span class="kbd">c</span> <span class="kbd">h</span> <span class="kbd">s</span></div>
+    <div style="margin-top:6px">All keys: <span class="kbd">?</span></div>
+  </div>
+</nav>
+
+<div class="main">
+  <header class="top">
+    <span class="crumbs"><b>Settings</b> / Automation</span>
+    <span class="palette-trigger"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>Search, go to a device, or ask<span class="kbd">Ctrl K</span></span>
+    <span class="chip ai">AI $0.04 today · 1 background on</span>
+    <span class="chip"><span class="dot ok"></span>Live</span>
+    <span class="avatar" title="alex@example.com">AL</span>
+  </header>
+
+  <div class="scroll">
+  <div class="page">
+
+    <div class="head" style="padding-bottom:18px">
+      <h1>Settings <span class="sub">for network Lab · a setting left unset inherits Default</span></h1>
+      <div class="row" style="margin-top:14px; gap:14px">
+        <span class="search filled" style="min-width:380px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg><b style="font-weight:500">heal</b><span class="spacer"></span><span class="muted" style="font-size:12px">6 matches in 3 sections</span><span class="kbd">Esc</span></span>
+        <span class="seg" aria-label="Which settings"><span class="on">Lab</span><span>Default for every network</span></span>
+        <span class="spacer"></span>
+        <span class="keys"><span><span class="kbd">/</span> search</span><span><span class="kbd">n</span> next match</span><span><span class="kbd">Space</span> toggle</span></span>
+      </div>
+    </div>
+
+    <div class="set-layout">
+      <nav class="secnav" aria-label="Sections">
+        <a class="nohit" href="#">Me <span class="none">0</span></a>
+        <a href="#">Network <span class="hits">1</span></a>
+        <a class="on" href="#">Automation <span class="hits">4</span></a>
+        <a href="#">AI <span class="hits">1</span></a>
+        <a class="nohit" href="#">System <span class="none">0</span></a>
+        <div class="note" style="padding:12px 10px 0">A match is marked. In a group with a match, the other settings stay in view, faded; a group with none folds to one line that says so. Nothing is hidden without saying how many.</div>
+      </nav>
+
+      <section>
+        <div class="setgroup">
+          <h2><span>Self-<mark>heal</mark>ing</span> <small>each network's own, never inherited</small></h2>
+
+          <div class="setting hit">
+            <div><div class="lbl">Self-<mark>heal</mark>ing mode</div>
+              <div class="desc">Off: nothing is watched. Dry run: Mercury finds known faults and proposes each fix; a person approves it. Auto: a fix of an approved class runs by itself, until the time set.</div>
+              <div class="prov">Lab's own · Dry run since 2 Nov, by alex@example.com</div></div>
+            <div class="ctl"><span class="seg"><span>Off</span><span class="on">Dry run</span><span>Auto…</span></span></div>
+          </div>
+
+          <div class="setting hit">
+            <div><div class="lbl"><mark>Heal</mark> proposals expire after</div>
+              <div class="desc">A proposed fix nobody approves in this time is withdrawn, and its Inbox row says it was.</div>
+              <div class="prov" style="color:var(--ok)">Saved just now by you · was 30 min</div></div>
+            <div class="ctl"><span class="field">60</span><span class="muted">minutes</span></div>
+          </div>
+
+          <div class="setting hit">
+            <div><div class="lbl">Run an approved <mark>heal</mark> batch on every device at once</div>
+              <div class="desc">Each device is still held, checked, verified and rolled back on its own. Off: one device at a time.</div>
+              <div class="prov">Lab's own</div></div>
+            <div class="ctl"><span class="swlbl">On</span><span class="switch on" role="switch" aria-checked="true"></span></div>
+          </div>
+
+          <div class="setting hit">
+            <div><div class="lbl">Who is told when a <mark>heal</mark> runs</div>
+              <div class="desc">Who hears of a proposal, an applied fix and a fix that failed.</div>
+              <div class="prov">Lab's own · set 2 Nov by alex@example.com</div></div>
+            <div class="ctl"><span class="select" style="white-space:nowrap">On-call team · failures ▾</span></div>
+          </div>
+
+          <div class="setting miss">
+            <div><div class="lbl">Classes approved to run by themselves</div>
+              <div class="desc">Used only in Auto. Each class was approved by a person with a reason.</div></div>
+            <div class="ctl"><span class="muted" style="font-size:12.5px">2 classes · <a href="#">Review…</a></span></div>
+          </div>
+        </div>
+
+        <div class="setgroup">
+          <h2>Capture and drift <small>no match · 3 settings</small><span class="spacer"></span><a href="#" style="font-weight:400; font-size:12.5px">Show</a></h2>
+        </div>
+        <div class="setgroup">
+          <h2>Planned restarts <small>no match · 2 settings</small><span class="spacer"></span><a href="#" style="font-weight:400; font-size:12.5px">Show</a></h2>
+        </div>
+        <div class="setgroup">
+          <h2>Rollback <small>no match · 1 setting, always on</small><span class="spacer"></span><a href="#" style="font-weight:400; font-size:12.5px">Show</a></h2>
+        </div>
+
+        <div class="note">Also matching: in <a href="#">Network</a>, "Self-<mark>heal</mark>ing's Auto lasts" (4 hours); in <a href="#">AI</a>, "Start AI troubleshooting when a <mark>heal</mark> can't fix" (off; turning it on shows its estimated cost first). Deploy tuning (devices at once, stop after failures, settle windows) is each network's, under Network.</div>
+      </section>
+    </div>
+
+  </div>
+  </div>
+</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>r2 · Devices · Mercury</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../_shared/tokens.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="home.html"><svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="6" fill="var(--brand)"/><ellipse cx="11" cy="11" rx="10" ry="4" fill="none" stroke="var(--brand-hi)" stroke-width="1.5" transform="rotate(-20 11 11)"/></svg>Mercury</a>
+  <span class="net">Network <b>Lab</b> &#9662;</span>
+  <div class="go"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l4 4" stroke="currentColor" stroke-width="1.6"/></svg>Go to a device, page or setting<kbd>/</kbd></div>
+  <div class="top-right">
+    <a class="top-need" href="home.html">3 critical</a>
+    <span class="ai-chip"><span class="ai-tag">AI</span> $0.21 today &middot; 1 background on</span>
+    <a href="assistant.html">Ask</a>
+    <span class="live">Live</span>
+    <span class="me" title="alex@example.com">AL</span>
+  </div>
+</header>
+<div class="frame">
+<nav class="nav" aria-label="Main">
+  <h4>Now</h4>
+  <a href="home.html">Needs attention <span class="n">10</span></a>
+  <a href="worst-2.html">Incidents</a>
+  <a href="#">Fixes</a>
+  <a href="#">Running now</a>
+  <h4>Fleet</h4>
+  <a class="on" href="#">Devices</a>
+  <a href="#">History</a>
+  <a href="#">Monitoring</a>
+  <a href="#">Topology</a>
+  <a href="#">Logs</a>
+  <a href="#">Show commands</a>
+  <a href="#">SDN</a>
+  <h4>Source of truth</h4>
+  <a href="#">Intent</a>
+  <a href="#">Templates</a>
+  <a href="#">NetBox</a>
+  <a href="#">DHCP</a>
+  <a href="#">Credentials</a>
+  <h4>Mercury</h4>
+  <a href="settings.html">Settings</a>
+  <a href="#">Help</a>
+</nav>
+
+<div class="page">
+<main class="doc">
+  <div class="crumbs"><a href="#">Devices</a><span>/</span>r2</div>
+  <div class="head">
+    <h1>r2<span class="kind">IOS-XE router &middot; C8000V</span></h1>
+    <div class="acts">
+      <a class="btn sm primary" href="#">Change intent</a>
+      <a class="btn sm" href="#">Capture now</a>
+      <a class="btn sm ai" href="assistant.html">Ask about r2</a>
+      <a class="btn sm" href="#">More &#9662;</a>
+    </div>
+  </div>
+  <p class="summary"><strong>r2 is reachable and runs its intent;</strong> one change waits for approval.</p>
+  <p class="asof">reachability checked 20 s ago &middot; running config read 2 h ago &middot; <a href="#">How is this measured?</a></p>
+
+  <nav class="tabs" aria-label="r2">
+    <a class="on" href="device.html">Overview</a><a href="#">Intent</a><a href="#">History</a><a href="#">Monitoring</a><a href="#">Logs</a><a href="#">NetBox</a><a href="#">Neighbours</a><a href="assistant.html">Ask the device</a>
+  </nav>
+
+  <dl class="facts" style="border-top:0">
+    <dt>Reachable</dt><dd><span class="st ok">Yes</span> <span class="muted">4 ms &middot; 20 s ago</span></dd>
+    <dt>Address</dt><dd><span class="mono">192.0.2.12</span> <span class="muted">&middot;</span> <span class="mono">2001:db8::12</span></dd>
+    <dt>Intent</dt><dd><span class="mono">a46031e</span> <span class="muted">sam@example.com, 2 days ago</span></dd>
+    <dt>Runs</dt><dd>IOS-XE 17.9.4 <span class="muted">&middot; cisco_iosxe</span></dd>
+    <dt>Golden</dt><dd><span class="mono">d574748</span> <span class="muted">captured 2 h ago</span></dd>
+    <dt>Signs in as</dt><dd>mercury-ops <span class="muted">&middot; profile Routers</span></dd>
+    <dt>Site, role</dt><dd>Lab &middot; core router</dd>
+    <dt>Held by</dt><dd class="muted">nothing &middot; free for an operation</dd>
+  </dl>
+
+  <details class="sec" id="intent" open>
+    <summary><h2>Intent against what it runs</h2><span class="st ok">matches</span></summary>
+    <div class="body">
+      <p>Every line of intent <span class="mono">a46031e</span> is in r2's running config, read 2 h ago from golden <span class="mono">d574748</span>. Nothing runs on r2 that intent does not hold, apart from 4 lines intent leaves to the device (<a href="#">which</a>).</p>
+      <table class="t">
+        <tbody>
+          <tr><td><span class="st wait">Waits for approval</span></td><td><span class="what">Add BGP neighbour 2001:db8:0:12::2</span><span class="sub">asked by sam@example.com 12 min ago &middot; 6 lines in router bgp 65002 &middot; needs a second person</span></td><td class="act"><a class="btn sm" href="change.html">Review change</a></td></tr>
+        </tbody>
+      </table>
+      <details class="ev"><summary>Show the comparison</summary>
+        <div class="evb">Compared section by section: 14 sections, 14 match. Intent rendered from template <span class="mono">core-router.j2</span> at <span class="mono">a46031e</span>; running config from golden <span class="mono">d574748</span> (2 h ago, by the nightly capture).</div>
+      </details>
+    </div>
+  </details>
+
+  <details class="sec" id="checks" open>
+    <summary><h2>Checks</h2><span class="line">each the stored result of its own job</span><span class="st warn">5 pass, 1 stale</span></summary>
+    <div class="body">
+      <table class="t">
+        <thead><tr><th>Check</th><th>Result</th><th>Read</th></tr></thead>
+        <tbody>
+          <tr><td>Reachable</td><td><span class="st ok">answers ping and SSH</span></td><td class="muted nowrap">20 s ago</td></tr>
+          <tr><td>Runs its intent</td><td><span class="st ok">matches a46031e</span></td><td class="muted nowrap">2 h ago</td></tr>
+          <tr><td>Reboot-safe</td><td><span class="st ok">startup equals running</span></td><td class="muted nowrap">47 min ago</td></tr>
+          <tr><td>Credential</td><td><span class="st ok">rotated 31 days ago; policy 90 days</span></td><td class="muted nowrap">1 h ago</td></tr>
+          <tr><td>Alerts</td><td><span class="st ok">none firing</span></td><td class="muted nowrap">1 min ago</td></tr>
+          <tr><td>Logs</td><td><span class="st warn">stale: Loki last answered 9 min ago (promise 2 min)</span></td><td class="muted nowrap">9 min ago</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+
+  <details class="sec" id="changes" open>
+    <summary><h2>Recent changes</h2><span class="line">the last 3 of 41</span><span class="st plain">last 2 days ago</span></summary>
+    <div class="body">
+      <table class="t">
+        <thead><tr><th>When</th><th>What</th><th>Who</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td class="nowrap">2 days ago</td><td>Description on Gi2 to "to r3"</td><td>sam@example.com</td><td><span class="st ok">verified</span></td></tr>
+          <tr><td class="nowrap">5 days ago</td><td>NTP server 192.0.2.1 and 2001:db8::1</td><td>alex@example.com</td><td><span class="st ok">verified</span></td></tr>
+          <tr><td class="nowrap">9 days ago</td><td>ACL EDGE-IN line 30</td><td>alex@example.com</td><td><span class="st warn">rolled back: BGP to r1 dropped</span></td></tr>
+        </tbody>
+      </table>
+      <p class="small" style="margin-top:8px"><a href="#">All 41 changes in History</a></p>
+    </div>
+  </details>
+
+  <details class="sec" id="neighbours">
+    <summary><h2>Neighbours</h2><span class="line">r1 BGP Established, OSPF FULL &middot; r3 OSPF FULL &middot; s1 CDP</span><span class="st ok">3 up</span></summary>
+  </details>
+
+  <details class="sec" id="monitoring">
+    <summary><h2>Monitoring</h2><span class="line">CPU 6% &middot; memory 41% &middot; 0 interface errors in 24 h</span><span class="st plain">30 s ago</span></summary>
+  </details>
+</main>
+
+<aside class="outline" aria-label="On this page">
+  <h4>Overview of r2</h4>
+  <ol>
+    <li><a class="on" href="#intent">Intent against what it runs<span class="st ok">matches</span></a></li>
+    <li><a href="#intent">Pending change<span class="st wait">waits for approval</span></a></li>
+    <li><a href="#checks">Checks<span class="st warn">logs stale</span></a></li>
+    <li><a href="#changes">Recent changes<span class="st plain">2 days ago</span></a></li>
+    <li><a href="#neighbours">Neighbours<span class="st ok">3 up</span></a></li>
+    <li><a href="#monitoring">Monitoring<span class="st plain">30 s ago</span></a></li>
+  </ol>
+  <p class="aside">A golden is a record of what r2 runs; intent is what it should run.</p>
+</aside>
+</div>
+</div>
+</body>
+</html>

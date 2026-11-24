@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Incident #57 · Ask · Mercury (B, Inbox)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../_shared/tokens.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+<nav class="side" aria-label="Views">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--brand-hi)" stroke-width="1.6"><circle cx="12" cy="12" r="5" fill="var(--brand)" stroke="none"/><ellipse cx="12" cy="12" rx="10.5" ry="4" transform="rotate(-20 12 12)"/></svg>
+    <b>Mercury</b>
+  </div>
+  <div class="netpick"><span><small>Network</small>Lab</span><span>▾</span></div>
+  <a class="view on" href="home.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 9h3l1 2h4l1-2h3M2 9l2-6h8l2 6v4H2z"/></svg>Inbox<span class="n crit">10</span></a>
+  <a class="view" href="device.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="4" rx="1"/><rect x="2" y="9" width="12" height="4" rx="1"/></svg>Devices<span class="n">912</span></a>
+  <a class="view" href="change.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5h10l-3-3M13 11H3l3 3"/></svg>Changes<span class="n">2</span></a>
+  <a class="view" href="#"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>History</a>
+  <a class="view" href="settings.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="5" cy="4" r="1.5" fill="var(--side)"/><circle cx="11" cy="8" r="1.5" fill="var(--side)"/><circle cx="7" cy="12" r="1.5" fill="var(--side)"/></svg>Settings</a>
+  <div class="side-rule"></div>
+  <a class="view" href="assistant.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>Ask or go to<span class="key">Ctrl K</span></a>
+  <div class="side-foot">
+    <div>Go to a view: <span class="kbd">g</span> then <span class="kbd">i</span> <span class="kbd">d</span> <span class="kbd">c</span> <span class="kbd">h</span> <span class="kbd">s</span></div>
+    <div style="margin-top:6px">All keys: <span class="kbd">?</span></div>
+  </div>
+</nav>
+
+<div class="main">
+  <header class="top">
+    <span class="crumbs"><a href="home.html">Inbox</a> / <b>Incident #57</b></span>
+    <span class="palette-trigger"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>Search, go to a device, or ask<span class="kbd">Ctrl K</span></span>
+    <span class="chip ai">AI $0.044 today · 1 background on</span>
+    <span class="chip"><span class="dot ok"></span>Live</span>
+    <span class="avatar" title="alex@example.com">AL</span>
+  </header>
+
+  <div class="scroll">
+  <div class="page">
+    <!-- The incident page underneath: the same header, next line and timeline as every object. -->
+    <div class="head" style="padding-bottom:16px">
+      <h1>r3 OSPF neighbour to r4 down <span class="sub">incident #57 · critical · open 14 min</span></h1>
+      <div class="facts">r3 Gi0/0/2 ↔ r4 Gi0/0/1 · area 0 · 192.0.2.34/31 · detected by Routing adjacencies, 13:48</div>
+      <div class="nextline crit">
+        <span class="dot crit"></span>
+        <div><div class="what"><b>r3 has no OSPF adjacency to r4.</b> Traffic to s4's site takes the path through r1.</div>
+          <div class="next">Next: find why (Troubleshoot), then propose a fix. Clears when the adjacency is Full again.</div></div>
+        <div class="acts"><span class="btn primary">Troubleshoot <span class="kbd">e</span></span><span class="btn">Acknowledge</span></div>
+      </div>
+    </div>
+    <div class="card-free">
+      <ol class="tl">
+        <li><span class="when">13:48</span><span class="mk"><span class="dot crit"></span></span><div class="what">OSPF neighbour 192.0.2.35 (r4) on Gi0/0/2 went from FULL to DOWN: Dead timer expired</div></li>
+        <li><span class="when">13:47</span><span class="mk"><span class="dot"></span></span><div class="what">r4: interface Gi0/0/1 MTU changed 1500 to 9000 <span class="by">· syslog</span></div></li>
+        <li><span class="when">13:46</span><span class="mk"><span class="dot"></span></span><div class="what">Change #139 applied to r4 (jumbo frames on uplinks)</div></li>
+      </ol>
+    </div>
+  </div>
+  </div>
+</div>
+</div>
+
+<!-- The command palette, answering inline. -->
+<div class="scrim"></div>
+<section class="palette" role="dialog" aria-label="Ask Mercury">
+  <div class="pal-in">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--ai)" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+    <span class="q">Why is r3's OSPF neighbour to r4 down?</span>
+    <span class="ai-mark">AI</span>
+    <span class="kbd">Esc</span>
+  </div>
+  <div class="pal-ctx">
+    <span>Context sent:</span>
+    <span class="tag">Incident #57</span><span class="tag">r3</span><span class="tag">r4</span><span class="tag">last 30 min of logs, masked</span>
+    <span class="spacer"></span><a href="#">Change context</a>
+  </div>
+  <div class="pal-body">
+    <div class="answer">
+      <p><b>Most likely an MTU mismatch.</b> r4's Gi0/0/1 changed its MTU from 1500 to 9000 at 13:47, a minute after change #139, while r3's Gi0/0/2 is still 1500. OSPF compares interface MTU in its database description packets, so the neighbours stop at EXSTART and never reach FULL<sup><a href="#s1">1</a></sup>.</p>
+      <p>r3's read from 41 s ago agrees: it lists r4 (192.0.2.35) in <span class="mono">EXSTART/DR</span> on Gi0/0/2, not FULL<sup><a href="#s2">2</a></sup>. The fix is to make the two MTUs match: either raise r3's Gi0/0/2 to 9000 or<span class="caret"></span></p>
+    </div>
+    <div class="sources">
+      <div class="src" id="s1"><span class="no">1</span><div>Manual · How it works › Routing adjacencies › "Neighbours stuck in EXSTART"<div class="m">Mercury's manual, this release</div></div><span class="btn small">Open</span></div>
+      <div class="src" id="s2"><span class="no">2</span><div><span class="mono">show ip ospf neighbor</span> on r3<div class="m">read through Show commands as mercury-ro · 41 s ago · 4 lines</div></div><span class="btn small">Open</span></div>
+    </div>
+  </div>
+  <div class="pal-foot">
+    <span class="ai-mark">AI</span>
+    <span>claude-sonnet · $0.004 so far · writing…</span>
+    <span class="btn small ghost" aria-busy="true">Stop</span><span class="btn small ghost" title="Keeps this conversation open beside every page">Pin to the side</span>
+    <div class="acts">
+      <span class="btn small">Read r4 too</span>
+      <span class="btn small">Copy</span>
+      <span class="btn ai" title="Opens the fix flow: the preview, then a person confirms by hash">Propose a fix <span class="kbd">Ctrl ↵</span></span>
+    </div>
+  </div>
+  <div class="pal-list">
+    <div class="grp">Also</div>
+    <div class="it">Go to r3 <span class="kbd">↵</span></div>
+    <div class="it">Go to change #139 on r4</div>
+    <div class="it muted" style="font-size:12px">The assistant reads and explains; it never applies a change. Propose a fix opens the gated flow: preview, confirm by hash, apply, verify, record.</div>
+  </div>
+</section>
+
+</body>
+</html>

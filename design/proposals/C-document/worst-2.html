@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>r3's OSPF neighbour to r4 is down · Incidents · Mercury</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../_shared/tokens.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="home.html"><svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="6" fill="var(--brand)"/><ellipse cx="11" cy="11" rx="10" ry="4" fill="none" stroke="var(--brand-hi)" stroke-width="1.5" transform="rotate(-20 11 11)"/></svg>Mercury</a>
+  <span class="net">Network <b>Lab</b> &#9662;</span>
+  <div class="go"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l4 4" stroke="currentColor" stroke-width="1.6"/></svg>Go to a device, page or setting<kbd>/</kbd></div>
+  <div class="top-right">
+    <a class="top-need" href="home.html">3 critical</a>
+    <span class="ai-chip"><span class="ai-tag">AI</span> $0.21 today &middot; 1 background on</span>
+    <a href="assistant.html">Ask</a>
+    <span class="live">Live</span>
+    <span class="me" title="alex@example.com">AL</span>
+  </div>
+</header>
+<div class="frame">
+<nav class="nav" aria-label="Main">
+  <h4>Now</h4>
+  <a href="home.html">Needs attention <span class="n">10</span></a>
+  <a class="on" href="worst-2.html">Incidents</a>
+  <a href="#">Fixes</a>
+  <a href="#">Running now</a>
+  <h4>Fleet</h4>
+  <a href="#">Devices</a>
+  <a href="#">History</a>
+  <a href="#">Monitoring</a>
+  <a href="#">Topology</a>
+  <a href="#">Logs</a>
+  <a href="#">Show commands</a>
+  <a href="#">SDN</a>
+  <h4>Source of truth</h4>
+  <a href="#">Intent</a>
+  <a href="#">Templates</a>
+  <a href="#">NetBox</a>
+  <a href="#">DHCP</a>
+  <a href="#">Credentials</a>
+  <h4>Mercury</h4>
+  <a href="settings.html">Settings</a>
+  <a href="#">Help</a>
+</nav>
+
+<div class="page">
+<main class="doc">
+  <div class="crumbs"><a href="#">Incidents</a><span>/</span><a href="#">Open</a><span>/</span>r3's OSPF neighbour to r4 is down</div>
+  <div class="head">
+    <h1>r3's OSPF neighbour to r4 is down</h1>
+    <div class="acts">
+      <a class="btn sm primary" href="#">Review the fix&hellip;</a>
+      <a class="btn sm ai" href="assistant.html">Ask the assistant</a>
+      <a class="btn sm" href="#">More &#9662;</a>
+    </div>
+  </div>
+  <p class="summary"><strong>r3 lost its adjacency to r4 at 10:42;</strong> the likely cause is r4's hello interval, changed a minute earlier. A fix is proposed and waits for a person to review it.</p>
+  <p class="asof">Incident hi-0214 &middot; open 14 min &middot; updated 6 s ago</p>
+
+  <dl class="facts">
+    <dt>State</dt><dd><span class="st wait">Fix proposed, waits on a person</span></dd>
+    <dt>Severity</dt><dd><span class="st crit">Critical</span> <span class="muted">a core adjacency</span></dd>
+    <dt>Devices</dt><dd><a href="#">r3</a> Gi2 &harr; <a href="#">r4</a> Gi2</dd>
+    <dt>Detected</dt><dd>10:42:07 <span class="muted">from r3's syslog</span></dd>
+    <dt>Likely cause</dt><dd>r4 Gi2 hello 30 s, r3 Gi2 hello 10 s</dd>
+    <dt>Time to repair</dt><dd class="muted">not yet: running 14 min</dd>
+    <dt>Self-healing</dt><dd>not a heal kind; handed to a person</dd>
+    <dt>Seen before</dt><dd>once on r3, 2026-10-30</dd>
+  </dl>
+
+  <details class="sec" id="fix" open>
+    <summary><h2>The fix Mercury proposes</h2><span class="line">put r4 Gi2 back to its intent</span><span class="st wait">waits on a person</span></summary>
+    <div class="body">
+      <p>On r4, set Gi2's OSPF hello interval back to 10 s, as intent <span class="mono">a46031e</span> holds. One unit, one section; merge-only.</p>
+<pre class="prog">interface GigabitEthernet2
+ ip ospf hello-interval 10</pre>
+      <p class="small muted" style="margin-top:8px"><b>Review the fix</b>, at the top of the page, opens the preview; applying needs a confirm by hash. <a class="btn sm" href="#" style="margin-left:8px">Decline&hellip;</a></p>
+      <details class="ev"><summary>Add what you know first (optional)</summary><div class="evb">A note is kept with the incident and sent to the assistant if you ask it.</div></details>
+      <details class="ev"><summary>Holds and guards: r4 free, no window needed, outside the backup window</summary><div class="evb">r4 is held by nothing. No person changed r4 in the last 10 minutes apart from change 117 (sam@example.com, 10:41), the change this fix undoes.</div></details>
+    </div>
+  </details>
+
+  <details class="sec" id="why" open>
+    <summary><h2>Why Mercury thinks so</h2><span class="line">one cause chosen, two ruled out</span><span class="st plain">confidence not measured</span></summary>
+    <div class="body">
+      <table class="t">
+        <tbody>
+          <tr><td class="nowrap"><span class="st ok">Chosen</span></td><td><span class="what">Hello intervals differ on the link</span><span class="sub">r4 Gi2 sends hellos every 30 s since change 117 at 10:41; r3 expects 10 s and its dead timer (40 s) expired at 10:42:07. Confirm with <code>show ip ospf interface Gi2</code> on both.</span></td></tr>
+          <tr><td class="nowrap"><span class="st plain">Ruled out</span></td><td>The link went down <span class="sub">Gi2 up/up at both ends; 0 errors in 15 min</span></td></tr>
+          <tr><td class="nowrap"><span class="st plain">Ruled out</span></td><td>An access list blocks OSPF <span class="sub">no access list on Gi2 at either end</span></td></tr>
+        </tbody>
+      </table>
+      <p class="note small">Confidence, severity and risk scores are not shown: Mercury has no calibration for them yet, so it says so rather than print a number.</p>
+    </div>
+  </details>
+
+  <details class="sec" id="evidence">
+    <summary><h2>Evidence</h2><span class="line">syslog 10:42:07 &middot; r3 neighbour read &middot; change 117 &middot; and 1 more</span><span class="st plain">4 items</span></summary>
+  </details>
+  <details class="sec" id="timeline">
+    <summary><h2>Timeline</h2><span class="line">Detected 10:42 &rarr; Self-heal tried 10:42 &rarr; Diagnosed 10:45 &rarr; Fix proposed 10:45 &rarr; Approved &hellip;</span><span class="st plain">5 of 8</span></summary>
+  </details>
+  <details class="sec" id="done">
+    <summary><h2>What Mercury has done</h2><span class="line">checked self-healing; ran one AI diagnosis; changed nothing</span><span class="st plain">no change made</span></summary>
+  </details>
+  <details class="sec" id="ai">
+    <summary><h2>AI call</h2><span class="line">claude-sonnet &middot; 1 call &middot; 6.1 s &middot; $0.012</span><span class="st ai">AI</span></summary>
+  </details>
+  <details class="sec" id="seen">
+    <summary><h2>Seen before on r3</h2><span class="line">2026-10-30: the same adjacency, fixed by alex@example.com in 6 min</span><span class="st plain">1</span></summary>
+  </details>
+  <details class="sec" id="record">
+    <summary><h2>The record</h2><span class="line">incident hi-0214, decision kind, program hash</span></summary>
+  </details>
+</main>
+
+<aside class="outline" aria-label="On this page">
+  <h4>Incident hi-0214</h4>
+  <ol>
+    <li><a class="on" href="#fix">The fix<span class="st wait">waits on a person</span></a></li>
+    <li><a href="#why">Why Mercury thinks so<span class="st plain">2 ruled out</span></a></li>
+    <li><a href="#evidence">Evidence<span class="st plain">4 items</span></a></li>
+    <li><a href="#timeline">Timeline<span class="st plain">step 5 of 8</span></a></li>
+    <li><a href="#done">What Mercury has done<span class="st plain">no change made</span></a></li>
+    <li><a href="#ai">AI call<span class="st ai">$0.012</span></a></li>
+    <li><a href="#seen">Seen before<span class="st plain">1</span></a></li>
+    <li><a href="#record">The record</a></li>
+  </ol>
+</aside>
+</div>
+</div>
+</body>
+</html>

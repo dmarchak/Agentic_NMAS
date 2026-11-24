@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Incident #57 · Mercury (B, Inbox) · worst card page 2, redrawn</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../_shared/tokens.css">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* The incident's lifecycle as one line of steps: the same step marks as a change's log. */
+  .life { display: flex; align-items: center; gap: 0; margin-top: 14px; font-size: 12.5px; color: var(--ink-3); flex-wrap: wrap; row-gap: 6px; }
+  .life span { display: inline-flex; align-items: center; gap: 6px; padding-right: 6px; white-space: nowrap; }
+  .life span + span::before { content: ""; width: 12px; height: 1px; background: var(--line); margin-right: 6px; }
+  .life .done { color: var(--ink-2); }
+  .life .done i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); display: inline-block; }
+  .life .now { color: var(--accent-ink); font-weight: 600; }
+  .life .now i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); display: inline-block; }
+  .life .todo i { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--ink-3); display: inline-block; }
+  .life .skip { color: var(--ink-3); }
+  .life .skip i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted-soft); border: 1px solid var(--ink-3); display: inline-block; }
+  .hyp { border-left: 3px solid var(--line); padding: 4px 0 4px 10px; margin: 6px 0; }
+  .hyp.chosen { border-left-color: var(--ai); }
+  .hyp .l { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; color: var(--ink-3); }
+  .hyp.chosen .l { color: var(--ai); }
+</style>
+</head>
+<body>
+<div class="app">
+
+<nav class="side" aria-label="Views">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--brand-hi)" stroke-width="1.6"><circle cx="12" cy="12" r="5" fill="var(--brand)" stroke="none"/><ellipse cx="12" cy="12" rx="10.5" ry="4" transform="rotate(-20 12 12)"/></svg>
+    <b>Mercury</b>
+  </div>
+  <div class="netpick"><span><small>Network</small>Lab</span><span>▾</span></div>
+  <a class="view on" href="home.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 9h3l1 2h4l1-2h3M2 9l2-6h8l2 6v4H2z"/></svg>Inbox<span class="n crit">10</span></a>
+  <a class="view" href="device.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="4" rx="1"/><rect x="2" y="9" width="12" height="4" rx="1"/></svg>Devices<span class="n">912</span></a>
+  <a class="view" href="change.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5h10l-3-3M13 11H3l3 3"/></svg>Changes<span class="n">2</span></a>
+  <a class="view" href="#"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>History</a>
+  <a class="view" href="settings.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="5" cy="4" r="1.5" fill="var(--side)"/><circle cx="11" cy="8" r="1.5" fill="var(--side)"/><circle cx="7" cy="12" r="1.5" fill="var(--side)"/></svg>Settings</a>
+  <div class="side-rule"></div>
+  <a class="view" href="assistant.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>Ask or go to<span class="key">Ctrl K</span></a>
+  <div class="side-foot">
+    <div>Go to a view: <span class="kbd">g</span> then <span class="kbd">i</span> <span class="kbd">d</span> <span class="kbd">c</span> <span class="kbd">h</span> <span class="kbd">s</span></div>
+    <div style="margin-top:6px">All keys: <span class="kbd">?</span></div>
+  </div>
+</nav>
+
+<div class="main">
+  <header class="top">
+    <span class="crumbs"><a href="home.html">Inbox</a> / <b>Incident #57</b> <span class="muted">· 1 of 10 · <span class="kbd">j</span> <span class="kbd">k</span> next and previous</span></span>
+    <span class="palette-trigger"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>Search, go to a device, or ask<span class="kbd">Ctrl K</span></span>
+    <span class="chip ai">AI $0.05 today · 1 background on</span>
+    <span class="chip"><span class="dot ok"></span>Live</span>
+    <span class="avatar" title="alex@example.com">AL</span>
+  </header>
+
+  <div class="scroll">
+  <div class="page">
+
+    <div class="head" style="padding-bottom:18px">
+      <h1>r3 OSPF neighbour to r4 down <span class="sub">incident #57 · critical · open 22 min</span></h1>
+      <div class="facts">r3 Gi0/0/2 ↔ r4 Gi0/0/1 · area 0 · <span class="mono">192.0.2.34/31</span> · detected 13:48:07 from r3's syslog</div>
+
+      <div class="life" aria-label="Lifecycle">
+        <span class="done"><i></i>Detected 13:48</span>
+        <span class="skip"><i></i>Self-heal: no known fix</span>
+        <span class="done"><i></i>Diagnosed 13:52</span>
+        <span class="now"><i></i>Fix proposed 13:55 · waiting on you</span>
+        <span class="todo"><i></i>Approved</span>
+        <span class="todo"><i></i>Applying</span>
+        <span class="todo"><i></i>Verifying</span>
+        <span class="todo"><i></i>Healed</span>
+      </div>
+
+      <div class="nextline crit">
+        <span class="dot crit"></span>
+        <div>
+          <div class="what"><b>A fix waits for your approval:</b> set r4 Gi0/0/1's MTU back to 1500 (1 line on r4).</div>
+          <div class="next">Likely cause: an MTU mismatch since change #139 on r4 · <span class="tag ai">AI</span> 2 of 2 reads agree · clears when the adjacency is Full again.</div>
+        </div>
+        <div class="acts">
+          <span class="btn primary">Review the fix <span class="kbd">e</span></span>
+          <span class="btn">Modify or deny…</span>
+          <span class="btn ghost">Acknowledge <span class="kbd">a</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="layout" style="grid-template-columns: minmax(0,1fr) 340px">
+      <section>
+        <div class="section-title">What happened <span class="right">newest first · 9 events · <a href="#">All</a> · Mercury · AI · Devices</span></div>
+        <div class="card-free">
+          <ol class="tl">
+            <li><span class="when">13:55</span><span class="mk"><span class="dot ai"></span></span>
+              <div class="what"><details><summary><span class="tag ai">AI</span> Proposed a fix: 1 step on r4, from the catalog's "Set interface MTU" <span class="by">· plan hash 4b1d…77c0</span></summary>
+                <div class="ev">Step 1: on r4, <span class="mono">interface GigabitEthernet0/0/1</span> / <span class="mono">mtu 1500</span>. Merge only · r4 held while it runs · verify waits for r3's adjacency to reach FULL (dead interval 40 s) · rolls back if it does not. Not the same as any refused plan.</div></details></div></li>
+            <li><span class="when">13:52</span><span class="mk"><span class="dot ai"></span></span>
+              <div class="what"><details open><summary><span class="tag ai">AI</span> Diagnosed: MTU mismatch between r3 Gi0/0/2 (1500) and r4 Gi0/0/1 (9000) <span class="by">· claude-sonnet, 2 calls</span></summary>
+                <div class="ev">
+                  <div class="hyp chosen"><div class="l">Chosen: the plan acts on it</div>r4 Gi0/0/1 went to MTU 9000 at 13:47 with change #139; r3 Gi0/0/2 is 1500, so the neighbours stop at EXSTART. <span class="muted">Cites: syslog 13:47, r3 read 13:51.</span></div>
+                  <div class="hyp"><div class="l">Also considered</div>Hello or dead interval mismatch: ruled out, both 10 s and 40 s in the r3 read. <span class="muted">Confirm with: <span class="mono">show ip ospf interface Gi0/0/2</span></span></div>
+                  <div class="hyp"><div class="l">Also considered</div>r4 Gi0/0/1 down: ruled out, the interface is up/up on r4.</div>
+                </div></details></div></li>
+            <li><span class="when">13:51</span><span class="mk"><span class="dot"></span></span>
+              <div class="what"><details><summary>Read <span class="mono">show ip ospf neighbor</span> on r3: r4 in EXSTART/DR <span class="by">· mercury-ro, for the AI</span></summary>
+                <div class="ev mono">192.0.2.35   1   EXSTART/DR   00:00:38   192.0.2.35   GigabitEthernet0/0/2</div></details></div></li>
+            <li><span class="when">13:50</span><span class="mk"><span class="dot"></span></span>
+              <div class="what">alex@example.com started AI troubleshooting <span class="by">· from the Inbox</span></div></li>
+            <li><span class="when">13:48:09</span><span class="mk"><span class="dot warn"></span></span>
+              <div class="what">Self-healing looked for a known fix: none matches "OSPF neighbour down" with an MTU change <span class="by">· Mercury, 2 s</span></div></li>
+            <li><span class="when">13:48:07</span><span class="mk"><span class="dot crit"></span></span>
+              <div class="what"><details><summary>r3: OSPF neighbour 192.0.2.35 on Gi0/0/2 from FULL to DOWN, Dead timer expired <span class="by">· syslog, received 13:48:07</span></summary>
+                <div class="ev mono">%OSPF-5-ADJCHG: Process 1, Nbr 192.0.2.35 on GigabitEthernet0/0/2 from FULL to DOWN, Neighbor Down: Dead timer expired</div></details></div></li>
+            <li><span class="when">13:47</span><span class="mk"><span class="dot"></span></span>
+              <div class="what">r4: Gi0/0/1 MTU changed from 1500 to 9000 <span class="by">· syslog</span></div></li>
+            <li><span class="when">13:46</span><span class="mk"><span class="dot ok"></span></span>
+              <div class="what">Change #139 applied to r4, jumbo frames on uplinks, verified <span class="by">· sam@example.com · <a href="change.html">Open</a></span></div></li>
+          </ol>
+        </div>
+      </section>
+
+      <aside class="rail">
+        <section class="panel">
+          <h3>The fix proposed <span class="right"><span class="hash">4b1d…77c0</span></span></h3>
+          <div class="body">
+<pre class="code" style="margin:0"><span class="dim">! r4</span>
+<span class="dim">interface GigabitEthernet0/0/1</span>
+<span class="add"> mtu 1500</span></pre>
+            <div class="note" style="margin-top:6px">The preview opens with Review the fix; a person confirms it by hash. Holds and guards: r4 held, one operation per device, rollback ready.</div>
+          </div>
+        </section>
+        <section class="panel">
+          <h3>Timings</h3>
+          <div class="body">
+            <dl class="kv">
+              <dt>Detected</dt><dd>13:48:07 <span class="muted">· syslog receive time</span></dd>
+              <dt>Decided</dt><dd>13:48:09 <span class="muted">· no known fix</span></dd>
+              <dt>Fixed</dt><dd class="muted">not yet</dd>
+              <dt>Verified</dt><dd class="muted">not yet</dd>
+              <dt>Time to repair</dt><dd><b>open 22 min</b></dd>
+            </dl>
+          </div>
+        </section>
+        <section class="panel">
+          <h3>Severity, confidence, risk</h3>
+          <div class="body">
+            <dl class="kv">
+              <dt>Severity</dt><dd>critical <span class="muted">· a core adjacency</span></dd>
+              <dt>Confidence</dt><dd>likely <span class="muted">· 2 of 2 reads agree</span></dd>
+              <dt>Risk</dt><dd>low <span class="muted">· 1 line, merge only, on r4</span></dd>
+            </dl>
+          </div>
+        </section>
+        <section class="panel">
+          <h3><span class="tag ai">AI</span> The AI's calls <span class="right"><a href="#">What it is sent</a></span></h3>
+          <div class="body">
+            <dl class="kv">
+              <dt>Model</dt><dd>claude-sonnet · 2 calls</dd>
+              <dt>Cost</dt><dd>$0.012 · 8.4 s</dd>
+              <dt>Tokens</dt><dd>6,210 in · 4,800 cache read · 612 out</dd>
+            </dl>
+          </div>
+        </section>
+        <section class="panel">
+          <h3>Seen before on r3 <span class="right">1 time</span></h3>
+          <div class="body"><div class="prow"><span class="dot ok"></span><div class="t">12 Oct: MTU mismatch to r4, fixed by alex@example.com in 9 min<div class="m"><a href="#">Incident #31</a></div></div></div></div>
+        </section>
+        <div class="note"><a href="#">The record</a>: incident id, hand-over, the proposal's parameter hash.</div>
+      </aside>
+    </div>
+
+  </div>
+  </div>
+</div>
+</div>
+</body>
+</html>

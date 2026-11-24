@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inbox · Mercury (B, Inbox)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../_shared/tokens.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+<nav class="side" aria-label="Views">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--brand-hi)" stroke-width="1.6"><circle cx="12" cy="12" r="5" fill="var(--brand)" stroke="none"/><ellipse cx="12" cy="12" rx="10.5" ry="4" transform="rotate(-20 12 12)"/></svg>
+    <b>Mercury</b>
+  </div>
+  <div class="netpick"><span><small>Network</small>Lab</span><span>▾</span></div>
+  <a class="view on" href="home.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 9h3l1 2h4l1-2h3M2 9l2-6h8l2 6v4H2z"/></svg>Inbox<span class="n crit">10</span></a>
+  <a class="view" href="device.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="4" rx="1"/><rect x="2" y="9" width="12" height="4" rx="1"/></svg>Devices<span class="n">912</span></a>
+  <a class="view" href="change.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5h10l-3-3M13 11H3l3 3"/></svg>Changes<span class="n">2</span></a>
+  <a class="view" href="#"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>History</a>
+  <a class="view" href="settings.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="5" cy="4" r="1.5" fill="var(--side)"/><circle cx="11" cy="8" r="1.5" fill="var(--side)"/><circle cx="7" cy="12" r="1.5" fill="var(--side)"/></svg>Settings</a>
+  <div class="side-rule"></div>
+  <a class="view" href="assistant.html"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>Ask or go to<span class="key">Ctrl K</span></a>
+  <div class="side-foot">
+    <div>Go to a view: <span class="kbd">g</span> then <span class="kbd">i</span> <span class="kbd">d</span> <span class="kbd">c</span> <span class="kbd">h</span> <span class="kbd">s</span></div>
+    <div style="margin-top:6px">All keys: <span class="kbd">?</span></div>
+  </div>
+</nav>
+
+<div class="main">
+  <header class="top">
+    <span class="crumbs"><b>Inbox</b> · Lab</span>
+    <span class="palette-trigger"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>Search, go to a device, or ask<span class="kbd">Ctrl K</span></span>
+    <span class="chip ai" title="Today's AI spend; opens the spend panel">AI $0.04 today · 1 background on</span>
+    <span class="chip" title="The page updates itself while open"><span class="dot ok"></span>Live</span>
+    <span class="avatar" title="alex@example.com, verified by the access proxy">AL</span>
+  </header>
+
+  <div class="scroll">
+  <div class="page">
+
+    <div class="head">
+      <h1>10 things need a person <span class="sub">Lab · 912 devices</span></h1>
+      <div class="facts"><b style="color:var(--danger)">3 critical</b> · 2 waiting on a person · 5 warnings · oldest critical 14 min · 47 sources checked 20 s ago, <a href="#src">1 unreadable</a></div>
+      <div class="row" style="margin-top:16px; flex-wrap:wrap; gap:12px">
+        <div class="filters" role="tablist" aria-label="Show">
+          <span class="filt on">All<b>10</b></span>
+          <span class="filt">Critical<b>3</b></span>
+          <span class="filt">Waiting on a person<b>2</b></span>
+          <span class="filt">Warnings<b>5</b></span>
+          <span class="filt">Mine<b>1</b></span>
+          <span class="filt">Acknowledged<b>4</b></span>
+        </div>
+        <span class="spacer"></span>
+        <div class="keys">
+          <span><span class="kbd">j</span><span class="kbd">k</span> move</span>
+          <span><span class="kbd">Enter</span> open</span>
+          <span><span class="kbd">e</span> act</span>
+          <span><span class="kbd">a</span> acknowledge</span>
+          <span><span class="kbd">/</span> filter</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <section class="queue" aria-label="Needs a person, most urgent first">
+
+        <div class="qgroup">Critical <span class="count">3</span><span class="right">act first</span></div>
+
+        <div class="qrow crit focus" aria-selected="true">
+          <span class="bar"></span><span class="kind">Incident</span>
+          <div class="say"><div class="s"><b>r3 lost its OSPF neighbour r4</b> on Gi0/0/2; traffic to s4's site takes the long path</div>
+            <div class="c">Clears when the adjacency is Full again · incident #57 · AI troubleshooting not started</div></div>
+          <span class="age">14 min</span>
+          <span class="act"><span class="btn primary small">Troubleshoot <span class="kbd">e</span></span></span>
+        </div>
+
+        <div class="qrow crit">
+          <span class="bar"></span><span class="kind">Device</span>
+          <div class="say"><div class="s"><b>s3 is unreachable</b> on 192.0.2.23 and 2001:db8:0:23::1; it carries the management path</div>
+            <div class="c">Clears when s3 answers SSH again · last answer 6 min ago · no restart window declared</div></div>
+          <span class="age">6 min</span>
+          <span class="act"><span class="btn small">Diagnose <span class="kbd">e</span></span></span>
+        </div>
+
+        <div class="qrow crit">
+          <span class="bar"></span><span class="kind">Failed job</span>
+          <div class="say"><div class="s"><b>Nightly capture failed on 4 devices</b> (r5, r6, s2, s4): the device refused the password</div>
+            <div class="c">Clears when the next capture reads all four · 908 of 912 captured · next run 02:00</div></div>
+          <span class="age">7 h</span>
+          <span class="act"><span class="btn small">Check credentials <span class="kbd">e</span></span></span>
+        </div>
+
+        <div class="qgroup">Waiting on a person <span class="count">2</span><span class="right">a decision only a person makes</span></div>
+
+        <div class="qrow wait">
+          <span class="bar"></span><span class="kind">Change</span>
+          <div class="say"><div class="s"><b>Change #142 to r5 waits for your approval:</b> add NTP server 2001:db8::123 (2 lines)</div>
+            <div class="c">Requested by sam@example.com · clears when approved by hash or declined with a reason</div></div>
+          <span class="age">12 min</span>
+          <span class="act"><span class="btn small">Review and approve <span class="kbd">e</span></span></span>
+        </div>
+
+        <div class="qrow wait">
+          <span class="bar"></span><span class="kind">Fix</span>
+          <div class="say"><div class="s"><b>A fix for s2 waits for approval:</b> bring Gi1/0/7 back from err-disabled (2 lines)</div>
+            <div class="c">Proposed by self-healing · clears when approved or declined · expires in 46 min</div></div>
+          <span class="age">14 min</span>
+          <span class="act"><span class="btn small">Review fix <span class="kbd">e</span></span></span>
+        </div>
+
+        <div class="qgroup">Warnings <span class="count">5</span></div>
+
+        <div class="qrow warn">
+          <span class="bar"></span><span class="kind">Drift</span>
+          <div class="say"><div class="s"><b>r1 runs 3 lines its intent does not have</b> (an ACL entry and two logging hosts)</div>
+            <div class="c">Clears when intent takes them or a change removes them</div></div>
+          <span class="age">2 h</span>
+          <span class="act"><span class="btn small">Review drift <span class="kbd">e</span></span></span>
+        </div>
+
+        <div class="qrow warn">
+          <span class="bar"></span><span class="kind">Restart</span>
+          <div class="say"><div class="s"><b>r4 restarted at 09:12 with no planned window</b>; it came back and runs its golden</div>
+            <div class="c">Clears when acknowledged, or when a window is recorded as a correction with its reason</div></div>
+          <span class="age">51 min</span>
+          <span class="act"><span class="btn small">Acknowledge <span class="kbd">e</span></span></span>
+        </div>
+
+        <div class="qrow warn" id="src">
+          <span class="bar"></span><span class="kind">Source</span>
+          <div class="say"><div class="s"><b>Grafana alerts could not be read</b> for 2 min: connection refused</div>
+            <div class="c">Clears when the source is read again · alert states shown are from 2 min ago</div></div>
+          <span class="age">2 min</span>
+          <span class="act"><span class="btn small">Open source <span class="kbd">e</span></span></span>
+        </div>
+
+        <div class="qrow warn">
+          <span class="bar"></span><span class="kind">Credential</span>
+          <div class="say"><div class="s"><b>s4's credential is 412 days old</b>; the profile asks for rotation every 365</div>
+            <div class="c">Clears when rotated, or when the profile's age limit changes</div></div>
+          <span class="age">47 d</span>
+          <span class="act"><span class="btn small">Rotate <span class="kbd">e</span></span></span>
+        </div>
+
+        <div class="qrow warn">
+          <span class="bar"></span><span class="kind">Template</span>
+          <div class="say"><div class="s"><b>Template ospf-area changed:</b> 6 devices now render differently from what they run</div>
+            <div class="c">Clears when the 6 are deployed or the template change is reverted</div></div>
+          <span class="age">3 h</span>
+          <span class="act"><span class="btn small">Preview 6 <span class="kbd">e</span></span></span>
+        </div>
+
+        <div class="qfoot">Sorted by severity, then age · 4 acknowledged rows hidden (<a href="#">show</a>) · the queue updates itself; nothing here needs a refresh</div>
+      </section>
+
+      <aside class="rail">
+        <section class="panel">
+          <h3>Running now <span class="right">2</span></h3>
+          <div class="body">
+            <div class="prow"><span class="dot run"></span>
+              <div class="t"><a href="change.html">Change #141 · r2</a> <span class="m">· step 4 of 5</span>
+                <div class="m">Verify: waiting out BGP hold time, 38 s of 90 s</div>
+                <div class="meter"><i style="width:42%"></i></div></div></div>
+            <div class="prow"><span class="dot run"></span>
+              <div class="t">Drift check · 912 devices
+                <div class="m">412 of 912 read · 0 failed · started 3 min ago</div>
+                <div class="meter"><i style="width:45%"></i></div></div></div>
+            <div class="note" style="margin-top:6px">Finished in the last hour: 3 · <a href="#">History</a></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Fleet <span class="right">checked 20 s ago</span></h3>
+          <div class="body">
+            <div class="stack" aria-label="912 devices by state"><i class="ok" style="width:96.8%"></i><i class="warn" style="width:1.6%"></i><i class="crit" style="width:0.6%"></i><i class="unk" style="width:1%"></i></div>
+            <div class="legend">
+              <span><span class="dot ok"></span><a href="#">Running their intent</a></span><b>883</b>
+              <span><span class="dot warn"></span><a href="#">Drifted from intent</a></span><b>15</b>
+              <span><span class="dot crit"></span><a href="#">Unreachable</a></span><b>5</b>
+              <span><span class="dot muted"></span><a href="#">Not read yet</a></span><b>9</b>
+            </div>
+            <div class="note" style="margin-top:8px">912 devices · 6 routers, 906 switches · <a href="#">Open Devices</a> <span class="kbd">g</span> <span class="kbd">d</span></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Self-healing <span class="right">Lab</span></h3>
+          <div class="body">
+            <div class="prow"><span class="dot ok"></span><div class="t">Dry run: proposes fixes, a person approves<div class="m">2 healed today · 1 waiting (s2)</div></div></div>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+  </div>
+  </div>
+</div>
+</div>
+</body>
+</html>
