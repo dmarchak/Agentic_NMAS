@@ -25,10 +25,20 @@ line by `~/mercury-runs/register_count.py`, run from the checkout), run the aime
   in the patch (14 of 14 mutants died). Worktree `~/nmas-worktrees/c3886` (branch
   rulings/c3886-keyed, staged). `~/nmas-worktrees/rulings-gui-kit` holds an older staged copy:
   ignore it.
-- `c4207-c4208.patch`: C4207 and C4208 (the operator's rulings). Its device-write review was
-  started at about 17:30 Denver; its report will be
-  `~/Documents/nmas-reports/review-devicewrite-2026-11-24-c4207-c4208.md`. Worktree
-  `~/nmas-worktrees/c4207` (branch rulings/c4207-c4208, staged).
+- `c4207-c4208.patch` (base a287651e): C4207 and C4208 (the operator's rulings). Its first
+  device-write review said not safe (H1, M1, M2, L1: review-devicewrite-2026-11-24-c4207-c4208.md);
+  each fixed and tested in the patch; C4217 registered (L3). Its second review, with C4205's, was
+  started at about 17:50 Denver: `review-devicewrite-2026-11-24-c4207-c4208-r2-c4205.md`.
+  Worktree `~/nmas-worktrees/c4207` (branch rulings/c4207-c4208, staged).
+- `c4205-runs-on.patch` (base b0e450c2): C4205, Save's "runs on" line follows the ticks and
+  Dry run. Reviewed with C4207's second review. Worktree `~/nmas-worktrees/c4205`.
+- `c4090-reader.patch` (base b0e450c2): `nmas-config-read --records`, its test, C4218. Worktree
+  `~/nmas-worktrees/c4090`. The records it captured from the host's Default network (masked) are
+  in `~/mercury-runs/c4090-capture/` (2026-11-24 00:51 UTC); an agent was building C4090's
+  fixtures and providers from them in the main checkout (tests/v2_context.py and a new
+  tests/fixtures folder, staged, not committed): that part changes no test function, so it can
+  be committed here once its checks pass.
+- Land them in this order: C3886, C4207-C4208, C4205, C4090's reader, then a full suite.
 
 ## 2. Where the plan stands
 
