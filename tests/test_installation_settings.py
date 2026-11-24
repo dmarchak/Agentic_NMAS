@@ -842,7 +842,7 @@ class TestTheCards:
         _r, html = _card_save(networks, "netbox",
                          {"netbox_url": "https://192.0.2.30", "netbox_auth_scheme": "Token"})
         card = _kcard(html, "netbox")
-        assert "Saved" in card and "Auth scheme Bearer → Token" in card
+        assert "Saved" in card and "Token sent as Bearer → Token" in card
         assert get_setting("netbox_url") == "https://192.0.2.30"
         assert get_setting("netbox_auth_scheme") == "Token"
         assert get_setting("netbox_verify_tls") is False, "a switch not sent is off"
@@ -865,7 +865,7 @@ class TestTheCards:
         for data, words in (({"proxmox_url": "ftp://x", "proxmox_backup_vmids": "100"},
                              "URL 'ftp://x' is not an http:// or https:// address"),
                             ({"proxmox_url": "", "proxmox_backup_vmids": "100,abc"},
-                             "Backup VMs '100,abc' is not VM ids"),
+                             "VMs whose backups are checked '100,abc' is not VM ids"),
                             ({"proxmox_url": "", "proxmox_token_expires": "2027-02-30"},
                              "Token expires '2027-02-30' is not a date")):
             r, html = _card_save(networks, "proxmox", data)
@@ -997,3 +997,17 @@ class TestTheCards:
     def test_an_unknown_card_is_a_404_naming_the_cards(self, networks):
         r, html = _get(networks, "/v2/settings/installation/card/tftp")
         assert r.status_code == 404 and "netbox, proxmox, author, server" in html
+
+
+def test_the_labels_made_from_keys_read_in_words():
+    """C2820's survey, item 26: an Installation card's field is labelled by what it does,
+    never by its key's abbreviation ("Verify TLS", "Bind", "Auth scheme", "Backup VMs"); the
+    setting's description says the rest."""
+    from modules import installation_settings as I
+
+    label = {f["key"]: f["label"] for c in I.CARDS.values() for f in c["fields"]}
+    assert label["netbox_verify_tls"] == label["proxmox_verify_tls"] == "Check the certificate"
+    assert label["netbox_auth_scheme"] == "Token sent as"
+    assert label["proxmox_backup_vmids"] == "VMs whose backups are checked"
+    assert label["flask_host"] == "Listen address"
+    assert not set(label.values()) & {"Verify TLS", "Bind", "Auth scheme", "Backup VMs"}

@@ -141,7 +141,7 @@ each controller is doing is on [SDN](sdn).
   - **Username** and **Password**: only if the controller asks for them. They are stored
     encrypted, as device credentials are, and are never shown or read back; a blank keeps the
     one stored.
-  - **Verify TLS**, for an https URL.
+  - **Check the certificate**, for an https URL.
   - **Southbound address**: where the switches connect to the controller. Informational: drawn
     on SDN › Controllers, never used to connect.
   - **The controller application's own cookies**: a flow carrying one of these is the

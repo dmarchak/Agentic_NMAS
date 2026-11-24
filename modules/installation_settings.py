@@ -352,9 +352,9 @@ CARDS = {
     "netbox": {
         "group": "netbox_connection", "title": "NetBox connection", "tab": "connections",
         "fields": (_f("netbox_url", "URL", "url"),
-                   _f("netbox_auth_scheme", "Auth scheme", "choice",
+                   _f("netbox_auth_scheme", "Token sent as", "choice",
                       "NetBox 4.x tokens: Bearer; older: Token", ("Bearer", "Token")),
-                   _f("netbox_verify_tls", "Verify TLS", "switch")),
+                   _f("netbox_verify_tls", "Check the certificate", "switch")),
         "secret": ("netbox_token", "API token"), "secret_at": 1, "with_id": None,
         "integration": "netbox",
         "note": "Each network's NetBox scope (its region) is per network, under that network.",
@@ -365,8 +365,8 @@ CARDS = {
                    _f("proxmox_node", "Node", "name"),
                    _f("proxmox_token_expires", "Token expires", "date",
                       "typed in: the token is not allowed to read its own expiry"),
-                   _f("proxmox_verify_tls", "Verify TLS", "switch"),
-                   _f("proxmox_backup_vmids", "Backup VMs", "vmids"),
+                   _f("proxmox_verify_tls", "Check the certificate", "switch"),
+                   _f("proxmox_backup_vmids", "VMs whose backups are checked", "vmids"),
                    _f("proxmox_backup_storage", "Backup storage", "name")),
         "secret": ("proxmox_token_secret", "Token secret"), "secret_at": 2,
         "with_id": ("proxmox_token_id", "Token id"),
@@ -382,9 +382,10 @@ CARDS = {
     },
     "server": {
         "group": "web_server", "title": "Server", "tab": "connections",
-        "fields": (_f("flask_host", "Bind", "host"), _f("flask_port", "Port", "port")),
+        "fields": (_f("flask_host", "Listen address", "host"), _f("flask_port", "Port", "port")),
         "secret": None, "with_id": None, "integration": None,
-        "note": "Bind and port take effect at the next restart, and the result says so.",
+        "note": "The listen address and port take effect at the next restart, and the result "
+                "says so.",
     },
     # Phase 8's gateway (modules/ai; PHASE8_PLAN 13.1, 15.8, 15.12): the key, the two caps,
     # the hosted allowance with its recorded reason, and a Test that is one real, paid call
