@@ -1,6 +1,23 @@
-# Handoff: the waiting patches as one stack, now 30 (2026-11-24, from 01:00 Denver)
+# Handoff: the waiting patches as one stack, now 31 (2026-11-24, from 01:00 Denver)
 
-## 00000000. The 08:22 session (2026-11-24): read this first
+## 000000000. The 09:06 session (2026-11-24): read this first
+
+- **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
+- **The stack's tree:** `~/mercury-runs/tree-stack-31.txt` (with c4234-manual). Make the next
+  patch against tree-stack-31; the worktree `~/nmas-worktrees/c2820-sdn` holds it staged.
+  land_all.sh now ends `c2820-departs-rid c4234-manual` (31 patches).
+- **C4234's manual pass BUILT as a patch**, `~/mercury-runs/c4234-manual.patch` and `.msg`:
+  the manual's 34 code passages in 18 pages and two diagrams' labels (modules/manual_diagrams.py,
+  SVGs rewritten by scripts/nmas-manual-diagrams) in words; tests/test_codes_drawn.py's
+  manual exclusion removed, its floor now a planted response through `v2_context._Recorder`.
+  Red first (the stack's manual: 67 places, the 67 measured), two controls bite; aimed 77
+  files, 2,969 passed, C4090's three loops the one red.
+- **C2820 item 31 deferred** (decisions file): its text is not recorded, and its candidates are
+  in modules/heal/dampening.py (device-write path). **C2820 has nothing else left.**
+- **Next:** land the 31 once session-namespace is answered; meanwhile Stage 6's rows (A, then
+  B), each as a patch against tree-stack-31 when it changes a test.
+
+## 00000000. The 08:22 session (2026-11-24)
 
 - **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
 - **The stack's trees:** `tree-stack-27.txt` (with c2820-tiers), `tree-stack-28.txt` (with
