@@ -141,7 +141,7 @@ _POLICY_BY = re.compile(r".+ \(policy set by .+\)\Z")
 #: hd-…)".
 _CLOSED_BY = re.compile(r"\(decision (hd-[0-9a-f]{12})\)\Z")
 #: A clock time a builder wrote beside "UTC" in words a record keeps ("cleared by itself at
-#: 01:39 UTC", "verified on s5 at 06:43 UTC"), before C3290's builders wrote the instant.
+#: 01:39 UTC", "verified on <device> at 06:43 UTC"), before C3290's builders wrote the instant.
 _UTC_CLOCK = re.compile(r"\b(\d{1,2}):(\d\d) UTC\b")
 
 
