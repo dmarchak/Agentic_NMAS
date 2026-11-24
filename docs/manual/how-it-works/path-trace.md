@@ -28,7 +28,9 @@ and that answer decides which device is asked next. It changes nothing on any de
 5. `record`: the trace is written as it starts and after each step: who, when, From, To, which
    devices are being read, each branch and its hops, and the reads it made. Topology draws it
    from that record, so it reads the same later and in another tab; the latest 50 traces of a
-   network are kept, and the reads themselves for the network's read retention.
+   network are kept, and the reads themselves for the network's read retention. **In
+   progress** lists the trace while it runs and once it ends, with how it ended (red when a
+   branch does not arrive, never green over one), and opens Topology on it.
 
 ## What it does not read
 

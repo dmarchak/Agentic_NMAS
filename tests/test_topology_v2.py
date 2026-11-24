@@ -436,6 +436,50 @@ def test_a_running_trace_is_busy_on_its_button(web, monkeypatch):
     assert "Trace again" not in html
 
 
+def test_a_trace_is_listed_by_in_progress_and_its_page_reopens_it(web, monkeypatch):
+    """C3601's path trace: a trace started and left is listed by In progress while it runs and
+    once it ends, with Topology opened on the trace as its link, which draws the trace's card
+    (reading, then the path); its finished row is the card's badge, never green over a branch
+    that does not arrive, and green for one that leaves the network (C696)."""
+    import threading
+
+    from modules import in_flight
+    from modules.nsot import capture_job
+
+    monkeypatch.setattr("modules.nsot.device_ops.in_flight", lambda name, now: [])
+    monkeypatch.setattr("modules.seen_runs.is_seen", lambda viewer, job: False)
+    _fake_reads(monkeypatch)
+    from modules.nsot import reads
+    gate, run = threading.Event(), reads.run
+    monkeypatch.setattr(reads, "run", lambda *a, **kw: (gate.wait(10), run(*a, **kw))[1])
+    who = "test-person@example.invalid"
+    r = web["client"].post("/v2/topology/path", data={"list": "Lab", "a": "r1",
+                                                       "b": "198.51.100.1"},
+                           headers={"HX-Request": "true"})
+    href = r.headers["HX-Push-Url"]
+    assert re.fullmatch(r"/v2/topology\?list=Lab&a=r1&b=198\.51\.100\.1&trace=[0-9a-f]{32}",
+                        href), href
+    try:
+        rows = [x for x in in_flight.chip([], who)["running"] if x.get("href") == href]
+        assert len(rows) == 1 and rows[0]["name"] == "Path trace", rows
+        assert "Reading r1 now" in web["client"].get(href).get_data(as_text=True)
+    finally:
+        gate.set()
+    for job in list(capture_job._jobs):
+        capture_job.wait(job, 10)
+    (done,) = [f for f in in_flight.chip([], who)["finished"] if f.get("href") == href]
+    assert (done["level"], done["words"]) == ("danger", "1 of 2 branches not delivered"), done
+    page = web["client"].get(href).get_data(as_text=True)
+    assert "1 of 2 branches not delivered" in page and "Trace again" in page
+
+    with open(os.path.join(os.path.dirname(__file__), "fixtures", "path",
+                           "cef_beyond_r5.json"), encoding="utf-8") as fh:
+        _fake_reads(monkeypatch, json.load(fh)["answers"])
+    there = _trace_post(web, b="8.8.8.8").headers["HX-Push-Url"]
+    (out,) = [f for f in in_flight.chip([], who)["finished"] if f.get("href") == there]
+    assert (out["level"], out["words"]) == ("ok", "leaves the network"), out
+
+
 def test_a_refused_trace_names_both_sides_and_asks_nothing(web, monkeypatch):
     asked = _fake_reads(monkeypatch)
     r = _trace_post(web, a="r6")

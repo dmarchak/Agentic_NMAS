@@ -537,9 +537,32 @@ def start(list_name: str, source: str, dest: str, dest_words: str, actor: str, *
             record.update(state="failed", error=f"{type(exc).__name__}: {exc}")
         record.update(finished_at=time.time(), reading=[])
         _write(list_name, record)
-        return {"trace": trace_id}
+        return dict(outcome(record), trace=trace_id)
 
+    from modules import topology_page
+
+    # In progress lists the trace with Topology, opened on it, as its link (C3601), so a
+    # trace started and left is never reachable only by its id.
+    page = "/v2/topology" + topology_page.qs(
+        list_name, topology_page.ask({"a": source, "b": dest, "trace": trace_id}))
     job = capture_job.start(list_name, f"Path {source} to {dest}", actor, work,
                             kind="path trace", announce_keys=ANNOUNCE_KEYS,
-                            announcer=ANNOUNCER)
+                            announcer=ANNOUNCER, page=page)
     return {"trace": trace_id, "job": job}
+
+
+def outcome(record: dict) -> dict:
+    """How a finished trace ended, as In progress draws it (`in_flight.page_finished_row`:
+    ``state`` and ``words``): the card's badge in words, never green over a branch that does
+    not arrive; a branch that leaves the network is no failure (C696)."""
+    if record.get("state") != "done":
+        return {"state": "failed", "words": "failed: " + (record.get("error")
+                                                          or "no reason was recorded")}
+    ends = [ENDS.get(b.get("end")) for b in record.get("branches") or []]
+    drop = ends.count("drop")
+    if drop:
+        return {"state": "stopped",
+                "words": f"{drop} of {len(ends)} branch{'es' if len(ends) != 1 else ''} "
+                         "not delivered"}
+    return {"state": "done",
+            "words": "leaves the network" if "out" in ends else "delivered"}

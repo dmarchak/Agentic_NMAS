@@ -158,7 +158,9 @@ part in routing; **To** offers each outside peer's peering addresses (an ISP's r
 address each of your edge routers peers with) and each routing device's loopback.
 **Trace the path** reads the first device, follows the next hop its answer names to the device holding
 that address, and reads that one, until the packet is delivered or the trace stops; the button
-says which devices it is reading (**Tracing… reading <devices>**) until the answer arrives. It needs a verified person, and To
+says which devices it is reading (**Tracing… reading <devices>**) until the answer arrives. You may
+leave the page: **In progress** lists the trace while it runs and once it ends (red when a branch
+does not arrive), and opens Topology on it. It needs a verified person, and To
 must be an IPv4 address: the trace reads IPv4 forwarding only. A refused trace says
 **Path: not traced** with why, and nothing is asked of any device. How it works:
 [A path trace](path-trace).
