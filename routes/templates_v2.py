@@ -415,7 +415,8 @@ def _coverage_card(name: str, job: str = "", code: int = 200):
 
 @bp.route("/coverage", methods=["GET"])
 def coverage():
-    """The Coverage tab: the last measurement, or why there is none. Writes nothing."""
+    """The Coverage tab: a check's job when In progress opened it on one (``job``, C3601),
+    else the last measurement, or why there is none. Writes nothing."""
     from routes.v2 import _page
 
     name = _list_name()
@@ -423,7 +424,7 @@ def coverage():
         return _page("v2/templates.html", active_nav="templates", list_name=name,
                      known=False, tab="coverage")
     return _page("v2/templates.html", active_nav="templates", known=True, tab="coverage",
-                 may=_may(), **_coverage_ctx(name))
+                 may=_may(), **_coverage_ctx(name, (request.args.get("job") or "").strip()))
 
 
 @bp.route("/coverage/card", methods=["GET"])

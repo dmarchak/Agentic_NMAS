@@ -82,6 +82,38 @@ def test_the_tab_check_and_card(lab):  # noqa: F811
     assert "The repository has moved since" in card
 
 
+def test_a_check_is_listed_by_in_progress_and_its_page_reopens_it(lab, monkeypatch):  # noqa: F811
+    """C3601's template coverage: a check started and left is listed by In progress while it
+    runs and once it ends, with the Coverage tab as its link, and that link draws the job's
+    card (running, then the measurement), never only the job's id."""
+    import threading
+
+    from modules import in_flight
+
+    monkeypatch.setattr("modules.nsot.device_ops.in_flight", lambda name, now: [])
+    monkeypatch.setattr("modules.seen_runs.is_seen", lambda viewer, job: False)
+    gate, measure = threading.Event(), template_coverage.measure
+    monkeypatch.setattr(template_coverage, "measure",
+                        lambda name, **kw: (gate.wait(10), measure(name, **kw))[1])
+    c, who = lab["client"], "test-person@example.invalid"
+    started = c.post("/v2/templates/coverage", data={"list": "Lab"}).get_data(as_text=True)
+    job = re.search(r"/v2/templates/coverage/card\?[^\"]*job=([0-9a-f]+)", started).group(1)
+    href = f"/v2/templates/coverage?list=Lab&job={job}"
+    try:
+        rows = [r for r in in_flight.chip([], who)["running"] if r.get("href") == href]
+        assert len(rows) == 1 and rows[0]["name"] == "Template coverage", rows
+        page = c.get(href).get_data(as_text=True)
+        assert 'aria-current="page">Coverage</a>' in page and 'aria-busy="true"' in page
+        assert f"job={job}" in page
+    finally:
+        gate.set()
+    assert capture_job.wait(job, 60)
+    (done,) = [f for f in in_flight.chip([], who)["finished"] if f["job"] == job]
+    assert done["href"] == href and done["level"] == "ok", done
+    page = c.get(href).get_data(as_text=True)
+    assert re.search(r"Measured .*?</p>", page, re.S) and 'aria-busy="true"' not in page
+
+
 def test_an_unreadable_kept_answer_is_its_own_state(lab):  # noqa: F811
     path = os.path.join(os.path.dirname(lab["repo"]), "template_coverage.json")
     with open(path, "w", encoding="utf-8") as fh:

@@ -118,8 +118,10 @@ def latest(list_name: str):
 
 def start(list_name: str, actor: str) -> str:
     """Measure as a job, keep the answer (masked) for the tab to read, and announce
-    `templates` when it ends."""
+    `templates` when it ends. In progress lists it with the Coverage tab as its link, the
+    tab opened on the job (``job``; C3601), so a check started and left is never lost."""
     import json
+    from urllib.parse import quote
 
     from modules import invalidation
     from modules.filestore import write_atomic
@@ -129,9 +131,12 @@ def start(list_name: str, actor: str) -> str:
     def work(_job_id):
         out = mask_payload(dict(measure(list_name), asked_by=actor))
         write_atomic(_path(list_name), json.dumps(out, indent=1, sort_keys=True))
-        return out
+        # The job's answer says it ended well, so In progress draws it "ready to read", never
+        # a refusal (`in_flight.finished_row` reads ``ok``); the kept file is the measurement.
+        return dict(out, ok=True)
 
     return capture_job.start(list_name, f"template coverage of {list_name}", actor, work,
-                             kind="template-coverage",
+                             kind="template coverage",
+                             page=f"/v2/templates/coverage?list={quote(list_name)}&job={{job}}",
                              announce_keys=invalidation.ANNOUNCERS[ANNOUNCER],
                              announcer=ANNOUNCER)

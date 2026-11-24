@@ -93,7 +93,9 @@ the network: the question an approval does not answer. It shows the last measure
 was taken, for whom, and at which commit; when the repository has moved since (a golden or a
 template changed), it says so, because the answer may no longer hold.
 
-**Check coverage now** measures again, as a job; the card fills in when it ends. For every
+**Check coverage now** measures again, as a job; the card fills in when it ends. You may leave
+the page: **In progress** lists the check while it runs and once it ends, and opens this tab
+on it. For every
 device with a committed golden it runs four steps, and reaches no device:
 
 1. `golden`: read its committed golden (the manifest's, at HEAD; never a file on disk).
