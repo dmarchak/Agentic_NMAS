@@ -221,21 +221,55 @@ def _held(guard, device="edge-b", until=None, epoch=T0, operands=None):
 class TestHeld:
     @pytest.mark.parametrize("guard,href,said", [
         (4, "/v2/device/edge-b?tab=intent", "Adopt the change into edge-b's intent"),
-        (9, "/v2/device/edge-b?tab=history", "Read why edge-b keeps departing")])
+        (9, "/v2/device/edge-b?tab=history", "Open edge-b's History to find what keeps")])
     def test_a_hold_a_person_resolves_is_one_row_naming_its_guard(self, lab, guard, href,
                                                                   said):
+        # Premise corrected (C2820's survey, item 4; the charter's rule 3, the operator,
+        # 2026-11-08): the guard's number and name were the cause's first words. The row names
+        # its guard in its record (under Details), and says what happened in words.
         from modules.attention import CLEARS, ROW_KINDS
         d = _held(guard, operands={"golden_commit": "c0ffee", "intent_match": "departs"})
         (r,) = _rows("held")
         assert r["level"] == "warning" and r["devices"] == ["edge-b"] and r["event"] == d["id"]
         from modules.heal.policy import GUARDS
         name = next(n for num, n, _k in GUARDS if num == guard)
-        assert r["what"] == f"Self-healing holds edge-b on Default: {name}"
-        assert r["cause"].startswith(f"Guard {guard}, {name}: planted words for guard {guard}")
+        assert r["operands"]["guard"] == guard and r["operands"]["guard_name"] == name
+        mine = (r["what"] + r["cause"]).replace(f"planted words for guard {guard}", "")
+        assert not re.search(r"\b[Gg]uard \d", mine), (r["what"], r["cause"])
+        if guard == 4:
+            assert r["what"] == ("Self-healing is paused on edge-b: its saved configuration "
+                                 "differs from its intent")
+            assert "Mercury has nothing approved to put back" in r["cause"]
+        else:      # operands that are not guard 9's: the guard's own words, its name first
+            assert r["what"] == f"Self-healing holds edge-b on Default: {name}"
+            assert r["cause"].startswith(f"{name.capitalize()}: planted words for guard 9")
         assert r["action"]["href"] == href and r["action"]["label"].startswith(said)
-        assert r["operands"]["golden_commit"] == "c0ffee" and r["operands"]["guard"] == guard
+        # Premise corrected (rule 2): the golden's bare commit is not drawn; the record keeps
+        # the other operands, and the decision's incident (its link).
+        assert "golden_commit" not in r["operands"] and r["operands"]["intent_match"] == "departs"
+        assert "incident" in r["operands"]
         assert ("heal", "held") in ROW_KINDS and r["acknowledge"] is True
         assert r["clears"]["when"] == CLEARS[("heal", "held")][1]
+
+    def test_a_rate_hold_says_how_often_and_who_changed_it(self, lab):
+        # Guard 9's operands and the decision's person as the installation recorded them
+        # (tests/fixtures/heal_records/held_decisions.jsonl's guard 9 record).
+        from modules.heal.guards import hit
+        g = hit(9, "held", "r4 was healed 1 time(s) in the last hour, the most a device is (1)",
+                {"heal_max_per_device_hour": 1, "heals_last_hour": 1})
+        DS.record("Default", {"outcome": "held", "device": "edge-b", "until": None,
+                              "guard": {k: g[k] for k in ("guard", "name", "words", "operands")},
+                              "person": {"words": "the line names the account lab on vty0 from "
+                                                  "192.0.2.20"}, "words": "guard 9"}, T0)
+        (r,) = _rows("held")
+        assert r["what"] == ("Self-healing stopped fixing edge-b: it was fixed as often in an "
+                             "hour as it may be")
+        assert r["cause"] == (
+            "Self-healing fixed edge-b 1 time(s) in the last hour, the most it may (1), so it "
+            "stopped fixing edge-b to avoid a loop; the latest change was made outside Mercury "
+            "(the line names the account lab on vty0 from 192.0.2.20). It sends nothing more "
+            "to edge-b for this until a person finds what keeps changing it")
+        assert r["operands"]["guard"] == 9 and r["operands"]["heals_last_hour"] == 1
 
     def test_many_devices_at_once_is_one_row_for_the_network(self, lab):
         for n, host in enumerate(("edge-a", "edge-b", "edge-c", "edge-d")):
@@ -244,6 +278,19 @@ class TestHeld:
         assert r["devices"] == ["edge-a", "edge-b", "edge-c", "edge-d"]
         assert r["what"] == "Self-healing holds 4 device(s) on Default: many devices at once"
         assert r["action"]["href"] == "/v2/history?kind=heal"
+        mine = r["cause"].replace("planted words for guard 6", "")
+        assert not re.search(r"\b[Gg]uard \d", mine) and r["operands"]["guard"] == 6, r["cause"]
+
+    def test_many_devices_at_once_says_its_measurement_in_words(self, lab):
+        # Guard 6's operands as the installation recorded them (the fixture's guard 6 record).
+        for n, host in enumerate(("edge-a", "edge-b", "edge-c", "edge-d")):
+            _held(6, device=host, epoch=T0 + n, operands={
+                "devices": 4, "heal_max_devices_drifting": 3, "within_seconds": 120})
+        (r,) = _rows("held")
+        assert r["cause"].startswith(
+            "4 devices were changed within 120 s of each other, more than 3: that is a "
+            "rollout, a template or an event across the network, not one device's fault, so "
+            "Mercury fixes none of them by itself"), r["cause"]
 
     @pytest.mark.parametrize("guard", [3, 5, 7, 8, 4, 9])
     def test_a_hold_self_healing_checks_again_is_no_row(self, lab, guard):

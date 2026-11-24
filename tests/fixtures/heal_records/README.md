@@ -15,6 +15,8 @@ each loop drawn from a real captured record of its kind).
 | `plan_errdisable.json` | Incident `hi-0614b58f49f7` on s5 (port security err-disabled Gi0/3), and proposal `p1` of its fix-it record, the AI's err-disable recovery plan, with the fix-it record's device identity | `_fixit_section.html` `st.checked` (the proposal's `shown.preconditions_read`) and `lines.verify` (the built-in command plan's verify, rendered by its own code from the proposal's parameters) |
 | `plan_collector.json` | Incident `hi-22cfdc299000` on r7 (lost telemetry streams 101 and 102), and proposal `p2` of its fix-it record, the AI's re-subscribe with the collector step, with the collector session it kept | `_fixit_section.html` `parts`, `part.actions` (the host's close of the kept session) and `part.lines` (the device's lines) |
 
+| `held_decisions.jsonl` | Three decision rows held by a guard a person resolves, the newest of each guard on Default with no `until` (from the same capture, 2026-11-24): guard 4 on r7 (2026-11-14, its golden departs from its intent), guard 6 on r6 (2026-11-17, many devices at once), guard 9 on r4 (2026-11-08, healed past its rate), one JSON line each as `decisions.jsonl` keeps them | tests/test_human_readable.py's Needs attention, History and device surfaces (`_plant_held`: the held rows, C2820's survey item 4) |
+
 The stores' layout is tests/fixtures/incident_page/'s: `incidents`, `decisions` and `steps` as
 the stores hold them; `page` the incident drawn; `line` one fix-it record line as kept.
 
@@ -22,7 +24,9 @@ the stores hold them; `page` the incident drawn; `line` one fix-it record line a
 
 - Every IPv4 address replaced by one in 192.0.2.0/24, one mapping for the folder:
   10.255.0.10 to 192.0.2.10, 10.255.4.6 to 192.0.2.46, 10.255.1.10 to 192.0.2.110 and
-  10.255.4.14 to 192.0.2.54. The records hold no IPv6 address.
+  10.255.4.14 to 192.0.2.54. The records hold no IPv6 address. `held_decisions.jsonl` adds
+  172.20.20.1 to 192.0.2.20 and 10.255.4.4 to 192.0.2.44 (its records: the same edits and
+  nothing else).
 - The person's email and their account name replaced by `alex@example.com`.
 - The end host `H7` (not of the generic r1-r9, s1-s9, edge-, core- or leaf- kind) renamed
   `edge-h7`.

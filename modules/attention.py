@@ -8070,11 +8070,47 @@ def _heal_capped_rows(lst: str, now: float, said: list) -> list:
 HEAL_HELD_ACTIONS = {
     4: ("Adopt the change into {host}'s intent, or capture {host} after reverting it, so its "
         "golden matches intent again", "/v2/device/{host}?tab=intent", False),
-    6: ("Read which devices departed together (History, kind Self-healing), and find the "
-        "rollout, template or event that moved them", "/v2/history?kind=heal", True),
-    9: ("Read why {host} keeps departing (its History), and fix what changes it",
+    # C2820's survey (rule 5): the devices are named on the row; the link opens their records.
+    6: ("Open self-healing's records on History to find the rollout, template or event that "
+        "changed them", "/v2/history?kind=heal", True),
+    9: ("Open {host}'s History to find what keeps changing it, and fix that",
         "/v2/device/{host}?tab=history", False),
 }
+
+
+def _held_said(g: dict, d: dict, host: str) -> tuple:
+    """``(title, cause)`` of a held row in a person's words (C2820's survey, item 4; the
+    charter's rule 3: the guard's number and name were the cause's first words, and the
+    departure was said three times). Each from the operands its guard records; a hold whose
+    operands are not its guard's says the guard's own words. The guard's number and name stay
+    in the row's record (``guard``, ``guard_name``), under its Details."""
+    ops, n = g.get("operands") or {}, g.get("guard")
+    words = g.get("words") or "a guard held it"
+    if n == 4:
+        return (f"Self-healing is paused on {host}: its saved configuration differs from its "
+                "intent",
+                f"{host}'s golden, its last saved configuration, differs from its intent, so "
+                "Mercury has nothing approved to put back. Self-healing sends nothing to "
+                f"{host} for this until a person decides which is right")
+    if n == 9 and {"heals_last_hour", "heal_max_per_device_hour"} <= set(ops):
+        who = ((d.get("person") or {}).get("words") or "").strip()
+        return (f"Self-healing stopped fixing {host}: it was fixed as often in an hour as it "
+                "may be",
+                f"Self-healing fixed {host} {ops['heals_last_hour']} time(s) in the last hour, "
+                f"the most it may ({ops['heal_max_per_device_hour']}), so it stopped fixing "
+                f"{host} to avoid a loop"
+                + (f"; the latest change was made outside Mercury ({who})" if who else "")
+                + f". It sends nothing more to {host} for this until a person finds what keeps "
+                  "changing it")
+    if n == 6 and {"devices", "heal_max_devices_drifting", "within_seconds"} <= set(ops):
+        # The devices the guard counted are its own measurement; the row's devices are the
+        # ones it holds, drawn on the row, so the sentence names neither list.
+        return (None,
+                f"{ops['devices']} devices were changed within {ops['within_seconds']} s of "
+                f"each other, more than {ops['heal_max_devices_drifting']}: that is a "
+                "rollout, a template or an event across the network, not one device's fault, "
+                "so Mercury fixes none of them by itself")
+    return None, f"{(g.get('name') or 'a guard').capitalize()}: {words}"
 
 
 #: A departing line's two sides, by its sign in `intent_match`'s lines, in the words the row
@@ -8143,14 +8179,20 @@ def _heal_held_rows(lst: str, rows: list) -> list:
         # C3581: guard 4's departing lines are drawn on the row, each with its side and its
         # ways out (`heal_departure`), so not again under Details for the record.
         lines, more = ops.pop("lines", None) or [], ops.pop("lines_more", 0)
+        # C2820 (rule 2): the golden's commit is a bare hash a person cannot open; the lines it
+        # departs by are drawn on the row, and the decision (linked to its incident's page by
+        # the record's `incident`) keeps the commit.
+        ops.pop("golden_commit", None)
+        title, said = _held_said(g, d, host)
         r = row(
             source="heal", kind="held", key=d.get("id") or "?", level="warning",
             event=d.get("id"), devices=[host], since=float(d.get("epoch") or 0) or None,
-            what=f"Self-healing holds {host} on {lst}: {g.get('name') or 'a guard applied'}",
-            cause=(f"Guard {g.get('guard')}, {g.get('name')}: {g.get('words')}. Self-healing "
-                   f"sends nothing to {host} for this until it is resolved"),
+            what=title or f"Self-healing holds {host} on {lst}: {g.get('name') or 'a guard applied'}",
+            cause=(said if title else f"{said}. Self-healing sends nothing to {host} for this "
+                   "until it is resolved"),
             action={"label": label.format(host=host), "href": href.format(host=host)},
-            operands={"list": lst, "decision": d.get("id"), "guard": g.get("guard"), **ops})
+            operands={"list": lst, "decision": d.get("id"), "incident": d.get("incident"),
+                      "guard": g.get("guard"), "guard_name": g.get("name"), **ops})
         if g.get("guard") == 4 and lines:
             r["departure"] = heal_departure(lst, host, lines, more)
         out.append(r)
@@ -8159,6 +8201,7 @@ def _heal_held_rows(lst: str, rows: list) -> list:
         g = d.get("guard") or {}
         hosts = sorted(x.get("device") for x in fleet)
         label, href, _one = HEAL_HELD_ACTIONS[6]
+        _t, said = _held_said(g, d, "")
         # G6 (the operator's design, 2026-11-14): the hold is the batch card, "N devices have
         # faults. Mercury can fix M.", its preview on it before the press and its one action
         # Turn on self-healing and fix all (`heal.batch`), whenever a fix can be previewed.
@@ -8191,13 +8234,14 @@ def _heal_held_rows(lst: str, rows: list) -> list:
                 since=float(d.get("epoch") or 0) or None,
                 what=(f"Self-healing holds {len(hosts)} device(s) on {lst}: "
                       f"{g.get('name') or 'many devices at once'}"),
-                cause=(f"Guard {g.get('guard')}, {g.get('name')}: {g.get('words')}. "
+                cause=(f"{said}. "
                        f"Self-healing is not On for {lst}: turning it on fixes the {n} open "
                        f"problem{'' if n == 1 else 's'} Mercury can fix, all at once, each "
                        "verified on its own"),
                 action={"label": "Turn on self-healing (Troubleshoot › Incidents)",
                         "href": f"/v2/incidents?list={quote(lst)}#control-strip"},
                 operands={"list": lst, "decision": d.get("id"), "guard": g.get("guard"),
+                          "guard_name": g.get("name"), "incident": d.get("incident"),
                           "devices": len(hosts), **(g.get("operands") or {})}))
             return out
         if p.get("on") and p.get("items"):
@@ -8209,11 +8253,11 @@ def _heal_held_rows(lst: str, rows: list) -> list:
                                                      p.get("scripts") or []}
                                                   | {a["device"] for a in p["ai"]}),
                 since=float(d.get("epoch") or 0) or None, what=p["lead"],
-                cause=(f"{p['hold']} Guard {g.get('guard')}, {g.get('name')}: "
-                       f"{g.get('words')}"),
+                cause=f"{p['hold']} {said}",
                 action={"label": HB.BUTTON, "open": "heal_batch", "list": lst,
                         "hash": p["hash"]},
                 operands={"list": lst, "decision": d.get("id"), "guard": g.get("guard"),
+                          "guard_name": g.get("name"), "incident": d.get("incident"),
                           "devices": len(hosts), "batch": p["hash"][:12],
                           **(g.get("operands") or {})}))
             # The card's model: what it draws (whether there is a batch is the row itself).
@@ -8224,10 +8268,10 @@ def _heal_held_rows(lst: str, rows: list) -> list:
             event=d.get("id"), devices=hosts, since=float(d.get("epoch") or 0) or None,
             what=(f"Self-healing holds {len(hosts)} device(s) on {lst}: "
                   f"{g.get('name') or 'many devices at once'}"),
-            cause=(f"Guard {g.get('guard')}, {g.get('name')}: {g.get('words')}. A fleet-wide "
-                   "departure is escalated, never healed"),
+            cause=f"{said}. A person finds what changed them all",
             action={"label": label, "href": href},
             operands={"list": lst, "decision": d.get("id"), "guard": g.get("guard"),
+                      "guard_name": g.get("name"), "incident": d.get("incident"),
                       "devices": len(hosts), **(g.get("operands") or {})}))
     return out
 

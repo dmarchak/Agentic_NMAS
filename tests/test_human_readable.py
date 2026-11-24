@@ -53,6 +53,7 @@ registers it, `shrinks`: a new key or a risen count needs a Test-Weakened traile
 """
 
 import html as _html
+import os
 import re
 import time
 from collections import Counter
@@ -399,6 +400,23 @@ def render(made: dict, monkeypatch) -> dict:
     }
 
 
+HELD = os.path.join(os.path.dirname(__file__), "fixtures", "heal_records",
+                    "held_decisions.jsonl")
+
+
+def _plant_held():
+    """The installation's own held decisions (tests/fixtures/heal_records/README.md): the
+    newest of each guard Needs attention draws a held row for (4, its golden departs from its
+    intent; 6, many devices at once; 9, healed past its rate), so the held rows reach the
+    ratchet as a person reads them (C2820's survey item 4: the guard's number and name were
+    the cause's first words). Appended to the lab's decisions store as the recorder keeps it."""
+    from modules.heal import decisions as HD
+    with open(HELD, encoding="utf-8") as f, open(HD.path("Default"), "a", encoding="utf-8") as out:
+        for line in f:
+            if line.strip():
+                out.write(line if line.endswith("\n") else line + "\n")
+
+
 @pytest.fixture
 def drawn(ai, measured, env, monkeypatch):
     """The four surfaces rendered on the lab: ``{surface: [(where, body, plain)]}``."""
@@ -408,6 +426,7 @@ def drawn(ai, measured, env, monkeypatch):
         for h, ip in DEVICES])
     monkeypatch.setattr("modules.heal.propose.Sources", lambda net: FakeApproved(R8))
     made = _records(ai, env, monkeypatch, now)
+    _plant_held()
     out = render(made, monkeypatch)
     out[":proposal"] = made["proposal"]
     return out
@@ -458,7 +477,10 @@ DRAWS = {
     "needs_attention": ("edge-d: access list added on GigabitEthernet2 outside Mercury",
                         "Mercury cannot fix this yet",
                         "edge-c: OSPF router-id changed outside Mercury",
-                        "Mercury proposes a fix", WOULD_HEAL, "Approve and run on edge-c"),
+                        "Mercury proposes a fix", WOULD_HEAL, "Approve and run on edge-c",
+                        # The installation's held decisions (`_plant_held`), one row each.
+                        "Self-healing is paused on r7", "Self-healing stopped fixing r4",
+                        "many devices at once"),
     "history": (WOULD_HEAL, CANT_FIX),
     "device": (WOULD_HEAL, CANT_FIX),
     # Premise corrected (the GUI review of 2026-11-13, item 9, EM1: the can't-fix's email
