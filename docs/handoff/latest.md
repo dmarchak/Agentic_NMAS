@@ -1,25 +1,33 @@
-# Handoff: the waiting patches as one stack, now 33 (2026-11-24, from 01:00 Denver)
+# Handoff: the waiting patches as one stack, now 34 (2026-11-24, from 01:00 Denver)
 
 ## 0000000000. The 09:34 session (2026-11-24): read this first
 
 - **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
-- **The stack's tree:** `~/mercury-runs/tree-stack-33.txt` (with c3601-pathtrace). Make the
-  next patch against tree-stack-33; the worktree `~/nmas-worktrees/c2820-sdn` holds it staged.
-  land_all.sh now ends `c4234-manual c3601-coverage c3601-pathtrace` (33 patches).
+- **The stack's trees:** `~/mercury-runs/tree-stack-33.txt` (with c3601-pathtrace) and
+  `tree-stack-34.txt` (with c3601-fleetchange). Make the next patch against tree-stack-34; the
+  worktree `~/nmas-worktrees/c2820-sdn` holds it staged. land_all.sh now ends
+  `c3601-coverage c3601-pathtrace c3601-fleetchange` (34 patches).
+- **C3601's fleet change slice BUILT as a patch**, `~/mercury-runs/c3601-fleetchange.patch`
+  and `.msg`: the plan's and both runs' jobs pass `page=` (`fleet_change.job_page`, the intent
+  page with `plan_job` or `run_job`), the page draws that job's card above the layers (the
+  card routes' bodies lifted out, `_plan_of_job` / `_run_of_job`), a paused run says "waits
+  for your Go on". `ip.finished` now draws in the walk: its exemption removed and
+  EMPTY_IN_FIXTURE_CEILING 325 → 324. Red first, three controls; aimed 210 files, 6,511
+  passed, C4090's loops the one red. **Device-write review SAFE**
+  (`~/Documents/nmas-reports/review-devicewrite-2026-11-24-c3601-fleetchange.md`); it found
+  **C4235** (new, UNKNOWN): a paused run's Go on can be pressed twice.
+- **Aimed sets must include tests/test_v2_context_is_drawn.py** when a page job's page changes
+  (the walk's providers start jobs): the path trace set did not; the walk starts no trace, so
+  it is unaffected, and the fleet change set (on top of it) ran it.
 - **C3601's path trace slice BUILT as a patch**, `~/mercury-runs/c3601-pathtrace.patch` and
   `.msg`: the trace's job carries Topology opened on the trace as its page (built by
   `topology_page.qs`), and its answer carries the new `path_trace.outcome` (done "delivered" /
   "leaves the network", stopped "N of M branches not delivered", failed). Its answer was the
   trace's id only, the same red-"no reason" trap. Red first, three controls; aimed 195 files, 6,045 passed, 66 skipped, none red
   (541 s at -n 4).
-- **Next:** land the 33 once session-namespace is answered; meanwhile C3601's next caller (a
-  fleet change's plan and run on the intent page), each as a patch against tree-stack-33.
-  Scoped: `fleet_change.plan_start` (modules/nsot/fleet_change.py:389), `approve_and_run_start`
-  (:748) and `run_start` (:807) pass no page; the intent page (routes/intent_layers_v2.py
-  `page`) draws no job's card: it needs a `job` read drawing `change_job`'s or `change_run`'s
-  card (both GET routes exist, by job id). The plan's payload says `ok` (green "ready to
-  read"); the run's carries `state` (PAGE_LEVELS). The run is the device-write path: its
-  patch needs the device-write review before any deploy.
+- **Next:** land the 34 once session-namespace is answered; meanwhile C3601's next caller
+  (scheduled rotation, `modules/nsot/scheduled_rotation.py:1081`, list "": check what page
+  reopens it), or C4235's measurement, each as a patch against tree-stack-34.
 
 ## 000000000. The 09:06 session (2026-11-24): read this first
 
