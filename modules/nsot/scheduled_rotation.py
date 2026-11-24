@@ -1074,15 +1074,37 @@ def start_now(*, actor: str, confirmed: str) -> tuple:
     _set_progress(run_id, state="starting", trigger="request", actor=actor)
 
     def work(_job):
-        return {"ok": True, "run": run_id,
-                "result": run(trigger="request", actor=actor, run_id=run_id,
-                              confirmed=confirmed)}
+        result = run(trigger="request", actor=actor, run_id=run_id, confirmed=confirmed)
+        return dict(outcome(result), ok=True, run=run_id, result=result)
 
+    # In progress lists the run with Credentials › Profiles opened on it as its link (C3601),
+    # so a run started and left is never reachable only by its job's id.
     job = capture_job.start("", "rotating due devices", actor, work, kind=KIND,
-                            announce_keys=ANNOUNCE_KEYS, announcer=ANNOUNCER)
+                            announce_keys=ANNOUNCE_KEYS, announcer=ANNOUNCER,
+                            page=f"/v2/credentials/profiles?rot_job={{job}}&rot_run={run_id}")
     with _progress_lock:
         _progress[run_id]["job"] = job
     return job, run_id
+
+
+def outcome(result: dict) -> dict:
+    """How a run ended, as In progress draws it (`in_flight.page_finished_row`: ``state`` and
+    ``words``, else its ``stopped`` or ``error``): never green over a run that stopped on a
+    failure, stopped at a no-change window with devices left, or was refused."""
+    state, why = result.get("state"), result.get("error") or ""
+    n, skipped = len(result.get("rotated") or []), len(result.get("skipped") or [])
+    if state == "nothing_due":
+        return {"state": "done", "words": "nothing was due"}
+    if state == "done" and why:
+        return {"state": "partial", "words": f"{n} rotated; {why}"}
+    if state == "done" and skipped:
+        # Amber, as the run's card is (`_credential_profiles.html`): a skipped device waits.
+        return {"state": "partial", "words": f"{n} rotated, {skipped} skipped"}
+    if state == "done":
+        return {"state": "done", "words": f"{n} rotated and persisted"}
+    if state == "stopped":
+        return {"state": "stopped", "stopped": why}
+    return {"state": "refused", "error": why or "no reason was recorded"}
 
 
 def run_card(run_id: str) -> dict:

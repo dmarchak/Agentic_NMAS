@@ -113,7 +113,9 @@ without one, and Needs attention names the device and the stage.
 later run with why. **Rotate N device(s)** confirms that list by its hash (if the due devices
 change first, nothing is sent) and runs them one at a time through the device page's
 rotation, each row on the run's stepper in place; it needs a verified person, and is not
-offered inside a no-change window. See
+offered inside a no-change window. You may leave the page: **In progress** lists the run while
+it runs and once it ends (red when it stopped on a failure, amber when it skipped a device or a
+no-change window left devices for the next run), and opens this tab on it. See
 [Rotate a credential: on a schedule](rotate#scheduled).
 
 ## The read-only account {#read-account}

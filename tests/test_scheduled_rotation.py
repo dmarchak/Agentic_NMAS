@@ -927,6 +927,45 @@ def test_rotate_due_now_runs_as_a_job_through_rotate_op(data, monkeypatch):
         {"r3": "done", "r1": "done"}
 
 
+@pytest.mark.parametrize("fail,off,level,words", [
+    ((), "", "ok", "2 rotated and persisted"),
+    (("r1",), "", "danger", "stopped: r1 failed at "),
+    ((), "r3", "warn", "1 rotated, 1 skipped"),
+])
+def test_a_run_is_listed_by_in_progress_and_its_tab_reopens_it(client, data, monkeypatch,
+                                                               fail, off, level, words):
+    """C3601's scheduled rotation: a Rotate due devices run started and left is listed by In
+    progress once it ends, with Credentials › Profiles opened on the run as its link, which
+    draws the run's card on the one stepper; a run that stopped on a failure is red and one
+    that skipped a device amber, as its card is, never green (its job's answer said `ok`
+    whatever the run did)."""
+    from modules import in_flight
+    from modules.nsot import capture_job, rotate_op
+    monkeypatch.setattr("modules.nsot.device_ops.in_flight", lambda name, now: [])
+    monkeypatch.setattr("modules.seen_runs.is_seen", lambda viewer, job: False)
+    monkeypatch.setattr(rotate_op, "run", Rotations(fail=set(fail)))
+    monkeypatch.setattr(rotate_op, "plan", _plan)
+    monkeypatch.setattr(SR, "off_intent",
+                        lambda _l, h: "off its intent: 1 line" if h == off else "")
+    states = _states(now=time.time())
+    monkeypatch.setattr(SR, "device_states", lambda now=None, **_k: states)
+    # Rotate due devices now… pressed, then its Rotate confirmed by the previewed hash.
+    preview = client.get("/v2/credentials/profiles/rotate-due").get_data(as_text=True)
+    digest = re.search(r'name="hash" value="([0-9a-f]+)"', preview).group(1)
+    r = client.post("/v2/credentials/profiles/rotate-due", data={"hash": digest})
+    assert r.status_code == 202, r.get_data(as_text=True)
+    job, run_id = re.search(r"/rotate-due/job/([0-9a-f]+)\?run=([0-9-]+)",
+                            r.get_data(as_text=True)).groups()
+    assert capture_job.wait(job, 20)
+    href = f"/v2/credentials/profiles?rot_job={job}&rot_run={run_id}"
+    (done,) = [f for f in in_flight.chip([], SETTER)["finished"] if f.get("href") == href]
+    assert done["level"] == level and done["words"].startswith(words), done
+    html = client.get(href).get_data(as_text=True)
+    assert "Rotate due devices</h2>" in html and "data-run-stepper" in html, html
+    assert 'data-row="r1"' in html
+    assert ('data-row="r3"' in html) == (off != "r3"), "a skipped device is beside the stepper"
+
+
 def test_the_forms_and_cards_draw(client, data):
     """The policy form, the preview with nothing due, and a run this server has no record
     of each draw their words in place."""

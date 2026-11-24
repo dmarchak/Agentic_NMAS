@@ -38,14 +38,19 @@ def _region(code: int = 200, **extra):
 
 @bp.route("", methods=["GET"])
 def page():
-    """The Profiles tab. A read: nothing is written and no value is read out."""
+    """The Profiles tab; opened on a Rotate due devices run (``rot_job``, ``rot_run``: In
+    progress's link, C3601), that run's card in the tab's place. A read: nothing is written
+    and no value is read out."""
     from routes.v2 import _credentials_list, _page
 
     from modules import credential_profiles_page as P
 
+    rot_job = (request.args.get("rot_job") or "").strip()
+    op = ({"op": _rotate_op(rot_job, (request.args.get("rot_run") or "").strip())}
+          if rot_job else {})
     return _page("v2/credentials.html", active_nav="credentials", tab="profiles",
-                 list_name=_credentials_list(request), known=True, ro=P.read_view(), **_ctx(),
-                 **fleet_ctx(), ra_job=(request.args.get("ra_job") or "").strip())
+                 list_name=_credentials_list(request), known=True, ro=P.read_view(),
+                 **_ctx(**op), **fleet_ctx(), ra_job=(request.args.get("ra_job") or "").strip())
 
 
 @bp.route("/region", methods=["GET"])
@@ -624,17 +629,22 @@ def rotate_due_confirm():
 def rotate_due_job(job):
     """The run's card for its job: running on the one stepper, its result, or why there is
     none (this process has no record of it: the run's own record is on the page)."""
+    return _region(op=_rotate_op(job, (request.args.get("run") or "").strip()))
+
+
+def _rotate_op(job: str, run_id: str) -> dict:
+    """The run's card's ``op`` for *job*: its card route's, and the tab's opened on the run
+    (``rot_job``, ``rot_run``; In progress's link, C3601)."""
     from modules.nsot import capture_job
     from modules.nsot import scheduled_rotation as SR
 
-    run_id = (request.args.get("run") or "").strip()
     got = capture_job.get(job)
     r = SR.run_card(run_id)
     if got is None or r is None:
-        return _region(op={"state": "rotate_unknown", "job": job, "run": run_id})
+        return {"state": "rotate_unknown", "job": job, "run": run_id}
     if got["state"] == "failed":
-        return _region(op={"state": "rotate_failed", "job": job, "run": run_id,
-                           "error": got.get("error") or "no reason was recorded", "r": r})
+        return {"state": "rotate_failed", "job": job, "run": run_id,
+                "error": got.get("error") or "no reason was recorded", "r": r}
     state = "rotating" if got["state"] == "running" else "rotate_done"
     result = ((got.get("payload") or {}).get("result")) or {}
-    return _region(op={"state": state, "job": job, "run": run_id, "r": r, "result": result})
+    return {"state": state, "job": job, "run": run_id, "r": r, "result": result}
