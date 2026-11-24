@@ -5,7 +5,7 @@
 - **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
 - **The stack's trees:** `~/mercury-runs/tree-stack-20.txt` (all 20 patches, made by
   applying c4232 and c2820-departs onto tree-stack-18) and `tree-stack-21.txt` (with the new
-  one; tree-stack-22 with the next). Make the next patch against tree-stack-22
+  one; 22 and 23 with the next two). Make the next patch against tree-stack-23
   (`git read-tree -u --reset <tree>` in a
   fresh worktree, then `git diff --cached --binary <tree>`).
 - **C2820 items 15 and 16 BUILT as a patch**, `~/mercury-runs/c2820-sdn.patch` and `.msg`
@@ -23,10 +23,17 @@
   hover. Red first (3 tests), a control bites; aimed 26 files, 817 passed, C4090's loops the
   one red. docs/fidelity/settings.md compared by the diff. land_all.sh now ends
   `c2820-departs c2820-sdn c2820-settings` (22 patches).
-- **Next:** land the 22 patches once session-namespace is answered; meanwhile item 25's
-  refusals (`list_settings.py`, `heal/policy.py`) and Settings › AI's words, items 26 to 35,
-  or "departed" in self-healing's words; or Stage 6's rows. New patches against
-  tree-stack-22.
+- **C2820 item 25, Settings › AI, BUILT as a patch**, `~/mercury-runs/c2820-ai-words.patch`
+  and `.msg` (same worktree, against `tree-stack-22.txt`; `tree-stack-23.txt` is the stack
+  with it): an `ai_feature` filter (routes/v2.py, over `background.FEATURES`' words) names
+  the feature in Settings › AI's on, off, already-off and caps notices, its Turn on heading
+  and the spend panel's Turn off answer, the key on hover. Red first (6 tests), a control
+  bites; aimed 79 files, 2,789 passed, C4090's loops the one red. Two fidelity records
+  compared by the diff. land_all.sh now ends `c2820-sdn c2820-settings c2820-ai-words`
+  (23 patches).
+- **Next:** land the 23 patches once session-namespace is answered; meanwhile C2820's items
+  26 to 35 (Settings' labels and tier words), or "departed" in self-healing's words; or
+  Stage 6's rows. New patches against tree-stack-23.
 
 ## 00000. The 06:10 session (2026-11-24)
 
