@@ -1,6 +1,28 @@
-# Handoff: the waiting patches as one stack, now 19 (2026-11-24, from 01:00 Denver)
+# Handoff: the waiting patches as one stack, now 25 (2026-11-24, from 01:00 Denver)
 
-## 000000. The 07:11 session (2026-11-24): read this first
+## 0000000. The 07:48 session (2026-11-24): read this first
+
+- **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
+- **The stack's trees:** `~/mercury-runs/tree-stack-24.txt` (with c2820-codes) and
+  `tree-stack-25.txt` (with c2820-labels). Make the next patch against tree-stack-25; the
+  worktree `~/nmas-worktrees/c2820-sdn` holds it staged (its index is tree-stack-25).
+  land_all.sh now ends `c2820-ai-words c2820-codes c2820-labels` (25 patches).
+- **C2820 items 32 and 34 BUILT as a patch**, `~/mercury-runs/c2820-codes.patch` and `.msg`:
+  no Settings screen's visible text names a register row, a plan section or "the AUTO
+  production-readiness gate" (new tests/test_settings_words_name_no_codes.py over every
+  Settings screen; Auto's preview checks in test_heal_policy). Red first (12), a control
+  bites; aimed 168 files, 4,713 passed, C4090's loops the one red. sdn-settings and sdn
+  fidelity records compared by the diff. **C4234 (new, UNKNOWN):** the same codes in 339
+  string constants outside Settings, how many drawn unmeasured (its one measurement in the row).
+- **C2820 item 26 BUILT as a patch**, `~/mercury-runs/c2820-labels.patch` and `.msg`:
+  "Check the certificate", "Token sent as", "VMs whose backups are checked", "Listen
+  address". Red first (3), a control bites; aimed 85 files, 3,392 passed, C4090's the one red.
+- Kept (decisions file): item 30's hashes (what a confirm binds), the AI classes' names.
+- **Next:** land the 25 once session-namespace is answered; meanwhile C2820's items 27 to 29
+  (Tier words, "Dry run", the guard labels: check first whether "dry run" is the operator's
+  or the course lab's word, as AUTO/HITL were), 33 and 35, or C4234's measurement.
+
+## 000000. The 07:11 session (2026-11-24)
 
 - **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
 - **The stack's trees:** `~/mercury-runs/tree-stack-20.txt` (all 20 patches, made by
