@@ -36,6 +36,16 @@ and the next session unblocks the item and moves the entry to Answered.
 - **Options:** A, B, C, or C with B's Needs attention queue and step timeline.
 - **Recommendation:** C with B's queue and timeline (about 30 build days by its estimate).
 
+### c2518-runner
+
+- **Asked (2026-11-24):** C2518 (A) layer 1, the local CI runner: act given no Docker socket
+  (`--container-daemon-socket -`), empty `--env-file`/`--secret-file`/`--var-file`, and started in an
+  empty folder so no `.actrc` from the commit is read. Built as `~/mercury-runs/c2518-runner.patch`
+  (scripts/nmas-local-ci, 53 lines, not committed). scripts/nmas-local-ci is a guard path
+  (scripts/nmas-guard-check, WHOLE), and the row holds your 2026-11-05 design only in paraphrase.
+  **Options:** (a) your words for this change, quoted in its Approved-By; (b) leave it until layer 2.
+  **Recommendation:** (a); the timer stays off either way.
+
 ### ci-shards-gate
 
 - **Asked (2026-11-24):** your 10-shard words cover ci.yml and scripts/nmas-shards, but the gate
