@@ -96,3 +96,8 @@ deploy/grafana/provisioning/alerting/nmas-telemetry-delete.yaml
 /setup.cfg
 /mutation-out/
 /.mutation-state/
+
+# The GUI review's screenshots and the proposals' zip (tools/review_screenshots.py; the week
+# plan of 2026-11-23, Stage 3): made on demand, never committed
+/design/review/shots/
+/design/proposals.zip
