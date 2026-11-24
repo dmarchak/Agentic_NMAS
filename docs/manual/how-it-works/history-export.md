@@ -3,19 +3,20 @@
 History › Export downloads two logs of what Mercury already records, for a report such as a
 lab's: **the call and cost log**, every AI call and what it cost, and **the false-positive and
 failure log**, where the AI layer was wrong or the network's automation failed, and what was
-done about it. Each is a CSV or a JSON file for one network or every network, over whole UTC
-days. The export reads; it writes nothing, and it asks no device, controller or model anything.
+done about it. Each is a CSV or a JSON file for one network or every network, over whole days
+in the zone you read times in. The export reads; it writes nothing, and it asks no device, controller or model anything.
 
-![History's Export: a person chooses the network and the whole UTC days, at most 31, and a longer range is refused with nothing read; the call and cost log reads every AI call the ledger recorded in the range, one row each, with a total per UTC day and per feature, the dollars the ledger's summed by day; the false-positive and failure log reads each network's SDN responses and flow operations, every analysis's planted-issue sheet, its record of evaluation runs (the false-positive runs, the analyst evaluations and the classification case recordings), the ledger's evaluation calls and the answers said wrong; every text is masked on the way out, and the file, CSV or JSON, opens with its range, network, when and who. Nothing is written.](diagrams/history-export.svg)
+![History's Export: a person chooses the network and the whole days, in their own zone, at most 31, and a longer range is refused with nothing read; the call and cost log reads every AI call the ledger recorded in the range, one row each, with a total per day and per feature, the dollars the ledger's summed by day; the false-positive and failure log reads each network's SDN responses and flow operations, every analysis's planted-issue sheet, its record of evaluation runs (the false-positive runs, the analyst evaluations and the classification case recordings), the ledger's evaluation calls and the answers said wrong; every text is masked on the way out, and the file, CSV or JSON, opens with its range, network, when and who. Nothing is written.](diagrams/history-export.svg)
 
 ## The steps
 
-1. `range`: you choose the **Network** (one, or **Every network**) and the whole UTC days
-   **From** and **To**, both included, at most 31. A longer range is refused, naming its
+1. `range`: you choose the **Network** (one, or **Every network**) and the whole days
+   **From** and **To**, both included, at most 31, in the zone you read times in (named beside
+   them; a day of a clock change is 23 or 25 hours). A longer range is refused, naming its
    length, and so are a From after its To and a network no one has: nothing is read.
 2. `calls`: every AI call the ledger recorded in the range (the record History's AI calls
-   draw), one row each, oldest first, then a total per UTC day and per feature. The dollars
-   are the ledger's own cost per call, summed by UTC day from the rows read now, never carried
+   draw), one row each, oldest first, then a total per day and per feature. The dollars
+   are the ledger's own cost per call, summed by day from the rows read now, never carried
    forward from an earlier total; the provider bills.
 3. `failures`: each source's rows, one row each with its record's link:
    - from each network's own records: every SDN detection a person dismissed (the reason and
@@ -49,7 +50,7 @@ days. The export reads; it writes nothing, and it asks no device, controller or 
 
 | Column | What it holds |
 |---|---|
-| `at`, `day` | when the call was recorded, and its UTC day |
+| `at`, `day` | when the call was recorded (UTC), and its day in the range's zone |
 | `call` | the call's id |
 | `feature` | the task: Explain, Ask in words, the SDN classifier, the analyst… |
 | `trigger`, `by` | person (who pressed), background (the job, its feature and finding) or evaluation (its run) |
@@ -62,7 +63,8 @@ days. The export reads; it writes nothing, and it asks no device, controller or 
 | `detail`, `then` | why, and what became of the answer |
 | `link` | the call's row on History |
 
-Then the totals by UTC day and by feature: calls, dollars, each outcome, the tokens.
+Then the totals by day (the range's zone) and by feature: calls, dollars, each outcome, the
+tokens.
 
 `then` holds the whole reason, however long. Some features cut a reason to 200 characters
 when they recorded it. The file cannot tell such a reason from a whole one of that length, so

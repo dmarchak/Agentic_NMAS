@@ -155,6 +155,21 @@ def test_one_network_s_log_holds_its_calls_and_counts_the_rest(world):  # noqa: 
     assert len(calls.read()["rows"]) == 5
 
 
+def test_a_range_is_read_in_the_zone_given_its_clock_change_included():
+    """C3485: the days are the viewer's: 2026-11-01 in America/Denver runs from its midnight in
+    MDT (06:00 UTC) to the next in MST (07:00 UTC), 25 hours, and an instant is on the day its
+    zone says; without a zone the range stays UTC's, as before."""
+    from zoneinfo import ZoneInfo
+    den = ZoneInfo("America/Denver")
+    rng = X.parse_range("2026-11-01", "2026-11-01", zone=den)
+    assert rng["ok"] and rng["zone"] == "America/Denver"
+    assert X._iso(rng["from_s"]) == "2026-11-01T06:00:00Z"
+    assert X._iso(rng["to_s"]) == "2026-11-02T07:00:00Z", "25 hours: the clock went back"
+    assert X._day("2026-11-02T03:00:00Z", den) == "2026-11-01", "21:00 MST is still the 1st"
+    utc = X.parse_range("2026-11-01", "2026-11-01")
+    assert (X._iso(utc["from_s"]), utc["zone"]) == ("2026-11-01T00:00:00Z", "UTC")
+
+
 def test_a_range_past_31_days_is_refused_naming_its_length(world):  # noqa: F811
     _background_call(TODAY)
     long = X.calls(X.EVERY, _day(-31), TODAY)
@@ -701,7 +716,7 @@ def test_each_file_opens_with_its_log_range_network_and_who_made_it(world):  # n
     head = _rows(c["body"])[:6]
     # Board E2a: who made the file is written by display name, and the file says so.
     assert head == [["# log", "Mercury: AI calls and cost"],
-                    ["# range", YESTERDAY, TODAY, "2 whole UTC days, inclusive"],
+                    ["# range", YESTERDAY, TODAY, "2 whole days in UTC, inclusive"],
                     ["# network", NET], ["# made", made, "by", SHOWN],
                     ["# people", X.PEOPLE], ["# amounts", X.AMOUNTS]]
     assert c["filename"] == f"mercury-ai-calls-Default-{YESTERDAY}-to-{TODAY}.csv"
@@ -849,11 +864,18 @@ def test_a_range_past_31_days_is_refused_on_the_page_and_the_download(page):
 
 
 def test_an_empty_range_says_so_and_its_file_says_none(page):
+    # C3485: the days are the viewer's, in the zone they keep (here America/Denver).
+    from modules import time_zones
+    from tests.conftest import TEST_PERSON
+    time_zones.set_zone(TEST_PERSON, "America/Denver", by=TEST_PERSON, actor_verified="access")
     _r, html = _get(page, "/v2/history?tab=export&start=2020-01-01&end=2020-01-07")
     assert "Nothing in the range: no AI call, and no false positive or failure, on Lab from " \
-           "2020-01-01 to 2020-01-07 (UTC)" in html
+           "2020-01-01 to 2020-01-07 (America/Denver)" in html
+    assert "(UTC)" not in html[html.index('name="start"') - 300:html.index('id="hist-export"')]
     r = page["client"].get("/v2/history/export/calls/csv?start=2020-01-01&end=2020-01-07")
     rows = _rows(r.get_data(as_text=True))
+    assert ["# range", "2020-01-01", "2020-01-07",
+            "7 whole days in America/Denver, inclusive"] in rows
     assert ["# in the range", "0 calls · $0.00"] in rows
     assert rows[rows.index(list(X.CALL_COLUMNS)) + 1] == []
     assert X.calls("Lab", "2020-01-01", "2020-01-07")["rows"] == []

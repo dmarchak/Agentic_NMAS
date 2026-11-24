@@ -862,7 +862,8 @@ def _history_ctx(request) -> dict:
         from modules import history_export
         ctx["x"] = history_export.view(request.args.get("network") or "",
                                        request.args.get("start") or "",
-                                       request.args.get("end") or "", default=ref.name)
+                                       request.args.get("end") or "", default=ref.name,
+                                       zone=viewer_zone())  # C3485: the viewer's days
     return ctx
 
 
@@ -1007,7 +1008,8 @@ def history_export_download(kind, fmt):
     got = history_export.download(kind, fmt, request.args.get("network") or "",
                                   request.args.get("start") or "",
                                   request.args.get("end") or "",
-                                  by=identity.viewer().actor, default=listref.active().name)
+                                  by=identity.viewer().actor, default=listref.active().name,
+                                  zone=viewer_zone())  # C3485: the viewer's days
     if not got["ok"]:
         return Response(f"Nothing to download: {got['error']}.\n", status=400,
                         mimetype="text/plain", headers={"Cache-Control": "no-store"})

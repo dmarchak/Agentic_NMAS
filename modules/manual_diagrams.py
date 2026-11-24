@@ -1484,9 +1484,10 @@ def sdn_analyse():
 
 def history_export():
     return svg(510, (
-        "History's Export: a person chooses the network and the whole UTC days, at most 31, and "
+        "History's Export: a person chooses the network and the whole days, in their own zone, "
+        "at most 31, and "
         "a longer range is refused with nothing read; the call and cost log reads every AI "
-        "call the ledger recorded in the range, one row each, with a total per UTC day and per "
+        "call the ledger recorded in the range, one row each, with a total per day and per "
         "feature, the dollars the ledger's summed by day; the false-positive and failure log "
         "reads each network's SDN responses and flow operations, every analysis's planted-issue "
         "sheet, its record of evaluation runs (the false-positive runs, the analyst evaluations "
@@ -1503,7 +1504,7 @@ def history_export():
         store(250, 262, 130, 40, "Answers said wrong", "and each review"),
         store(250, 318, 130, 40, "Evaluation runs", "false positives, misses"),
         band(104, 70, "The call and cost log"),
-        doc("box", 14, 128, 186, 36, "A row per call", "totals by UTC day, feature"),
+        doc("box", 14, 128, 186, 36, "A row per call", "totals by day, feature"),
         num(14, 128, 2),
         arrow("read", 248, 60, 202, 146, via=(224, 120)),
         band(184, 180, "The failure log"),

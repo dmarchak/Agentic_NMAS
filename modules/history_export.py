@@ -1,14 +1,15 @@
 """History › Export (Lab 9 B5; board H of docs/boards/lab9-sdn.html, self-signed 2026-11-10):
 the records History already keeps, downloaded for a report as CSV or JSON, masked as History
-masks them. Two logs, each for one network or every network, over a range of whole UTC days:
+masks them. Two logs, each for one network or every network, over a range of whole days (in
+the viewer's zone, C3485):
 
 **The call and cost log** (`calls`): every AI call the gateway recorded in the range
 (modules/ai/calls.py, the ledger ``ai_calls``), one row each: when, the feature, the trigger
 (a person's press with who, a background job with its job, an evaluation with its run), the
 model, the prompt and its version, the tokens in and out, the cache's write and read, the
 dollars, the latency, the verdict and what it means (`OUTCOMES`), and the call's History link.
-Then a total per UTC day and per feature. The dollars are the ledger's own ``cost_usd`` per
-call, summed by UTC day from the rows read now, never carried forward from an earlier total.
+Then a total per day and per feature. The dollars are the ledger's own ``cost_usd`` per
+call, summed by day from the rows read now, never carried forward from an earlier total.
 
 **The false-positive and failure log** (`failures`): where the AI layer was wrong or the
 network's automation failed, and what was done about it, one row each with its record's link,
@@ -45,7 +46,7 @@ sdn_classify normal-traffic runs' false positives are complete from the ledger: 
 its collection as its subject and its answer's ``threat_detected``, which is the run's own
 definition of one.
 
-**Bounded:** a range is at most `MAX_DAYS` whole UTC days, refused naming its length; a file
+**Bounded:** a range is at most `MAX_DAYS` whole days, refused naming its length; a file
 lists at most `MAX_ROWS` rows and says how many it left out, its totals still every row's.
 **Reads only:** nothing is written, and no device, controller or model is asked anything.
 Every text a row carries is masked on the way out (`_masked`, `redact.redact_text`), as
@@ -63,7 +64,7 @@ from urllib.parse import urlencode
 
 log = logging.getLogger(__name__)
 
-#: The longest range a log covers, in whole UTC days (a month: a lab's or a report's period).
+#: The longest range a log covers, in whole days (a month: a lab's or a report's period).
 MAX_DAYS = 31
 #: The default range: the last week, today included.
 DEFAULT_DAYS = 7
@@ -140,10 +141,11 @@ NOT_RECORDED = ("the per-case misses of nmas-intent-cases, nmas-heal-cases, nmas
 
 #: The export's steps, as the manual's How it works page names them.
 STEPS = (
-    ("range", f"the network (one, or every network) and whole UTC days, From to To, at most "
-              f"{MAX_DAYS}: a longer range is refused, naming its length; nothing is read"),
+    ("range", f"the network (one, or every network) and whole days in the viewer's zone, "
+              f"From to To, at most {MAX_DAYS}: a longer range is refused, naming its length; "
+              "nothing is read"),
     ("calls", "every AI call the ledger recorded in the range, one row each, with a total per "
-              "UTC day and per feature; the dollars the ledger's per call, summed by UTC day "
+              "day and per feature; the dollars the ledger's per call, summed by day "
               "from the rows read now, never carried forward"),
     ("failures", "from each network's own records: SDN detections dismissed, classifications "
                  "the check refused, responses AUTO could not send (a protected-flow refusal "
@@ -196,23 +198,41 @@ def _instant(at) -> float:
         return None
 
 
-def _day(at) -> str:
+#: The zone a range's days are read in when its caller names none: UTC, as before C3485.
+UTC = datetime.timezone.utc
+
+
+def _day(at, tz=UTC) -> str:
+    """*at*'s day in *tz* (a tzinfo; None, the host's own), "" when it is no instant."""
     t = _instant(at)
-    return time.strftime("%Y-%m-%d", time.gmtime(t)) if t is not None else ""
+    return datetime.datetime.fromtimestamp(t, tz).date().isoformat() if t is not None else ""
+
+
+def zone_words(tz) -> str:
+    """The zone a range's days are read in, by name: "UTC", "America/Denver", or the host's own
+    (C3485: History › Export reads its days in the viewer's zone)."""
+    if tz is UTC:
+        return "UTC"
+    if tz is not None:
+        return str(getattr(tz, "key", "") or tz)
+    from modules import time_zones
+
+    return time_zones.host_zone_name()
 
 
 # ───────────────────────────────────────────────────────────────────────────── the choice
 
-def parse_range(start: str, end: str, now: float = None) -> dict:
-    """The range asked: ``{"ok", "error", "start", "end", "days", "from_s", "to_s"}``, *start*
-    and *end* whole UTC days (``YYYY-MM-DD``) inclusive, *from_s* and *to_s* the epochs it
-    covers (*to_s* exclusive). None given: the last `DEFAULT_DAYS`, today included. A day that
+def parse_range(start: str, end: str, now: float = None, zone=UTC) -> dict:
+    """The range asked: ``{"ok", "error", "start", "end", "days", "from_s", "to_s", "tz",
+    "zone"}``, *start* and *end* whole days (``YYYY-MM-DD``) inclusive in *zone* (a tzinfo,
+    UTC by default; None, the host's own), *from_s* and *to_s* the epochs it covers (*to_s*
+    exclusive: each day's midnight in that zone, so a day of a clock change is 23 or 25
+    hours), *zone* its name. None given: the last `DEFAULT_DAYS`, today included. A day that
     is no date, a From after its To, and a range past `MAX_DAYS` are refused, naming both."""
-    today = datetime.datetime.fromtimestamp(_now() if now is None else now,
-                                            datetime.timezone.utc).date()
+    today = datetime.datetime.fromtimestamp(_now() if now is None else now, zone).date()
     start, end = (start or "").strip(), (end or "").strip()
     out = {"ok": False, "error": "", "start": start, "end": end, "days": 0,
-           "from_s": None, "to_s": None}
+           "from_s": None, "to_s": None, "tz": zone, "zone": zone_words(zone)}
     try:
         b = datetime.date.fromisoformat(end) if end else today
     except ValueError:
@@ -230,10 +250,11 @@ def parse_range(start: str, end: str, now: float = None) -> dict:
         return dict(out, days=days, error=(
             f"the range {a.isoformat()} to {b.isoformat()} is {days} days, and a log covers at "
             f"most {MAX_DAYS}: choose a shorter range, or download it in parts"))
-    utc = datetime.timezone.utc
-    first = datetime.datetime.combine(a, datetime.time(0, 0), tzinfo=utc)
+    # A naive midnight is the host's own (`timestamp` reads it as local time, its clock
+    # changes included); an aware one is its zone's.
+    first = datetime.datetime.combine(a, datetime.time(0, 0), tzinfo=zone)
     after = datetime.datetime.combine(b + datetime.timedelta(days=1), datetime.time(0, 0),
-                                      tzinfo=utc)
+                                      tzinfo=zone)
     return dict(out, ok=True, days=days, from_s=first.timestamp(), to_s=after.timestamp())
 
 
@@ -400,15 +421,17 @@ def _ledger() -> dict:
             "rows": [r for r in got.get("rows") or [] if "use_of" not in r]}
 
 
-def calls(network: str, start: str, end: str, now: float = None, ledger: dict = None) -> dict:
-    """The call and cost log of *network* (a name, or `EVERY`) from *start* to *end* (whole UTC
-    days): ``{"ok", "error", "errors", "range", "network", "rows", "cut", "by_day",
-    "by_feature", "summary", "unattributed"}``. *rows* oldest first, at most `MAX_ROWS` (*cut*
-    the number left out); *by_day* and *by_feature* each a row per UTC day or feature with its
-    calls, dollars and outcomes, over every row in the range; *summary* the same over all of
-    them. One network's log holds the calls whose row names it (`call_network`);
-    *unattributed* counts the range's calls that name no network, in Every network's log only."""
-    rng = parse_range(start, end, now)
+def calls(network: str, start: str, end: str, now: float = None, ledger: dict = None,
+          zone=UTC) -> dict:
+    """The call and cost log of *network* (a name, or `EVERY`) from *start* to *end* (whole
+    days in *zone*, `parse_range`): ``{"ok", "error", "errors", "range", "network", "rows",
+    "cut", "by_day", "by_feature", "summary", "unattributed"}``. *rows* oldest first, at most
+    `MAX_ROWS` (*cut* the number left out); *by_day* and *by_feature* each a row per day (in
+    *zone*) or feature with its calls, dollars and outcomes, over every row in the range;
+    *summary* the same over all of them. One network's log holds the calls whose row names it
+    (`call_network`); *unattributed* counts the range's calls that name no network, in Every
+    network's log only."""
+    rng = parse_range(start, end, now, zone)
     base = {"ok": False, "error": rng["error"], "errors": [], "range": rng, "network": network,
             "rows": [], "cut": 0, "by_day": [], "by_feature": [], "summary": _sums([]),
             "unattributed": 0}
@@ -429,7 +452,8 @@ def calls(network: str, start: str, end: str, now: float = None, ledger: dict = 
         picked.append(r)
     # By time, the ledger's own order kept within a second (a stable sort of its append order).
     picked.sort(key=lambda r: _instant(r.get("at")))
-    rows = [_call_row(r, got["uses"].get(r.get("id")) or []) for r in picked]
+    rows = [dict(_call_row(r, got["uses"].get(r.get("id")) or []), day=_day(r.get("at"), zone))
+            for r in picked]
 
     def totals(key):
         groups = collections.OrderedDict()
@@ -439,7 +463,8 @@ def calls(network: str, start: str, end: str, now: float = None, ledger: dict = 
 
     by_day = totals("day")
     summary = _sums(rows)
-    # The dollars by UTC day, then the days summed: the ledger's figures, never a running total.
+    # The dollars by day (the range's zone), then the days summed: the ledger's figures,
+    # never a running total.
     summary["usd"] = sum(d["usd"] for d in by_day)
     return dict(base, ok=True, rows=rows[:MAX_ROWS], cut=max(0, len(rows) - MAX_ROWS),
                 by_day=by_day, by_feature=totals("feature"), summary=summary,
@@ -566,7 +591,7 @@ def _from_refusals(network: str, rng: dict, ctx: dict) -> dict:
             got=f"{kind}: refused by {sdn_refused_by(r) or 'the protected set'}"
                 + (f"; drafted by AI call {call}" if call else ""),
             link=(history_call_link(call) if call
-                  else _history_day_link(network, "sdn", _day(at))),
+                  else _history_day_link(network, "sdn", _day(at, rng.get("tz", UTC)))),
             source="sdn_refusals"))
     return {"rows": out, "errors": []}
 
@@ -619,7 +644,7 @@ def _from_operations(network: str, rng: dict, ctx: dict) -> dict:
                                     f"{_rollback_words(op)}",
                             case=op.get("id") or "",
                             got=(response.get("detection") or {}).get("words") or "",
-                            link=_history_day_link(network, "sdn", _day(at)),
+                            link=_history_day_link(network, "sdn", _day(at, rng.get("tz", UTC))),
                             source="sdn_operations"))
     return {"rows": out, "errors": []}
 
@@ -940,13 +965,14 @@ FAILURE_SOURCES = (
 
 
 def failures(network: str, start: str, end: str, now: float = None,
-             ledger: dict = None) -> dict:
+             ledger: dict = None, zone=UTC) -> dict:
     """The false-positive and failure log of *network* (a name, or `EVERY`) from *start* to
     *end*: ``{"ok", "error", "errors", "range", "network", "rows", "cut", "counts",
     "reasons"}``. *rows* oldest first, at most `MAX_ROWS`; *counts* ``[(kind, words, n)]`` in
     `KINDS`' order over every row; *reasons* the dismissals' reasons, most given first. A
-    store that cannot be read is in *errors*, never a shorter log said whole."""
-    rng = parse_range(start, end, now)
+    store that cannot be read is in *errors*, never a shorter log said whole. The days are
+    *zone*'s (`parse_range`), each row's own day among them."""
+    rng = parse_range(start, end, now, zone)
     base = {"ok": False, "error": rng["error"], "errors": [], "range": rng, "network": network,
             "rows": [], "cut": 0, "counts": [(k, many, 0) for k, _one, many in KINDS],
             "reasons": []}
@@ -977,7 +1003,9 @@ def failures(network: str, start: str, end: str, now: float = None,
     named = ctx.get("refusal_calls") or set()
     rows = [r for r in rows if not (r["kind"] == "protected_refusal"
                                     and r["source"] == "ai_calls" and r["case"] in named)]
-    # By time; within a second each source's own order (a stable sort).
+    # By time; within a second each source's own order (a stable sort). Each row's day is
+    # the range's zone's (C3485).
+    rows = [dict(r, day=_day(r["at"], zone)) if "day" in r else r for r in rows]
     rows.sort(key=lambda r: _instant(r["at"]) or 0.0)
     n = collections.Counter(r["kind"] for r in rows)
     reasons = collections.Counter(r["reason"] for r in rows if r["kind"] == "dismissed"
@@ -1012,8 +1040,9 @@ TOTAL_COLUMNS = ("calls", "usd", "ok", "validation", "cap", "gate", "failed", "j
                  "tokens_in", "tokens_out")
 FAILURE_COLUMNS = ("at", "kind", "kind_words", "network", "what", "reason", "who", "outcome",
                    "case", "expected", "got", "record", "source")
-AMOUNTS = ("the ledger's own cost per call in US dollars (the provider bills), summed by UTC "
-           "day from the rows read now; never carried forward from an earlier total")
+AMOUNTS = ("the ledger's own cost per call in US dollars (the provider bills), summed by "
+           "day (the range's zone) from the rows read now; never carried forward from an "
+           "earlier total")
 TITLES = {"calls": "Mercury: AI calls and cost", "failures": "Mercury: false positives and "
           "failures"}
 
@@ -1048,7 +1077,8 @@ def header(kind: str, got: dict, *, by: str, now: float = None) -> list:
     recorded (the failure log), and any store it could not read."""
     rng = got["range"]
     lines = [("log", TITLES[kind]),
-             ("range", rng["start"], rng["end"], f"{rng['days']} whole UTC days, inclusive"),
+             ("range", rng["start"], rng["end"],
+              f"{rng['days']} whole days in {rng.get('zone', 'UTC')}, inclusive"),
              ("network", _network_words(got["network"])),
              ("made", _iso(_now() if now is None else now), "by", _people(by) or "unknown"),
              ("people", PEOPLE)]
@@ -1089,7 +1119,8 @@ def to_csv(kind: str, got: dict, *, by: str, now: float = None) -> str:
     for r in _rows(got):
         w.writerow([_cell(r[c]) for c in columns])
     if kind == "calls":
-        for key, words in (("day", "by UTC day"), ("feature", "by feature")):
+        for key, words in (("day", f"by day ({got['range'].get('zone', 'UTC')})"),
+                           ("feature", "by feature")):
             w.writerow([])
             w.writerow([f"# totals {words}"])
             w.writerow((key,) + TOTAL_COLUMNS)
@@ -1103,7 +1134,8 @@ def to_json(kind: str, got: dict, *, by: str, now: float = None) -> str:
     rng = got["range"]
     lines = header(kind, got, by=by, now=now)
     doc = {"log": TITLES[kind], "range": {"from": rng["start"], "to": rng["end"],
-                                          "days": rng["days"], "days_are": "UTC, inclusive"},
+                                          "days": rng["days"],
+                                          "days_are": f"{rng.get('zone', 'UTC')}, inclusive"},
            "network": _network_words(got["network"]),
            "made_at": lines[3][1], "made_by": lines[3][3], "people": PEOPLE}
     if kind == "calls":
@@ -1118,7 +1150,7 @@ def to_json(kind: str, got: dict, *, by: str, now: float = None) -> str:
 
 
 def download(kind: str, fmt: str, network: str, start: str, end: str, *, by: str,
-             default: str, now: float = None) -> dict:
+             default: str, now: float = None, zone=UTC) -> dict:
     """One file: ``{"ok", "error", "body", "mime", "filename"}``. A kind or format it does not
     make, a network no one has, or a range it refuses is an error naming it; nothing is
     written either way."""
@@ -1129,7 +1161,8 @@ def download(kind: str, fmt: str, network: str, start: str, end: str, *, by: str
     net = parse_network(network, default)
     if not net["ok"]:
         return {"ok": False, "error": net["error"]}
-    got = (calls if kind == "calls" else failures)(net["network"], start, end, now=now)
+    got = (calls if kind == "calls" else failures)(net["network"], start, end, now=now,
+                                                   zone=zone)
     if not got["ok"]:
         return {"ok": False, "error": got["error"]}
     body = (to_csv if fmt == "csv" else to_json)(kind, got, by=by, now=now)
@@ -1144,7 +1177,8 @@ def download(kind: str, fmt: str, network: str, start: str, end: str, *, by: str
 
 # ───────────────────────────────────────────────────────────────────────────── the page
 
-def view(network: str, start: str, end: str, *, default: str, now: float = None) -> dict:
+def view(network: str, start: str, end: str, *, default: str, now: float = None,
+         zone=UTC) -> dict:
     """What History › Export draws: ``{"network", "names", "first_day", "last_day", "days",
     "error", "calls", "failures", "fail_counts", "not_recorded", "errors", "empty",
     "max_days", "unattributed"}``.
@@ -1152,18 +1186,20 @@ def view(network: str, start: str, end: str, *, default: str, now: float = None)
     *empty* when the range holds nothing of either. A choice refused is said, and nothing is
     read for it."""
     net = parse_network(network, default)
-    rng = parse_range(start, end, now)
+    rng = parse_range(start, end, now, zone)
     # The range's days by names of their own: a key is judged drawn by its name across
     # History's templates (tests/v2_context.py), and `start` and `end` are the Query pages'.
+    # *day_zone* names the zone they are read in (C3485: the viewer's).
     out = {"network": net["network"], "names": net["names"], "first_day": rng["start"],
            "last_day": rng["end"], "days": rng["days"], "error": net["error"] or rng["error"],
            "calls": "", "failures": "", "fail_counts": [], "not_recorded": NOT_RECORDED,
-           "errors": [], "empty": False, "max_days": MAX_DAYS, "unattributed": 0}
+           "errors": [], "empty": False, "max_days": MAX_DAYS, "unattributed": 0,
+           "day_zone": rng["zone"]}
     if out["error"]:
         return out
     led = _ledger()
-    c = calls(net["network"], rng["start"], rng["end"], now=now, ledger=led)
-    f = failures(net["network"], rng["start"], rng["end"], now=now, ledger=led)
+    c = calls(net["network"], rng["start"], rng["end"], now=now, ledger=led, zone=zone)
+    f = failures(net["network"], rng["start"], rng["end"], now=now, ledger=led, zone=zone)
     out.update(calls=calls_words(c["summary"]) if c["ok"] else "",
                failures=failures_words(f) if f["ok"] else "",
                fail_counts=[(words, n) for _k, words, n in f["counts"]],

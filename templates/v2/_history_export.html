@@ -1,6 +1,6 @@
 {%- from "v2/_macros.html" import icon, info, how -%}
 {#- History › Export (Lab 9 B5; board H of docs/boards/lab9-sdn.html, self-signed 2026-11-10,
-    compared in docs/fidelity/history-export.md): the network and the whole UTC days, then the
+    compared in docs/fidelity/history-export.md): the network and the whole days (in the viewer's zone, C3485), then the
     two logs, each its line of counts and its two downloads (modules/history_export.py). Redrawn
     in place when the record of AI calls, the SDN records or the answers said wrong change. -#}
 {%- set q = {'network': x.network, 'start': x.first_day, 'end': x.last_day} -%}
@@ -12,21 +12,22 @@
       {%- for n in x.names %}<option value="{{ n }}"{% if n == x.network %} selected{% endif %}>{{ n }}</option>{% endfor %}
       <option value="*"{% if x.network == '*' %} selected{% endif %}>Every network</option>
     </select></label>
-  <label class="hist-filter"><span class="muted small">From (UTC)</span>
-    <input type="date" name="start" value="{{ x.first_day }}" aria-label="The first whole UTC day"></label>
-  <label class="hist-filter"><span class="muted small">To (UTC)</span>
-    <input type="date" name="end" value="{{ x.last_day }}" aria-label="The last whole UTC day"></label>
+  <label class="hist-filter"><span class="muted small">From</span>
+    <input type="date" name="start" value="{{ x.first_day }}" aria-label="The first whole day, in {{ x.day_zone }}"></label>
+  <label class="hist-filter"><span class="muted small">To</span>
+    <input type="date" name="end" value="{{ x.last_day }}" aria-label="The last whole day, in {{ x.day_zone }}"></label>
+  <span class="muted small" title="The days are read in the zone you read times in">Days in {{ x.day_zone }}</span>
   <button type="submit" class="btn">Show</button>
 </form>
 <section id="hist-export" hx-disinherit="*" hx-get="{{ url_for('v2.history_page', tab='export', **q) }}" hx-select="#hist-export" hx-trigger="nmas:ai_calls from:body, nmas:sdn from:body, nmas:ai_feedback from:body" hx-swap="outerHTML">
 {%- if x.error %}
-<div class="notice notice-warn" role="alert">{{ icon('warn') }}<p>Not shown: {{ x.error }}. Nothing was read; at most {{ x.max_days }} whole UTC days.</p></div>
+<div class="notice notice-warn" role="alert">{{ icon('warn') }}<p>Not shown: {{ x.error }}. Nothing was read; at most {{ x.max_days }} whole days.</p></div>
 {%- else %}
 {%- if x.errors %}
 <div class="notice notice-warn">{{ icon('warn') }}<p>Could not read: {{ x.errors | join('; ') }}. The logs below leave out what it holds, and each file says so.</p></div>
 {%- endif %}
 {%- if x.empty %}
-<p class="cov-head">{{ icon('info') }} Nothing in the range: no AI call, and no false positive or failure, on {{ 'every network' if x.network == '*' else x.network }} from {{ x.first_day }} to {{ x.last_day }} (UTC). The files still download, saying so.</p>
+<p class="cov-head">{{ icon('info') }} Nothing in the range: no AI call, and no false positive or failure, on {{ 'every network' if x.network == '*' else x.network }} from {{ x.first_day }} to {{ x.last_day }} ({{ x.day_zone }}). The files still download, saying so.</p>
 {%- endif %}
 <div class="hist-export-cols">
   <section class="card" aria-label="AI calls and cost">
@@ -45,6 +46,6 @@
     <div class="hist-export-actions"><a class="btn btn-primary" href="{{ url_for('v2.history_export_download', kind='failures', fmt='csv', **q) }}" download>Download CSV</a><a class="btn" href="{{ url_for('v2.history_export_download', kind='failures', fmt='json', **q) }}" download>Download JSON</a></div>
   </section>
 </div>
-<p class="muted small">Both files carry their range, network, the time they were made and who made them in their first lines; amounts are the ledger's, summed by UTC day, never carried forward. {{ x.days }} whole UTC day{{ '' if x.days == 1 else 's' }}, at most {{ x.max_days }}.</p>
+<p class="muted small">Both files carry their range, network, the time they were made and who made them in their first lines; amounts are the ledger's, summed by day in {{ x.day_zone }}, never carried forward. {{ x.days }} whole day{{ '' if x.days == 1 else 's' }} in {{ x.day_zone }}, at most {{ x.max_days }}.</p>
 {%- endif %}
 </section>

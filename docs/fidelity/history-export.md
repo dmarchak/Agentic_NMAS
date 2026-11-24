@@ -12,7 +12,15 @@ Lab; Every network; a range past 31 days; an empty range), beside the board's HT
 
 Templates compared: templates/v2/_history_export.html, templates/v2/_history_body.html
 Hashed again 2026-11-13 (C3466, Jump to's day is the viewer's): `_history_body.html`'s Jump to field, drawn on the Timeline tab alone (`tab == 'timeline'`), has its accessible name without "(UTC)"; no line this tab draws changed. Compared by the template's diff, not by new shots; the Timeline's own record: history.md. Templates sha256 before: `d7ee1400d2fdb04f5f1a85c5cec3c765a0365b612c77dd54c88815112035ddac`.
-Templates sha256: `9e7a48f25e469cdfcea730d7eab8e226005d8872b4f403b6ed6e5c69e13fc13c`
+Compared again 2026-11-24 (C3485, the approved rule "raw UTC anywhere left"): the form's
+labels read **From** and **To** (were "From (UTC)" and "To (UTC)"), the days read in the zone
+the viewer reads times in, named once after them ("Days in America/Denver", the same as Jump to
+now's), and the empty range, the refusal and the files' note say whole days in that zone. One
+short label added after the two fields, in the form's row; no element moves and no region's
+verdict moved; compared by the template's diff and tests/test_history_export.py, not by new
+shots; logged once (docs/STANDING_APPROVAL_LOG.md, "C3485: History › Export's days are the
+viewer's"). Templates sha256 before: `9e7a48f25e469cdfcea730d7eab8e226005d8872b4f403b6ed6e5c69e13fc13c`.
+Templates sha256: `c55d22fefe95d7960f2389e1681fdb2cb906764791e4c65f0f7b93d5d9028f5d`
 
 Compared again 2026-11-10 (C2942): only the "Not on <network>" line's words changed (a call
 naming no network is now the installation's own, or one recorded before 2026-11-10). It is the
