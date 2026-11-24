@@ -904,3 +904,23 @@ def test_in_a_real_browser_the_toggle_and_the_dropdown_open_their_modal_anchored
     assert H.current("Default")["until"] == local.astimezone(ZoneInfo("UTC")).strftime(
         "%Y-%m-%dT%H:%M:%SZ")
 
+
+
+def test_a_kinds_toggle_in_dry_run_previews_the_kinds_it_changes():
+    """C3550: in Off or Dry run a fix kind's toggle changes `heal_kinds_auto`; its preview's
+    "Kinds that heal without a person" row says the change (outside Auto, "only in Auto"),
+    never "none" on both sides as unchanged."""
+    from modules import heal_page
+    from modules.heal import policy as P
+    before = {P.MODE_KEY: "dry_run", P.KINDS_AUTO_KEY: ["missing_line"], P.KINDS_PROPOSE_KEY: []}
+    after = dict(before, **{P.KINDS_AUTO_KEY: ["missing_line", "changed_line"]})
+    plan = {"before": before, "after": after, "gates": [], "confirmable": True,
+            "fingerprint": "f", "operands": {}, "stopped": {"stopped": False, "words": ""}}
+    row = next(r for r in heal_page.preview("Default", plan, "kinds")["rows"]
+               if r["where"] == "Kinds that heal without a person")
+    assert row["now"] == "Missing line, only in Auto"
+    assert row["after"] == "Missing line; Changed line, only in Auto" and not row["same"]
+    auto = heal_page.preview("Default", dict(plan, before=dict(before, heal_mode="auto"),
+                                             after=dict(after, heal_mode="auto")), "kinds")
+    row = next(r for r in auto["rows"] if r["where"] == "Kinds that heal without a person")
+    assert row["after"] == "Missing line; Changed line", "in Auto, the kinds alone"

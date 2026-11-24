@@ -569,12 +569,17 @@ def preview(network: str, p: dict, part: str) -> dict:
     from modules.heal import policy as H
 
     b, a = p["before"], p["after"]
-    heal_b = b.get(H.KINDS_AUTO_KEY) if b.get(H.MODE_KEY) == "auto" else []
-    heal_a = a.get(H.KINDS_AUTO_KEY) if a.get(H.MODE_KEY) == "auto" else []
+
+    def healed(s: dict) -> str:
+        # C3550: the kinds Auto heals, said whatever the mode, so a toggle in Off or Dry run
+        # shows its change; outside Auto they are said to wait for it.
+        words = _kinds_words(s.get(H.KINDS_AUTO_KEY))
+        return words if s.get(H.MODE_KEY) == "auto" else f"{words}, only in Auto"
+
     rows = [{"where": "Mode", "now": _mode_words(b.get(H.MODE_KEY), b.get(H.UNTIL_KEY)),
              "after": _mode_words(a.get(H.MODE_KEY), a.get(H.UNTIL_KEY))},
-            {"where": "Kinds that heal without a person", "now": _kinds_words(heal_b),
-             "after": _kinds_words(heal_a)},
+            {"where": "Kinds that heal without a person", "now": healed(b),
+             "after": healed(a)},
             {"where": "Kinds proposed to a person",
              "now": _kinds_words(b.get(H.KINDS_PROPOSE_KEY)),
              "after": _kinds_words(a.get(H.KINDS_PROPOSE_KEY))}]
