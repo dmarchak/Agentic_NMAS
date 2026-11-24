@@ -45,8 +45,14 @@ line by `~/mercury-runs/register_count.py`, run from the checkout), run the aime
 - C4207-C4208 and C4205 had their second review: both safe
   (`review-devicewrite-2026-11-24-c4207-c4208-r2-c4205.md`); its N1, N2 and N4 fixed in the
   patches, N3 in the decisions file.
-- C4081 reproduced under load (3 of 14 runs, always the focus wait after Hand over's confirm);
-  an agent was measuring the cause (`~/mercury-runs/c4081.patch` if it fixes it).
+- C4081 DONE (ccbdeceb): the press's own invalidation redrew the page over its focused answer;
+  the live merge now keeps a focused answer (static/js only).
+- C4195-C4196 revised after its review (the HIGH and both MEDIUMs fixed, C4221 registered in the
+  patch); its second review was started at about 19:00 Denver:
+  `review-devicewrite-2026-11-24-c4195-c4196-r2.md`.
+- The assistant patch's hand check (data to the model) was being done by an agent in
+  `~/nmas-worktrees/assistant`, writing into that worktree's docs/TIER_HAND_CHECK.md and
+  refreshing the patch.
 - `stage4-assistant.patch` (base b0e450c2; applies on 64ed46b2): Stage 4, the assistant to
   `docs/design/assistant.md`; 26 tests, the model mocked, 21 controls shown failing. Owed
   before its deploy: the irreversible tier's hand check (new data to the model,
@@ -61,12 +67,11 @@ line by `~/mercury-runs/register_count.py`, run from the checkout), run the aime
 
 - **Stage 1:** C4206 DONE (c591f1c6). C3886, C4207 and C4208 built as patches (above). C4090,
   C4205, C4081, C4200, C4195 and C4196 not started: each changes a test (BLOCKED).
-- **Stage 2:** the serial run died at 16:57 with the session that started it; restarted detached
-  (setsid) at 17:15 in `~/nmas-worktrees/serial` (fdaec024), unconfined, logging to
-  `~/mercury-runs/suite/serial.log`, JUnit `~/mercury-runs/suite/serial.xml`; about 80 minutes.
-  Compare with `m.xml` (12 workers, d24cbdc4) by `~/mercury-runs/junit_diff.py serial.xml m.xml`
-  (parses both JUnit files by test id and prints what differs).
-  Then remove the worktree. Its fixes are BLOCKED (tests).
+- **Stage 2:** the serial run finished (6,522 s): 25 failed, 21 of them only serially (C4222,
+  `~/mercury-runs/suite/serial-vs-m.txt`). C4200's whole-suite probe runs detached from 19:04
+  Denver in `~/nmas-worktrees/c4200-probe` (b0e450c2), about 110 minutes: the first line of
+  `~/mercury-runs/c4200-full.jsonl` with rows names the test that leaves an incident behind.
+  Then remove that worktree. Fixes change tests: BLOCKED.
 - **Stage 3: DONE** (fd9e6e77, a287651e, 15da95a2, 401dc9a4). The operator is asked to pick a
   direction (OPERATOR.md#gui-direction); Stage 5's after-pick items wait on it.
 - **Stage 4 next:** the assistant (`docs/design/assistant.md`); code and tests, so built as a
@@ -74,4 +79,5 @@ line by `~/mercury-runs/register_count.py`, run from the checkout), run the aime
 
 ## 3. State
 
-- main is 401dc9a4 (pushed). Nothing deployed. No full suite this session.
+- main is cd2e3c7a (pushed). Nothing deployed. Full suites this session: the serial run (done)
+  and C4200's probe (running).
