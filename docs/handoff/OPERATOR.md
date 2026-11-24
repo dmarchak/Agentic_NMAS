@@ -36,6 +36,15 @@ and the next session unblocks the item and moves the entry to Answered.
 - **Options:** A, B, C, or C with B's Needs attention queue and step timeline.
 - **Recommendation:** C with B's queue and timeline (about 30 build days by its estimate).
 
+### c4135-age
+
+- **Asked (2026-11-24):** C4135 (B, Lab 9: blocks): Analyse this network reads the latest kept
+  snapshot whatever its age (one 9 days old on 2026-11-20); the bar shows "collected <time>" but
+  never says it is old. The row leaves the age to you. **Options:** (a) older than the
+  collection's own bound × 2.5 (measured: the agent proposes the number); (b) 1 hour; (c) 24 hours.
+  Past it, the card says "collected N days ago: Collect now first" and Analyse offers Collect now.
+  **Recommendation:** (b). File: templates/v2/_sdn_analyse.html, modules/sdn/analyst.py.
+
 ### c2518-runner
 
 - **Asked (2026-11-24):** C2518 (A) layer 1, the local CI runner: act given no Docker socket
