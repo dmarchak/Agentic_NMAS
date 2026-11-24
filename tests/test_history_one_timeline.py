@@ -63,6 +63,12 @@ def planted(lab, tmp_path, monkeypatch):  # noqa: F811
     # `setting`.
     from modules import installation_settings
     monkeypatch.setattr(installation_settings, "_path", lambda name: str(tmp_path / name))
+    # And the record of AI calls, with the read loop's send log beside it (C4222, the serial
+    # suite of 2026-11-23): a test that recorded a call earlier in the process left it in the
+    # session's store, and History drew it among this lab's fleet rows as `ai_call` and
+    # `ai_read`. `read_log.path` follows `calls._path`'s folder.
+    from modules.ai import calls as ai_calls
+    monkeypatch.setattr(ai_calls, "_path", lambda: str(tmp_path / "ai_calls.jsonl"))
     from modules.nsot import credential_rotation as cr
     from modules.nsot import listref, receipts
     from modules.nsot import repo as R
