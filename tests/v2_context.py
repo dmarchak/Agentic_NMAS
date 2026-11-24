@@ -494,7 +494,7 @@ class _Recorder:
         import glob
         import json
         self.quoted = [json.load(open(p, encoding="utf-8")).get("description", "")
-                       for p in sorted(glob.glob(os.path.join(os.path.dirname(os.path.dirname(
+                       for p in sorted(glob.glob(os.path.join(os.path.dirname(os.path.dirname(  # disk walk: one product folder by its fixed path, the console profiles the product reads, never the checkout
                            os.path.abspath(__file__))), "modules", "nsot", "console_profiles",
                            "*.json")))]
 

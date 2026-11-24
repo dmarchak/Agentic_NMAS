@@ -162,8 +162,7 @@ def _answer(text, stop="end_turn", usage=None, **extra):
 def test_hosted_ai_off_is_refused_whole_and_logged(world, caplog):
     world.settings.pop("ai_hosted")
     caplog.set_level(logging.INFO, logger=gateway.__name__)
-    why = ("hosted AI is off: an admin allows it in Settings, with a recorded reason "
-           "(PHASE8_PLAN 15.8)")
+    why = "hosted AI is off: an admin allows it in Settings, with a recorded reason"
     assert _ask(world) == _refused("ai_off", why) and world.sent == []
     assert _row() == dict(BASE, verdict="ai_off", detail=why)
     assert [r.getMessage() for r in caplog.records if r.name == gateway.__name__] == [

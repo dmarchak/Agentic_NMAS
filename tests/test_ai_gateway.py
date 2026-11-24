@@ -194,7 +194,7 @@ def test_an_allowance_without_its_reason_is_still_off(world):
 #: hosted_allowed's answer when hosted AI is off, whole (tier run #63's survivors in it were
 #: its words and keys, which no test read).
 OFF = {"allowed": False, "why": "hosted AI is off: an admin allows it in Settings, with a "
-       "recorded reason (PHASE8_PLAN 15.8)", "by": "", "at": "", "reason": ""}
+       "recorded reason", "by": "", "at": "", "reason": ""}
 
 
 @pytest.mark.parametrize("value", [None, {}, "yes", ["by"],
