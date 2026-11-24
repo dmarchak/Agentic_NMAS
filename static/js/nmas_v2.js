@@ -380,7 +380,8 @@
   }
 
   /* Every part of *region* a person is working in, which a merge leaves as it is (C2810): what
-     is being edited, an entry open with the body it loaded, a card under review. */
+     is being edited, an entry open with the body it loaded, a card under review, the answer
+     they are reading. */
   function heldParts(region) {
     var out = [], i;
     var fields = region.querySelectorAll('input, textarea, [data-editing="true"]');
@@ -392,7 +393,44 @@
     for (i = 0; i < more.length; i++) out.push(more[i]);
     var at = pointedAt(region);
     if (at) out.push(at);
+    var said = answerRead(region);
+    if (said) out.push(said);
     return out.filter(function (u) { return u !== region; });
+  }
+
+  /* C4081: the answer a press drew in place and gave the focus to (`.set-result`: a modal's
+     confirm answered in its region, `modalSettled`) is what the person is reading, a part they
+     are working in. The redraw the press's own answer asks for (its X-NMAS-Invalidates keys,
+     relayed as `nmas:<key>`) merged the region 55 ms (alone) to 140 ms (under load) after the
+     focus was given, and the
+     page the server draws holds no answer, so the merge removed it and the focus fell to the
+     page (measured 2026-11-24 on Hand over's confirm). Kept while the focus is on it; once the
+     focus has left, the next redraw draws the state in its place (`answerRevisited`). */
+  function answerRead(region) {
+    var a = root.document.activeElement;
+    if (!a || a === region || !a.closest || !region.contains(a)) return null;
+    var said = a.closest('.set-result');
+    return said && said !== region && region.contains(said) ? said : null;
+  }
+
+  /* After a merge that kept an answer being read: each element from the answer's parent up to
+     the region is remembered as differing from the server's drawing (a marker in its copy), so
+     the next merge goes down to the answer again and drops it once the focus has left it.
+     Remembered as equal, the merge would stop above it (`morph` leaves an unchanged copy
+     untouched) and the old answer would stay under a newer state. */
+  function answerRevisited(keep, region) {
+    for (var i = 0; i < keep.length; i++) {
+      var said = keep[i];
+      if (!said.isConnected || !said.classList || !said.classList.contains('set-result')) continue;
+      for (var n = said.parentNode; n && n.nodeType === 1; n = n.parentNode) {
+        var copy = drawnFrom.get(n);
+        if (copy && copy.nodeType === 1 && !copy.nmasRevisit) {
+          copy.appendChild(root.document.createComment('an answer kept while it was read'));
+          copy.nmasRevisit = true;
+        }
+        if (n === region) break;
+      }
+    }
   }
 
   /* C2841: the control a person is pointing at, or a button they have focused, in *region*:
@@ -1071,6 +1109,7 @@
     } finally {
       merging = false;
     }
+    answerRevisited(ctx.keep, target);
     // Ages are the page's to draw: drawn before the browser paints the merge (clock times
     // come drawn by the server, in the viewer's zone).
     drawAges(target);
