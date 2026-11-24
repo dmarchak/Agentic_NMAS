@@ -140,6 +140,40 @@ _POLICY_BY = re.compile(r".+ \(policy set by .+\)\Z")
 #: The decision a close names, as `act`'s and `decide`'s closes end their why: "(decision
 #: hd-…)".
 _CLOSED_BY = re.compile(r"\(decision (hd-[0-9a-f]{12})\)\Z")
+#: A clock time a builder wrote beside "UTC" in words a record keeps ("cleared by itself at
+#: 01:39 UTC", "verified on s5 at 06:43 UTC"), before C3290's builders wrote the instant.
+_UTC_CLOCK = re.compile(r"\b(\d{1,2}):(\d\d) UTC\b")
+
+
+def instants_in(words: str, at: str) -> str:
+    """*words* a record kept, each "HH:MM UTC" in them written as the instant it names (ISO
+    UTC), so the page's `times` filter draws it in the viewer's zone with its UTC on the hover
+    (C3290; records written before the builders wrote the instant keep their words, and stay
+    readable). The record's own time *at* (ISO UTC) gives the day: the latest such clock time
+    at or before it, a minute's grace allowed. Without a readable *at*, the words are left as
+    written: a clock time with no day is not guessed into one."""
+    import datetime as _dt
+
+    text = str(words or "")
+    try:
+        anchor = _dt.datetime.fromisoformat(str(at or "").replace("Z", "+00:00"))
+    except ValueError:
+        return text
+    if anchor.tzinfo is None:
+        return text
+    anchor = anchor.astimezone(_dt.timezone.utc)
+
+    def one(m):
+        h, mi = int(m.group(1)), int(m.group(2))
+        if h > 23 or mi > 59:
+            return m.group(0)
+        got = anchor.replace(hour=h, minute=mi, second=0, microsecond=0)
+        if got > anchor + _dt.timedelta(minutes=1):
+            got -= _dt.timedelta(days=1)
+        return got.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return _UTC_CLOCK.sub(one, text)
+
+
 #: Where a text drawn on the page stops; the whole of it is in the record. (A title's bound
 #: is THE title builder's, `said.TITLE_MAX`.)
 REASON_CHARS = 200
@@ -1279,7 +1313,8 @@ def _record(found: dict, tl: dict) -> list:
                                 + (f" on decision {standing.get('decision')} "
                                    f"({standing.get('outcome')}, on {standing.get('on')})"
                                    if standing else "")) if inc else ""),
-        ("Closed", (f"{inc.get('closed_at')}: {inc.get('closed_why')}"
+        ("Closed", (f"{inc.get('closed_at')}: "
+                    f"{instants_in(inc.get('closed_why'), inc.get('closed_at'))}"
                     if inc.get("state") == "closed" else "")),
         # The store's close as kept above; an act stamps it with the time its job started, so
         # the close a screen draws is its act's record step (`closed_at`).
