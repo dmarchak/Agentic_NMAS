@@ -32,9 +32,12 @@ class Fleet:
                         "r9": {"show ip interface": _cap("s3__show_ip_interface.txt"),
                                "show clock": "*03:20:01.123 UTC Thu Oct 8 2026"}}
         self.sent = []
+        self.down = set()
 
     def __call__(self, dev, fn):
         host = dev["hostname"]
+        if host in self.down:
+            raise OSError(f"{host} did not answer")
 
         class Conn:
             def answer(_self, command):
@@ -72,6 +75,32 @@ def _run(lab, commands, fingerprint=None, **fields):  # noqa: F811
     if job:
         assert capture_job.wait(job.group(1), 30)
     return r, target
+
+
+class TestInProgressListsARun:
+    def test_a_run_is_listed_with_its_page_and_ends_in_its_own_words(self, sc, monkeypatch):
+        """C3601's reads: a run started on Show commands (or Ask the device) and left is listed
+        by In progress with the run's own page as its link; its finished row says how it ended
+        in the run's summary words, green only when every device answered, amber when one did
+        not (an answer of the run's id alone was drawn red, "refused: no reason")."""
+        from modules import in_flight
+        monkeypatch.setattr("modules.nsot.device_ops.in_flight", lambda name, now: [])
+        monkeypatch.setattr("modules.seen_runs.is_seen", lambda viewer, job: False)
+        who = "test-person@example.invalid"
+        _r, target = _run(sc, "show clock")
+        run_id = re.search(r"/show-commands/run/([^?]+)\?", target).group(1)
+        href = f"/v2/show-commands/run/{run_id}?job=" + re.search(r"job=([0-9a-f]{32})",
+                                                                   target).group(1) + "&list=Lab"
+        (done,) = [f for f in in_flight.chip([], who)["finished"] if f.get("href") == href]
+        assert done["level"] == "ok" and re.fullmatch(r"\d+ answered", done["words"]), done
+        assert sc["client"].get(href).status_code == 200
+
+        sc["fleet"].down.add("r9")
+        _r, target = _run(sc, "show clock")
+        run_id = re.search(r"/show-commands/run/([^?]+)\?", target).group(1)
+        (part,) = [f for f in in_flight.chip([], who)["finished"]
+                   if f.get("href", "").startswith(f"/v2/show-commands/run/{run_id}?")]
+        assert part["level"] == "warn" and "1 failed" in part["words"], part
 
 
 class TestThePick:

@@ -1074,16 +1074,43 @@ def start(list_name: str, hosts: list, commands: list, actor: str, *, by: str = 
 
     def work(job_id):
         try:
-            return {"run": run(list_name, hosts, commands, actor, by=by, purpose=purpose,
-                               run_id=run_id, reason=reason, drivers=drivers)["id"]}
+            record = run(list_name, hosts, commands, actor, by=by, purpose=purpose,
+                         run_id=run_id, reason=reason, drivers=drivers)
         except Exception as exc:                      # noqa: BLE001 (recorded, then the job's)
             fail(list_name, run_id, exc)
             raise
+        # The answer says how the run ended (C3601): a page job's finished row is green only
+        # on `done`, so an answer of the id alone would be drawn red, "refused: no reason".
+        return dict(outcome(record), run=record["id"])
 
+    from urllib.parse import quote
+    # Its page is the run's own (Show commands' result, where Ask the device's run also reads),
+    # so In progress lists it while it runs and once it ends (C3601).
     job = capture_job.start(list_name, label, actor, work,
                             kind="show commands", announce_keys=ANNOUNCE_KEYS,
-                            announcer=ANNOUNCER)
+                            announcer=ANNOUNCER,
+                            page=(f"/v2/show-commands/run/{run_id}?job={{job}}"
+                                  f"&list={quote(list_name)}"))
     return {"job": job, "run": run_id}
+
+
+def outcome(record: dict) -> dict:
+    """How a finished run ended, as In progress draws it (`in_flight.page_finished_row`:
+    ``state`` and ``words``, the run's own summary words): ``done`` only when every device
+    answered every command; ``partial`` when some did not; ``stopped`` when none answered;
+    ``failed`` with its reason. Never green over a device or a command not answered."""
+    if record.get("state") != "done":
+        return {"state": "failed", "words": "failed: " + (record.get("failed")
+                                                          or "no reason was recorded")}
+    s = record.get("summary") or summarise(record)
+    by = s.get("by_state") or {}
+    n = s.get("devices") or sum(len(v) for v in by.values())
+    answered = len(by.get(ANSWERED) or [])
+    short = any(c.get("failed") for c in s.get("commands") or [])
+    words = s.get("words") or "nothing"
+    if n and answered == n and not short:
+        return {"state": "done", "words": words}
+    return {"state": "partial" if answered else "stopped", "words": words}
 
 
 # --------------------------------------------------------------------------- the device's reads

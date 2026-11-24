@@ -41,7 +41,10 @@ those answers were empty), how many distinct answers there were, and which faile
 skipped. While it runs, the page says **running**: who started it and when, the devices it is
 asking (the first twelve named, then how many more), how many are read so far and which it is
 still reading, and the answers as they arrive. It fills in by itself as devices answer and when
-the run ends, with no reload; you can leave and come back. A run is on its page from the moment
+the run ends, with no reload; you can leave and come back: **In progress** lists the run while it
+runs and once it ends, and opens this page. Its finished row says how it ended in the run's own
+words, green only when every device answered every command, amber when some did not, red when
+none did. A run is on its page from the moment
 **Run** is pressed. If the run itself fails before it finishes, the page says **failed**, with
 the reason and how many devices had been read; their answers are kept. "No such run" means the address names a run this network has no record of;
 the network's runs are under [Recent runs](show-commands-screen#recent-runs).
