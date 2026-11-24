@@ -64,25 +64,19 @@ def entry_points(sources: dict, background=None) -> dict:
     feature's job (*background*, `BACKGROUND_JOBS` by default) is where the scan stops: what
     reaches the gateway only through one is not a way in."""
     stop = set(BACKGROUND_JOBS if background is None else background)
-    trees = {T._dotted(rel): (rel, ast.parse(text)) for rel, text in sources.items()}
-    modules = set(trees) | {m.rsplit(".", 1)[0] for m in trees if "." in m}
+    facts = {T._dotted(rel): T.module_facts(rel, text) for rel, text in sources.items()}
+    modules = set(facts) | {m.rsplit(".", 1)[0] for m in facts if "." in m}
     funcs, routes = {}, {}
-    for mod, (rel, tree) in trees.items():
-        top = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
-        local = {f.name for f in top}
-        imports = T._imports([n for n in tree.body if isinstance(n, (ast.Import,
-                                                                      ast.ImportFrom))], modules)
-        bp = T._blueprint(tree) if rel.startswith("routes") or rel == "app.py" else ""
-        for f in top:
-            funcs[(mod, f.name)] = T._refs(f, mod, imports, local, modules)
-            if rel.startswith("routes") or rel == "app.py":
-                ep = T._endpoint(f, bp)
+    for mod, fx in facts.items():
+        local = {f.name for f, _raw in fx["funcs"]}
+        imports = T._imports(fx["imports"], modules)
+        for f, raw in fx["funcs"]:
+            funcs[(mod, f.name)] = T._resolve(raw, mod, imports, local, modules)
+            if fx["routed"]:
+                ep = T._endpoint(f, fx["bp"])
                 if ep:
                     routes[(mod, f.name)] = {"endpoint": ep, "methods": _methods(f)}
-        rest = [n for n in tree.body if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef,
-                                                             ast.Import, ast.ImportFrom))]
-        funcs[(mod, TOP)] = T._refs(ast.Module(body=rest, type_ignores=[]), mod, imports, local,
-                                    modules)
+        funcs[(mod, TOP)] = T._resolve(fx["rest"], mod, imports, local, modules)
     reached = {T.SEED}
     grew = True
     while grew:

@@ -23,6 +23,8 @@
 - **No key's value** is in anything a control returns.
 """
 import ast
+import collections
+import hashlib
 import json
 import os
 import re
@@ -73,25 +75,75 @@ def _imports(nodes, modules: set) -> dict:
     return out
 
 
+def _raw(node) -> tuple:
+    """What a reference scan needs of *node*, in one walk: ``(its import statements in walk
+    order, the (name, attribute) pairs it reads, the names it loads)``. It depends on the text
+    alone, never on the modules scanned, so a module's are found once per text
+    (`module_facts`)."""
+    imps, attrs, names = [], set(), set()
+    for n in ast.walk(node):
+        if isinstance(n, (ast.Import, ast.ImportFrom)):
+            imps.append(n)
+        elif isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name):
+            attrs.add((n.value.id, n.attr))
+        elif isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load):
+            names.add(n.id)
+    return imps, frozenset(attrs), frozenset(names)
+
+
+def _resolve(raw: tuple, mod: str, imports: dict, local: set, modules: set) -> set:
+    """`_refs` from a node's `_raw` facts."""
+    imps, attrs, names = raw
+    own = dict(imports)
+    own.update(_imports(imps, modules))
+    out = set()
+    for value, attr in attrs:
+        got = own.get(value)
+        if got and got[0] == "mod":
+            out.add((got[1], attr))
+    for name in names:
+        got = own.get(name)
+        if got and got[0] == "obj":
+            out.add((got[1], got[2]))
+        elif name in local:
+            out.add((mod, name))
+    return out
+
+
 def _refs(func, mod: str, imports: dict, local: set, modules: set) -> set:
     """What *func* references: (module, name) for each module attribute, imported name and
     function of its own module it names (a call or not: a function passed is reached). Its
     own imports (a function-local `from modules.ai import explain`) over its module's."""
-    own = dict(imports)
-    own.update(_imports(ast.walk(func), modules))
-    out = set()
-    for node in ast.walk(func):
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-            got = own.get(node.value.id)
-            if got and got[0] == "mod":
-                out.add((got[1], node.attr))
-        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
-            got = own.get(node.id)
-            if got and got[0] == "obj":
-                out.add((got[1], got[2]))
-            elif node.id in local:
-                out.add((mod, node.id))
-    return out
+    return _resolve(_raw(func), mod, imports, local, modules)
+
+
+#: A top-level function as the scans keep it: its name and its decorators (`_endpoint`,
+#: test_ai_entry_points's `_methods`), never its body's tree.
+Func = collections.namedtuple("Func", "name decorator_list")
+#: `module_facts`' answers, by a digest of the path and text: small facts, never whole trees,
+#: so a process holding every module's costs little memory (memory bounds the local workers).
+_FACTS: dict = {}
+
+
+def module_facts(rel: str, text: str) -> dict:
+    """What the route scans need of one module, parsed once per text in a process (the
+    week plan's Stage 2: the scans parsed and walked every module again for each answer):
+    ``{"routed", "bp", "imports", "funcs": [(Func, raw)], "rest"}``, *rest* the `_raw` of
+    the top-level code that is no function or import."""
+    key = hashlib.sha256(f"{rel}\0{text}".encode("utf-8")).hexdigest()
+    got = _FACTS.get(key)
+    if got is None:
+        tree = ast.parse(text)
+        routed = rel.startswith("routes") or rel == "app.py"
+        defs = (ast.FunctionDef, ast.AsyncFunctionDef)
+        top = [n for n in tree.body if isinstance(n, defs)]
+        rest = [n for n in tree.body if not isinstance(n, defs + (ast.Import, ast.ImportFrom))]
+        got = _FACTS[key] = {
+            "routed": routed, "bp": _blueprint(tree) if routed else "",
+            "imports": [n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))],
+            "funcs": [(Func(f.name, f.decorator_list), _raw(f)) for f in top],
+            "rest": _raw(ast.Module(body=rest, type_ignores=[]))}
+    return got
 
 
 def _blueprint(tree) -> str:
@@ -117,21 +169,18 @@ def _endpoint(func, bp: str):
 def reaching_endpoints(sources: dict) -> set:
     """Every route endpoint whose function reaches `gateway.ask`, through any chain of
     references across the modules given."""
-    trees = {_dotted(rel): (rel, ast.parse(text)) for rel, text in sources.items()}
-    modules = set(trees)
+    facts = {_dotted(rel): module_facts(rel, text) for rel, text in sources.items()}
+    modules = set(facts)
     # The packages too (`from modules import ai` names a package, not an object in it).
-    modules |= {m.rsplit(".", 1)[0] for m in trees if "." in m}
+    modules |= {m.rsplit(".", 1)[0] for m in facts if "." in m}
     funcs, endpoints = {}, {}
-    for mod, (rel, tree) in trees.items():
-        top = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
-        local = {f.name for f in top}
-        imports = _imports([n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))],
-                           modules)
-        bp = _blueprint(tree) if rel.startswith("routes") or rel == "app.py" else ""
-        for f in top:
-            funcs[(mod, f.name)] = _refs(f, mod, imports, local, modules)
-            if rel.startswith("routes") or rel == "app.py":
-                ep = _endpoint(f, bp)
+    for mod, fx in facts.items():
+        local = {f.name for f, _raw_of in fx["funcs"]}
+        imports = _imports(fx["imports"], modules)
+        for f, raw in fx["funcs"]:
+            funcs[(mod, f.name)] = _resolve(raw, mod, imports, local, modules)
+            if fx["routed"]:
+                ep = _endpoint(f, fx["bp"])
                 if ep:
                     endpoints[ep] = (mod, f.name)
     reached = {SEED}
