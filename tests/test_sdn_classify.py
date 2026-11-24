@@ -550,7 +550,9 @@ def test_classify_draws_the_ai_s_classification_and_proposes_its_action(screen, 
     html = _html(r)
     assert r.status_code == 200, html
     assert "A threat: port scan" in html and "It recommends:" in html
-    assert 'catalogue action <span class="mono">rate_limit_source</span>, its parameters' in html
+    assert ('(Mercury\'s action: <span title="Catalogue action rate_limit_source">Rate-limit '
+            'the source</span>, its parameters') in html, html
+    assert 'catalogue action <span' not in html
     assert "Classify again" in html
     assert 'name="hard_timeout" min="1" max="3600" value="300"' in html
     assert '<option value="pktps" selected>' in html

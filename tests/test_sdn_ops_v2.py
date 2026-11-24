@@ -182,8 +182,35 @@ def test_the_proposed_column_names_the_switch_by_its_name(lab, monkeypatch, nb, 
     cell = _proposed_cell(html, row["id"])
     assert f'at <span class="mono" title="0000000000000003">{shown}</span>' in cell, cell
     assert "(None)" not in html and ">None<" not in html
-    assert f'on <span class="mono" title="0000000000000003">{shown}</span> (catalogue action' \
-        in html
+    # C2820's survey, item 15: the action by its label (its key on hover) and the switch by
+    # its name on the card's Proposed and Detected lines; no catalogue key drawn as text.
+    assert ('<strong>Proposed:</strong> <span title="Catalogue action drop_source">Drop '
+            f'traffic from the source</span> on <span class="mono" title="0000000000000003">'
+            f'{shown}</span> (risk low)') in html, html
+    assert f'on <span class="mono" title="0000000000000003">{shown}</span>: ' in html, \
+        "the Detected line names the switch"
+    assert "catalogue action <span" not in html
+
+
+def test_a_watched_row_and_each_switch_seen_also_are_named(monkeypatch):
+    """C2820's survey, item 15: a watched High packet rate's row and its "Seen also" entries
+    name their switch by the one namer (`sdn_ops_page.switch_namer`, NetBox's name); a switch
+    nothing names is "" (the page then draws its datapath id); and the search finds a row by
+    a seen-also switch's name. The page's drawing: tests/test_sdn_high_rate.py."""
+    from modules import sdn_ops_page as P
+    from modules.sdn import closed_loop as CL
+    from modules.sdn import known
+
+    monkeypatch.setattr(known, "names_for", lambda network: {1: "edge-1", 2: "core-2"})
+    monkeypatch.setattr(CL, "_switch_name", lambda network, conn, dpid: "")
+    also = [{"dpid": 2, "dpid_hex": f"{2:016x}", "connection": "c", "port": 4, "at": "t",
+             "words": "w"}, {"dpid": 9, "dpid_hex": f"{9:016x}", "connection": "c",
+                             "port": None, "at": "t", "words": "w"}]
+    (w,) = P.watch_rows({"rows": [{"id": "w1", "at": "t", "seen_also": also, "detection": {
+        "rule": "high_rate", "connection": "c", "dpid": 1, "dpid_hex": f"{1:016x}"}}]},
+        "Default", pol={})
+    assert (w["switch"], [s["switch"] for s in w["seen_also"]]) == ("edge-1", ["core-2", ""])
+    assert P._watch_matches(w, "core-2") and not P._watch_matches(w, "core-3")
 
 
 def _utc_viewer(monkeypatch):

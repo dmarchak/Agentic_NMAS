@@ -196,6 +196,35 @@ def test_responses_draws_the_watching_row_and_the_flood_that_began_as_one(lab):
     assert "packet-rate fallback" not in page
 
 
+def test_responses_names_the_watched_switch_and_the_ingress_by_netbox(lab, monkeypatch):
+    """C2820's survey, item 15: the watched row's heading and Detected line, and the
+    incident's Detected line, name each switch by NetBox's name, its datapath id on hover,
+    never as the text."""
+    from html import unescape
+
+    from flask import render_template
+
+    import app as A
+    from modules import sdn_ops_page
+    from modules.sdn import known
+    monkeypatch.setattr(known, "names_for", lambda network: {1: "edge-1", 2: "edge-2"})
+    watching, resp = _one_joined_one_watching()
+    view = sdn_ops_page.responses_view("Default")
+    assert [w["switch"] for w in view["watching"]] == ["edge-2"]
+    assert [r["switch"] for r in view["awaiting"]] == ["edge-1"]
+    with A.app.test_request_context():
+        page = unescape(render_template("v2/_sdn_responses.html", g=view))
+    watched = page[page.index(f'id="sdn-i-{watching["id"]}"'):]
+    watched = watched[:watched.index("</details>")]
+    assert ' on <span class="mono" title="0000000000000002">edge-2</span></h3>' in watched
+    assert 'on <span class="mono" title="0000000000000002">edge-2</span> port ' in watched
+    flood = page[page.index(f'id="sdn-i-{resp["id"]}"'):]
+    assert 'Detected' in flood and '<span class="mono" title="0000000000000001">edge-1</span>: ' \
+        in flood
+    assert '<span class="mono">0000000000000002</span>' not in page
+    assert '<span class="mono">0000000000000001</span>' not in page
+
+
 def test_a_watching_row_is_dismissed_with_a_reason_and_never_confirmed(lab):
     watching, _resp = _one_joined_one_watching()
     c, wid = lab["client"], watching["id"]
@@ -220,8 +249,11 @@ def test_needs_attention_has_one_warning_per_watching_row_until_it_joins(network
     (row,) = got["rows"]
     assert (row["kind"], row["level"], row["operands"]["incident"]) == (
         "watching", "warning", w["id"])
-    assert row["what"] == ("High packet rate on Default at 0000000000000001 port 2: watched, "
-                           "not called a scan or a flood")
+    assert row["what"] == ("High packet rate on Default at switch 0000000000000001 port 2: "
+                           "watched, not called a scan or a flood")
+    assert row["cause"].startswith("Since ") and "its threshold, " in row["cause"]
+    assert row["operands"]["dpid"] == "0000000000000001", "the datapath id is the record's"
+    assert row["operands"]["threshold_setting"], "the threshold's setting is the record's"
     assert "Nothing is proposed and no AI call is made" in row["cause"]
     assert row["action"]["href"] == (f"/v2/sdn/responses?list=Default&incident={w['id']}"
                                      f"#sdn-i-{w['id']}")

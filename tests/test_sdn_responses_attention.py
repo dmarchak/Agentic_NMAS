@@ -66,17 +66,57 @@ def test_each_incident_awaiting_is_one_row_naming_its_switches(networks):  # noq
     r = rows[0]
     assert r["what"] == "SDN scan from 192.0.2.1 on Default, seen on 50 switches, awaits a person"
     assert r["cause"] == (
-        f"Incident {one['id']}, since {LP._iso(T0)} (last seen {LP._iso(T0)}): not classified; "
-        "proposed drop_source at 0000000000000001 (the ingress switch is 0000000000000001). "
-        "Nothing is sent to a switch until a person confirms")
+        f"Since {LP._iso(T0)} (last seen {LP._iso(T0)}): not classified; "
+        "proposed: drop traffic from the source, at switch 0000000000000001 (the ingress "
+        "switch is 0000000000000001). Nothing is sent to a switch until a person confirms")
+    assert r["action"]["label"] == (
+        "Open the incident on Default's SDN › Responses: preview drop traffic from the source "
+        "at switch 0000000000000001 and confirm it, or dismiss the incident with a reason")
     assert r["action"]["href"] == (f"/v2/sdn/responses?list=Default&incident={one['id']}"
                                    f"#sdn-i-{one['id']}")
     assert r["clears"]["ways"] == ["resolves"]
     assert r["operands"] == {"network": NET, "incident": one["id"], "rule": "scan",
                              "source": "192.0.2.1", "switches": 50, "severity": "unclassified",
                              "since": LP._iso(T0), "inactive": False, "escalated": False,
-                             "unanswered_minutes": 1, "escalate_after_minutes": 15}
+                             "unanswered_minutes": 1, "escalate_after_minutes": 15,
+                             "action": "drop_source", "dpid": "0000000000000001"}
     assert rows[1]["what"].endswith("seen on 1 switch, awaits a person")
+
+
+def test_the_words_name_the_switch_and_the_action_never_their_keys(networks,  # noqa: F811
+                                                                   monkeypatch):
+    """C2820's survey, item 15: a person reads the switch by the name SDN › Responses draws
+    it by (NetBox's, `known.name_of`) and the action by its label; the incident's id, the
+    action's key, the datapath id and the setting's key are the record's (operands), never
+    the words. Escalated, so the threshold's words are drawn too."""
+    from modules.sdn import known
+    monkeypatch.setattr(known, "names_for", lambda network: {1: "of-edge-1"})
+    one = _propose("k1")
+    (r,) = _rows(T0 + 20 * MIN)
+    words = " ".join((r["what"], r["cause"], r["action"]["label"]))
+    assert "at of-edge-1 (" in r["cause"] and "drop traffic from the source at of-edge-1" \
+        in r["action"]["label"], words
+    assert ("at or past Default's escalation time (its setting \"SDN: escalate an unanswered "
+            "incident after (minutes)\"), 15 minutes") in r["cause"], r["cause"]
+    for bare in (one["id"], "drop_source", "sdn_escalate_after_minutes", "Incident "):
+        assert bare not in words, (bare, words)
+    assert (r["operands"]["action"], r["operands"]["dpid"]) == ("drop_source",
+                                                               "0000000000000001")
+
+
+def test_an_attack_row_names_no_register_number_or_incident_id(networks):  # noqa: F811
+    """C2820's survey, item 16: the attack's lead row says how many incidents it holds; their
+    ids are its operands, and no register number is in its words."""
+    rows = [A.row(source="sdn_responses", kind="awaiting", key=f"Default:{i}", level="warning",
+                  what="w", cause="c.", operands={"network": NET, "incident": i, "attack": "a1"},
+                  action={"label": "Open", "href": "/v2/sdn/responses"}) for i in ("i1", "i2")]
+    waiting = {NET: {"rows": [{"id": "i1", "incident": {"attack": {
+        "key": "a1", "target": "192.0.2.9", "sources": ["192.0.2.1", "192.0.2.2"]}}}]}}
+    (lead,) = A._one_row_per_attack(rows, waiting)
+    assert lead["cause"] == ("One attack on 192.0.2.9 (2 incidents sending to one address, "
+                             "classified once). c."), lead["cause"]
+    assert lead["operands"]["incidents"] == ["i1", "i2"]
+    assert "C2279" not in lead["cause"] and "i1" not in lead["cause"]
 
 
 def test_a_severe_classification_makes_it_danger_first_and_inactive_is_said(networks):  # noqa: F811,E501
@@ -137,8 +177,9 @@ def test_an_incident_unanswered_past_the_threshold_escalates_to_danger(networks)
     assert after["level"] == "danger", "whatever its classification (low here)"
     assert after["what"] == ("SDN scan from 192.0.2.1 on Default, seen on 3 switches, awaits a "
                              "person, unanswered for 15 minutes")
-    assert ("; escalated: unanswered for 15 minutes, at or past Default's "
-            "sdn_escalate_after_minutes (15), whatever its classification; no on-call "
+    assert ("; escalated: unanswered for 15 minutes, at or past Default's escalation time "
+            "(its setting \"SDN: escalate an unanswered incident after (minutes)\"), 15 "
+            "minutes, whatever its classification; no on-call "
             "integration is configured for this network (Mercury has none to notify), so this "
             "row is the only notice. Nothing is sent") in after["cause"]
     assert (after["operands"]["escalated"], after["operands"]["unanswered_minutes"],
@@ -166,7 +207,7 @@ def test_the_threshold_is_the_network_s_setting(networks):  # noqa: F811
     assert r["level"] == "warning"
     (r,) = _rows(T0 + 5 * MIN)
     assert r["level"] == "danger" and r["what"].endswith("unanswered for 5 minutes")
-    assert "Default's sdn_escalate_after_minutes (5)" in r["cause"]
+    assert "(minutes)\"), 5 minutes, whatever" in r["cause"], r["cause"]
 
 
 @pytest.mark.parametrize("answer", [RuntimeError("store unreadable"), 0, "15", True])
@@ -186,7 +227,8 @@ def test_a_threshold_not_known_is_said_and_drawn_escalated(networks, monkeypatch
     want = ("could not be read (RuntimeError)" if isinstance(answer, Exception)
             else f"is {answer!r}, not a whole number of minutes from 1 to 1440")
     assert (f"; escalated, since its escalation threshold is not known (Default's "
-            f"sdn_escalate_after_minutes {want}); no on-call integration is configured"
+            f"escalation time (its setting \"SDN: escalate an unanswered incident after "
+            f"(minutes)\") {want}); no on-call integration is configured"
             in r["cause"]), r["cause"]
 
 

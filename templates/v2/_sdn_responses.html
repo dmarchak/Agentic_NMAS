@@ -45,8 +45,8 @@
 <details class="sdn-inc sdn-watch" id="sdn-i-{{ w.id }}" data-keep="inc-{{ w.id }}"{% if ic.open == w.id %} open{% endif %}>
   <summary class="sdn-inc-row"><span>{{ badge('Watching', 'muted') }}</span><span>{{ w.rule_label }}</span><span class="mono">{{ w.source or '—' }}</span><span>{{ w.switches }}<span class="sdn-inc-unit"> switch{{ 'es' if w.switches != 1 }}</span></span><span title="Since {{ w.at }} UTC; last seen {{ w.last_seen }} UTC">{{ stamp(w.at) }}</span><span>not asked</span><span>{% if w.propose.offered and not w.propose.refusal %}nothing yet: yours to rate-limit (open it){% else %}nothing: a rate alone names no threat{% endif %}</span></summary>
 <div class="sdn-resp" role="region" aria-labelledby="sdn-r-{{ w.id }}">
-  <div class="sdn-ctl-hd"><h3 id="sdn-r-{{ w.id }}" class="sdn-h3">{{ w.rule_label }}{% if w.source %} from <span class="mono">{{ w.source }}</span>{% endif %} on <span class="mono">{{ w.dpid_hex }}</span></h3> {{ badge((w.confidence or 'lower') ~ ' confidence', 'muted', title="The detection rule's confidence, not a threat's severity") }}</div>
-  <p class="small">Detected {{ stamp(w.at) }} on <span class="mono">{{ w.dpid_hex }}</span>{% if w.port is not none %} port {{ w.port }}{% endif %}: {% if w.rate is not none %}{{ '{:,.0f}'.format(w.rate) }}{% else %}?{% endif %} packets a second (threshold {{ w.threshold }}), <span title="{{ w.coverage_words }}">from flows that name no transport ports</span> · an alert with its evidence pack</p>
+  <div class="sdn-ctl-hd"><h3 id="sdn-r-{{ w.id }}" class="sdn-h3">{{ w.rule_label }}{% if w.source %} from <span class="mono">{{ w.source }}</span>{% endif %} on <span class="mono" title="{{ w.dpid_hex }}">{{ w.switch or w.dpid_hex }}</span></h3> {{ badge((w.confidence or 'lower') ~ ' confidence', 'muted', title="The detection rule's confidence, not a threat's severity") }}</div>
+  <p class="small">Detected {{ stamp(w.at) }} on <span class="mono" title="{{ w.dpid_hex }}">{{ w.switch or w.dpid_hex }}</span>{% if w.port is not none %} port {{ w.port }}{% endif %}: {% if w.rate is not none %}{{ '{:,.0f}'.format(w.rate) }}{% else %}?{% endif %} packets a second (threshold {{ w.threshold }}), <span title="{{ w.coverage_words }}">from flows that name no transport ports</span> · an alert with its evidence pack</p>
   {%- if w.transfer_words %}
   <p class="small"><strong>Why it is not called a flood:</strong> {{ w.transfer_words }} (C2278). A transfer can still crowd a link: it is watched, and nothing is proposed.</p>
   {%- elif w.large_words %}
@@ -57,7 +57,7 @@
   <p class="small"><strong>What happens next:</strong> if the flood rule fires for the same port or source, this incident joins it ("began as High packet rate") and its response is proposed there; if the rate falls below {{ w.threshold }} a second, it ends as "ended, never more than a rate".</p>
   {%- if w.seen_also %}
   <details class="sdn-also" data-keep="inc-{{ w.id }}-also"><summary class="small">Seen also on {{ w.seen_also | length }} other switch{{ 'es' if w.seen_also | length != 1 }}</summary>
-    <ul class="sdn-also-list small">{% for s in w.seen_also %}<li><span class="mono">{{ s.dpid_hex }}</span>{% if s.port is not none %} port {{ s.port }}{% endif %} <span class="faint">({{ s.connection }}, {{ stamp(s.at) }})</span>: {{ s.words }}</li>{% endfor %}</ul>
+    <ul class="sdn-also-list small">{% for s in w.seen_also %}<li><span class="mono" title="{{ s.dpid_hex }}">{{ s.switch or s.dpid_hex }}</span>{% if s.port is not none %} port {{ s.port }}{% endif %} <span class="faint">({{ s.connection }}, {{ stamp(s.at) }})</span>: {{ s.words }}</li>{% endfor %}</ul>
   </details>
   {%- endif %}
   <p class="small"><strong>Proposed:</strong> nothing, and no AI call: the rule names a rate, not a threat a catalogue action answers.</p>
@@ -100,7 +100,7 @@
   <summary class="sdn-inc-row"><span>{{ badge(r.severity_words, r.severity_tone) }}</span><span>{{ r.rule_label }}{% if r.began_as %} · began as High packet rate{% endif %}</span>{% if r.pick.state == 'several' %}<span title="{{ r.pick.words }}">one of {{ r.pick.hosts | length }}</span>{% else %}<span class="mono"{% if r.pick.words %} title="{{ r.pick.words }}"{% endif %}>{{ r.source or '—' }}</span>{% endif %}<span>{{ r.switches }}<span class="sdn-inc-unit"> switch{{ 'es' if r.switches != 1 }}</span></span><span title="Since {{ r.at }} UTC; last seen {{ r.last_seen }} UTC">{{ stamp(r.at) }}</span><span>{% if r.ai and r.ai.by_code %}{{ badge('Code', 'muted', title='Decided in code with no AI call (C2305)') }} {% elif r.ai %}{{ badge('AI', 'info', title='Classified by AI; checked in code') }} {% endif %}{{ r.verdict }}</span><span>{% if r.action %}{{ r.label }} at <span class="mono" title="{{ r.dpid_hex }}">{{ r.switch or r.dpid_hex }}</span>{% else %}none{% endif %}{% if r.inactive_since %} {{ badge('Inactive', 'muted') }}{% endif %}</span></summary>
 <div class="sdn-resp" role="region" aria-labelledby="sdn-r-{{ r.id }}">
   <div class="sdn-ctl-hd"><h3 id="sdn-r-{{ r.id }}" class="sdn-h3">{{ r.title }}{% if r.source %} from <span class="mono">{{ r.source }}</span>{% endif %}, seen on {{ r.switches }} switch{{ 'es' if r.switches != 1 }}</h3>{% if r.confidence %} {{ badge('confidence ' ~ r.confidence, 'danger' if r.confidence == 'high' else 'warn', title="The detection rule's confidence, not the threat's severity") }}{% endif %}</div>
-  <p class="small">Detected {{ stamp(r.at) }} on <span class="mono">{{ r.dpid_hex }}</span>: {{ r.words }} · an alert with its evidence pack</p>
+  <p class="small">Detected {{ stamp(r.at) }} on <span class="mono" title="{{ r.dpid_hex }}">{{ r.switch or r.dpid_hex }}</span>: {{ r.words }} · an alert with its evidence pack</p>
   {%- if r.attack.incidents and r.attack.incidents | length > 1 %}
   <p class="small sdn-attack">Part of the attack on <span class="mono">{{ r.attack.target }}</span> with {{ r.attack.incidents | length - 1 }} other incident{{ 's' if r.attack.incidents | length > 2 }} ({{ r.attack.sources | length }} source{{ 's' if r.attack.sources | length != 1 }}{% if r.attack.sources %}: <span class="mono">{{ r.attack.sources | join(', ') }}</span>{% endif %}), classified once on its first incident; each source's response is confirmed or dismissed on its own.</p>
   {%- endif %}
@@ -123,8 +123,8 @@
   <p class="small sdn-source"><strong>Source:</strong> {% if pk.words %}{{ pk.words }}{% else %}not named when detected{% endif %}; the preview looks up the host on port {{ pk.port }} in the controller's topology now.</p>
   {%- endif %}
   {%- if r.seen_also %}
-  <details class="sdn-also" data-keep="inc-{{ r.id }}-also"><summary class="small">Seen also on {{ r.seen_also | length }} other switch{{ 'es' if r.seen_also | length != 1 }} <span class="faint">· nothing is proposed there; the response at <span class="mono">{{ r.dpid_hex }}</span> answers them</span></summary>
-    <ul class="sdn-also-list small">{% for s in r.seen_also %}<li><span class="mono">{{ s.dpid_hex }}</span>{% if s.port is not none %} port {{ s.port }}{% endif %} <span class="faint">({{ s.connection }}, {{ stamp(s.at) }})</span>: {{ s.words }}</li>{% endfor %}</ul>
+  <details class="sdn-also" data-keep="inc-{{ r.id }}-also"><summary class="small">Seen also on {{ r.seen_also | length }} other switch{{ 'es' if r.seen_also | length != 1 }} <span class="faint">· nothing is proposed there; the response at <span class="mono" title="{{ r.dpid_hex }}">{{ r.switch or r.dpid_hex }}</span> answers them</span></summary>
+    <ul class="sdn-also-list small">{% for s in r.seen_also %}<li><span class="mono" title="{{ s.dpid_hex }}">{{ s.switch or s.dpid_hex }}</span>{% if s.port is not none %} port {{ s.port }}{% endif %} <span class="faint">({{ s.connection }}, {{ stamp(s.at) }})</span>: {{ s.words }}</li>{% endfor %}</ul>
   </details>
   {%- endif %}
   {%- if r.inactive_since %}
@@ -134,7 +134,7 @@
   <div class="sdn-ai" id="sdn-c-{{ r.id }}" role="group" aria-label="The AI's classification">
     <p class="small">{% if a.by_code %}{{ badge('Code', 'muted', title='Decided in code with no AI call (C2305): the evidence settles it') }}{% else %}{{ badge('AI', 'info', title='Classified by AI (' ~ a.model ~ '); checked in code; it proposes and never confirms') }}{% endif %} <strong>{% if a.threat_detected %}A threat: {{ a.threat_type }}{% else %}No threat{% endif %}</strong>, severity {{ a.severity }}{% if a.severity_floor %} <span title="{{ a.severity_floor }}">(raised in code from the model's {{ a.severity_from_model }}: the flow's effect sets the floor)</span>{% endif %} <span class="faint">· by {{ a.by | people }}{% if a.who %} ({{ a.who | people }}){% endif %} {{ stamp(a.at) }} · {% if a.by_code %}decided in code, no AI call{% else %}<span title="AI call {{ a.call_id }}">{{ a.model }}, {{ a.cost_usd | usd(true) }}</span>{% endif %}</span></p>
     <p class="small">{{ a.reasoning }}</p>
-    <p class="small"><strong>It recommends:</strong> {{ a.recommended }}{% if a.action and a.action != 'none' %} (catalogue action <span class="mono">{{ a.action }}</span>, its parameters checked against the evidence){% else %} (no catalogue action: you decide){% endif %}.</p>
+    <p class="small"><strong>It recommends:</strong> {{ a.recommended }}{% if a.action and a.action != 'none' %} (Mercury's action: <span title="Catalogue action {{ a.action }}">{{ a.action_label or a.action }}</span>, its parameters checked against the evidence){% else %} (no catalogue action: you decide){% endif %}.</p>
     {%- if a.devices %}<p class="small faint">Affected: <span class="mono">{{ a.devices | join(', ') }}</span></p>{% endif %}
     <p class="small faint">Evidence it cites: <span class="mono">{{ a.refs | join(', ') }}</span></p>
     {%- if a.call_id %}{% with fb=ai_feedback(a.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}{% endif %}
@@ -143,7 +143,7 @@
   <p class="small faint">{{ r.classified }}.{% if r.refused_call %} <a href="{{ url_for('v2.history_page', call=r.refused_call) }}" title="The prompt as sent and the answer the check refused">The refused answer in History</a>.{% endif %}</p>
   {%- endif %}
   {%- if r.action %}
-  <p class="small"><strong>Proposed:</strong> {{ r.label }} on <span class="mono" title="{{ r.dpid_hex }}">{{ r.switch or r.dpid_hex }}</span> (catalogue action <span class="mono">{{ r.action }}</span>, risk {{ r.risk }}): {{ r.action_words }}.{% if r.why %} <span class="faint">{{ r.why }}.</span>{% endif %}</p>
+  <p class="small"><strong>Proposed:</strong> <span title="Catalogue action {{ r.action }}">{{ r.label }}</span> on <span class="mono" title="{{ r.dpid_hex }}">{{ r.switch or r.dpid_hex }}</span> (risk {{ r.risk }}): {{ r.action_words }}.{% if r.why %} <span class="faint">{{ r.why }}.</span>{% endif %}</p>
   {%- else %}
   <p class="small notice notice-warn"><strong>No action is proposed:</strong> the network's response policy could not be read when this was detected. Set it in the rules below, then preview the rule's default.</p>
   {%- endif %}

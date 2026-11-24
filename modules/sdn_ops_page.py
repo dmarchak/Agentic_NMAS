@@ -139,6 +139,13 @@ def carried_ask(form) -> tuple:
     return ask, ""
 
 
+def _catalogue_label(action) -> str:
+    """A catalogue action's label (`closed_loop.CATALOGUE`), "" for none or one not listed."""
+    from modules.sdn import closed_loop
+
+    return (closed_loop.CATALOGUE.get(action or "") or {}).get("label", "")
+
+
 def _classification(row: dict):
     """A response's AI classification as the card draws it (board SdnResponses' AI box), or
     None: its threat, severity, type, the devices it names, its recommendation and reasoning,
@@ -161,6 +168,8 @@ def _classification(row: dict):
             "devices": list(c.get("affected_devices") or []),
             "recommended": c.get("recommended_action") or "", "reasoning": c.get("reasoning") or "",
             "action": c.get("action_id") or "", "params": dict(c.get("params") or {}),
+            # C2820's survey, item 15: the action drawn by its catalogue label, its key on hover.
+            "action_label": _catalogue_label(c.get("action_id")),
             "refs": list(c.get("evidence_refs") or []), "call_id": c.get("call_id") or "",
             "model": words, "cost_usd": float(c.get("cost_usd") or 0.0),
             # C2305: decided in code, no AI call (`closed_loop.decided_in_code`).
@@ -249,14 +258,13 @@ def _verdict(r: dict, ai: dict) -> str:
     return "refused" if words.startswith("AI classification refused") else "not classified"
 
 
-def incident_rows(awaiting: dict, network: str = "") -> list:
-    """The incidents awaiting a person (C1999; board SdnResponses), as the table draws them:
-    each its rule, source, how many switches saw it, the ingress and the switches seen also,
-    its age, the AI verdict and the proposed action, by severity then the longest waiting.
-    The switch it is proposed at is named (``switch``, `known.name_of`: NetBox's name, else
-    its own description, never "None"; "" when neither names it) on *network*, NetBox's names
-    read once and each switch once."""
-    from modules.sdn import closed_loop, incidents, known
+def switch_namer(network: str):
+    """``switch(d)``: the name a detection's (or a seen-also entry's) switch *d* on *network*
+    is drawn by (`known.name_of`: NetBox's name, else the switch's own description, never
+    "None"; "" when neither names it, and always "" with no *network*), NetBox's names read
+    once and each switch once for the namer's life. The one namer SDN › Responses' rows and
+    the SDN Needs attention rows use (C3010, C2820's survey item 15)."""
+    from modules.sdn import known
 
     nb, named = (known.names_for(network) if network else {}), {}
 
@@ -266,7 +274,28 @@ def incident_rows(awaiting: dict, network: str = "") -> list:
         if network and at not in named:
             named[at] = known.name_of(network, at[0], at[1], names=nb)
         return named.get(at, "")
+    return switch
 
+
+def _seen_also(r: dict, switch) -> list:
+    """Each switch an incident was seen also on, as its list draws it: the DPID in hex (its
+    hover) and the name *switch* gives it (the detection's key and numeric DPID stay in the
+    store)."""
+    return [dict({k: s.get(k) for k in ("dpid_hex", "port", "connection", "at", "words")},
+                 switch=switch(s))
+            for s in r.get("seen_also") or []]
+
+
+def incident_rows(awaiting: dict, network: str = "") -> list:
+    """The incidents awaiting a person (C1999; board SdnResponses), as the table draws them:
+    each its rule, source, how many switches saw it, the ingress and the switches seen also,
+    its age, the AI verdict and the proposed action, by severity then the longest waiting.
+    The switch it is proposed at is named (``switch``, `known.name_of`: NetBox's name, else
+    its own description, never "None"; "" when neither names it) on *network*, NetBox's names
+    read once and each switch once."""
+    from modules.sdn import closed_loop, incidents
+
+    switch = switch_namer(network)
     rows = []
     for r in incidents.order(awaiting["rows"]):
         d = r.get("detection") or {}
@@ -274,10 +303,7 @@ def incident_rows(awaiting: dict, network: str = "") -> list:
         entry = closed_loop.CATALOGUE.get(r.get("action") or "", {})
         ai = _classification(r)
         sev = incidents.severity(r)
-        # Each switch seen also as its list draws it (the DPID in hex; the detection's key and
-        # numeric DPID stay in the store).
-        also = [{k: s.get(k) for k in ("dpid_hex", "port", "connection", "at", "words")}
-                for s in r.get("seen_also") or []]
+        also = _seen_also(r, switch)
         rows.append({"id": r.get("id"), "at": r.get("at"), "rule": d.get("rule"),
                      "rule_label": RULE_LABELS.get(d.get("rule"), d.get("rule") or ""),
                      "title": d.get("title") or d.get("rule"), "words": d.get("words"),
@@ -362,6 +388,7 @@ def watch_rows(watching: dict, network: str = "", pol: dict = None) -> list:
     for the first such row, when not given)."""
     from modules.sdn import closed_loop
 
+    switch = switch_namer(network)
     rows = []
     for r in watching["rows"]:
         if pol is None and (
@@ -371,12 +398,12 @@ def watch_rows(watching: dict, network: str = "", pol: dict = None) -> list:
         d = r.get("detection") or {}
         inc = r.get("incident") or {}
         th, m = d.get("threshold") or {}, d.get("measurement") or {}
-        also = [{k: s.get(k) for k in ("dpid_hex", "port", "connection", "at", "words")}
-                for s in r.get("seen_also") or []]
+        also = _seen_also(r, switch)
         rows.append({"id": r.get("id"), "at": r.get("at"), "rule": d.get("rule"),
                      "rule_label": RULE_LABELS.get(d.get("rule"), d.get("rule") or ""),
                      "title": d.get("title") or d.get("rule"), "words": d.get("words"),
                      "source": d.get("source"), "dpid_hex": d.get("dpid_hex"),
+                     "switch": switch(d),
                      "port": d.get("port"), "confidence": d.get("confidence"),
                      "rate": m.get("value"), "threshold": th.get("value"),
                      "coverage_words": d.get("confidence_why") or "",
@@ -426,16 +453,18 @@ def _pick(d: dict, action: str) -> dict:
 
 def _matches(row: dict, q: str) -> bool:
     text = " ".join(str(x or "") for x in (
-        row["rule_label"], row["title"], row["source"], row["dpid_hex"], row["label"],
+        row["rule_label"], row["title"], row["source"], row["dpid_hex"], row.get("switch"),
+        row["label"],
         row["action"], row["verdict"], row["severity_words"],
-        *[s.get("dpid_hex") for s in row["seen_also"]])).lower()
+        *[s.get(k) for s in row["seen_also"] for k in ("dpid_hex", "switch")])).lower()
     return all(word in text for word in q.lower().split())
 
 
 def _watch_matches(row: dict, q: str) -> bool:
     text = " ".join(str(x or "") for x in (
-        row["rule_label"], row["title"], row["source"], row["dpid_hex"], "watching",
-        *[s.get("dpid_hex") for s in row["seen_also"]])).lower()
+        row["rule_label"], row["title"], row["source"], row["dpid_hex"], row.get("switch"),
+        "watching",
+        *[s.get(k) for s in row["seen_also"] for k in ("dpid_hex", "switch")])).lower()
     return all(word in text for word in q.lower().split())
 
 

@@ -4628,6 +4628,15 @@ SDN_NO_ON_CALL = ("no on-call integration is configured for this network (Mercur
                   "notify), so this row is the only notice")
 
 
+def _sdn_escalate_said(network: str) -> str:
+    """The escalation threshold as a person reads it (C2820's survey, item 15): *network*'s
+    setting by the name its card gives it (`settings_scope.group_label`), never its key."""
+    from modules import settings_scope
+
+    return (f"{network}'s escalation time (its setting "
+            f"\"{settings_scope.group_label(SDN_ESCALATE_SETTING)}\")")
+
+
 def _sdn_escalate_after(network: str) -> tuple:
     """``(minutes, why)``: *network*'s `sdn_escalate_after_minutes`, or ``(None, why)`` when it
     cannot be read or is not a whole number from 1 to 1440 (said on the row, never guessed)."""
@@ -4636,12 +4645,39 @@ def _sdn_escalate_after(network: str) -> tuple:
     try:
         got = list_settings.value(network, SDN_ESCALATE_SETTING, SDN_ESCALATE_DEFAULT)
     except Exception as exc:                          # noqa: BLE001 (said on the row)
-        return None, f"{network}'s {SDN_ESCALATE_SETTING} could not be read " \
+        return None, f"{_sdn_escalate_said(network)} could not be read " \
                      f"({type(exc).__name__})"
     if isinstance(got, bool) or not isinstance(got, int) or not 1 <= got <= 1440:
-        return None, (f"{network}'s {SDN_ESCALATE_SETTING} is {got!r}, not a whole number of "
+        return None, (f"{_sdn_escalate_said(network)} is {got!r}, not a whole number of "
                       "minutes from 1 to 1440")
     return got, ""
+
+
+def _sdn_switch_said(network: str, d: dict, named: dict) -> str:
+    """The switch a detection *d* on *network* was seen at, as SDN › Responses draws it
+    (C2820's survey, item 15; its one namer, `sdn_ops_page.switch_namer`: NetBox's name, else
+    the switch's own description), else "switch <its datapath id>"; *named* holds each
+    network's namer for the read."""
+    from modules import sdn_ops_page
+
+    if network not in named:
+        named[network] = sdn_ops_page.switch_namer(network)
+    try:
+        name = named[network](d)
+    except Exception:                                 # noqa: BLE001 (unnamed: its id said)
+        name = ""
+    return name or f"switch {d.get('dpid_hex') or '?'}"
+
+
+def _sdn_action_said(action: str) -> str:
+    """A catalogue action as a person reads it (C2820's survey, item 15): its label, its first
+    letter lowered for the sentence ("drop traffic from the source"), never its key."""
+    from modules.sdn import closed_loop
+
+    label = (closed_loop.CATALOGUE.get(action or "") or {}).get("label") or ""
+    if not label:
+        return "no action" if not action else "an action Mercury does not list"
+    return label[0].lower() + label[1:]
 
 
 def _one_row_per_attack(rows: list, waiting: dict) -> list:
@@ -4678,9 +4714,10 @@ def _one_row_per_attack(rows: list, waiting: dict) -> list:
                         f"{len(srcs)} source{'' if len(srcs) == 1 else 's'} "
                         f"({', '.join(srcs) or 'none named'}), one attack in {len(ids)} "
                         "incidents, awaits a person")
-        lead["cause"] = (f"One attack on {att.get('target')} (C2279: its incidents send to one "
-                         f"address, classified once): incidents {', '.join(ids)}. "
-                         + lead["cause"])
+        # C2820's survey, items 15 and 16: no register number and no incident id in the words;
+        # the ids are the row's operands (`incidents`), its record.
+        lead["cause"] = (f"One attack on {att.get('target')} ({len(ids)} incidents sending to "
+                         "one address, classified once). " + lead["cause"])
         lead["action"] = dict(lead["action"], label=(
             f"Open the attack's first incident on {network}'s SDN › Responses, then preview "
             "and confirm each source's response, or dismiss each with a reason"))
@@ -4730,7 +4767,7 @@ def sdn_responses_source(found=None, now: float = None, watched=None) -> dict:
                              error=f"the responses could not be read: {type(exc).__name__}")
     # A network whose store cannot be read is its own row, never the whole source's error
     # (C2961: one network's unreadable store hid every other network's incidents).
-    rows, unread, escalated = [], {}, 0
+    rows, unread, escalated, named = [], {}, 0, {}
     for network, got in sorted(waiting.items()):
         if got.get("state") == "unreadable":
             unread.setdefault(network, got.get("error"))
@@ -4744,7 +4781,8 @@ def sdn_responses_source(found=None, now: float = None, watched=None) -> dict:
             switches = len(r.get("members") or [d.get("key")])
             title = d.get("title") or d.get("rule") or "SDN detection"
             src = d.get("source") or ""
-            where = d.get("dpid_hex") or "?"
+            where = _sdn_switch_said(network, d, named)
+            does = _sdn_action_said(r.get("action"))
             ingress = inc.get("ingress_words") or ("kept before incidents were grouped: "
                                                    f"proposed at {where}, the switch that saw it")
             since = _ts(r.get("at"))
@@ -4763,7 +4801,8 @@ def sdn_responses_source(found=None, now: float = None, watched=None) -> dict:
                               f"({r.get('at')!r}); {SDN_NO_ON_CALL}")
             else:
                 escalation = (f"; escalated: unanswered for {mins}, at or past "
-                              f"{network}'s {SDN_ESCALATE_SETTING} ({after}), whatever its "
+                              f"{_sdn_escalate_said(network)}, {after} minute"
+                              f"{'' if after == 1 else 's'}, whatever its "
                               f"classification; {SDN_NO_ON_CALL}")
             waits = ("awaits a person" + (f", unanswered for {mins}"
                                           if up and waited is not None else
@@ -4774,11 +4813,13 @@ def sdn_responses_source(found=None, now: float = None, watched=None) -> dict:
                 since=since,
                 what=(f"{title}{' from ' + src if src else ''} on {network}, seen on "
                       f"{switches} switch{'es' if switches != 1 else ''}, {waits}"),
-                cause=(f"Incident {r.get('id')}, since {r.get('at')} (last seen "
+                # C2820's survey, item 15: the incident's id, the action's key and the
+                # switch's datapath id are the record's (operands), the words name them.
+                cause=(f"Since {r.get('at')} (last seen "
                        f"{r.get('last_seen') or r.get('at')}): "
                        + (f"severity {sev} by its AI classification" if sev != "unclassified"
                           else "not classified")
-                       + f"; proposed {r.get('action') or 'no action'} at {where} ({ingress})"
+                       + f"; proposed: {does}, at {where} ({ingress})"
                        # AUTO decided to act and sent nothing: its own preview failed (C2159)
                        # or its confirm was refused before any request (C2195); said, so the
                        # row names why AUTO left it to a person.
@@ -4794,11 +4835,13 @@ def sdn_responses_source(found=None, now: float = None, watched=None) -> dict:
                           "inactive": bool(r.get("inactive_since")),
                           "escalated": bool(up), "unanswered_minutes": waited,
                           "escalate_after_minutes": after,
+                          "action": r.get("action") or "", "dpid": d.get("dpid_hex") or "",
                           **({"attack": inc["attack"]["key"]}
                              if (inc.get("attack") or {}).get("key") else {})},
                 action={"label": (f"Open the incident on {network}'s SDN › Responses: preview "
-                                  f"{r.get('action') or 'a response'} at {where} and confirm "
-                                  "it, or dismiss the incident with a reason"),
+                                  + (f"{does} at {where}" if r.get("action") else
+                                     "a response")
+                                  + " and confirm it, or dismiss the incident with a reason"),
                         "href": (f"/v2/sdn/responses?list={network}&incident="
                                  f"{r.get('id')}#sdn-i-{r.get('id')}")}))
     rows = _one_row_per_attack(rows, waiting)
@@ -4811,7 +4854,7 @@ def sdn_responses_source(found=None, now: float = None, watched=None) -> dict:
             m, th = d.get("measurement") or {}, d.get("threshold") or {}
             switches = len(r.get("members") or [d.get("key")])
             src = d.get("source") or ""
-            where = (d.get("dpid_hex") or "?") + (
+            where = _sdn_switch_said(network, d, named) + (
                 f" port {d.get('port')}" if d.get("port") is not None else "")
             rows.append(row(
                 source="sdn_responses", kind="watching", key=f"{network}:{r.get('id')}",
@@ -4819,9 +4862,9 @@ def sdn_responses_source(found=None, now: float = None, watched=None) -> dict:
                 what=(f"High packet rate{' from ' + src if src else ''} on {network} at {where}"
                       + (f", seen on {switches} switches" if switches != 1 else "")
                       + ": watched, not called a scan or a flood"),
-                cause=(f"Watching row {r.get('id')}, since {r.get('at')} (last seen "
+                cause=(f"Since {r.get('at')} (last seen "
                        f"{r.get('last_seen') or r.get('at')}): {m.get('value')} packets a "
-                       f"second at or above {th.get('value')} ({th.get('setting')}) on a switch "
+                       f"second at or above its threshold, {th.get('value')}, on a switch "
                        "whose flows name no transport ports, so neither a scan nor a flood can "
                        "be told yet. Nothing is proposed and no AI call is made; it joins the "
                        "flood rule's incident if that fires for the same port or source, and "
@@ -4829,7 +4872,8 @@ def sdn_responses_source(found=None, now: float = None, watched=None) -> dict:
                 operands={"network": network, "incident": r.get("id") or "",
                           "rule": d.get("rule") or "", "source": src, "switches": switches,
                           "rate_pps": m.get("value"), "threshold_pps": th.get("value"),
-                          "since": r.get("at") or ""},
+                          "threshold_setting": th.get("setting") or "",
+                          "since": r.get("at") or "", "dpid": d.get("dpid_hex") or ""},
                 action={"label": (f"Open it on {network}'s SDN › Responses: see whether it "
                                   "joins a flood, or dismiss it with a reason"),
                         "href": (f"/v2/sdn/responses?list={network}&incident="
@@ -4851,7 +4895,7 @@ def sdn_responses_source(found=None, now: float = None, watched=None) -> dict:
                          checked=f"{len(waiting)} network(s): "
                                  f"{sum(1 for x in rows if x['kind'] == 'awaiting')} "
                                  f"incident(s) awaiting a person, {escalated} escalated "
-                                 f"(unanswered past its network's {SDN_ESCALATE_SETTING}); no "
+                                 "(unanswered past its network's escalation time); no "
                                  "on-call integration exists to notify"
                                  + (f"; {watched_n} high packet rate(s) watched"
                                     if watched_n else "")

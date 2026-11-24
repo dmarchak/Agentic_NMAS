@@ -128,7 +128,7 @@ def test_the_failure_is_a_needs_attention_row_naming_it(lab, monkeypatch):  # no
     # How it clears: a person applies its response or dismisses it, never the next pass.
     assert got["clears"]["ways"] == ["resolves"] and "dismissed" in got["clears"]["when"]
     assert f"; {row['auto_failed']}, so AUTO sent nothing" in got["cause"], got["cause"]
-    assert f"proposed {ACTION} at " in got["cause"]
+    assert "proposed: drop traffic from the source, at " in got["cause"], got["cause"]
     assert got["action"]["href"].endswith(f"incident={row['id']}#sdn-i-{row['id']}")
     assert "confirm it, or dismiss the incident with a reason" in got["action"]["label"]
 
