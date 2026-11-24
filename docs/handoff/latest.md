@@ -1,5 +1,12 @@
 # Handoff: every waiting patch run together as one stack; its failures fixed in the patches (2026-11-24, 01:00 to 02:30 Denver)
 
+## 00. The 02:11 session (2026-11-24): the 02:30 handover only
+
+- Started at 02:11 Denver, 19 minutes before the handover: no full suite, deploy or patch
+  started (C4226's fix needs a red test first and the C4228 merge-path interaction, below).
+  This file was kept as `docs/handoff/2026-11-24.md`; nothing else changed. **The next
+  session (03:35) starts at section 0's Next: C4226's fix as a patch on top of c4228.patch.**
+
 ## 0. The small-hours session (from 01:02 Denver, 2026-11-24): read this first
 
 - **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
@@ -50,7 +57,7 @@
   remembered region through), `captureSwapped` returns early on `nmasMerged`, so C4228's
   `markUnread` must move into that merge path too; build C4226's patch on top of c4228.patch
   and re-run TestAPressAnswerIsKeptUntilSeen. Not started (02:10 Denver, too close to 02:30). The previous handoff is
-  docs/handoff/2026-11-23.md.
+  docs/handoff/2026-11-24.md (this file at the 02:30 handover; before it, 2026-11-23.md).
 - **C4227 closed as measured** (the refresh audit's cause 2): the live merge keeps a tick, a
   radio and a chosen option (Devices through a real `reachability` redraw; keyed rows merged
   directly, changed and unchanged). The scratch test is `~/mercury-runs/c4227_measure_test.py`
