@@ -28,8 +28,12 @@
   both sides in the three docs, a fresh Count line, the aimed tests in its .msg, commit
   (`git commit -F`, its first line checked), push; then one full suite; then deploy if C4090 is
   answered. The scratch `~/nmas-worktrees/landing` can be removed.
-- Nothing committed but this handoff, the plan, OPERATOR.md and the day's files; nothing
-  deployed.
+- **C4227 closed as measured** (the refresh audit's cause 2): the live merge keeps a tick, a
+  radio and a chosen option (Devices through a real `reachability` redraw; keyed rows merged
+  directly, changed and unchanged). The scratch test is `~/mercury-runs/c4227_measure_test.py`
+  (run by `nmas-control`; it reuses tests/test_live_merge.py's `_merge` and a real page). Its
+  Devices case drew no row change, so C4229's (a restarted component) is still to measure.
+- Committed only docs (a9d1108d and the commit after); nothing deployed.
 
 ## 0a. The late session (from 22:37 Denver, 2026-11-23)
 

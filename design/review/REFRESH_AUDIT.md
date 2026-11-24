@@ -158,6 +158,12 @@ answers) are exercised only by fragment tests (`:121-260`). One of those asserts
    `TEXTY` fields (`:232-248`). 30 region templates have a select and 20 a checkbox or radio. Fix
    once: count a control whose `checked` differs from `defaultChecked`, or whose option
    `selected` differs from `defaultSelected`. Measure: as in cause 4, on Devices.
+   **Measured 2026-11-24, not a defect (C4227 closed):** the merge keeps the element, so a tick,
+   a radio and a chosen option survive whatever `isEditing` says: on Devices two ticked rows
+   came through a `reachability` redraw ticked, and a direct `mergeInto` of keyed rows, changed
+   and unchanged, kept every choice. `isEditing` only decides whether a region is held from a
+   swap; a choice inside a restarted component stays cause 4's (C4229), a person's own press on
+   a whole region cause 1's (C4226).
 3. **A press's unfocused answer is removed by the next merge.** The answer is captured as the
    server's drawing when its target is the region (`:725`) or a `data-live-part` (`:726`), and
    only focus (`:409-414`) or `data-holds-live` keeps it. That covers 47 templates; C4081 fixed
