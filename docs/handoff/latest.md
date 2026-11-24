@@ -1,12 +1,18 @@
-# Handoff: the waiting patches as one stack, now 25 (2026-11-24, from 01:00 Denver)
+# Handoff: the waiting patches as one stack, now 26 (2026-11-24, from 01:00 Denver)
 
 ## 0000000. The 07:48 session (2026-11-24): read this first
 
 - **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
-- **The stack's trees:** `~/mercury-runs/tree-stack-24.txt` (with c2820-codes) and
-  `tree-stack-25.txt` (with c2820-labels). Make the next patch against tree-stack-25; the
-  worktree `~/nmas-worktrees/c2820-sdn` holds it staged (its index is tree-stack-25).
-  land_all.sh now ends `c2820-ai-words c2820-codes c2820-labels` (25 patches).
+- **The stack's trees:** `~/mercury-runs/tree-stack-24.txt` (with c2820-codes),
+  `tree-stack-25.txt` (with c2820-labels) and `tree-stack-26.txt` (with c2820-guards). Make
+  the next patch against tree-stack-26; the worktree `~/nmas-worktrees/c2820-sdn` holds it
+  staged (its index is tree-stack-26). land_all.sh now ends
+  `c2820-codes c2820-labels c2820-guards` (26 patches).
+- **C2820 item 29 BUILT as a patch**, `~/mercury-runs/c2820-guards.patch` and `.msg`: the
+  hard stops' labels say what they count ("a flap: times one interface went down or up", no
+  "updown", no "sections a heal"). Red first, two controls bite; aimed 34 files, 1,486 passed.
+- Kept (decisions file): "Dry run" (the operator's word), item 35's sentence and "golden",
+  item 33's check names. **C2820 left:** item 27 (Tier words), 31's `dampening` backtick.
 - **C2820 items 32 and 34 BUILT as a patch**, `~/mercury-runs/c2820-codes.patch` and `.msg`:
   no Settings screen's visible text names a register row, a plan section or "the AUTO
   production-readiness gate" (new tests/test_settings_words_name_no_codes.py over every
@@ -18,9 +24,10 @@
   "Check the certificate", "Token sent as", "VMs whose backups are checked", "Listen
   address". Red first (3), a control bites; aimed 85 files, 3,392 passed, C4090's the one red.
 - Kept (decisions file): item 30's hashes (what a confirm binds), the AI classes' names.
-- **Next:** land the 25 once session-namespace is answered; meanwhile C2820's items 27 to 29
-  (Tier words, "Dry run", the guard labels: check first whether "dry run" is the operator's
-  or the course lab's word, as AUTO/HITL were), 33 and 35, or C4234's measurement.
+- **Next:** land the 26 once session-namespace is answered; meanwhile C2820's item 27 (Tier
+  words: check first whether "Tier 1/2" is the operator's or the plan's naming, as "Dry run"
+  was), or C4234's measurement (the CODE scan over Needs attention, History, the device page,
+  DHCP, SDN and Coverage rendered on the suite's fixtures), or Stage 6's rows.
 
 ## 000000. The 07:11 session (2026-11-24)
 
