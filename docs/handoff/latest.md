@@ -1,11 +1,19 @@
-# Handoff: the waiting patches as one stack, now 31 (2026-11-24, from 01:00 Denver)
+# Handoff: the waiting patches as one stack, now 32 (2026-11-24, from 01:00 Denver)
 
 ## 000000000. The 09:06 session (2026-11-24): read this first
 
 - **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
-- **The stack's tree:** `~/mercury-runs/tree-stack-31.txt` (with c4234-manual). Make the next
-  patch against tree-stack-31; the worktree `~/nmas-worktrees/c2820-sdn` holds it staged.
-  land_all.sh now ends `c2820-departs-rid c4234-manual` (31 patches).
+- **The stack's trees:** `~/mercury-runs/tree-stack-31.txt` (with c4234-manual) and
+  `tree-stack-32.txt` (with c3601-coverage). Make the next patch against tree-stack-32; the
+  worktree `~/nmas-worktrees/c2820-sdn` holds it staged. land_all.sh now ends
+  `c2820-departs-rid c4234-manual c3601-coverage` (32 patches).
+- **C3601's template coverage slice BUILT as a patch**, `~/mercury-runs/c3601-coverage.patch`
+  and `.msg`: the check's job carries the Coverage tab as its page, the tab draws the job from
+  `job`, and the job's answer says `ok`. **A trap for the next callers:** a page job's finished
+  row is green only when its payload says `ok` or has a `state` in `in_flight.PAGE_LEVELS`;
+  coverage's said neither, so it would have been drawn red "refused: no reason". In progress
+  names a page job by its `kind`, so a kind must be words. Red first, three controls; aimed
+  140 files, 4,155 passed, C4090's loops the one red. Nine callers left (the row lists them).
 - **C4234's manual pass BUILT as a patch**, `~/mercury-runs/c4234-manual.patch` and `.msg`:
   the manual's 34 code passages in 18 pages and two diagrams' labels (modules/manual_diagrams.py,
   SVGs rewritten by scripts/nmas-manual-diagrams) in words; tests/test_codes_drawn.py's
@@ -14,8 +22,8 @@
   files, 2,969 passed, C4090's three loops the one red.
 - **C2820 item 31 deferred** (decisions file): its text is not recorded, and its candidates are
   in modules/heal/dampening.py (device-write path). **C2820 has nothing else left.**
-- **Next:** land the 31 once session-namespace is answered; meanwhile Stage 6's rows (A, then
-  B), each as a patch against tree-stack-31 when it changes a test.
+- **Next:** land the 32 once session-namespace is answered; meanwhile C3601's next caller
+  (path trace, `modules/path_trace.py:542`), each as a patch against the newest stack tree.
 
 ## 00000000. The 08:22 session (2026-11-24)
 
