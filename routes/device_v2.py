@@ -485,7 +485,9 @@ def _reopened(ref, dev, back, card: str = "", after: float = None, result: str =
         return _reopened_record(ref, dev, back) if not card and after is None else None
     c = device_actions.job_card(ref, host, job["card"], job["job"])
     if c.get("state") == "unknown":
-        return None
+        # C3157: the newest job's card cannot be drawn (its result no longer known): an older
+        # run this person started and has not opened may still be known by its record.
+        return _reopened_record(ref, dev, back) if not card and after is None else None
     c.update(back=back, ip=dev.get("ip", ""),
              reopened=device_actions.reopened_words(job, viewer))
     if done:

@@ -262,6 +262,18 @@ class TestAReSubscribesOutcome:
         assert "Preview a re-subscribe again…" in body, "the next action"
         assert "ip-chip" not in bar(resub), "opened: the chip lets it go"
 
+    def test_a_newest_job_whose_card_reads_unknown_still_reopens_the_run_by_its_record(
+            self, resub, monkeypatch):
+        """C3157: when the device's newest kept job's card cannot be drawn (it reads unknown),
+        the page falls back to the run's record, as with no job kept, never reopening nothing."""
+        from modules import device_actions
+        run_one(resub, not_back())
+        monkeypatch.setattr(device_actions, "job_card",
+                            lambda ref, host, card, job: {"state": "unknown"})
+        body = page(resub)
+        assert "Your run, started " in body and "Re-subscribed; the stream did not come back:" \
+            in body, "reopened from its record"
+
     def test_two_subscriptions_not_back_each_verify_leads_with_its_own_reads(self, resub):
         """The operator's run of 2026-11-11 (two subscriptions, neither stream back): twelve
         steps, two verifies failed, each with its own three checks. His words on its card,
