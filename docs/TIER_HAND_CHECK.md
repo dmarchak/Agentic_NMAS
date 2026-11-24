@@ -4939,3 +4939,57 @@ tests/test_reads_engine.py.
 **14 of 14 died**, the canary first. The engine-adjacent tests (every reads, show-command,
 masking, heal and discovery file, test_ovs_reads, the register): **3,462 passed**, the save
 check's tests and test_reads_engine's keyed test among them.
+## 2026-11-24: the toolbar assistant's stage 2 (the week plan's Stage 4), by hand
+
+What changed: the toolbar assistant (`modules/ai/assistant.py`, `assistant_context.py`,
+`assistant_threads.py`, `routes/assistant_v2.py`) sends the model new data: what the page is
+looking at (`looking_at`: the screen, network, device, devices and incident by name), the
+answers of the read-only device reads it asks for of the device in view (`read_loop.run`, under
+the device state class), and the person's typed question; it keeps each exchange in the person's
+thread on the host, and hands a change request to the gated flows with its words.
+
+The danger the hand check guards: a secret a person pastes, or a read's answer holds, leaving
+the host unmasked; the page's path or query (which may carry words a person typed) sent as
+context; a read of a device not in view, or with its egress class off; a thread readable by
+others, named by the person's identity, kept for no verified person, or holding a read's answer
+or an unmasked answer; a hand-off's words unmasked in the address the browser opens.
+
+**The method:** `~/mercury-runs/handcheck-assistant/mutate.py` (each mutant exact replacements,
+refused unless each old text occurs once) in a throwaway worktree per mutant
+(`scripts/nmas-control`), then tests/test_ai_assistant_stage2.py, test_ai_assistant.py,
+test_provider_redaction.py, test_ai_requests_carry_no_address.py, test_ai_read_loop.py and
+test_secret_file_modes.py with `-x`, CI's interpreter, unconfined (the loop session has no
+network namespace; the test process still refuses non-loopback connects). **Run 1** 2026-11-24
+01:46 to 01:53 UTC: the canary and 12 mutants died, 7 survived (3, 8, 9, 11, 13, 17, 19). Seven
+tests were written for them (`TestWhatLeavesAndWhatIsKeptIsMasked`; two first failed on their
+own premise and were corrected: a secret's line is masked by its position at a line's start,
+and the route keeps the thread under the request's actor). **Run 2** 03:05 to 03:08 UTC, the
+seven survivors again: each died. Baseline after the new tests: **209 passed**.
+
+| mutant | result | killed by |
+|---|---|---|
+| 0 canary: the gateway's egress mask, the typed mask and the read answers' mask all removed | died (run 1) | `test_a_pasted_secret_is_masked_before_it_leaves_and_said` |
+| 1 the question sent under another part's name | died (run 1) | the same |
+| 2 what the typed mask removed not said back | died (run 1) | the same |
+| 3 `looking_at` sends the page's path and query | died (run 2) | `test_looking_at_sends_the_page_s_names_never_its_path_or_query` |
+| 4 the egress class check skipped | died (run 1) | `test_with_the_class_off_the_one_pass_is_plain_and_nothing_is_read` |
+| 5 a device not in view in the read scope | died (run 1) | `test_a_device_read_runs_through_mercury_s_tools_and_is_answered_on` |
+| 6 the caller's `reads_off` ignored | died (run 1) | `test_with_no_device_in_view_nothing_is_read` |
+| 7 the reads under another egress class | died (run 1) | the class-off test |
+| 8 the hand-off's words unmasked | died (run 2) | `test_a_hand_off_s_words_are_masked_in_its_address_and_on_the_page` |
+| 9 the question drawn back unmasked | died (run 2) | `test_the_question_drawn_back_is_masked` |
+| 10 the thread keeps the question as typed | died (run 1) | `test_kept_owner_only_named_by_a_digest_masked_and_the_newest_20` |
+| 11 the thread keeps the answer without masking it again | died (run 2) | `test_the_answer_kept_is_masked_again_in_an_owner_only_folder` |
+| 12 the thread's file left 0644 | died (run 1) | the kept-owner-only test |
+| 13 the thread's folder made 0755 | died (run 2) | the answer-kept test |
+| 14 the thread's file named by the identity in clear | died (run 1) | the kept-owner-only test |
+| 15 a thread kept for no verified person | died (run 1) | `test_no_verified_person_keeps_nothing` |
+| 16 a thread read for no verified person | died (run 1) | the same |
+| 17 a read's answer kept in the thread | died (run 2) | `test_a_read_s_answer_is_never_kept_in_the_thread` |
+| 18 the resolver takes a path on another host | died (run 1) | `test_the_path_is_resolved_by_the_url_map[another-host]` |
+| 19 the resolver takes a device name of any shape | died (run 2) | `test_a_device_name_not_of_a_device_s_shape_names_nothing` |
+
+**The result: the canary and 19 mutants, all died by run 2, none equivalent.** Not mutated: the
+gateway's egress mask itself and `redact` (unchanged but for the canary), `readonly_commands`
+and the read scope's allowlist (unchanged; the assistant reaches them only through
+`router_reads.scope_for`).

@@ -1,31 +1,51 @@
-"""The assistant's how-to answer, from the manual (card P7, stage 1; PHASE8_PLAN 16.10, its
-build and its retrieval; board P7's 17 approved answers).
+"""The toolbar assistant's answer, from the manual and from the reads a person has (card P7,
+stage 1; stage 2, docs/design/assistant.md as amended 2026-11-23; PHASE8_PLAN 16.10, its build
+and its retrieval; board P7's 17 approved answers).
 
-**What it is.** A person asks how to do something in Mercury, or what a screen means. Code
-chooses the manual's passages (`manual_index.select`: BM25 with aliases and the screen's
-boost, a floor, never padded); the model answers from those passages alone, in steps, citing
-each passage it rests on. Its only jobs in stage 1 are how-to and explain-this-screen: it never
-changes, deploys, approves or writes to any source of truth, and names no command to type.
+**What it is.** A person asks how to do something in Mercury, what a screen means, or what
+Mercury holds about the device or incident on screen. Code chooses the manual's passages
+(`manual_index.select`: BM25 with aliases and the screen's boost, a floor, never padded); the
+model answers from those passages and from the reads Mercury runs for it, citing each passage
+and read it rests on. It never changes, deploys, approves or writes to any source of truth,
+and names no command to type.
+
+**Where the person is** (stage 2) is the page's path, resolved by the server
+(`assistant_context.resolve`) into the screen, the network, the device and the incident. The
+reads are scoped to that device, or to the incident's (`scope_of`).
+
+**The reads** (stage 2; the operator, 2026-11-23: the same read-only tools a person has, device
+reads included) run through the generic read loop (`read_loop.run`) over the assistant's read
+family (`FAMILY`): AI troubleshooting's operations exactly (`fixit_reads.FAMILY`'s: the
+device's reads by Mercury's allowlist, `router_reads.COMMAND_OPS`, and Mercury's own reads of
+what it holds, `fixit_reads.OWN_READS`), their runner (`fixit_reads.run`, which hands a device
+read to the reads engine, `router_reads.run`, recorded on History › Reads) and one session a
+device a round (`router_reads.run_many`). Each read is judged by the loop's check (the
+allowlist, the device in scope, the egress classes), logged in the send log before anything of
+it is sent, and drawn on History beside the calls. With no device or incident in view, or the
+device state class off for the network, the one pass is the plain one and no read is asked.
 
 **What leaves the host.** The question, a typed part (`gateway.TYPED_PARTS`): masked on its way
-out, the person told what was removed. The passages chosen and the screen's name, Mercury's own
-words (the manual is published with the product). Nothing of the network: no device, address
-or configuration is sent in stage 1.
+out, the person told what was removed. The passages chosen, the screen's name, what the person
+is looking at (the screen, network, device and incident names), Mercury's own words. A read's
+answer only under its egress class, masked (`read_loop`).
 
-**The request** (`gateway.ask`): the instructions are the prompt, cached; the `context` is the
-stable part every call shares, cached (the screens the manual names, `manual.SCREENS`); the
-`parts` are the call's own (the question, the screen asked from, the passages), after.
+**The request** (`gateway.ask`, through the loop): one shape for every pass
+(`read_loop.LoopFeature.one_shape`): the instructions are the prompt, cached; the `context` is
+the stable part every call shares, cached (the screens the manual names, `manual.SCREENS`, the
+plans, the read set and the reads' format); the `parts` are the call's own (the question, the
+screen asked from, what it is looking at, the passages, the pass, and the reads once run).
 
 **What Mercury checks before anything is drawn** (:func:`check`): every citation is a passage
-it was sent; every screen it names is one the manual names; the answer is within its bounds.
-An answer that says the passages do not cover the question, or that cites none, is drawn as
+it was sent or a read that ran; every screen it names is one the manual names; the answer is
+within its bounds. An answer that says it is not covered, or that cites nothing, is drawn as
 "the manual doesn't cover this". A refused answer is never drawn ("Couldn't answer: …", the
 call kept in History).
 
-**A manual gap** (no passage chosen, an answer that is not covered, or one the check refuses)
-is what the ask route records (`record_gap`): a write of its own, never the read that ranks.
+**A manual gap** (no passage chosen and nothing to read, an answer that is not covered, or one
+the check refuses) is what the ask route records (`record_gap`): a write of its own, never the
+read that ranks.
 
-**One person's press, one recorded call** (PHASE8_PLAN 18.3: trigger person); never a
+**One person's press, one recorded call a pass** (PHASE8_PLAN 18.3: trigger person); never a
 background feature.
 
 **A plan (v2, 2026-11-14).** The answer may name one of the plan engine's plans with its
@@ -33,13 +53,22 @@ parameters (`plan_engine.PLANS`, told to the model in the cached `context`). Mer
 to the plan's schema (`plan_of`) before it is drawn; the panel then offers Preview the plan…,
 the engine's own preview, and a person approves it by its hash or not. The assistant runs
 nothing.
+
+**A hand-off (v3, stage 2).** A change the person asks for that no plan does is handed to the
+existing gated flow, pre-filled and not started (`handoff_of`): the device's Intent tab, its
+Change it in words box filled, or the incident's AI troubleshooting card. The person presses,
+previews and confirms there, as ever.
 """
 import json
 import logging
 import os
 import re
 import time
+from enum import Enum
 
+from modules.ai import fixit_reads as FR
+from modules.ai import read_loop as RL
+from modules.ai import router_reads as RR
 from modules.ai.schemas import StrictModel, register
 
 from modules.identity import acts_as_ai  # noqa: E402 (the AI's own identity, its role)
@@ -57,26 +86,40 @@ FEATURE = "assistant"
 #: v4 (2026-11-14, C3666): v3 measured 29 of 39 over ten runs; "covered" follows from the
 #: answer (any step from the passages makes it true), and a not-covered answer names the
 #: screens the passages are about, never a command, control or tool. Otherwise v3's.
-PROMPT = ("assistant", 4)
+#: v5 (stage 2, docs/design/assistant.md): v4's, and what the person is looking at, the reads
+#: (when to ask, of which device, citing ``read:<n>``) and the hand-off to a gated flow; its
+#: schema is v3 (`AssistantAnswerV3`), one shape for every pass.
+PROMPT = ("assistant", 5)
 #: The kind of subject a call is about (`history_sources.SUBJECT_WORDS`).
 SUBJECT_KIND = "manual_question"
 #: The longest answer drawn, characters; longer is refused at check.
 MAX_ANSWER = 2400
 #: The longest question asked, characters: a question, not a pasted file.
 MAX_QUESTION = 600
+#: The longest hand-off sentence: the Intent tab's Change it in words box takes 300.
+MAX_HANDOFF = 300
 #: The steps a press runs, each named on the manual's page (`modules/manual.py`).
 STEPS = (
+    ("place", "what the person is looking at, from the page's path by Mercury's own URL map: "
+              "the screen, the network, the device and the incident"),
     ("choose", "the manual's passages chosen by code for the question (BM25 with the aliases "
-               "and the screen's boost; none below the floor: a manual gap, no call)"),
-    ("ask", "one recorded AI call: the instructions and the screens cached, then the question "
-            "(masked on its way out) and the passages"),
-    ("check", "Mercury's check: every citation a passage sent, every screen named one the "
-              "manual names"),
-    ("draw", "the answer drawn with its passages' links, or the manual's gap said and "
-             "recorded"),
+               "and the screen's boost; none below the floor and nothing to read: a manual "
+               "gap, no call)"),
+    ("ask", "one recorded AI call: the instructions, the screens, the plans and the read set "
+            "cached, then the question (masked on its way out), what it is looking at and the "
+            "passages"),
+    ("read", "the reads the answer asks for, of the device in view only, each judged by "
+             "Mercury's check and run through its reads engine and its own records, recorded, "
+             "then one more recorded call with their answers"),
+    ("check", "Mercury's check: every citation a passage sent or a read that ran, every screen "
+              "named one the manual names"),
+    ("draw", "the answer drawn with its sources' links, the model, the cost and the calls in "
+             "History, a hand-off offered, or the manual's gap said and recorded"),
 )
 #: Said when the manual does not cover a question, whichever way that was found.
 NOT_COVERED = "The manual doesn't cover this."
+#: Why no read is asked when the page is about no device or incident.
+NO_PLACE = "no device or incident is in view, so no device is read"
 
 
 @register("assistant", 1)
@@ -110,6 +153,104 @@ class AssistantAnswerV2(StrictModel):
     covered: bool
     screens: list[str]
     plan: PlanAsk | None = None
+
+
+# ── stage 2: the reads, the hand-off and the one shape ──────────────────────────────────────
+
+#: The assistant's read family: AI troubleshooting's operations exactly, its runner and one
+#: session a device a round (`fixit_reads.FAMILY`'s), held by the loop's check to the device
+#: or incident in view (`scope_of`). Its own name, so its requests and the send log say whose.
+FAMILY = RL.ReadFamily(
+    name="assistant", transport="local", egress_class="device_state",
+    operations=FR.FAMILY.operations, run=FR.run, run_many=RR.run_many,
+    words="the toolbar assistant's reads: AI troubleshooting's, of the device or incident in "
+          "view")
+#: One entry of the answer's ``reads`` (`read_loop.request_model`).
+ReadAsk = RL.request_model(FAMILY)
+
+
+class HandoffFlow(str, Enum):
+    """The gated flows a change is handed to: the device's Intent tab, Change it in words, and
+    the incident's AI troubleshooting."""
+    intent_words = "intent_words"
+    ai_troubleshooting = "ai_troubleshooting"
+
+
+class Handoff(StrictModel):
+    """A change the person asked for, handed to one gated flow with its words, not started."""
+    flow: HandoffFlow
+    words: str
+
+
+@register("assistant", 3)
+class AssistantAnswerV3(StrictModel):
+    """v3 (stage 2): v2's answer, ``cites`` holding passages' links and ``read:<n>``, a
+    ``handoff`` (one gated flow and its words, or null) and ``reads`` (the read loop's
+    requests; run only in a pass that may ask for reads)."""
+    answer: str
+    cites: list[str]
+    covered: bool
+    screens: list[str]
+    plan: PlanAsk | None = None
+    handoff: Handoff | None = None
+    reads: list[ReadAsk] = []
+
+
+#: Each read's operation and the device tab it opens on (Open, beside the source): Mercury's
+#: own reads their tab, a device read the device's Ask the device tab (its record on History ›
+#: Reads beside it).
+READ_TAB = {"intent": "intent", "golden": "overview", "neighbours": "neighbours",
+            "history": "history", "logs": "logs", "metrics": "monitoring",
+            "collector_sessions": "monitoring", "stream_series": "monitoring", "show": "ask",
+            "show_config": "ask", "ping": "ask", "traceroute": "ask"}
+TAB_WORDS = {"intent": "Intent", "overview": "Overview", "neighbours": "Neighbours",
+             "history": "History", "logs": "Logs", "monitoring": "Monitoring",
+             "ask": "Ask the device"}
+
+
+def read_set() -> str:
+    """The cached context block ``read_set``: what the model may ask Mercury to read (`FAMILY`'s
+    operations and their arguments), the same bytes on every call. Mercury's own words."""
+    lines = [
+        "read_set is the read-only reads Mercury may run for this question, as a person reads "
+        "through Mercury, and only of a device in looking_at's devices: the device's own "
+        "(show, show_config, ping, traceroute: give the command's words after its verb in "
+        "words, for example \"interfaces GigabitEthernet1\" for show; Mercury runs a show of "
+        "one of its command families, listed below, through its own reads engine), and "
+        "Mercury's own of what it holds about the device (intent, golden, neighbours, history, "
+        "logs, metrics; collector_sessions and stream_series only on an incident about a lost "
+        "telemetry stream). To ask for one, add it to reads: op is one of the operations "
+        "below, args its arguments by name (device always, and null for an argument the "
+        "operation does not take), why one line on what it would show, and hypothesis what it "
+        "would confirm or rule out. Mercury checks each request (the allowlist, each address "
+        "and interface against the device's golden and intent, the egress classes) and runs "
+        "only those it allows.",
+        "The operations:"]
+    for op in FAMILY.operations:
+        args = ", ".join(f"{a} ({spec.shape.words})" for a, spec in op.args.items())
+        lines.append(f"- {op.name}: {op.words}; args: {args}")
+    lines.append("show's command families: `show <family> <form>`, each family's forms after "
+                 "the colon, - for the family alone ({if} an interface the device's golden "
+                 "holds, as one word; {a4} {a6} an address of the network; {p4} {p6} a prefix "
+                 "of it; {mask} a netmask after an address; {vlan} {n} numbers; {sub} a "
+                 "subscription; {mac} a MAC; {name} a VRF):")
+    for family, tails in RR.SHOW_FAMILIES:
+        lines.append(f"- {family}: " + " | ".join(t or "-" for t in tails))
+    return "\n".join(lines)
+
+
+def loop_feature(chosen: list) -> "RL.LoopFeature":
+    """The assistant as the read loop asks it: one prompt and one schema every pass (v5, v3),
+    the read set and the reads' format in the cached context, Mercury's check
+    (`check`) given the reads that ran."""
+    def check_(answer, *, read_ids):
+        return check(answer, chosen, read_ids=read_ids)
+
+    spec = (PROMPT, AssistantAnswerV3)
+    return RL.LoopFeature(task=FEATURE, first=spec, second=spec, plain=spec, check=check_,
+                          cites=lambda a: list(a.cites), one_shape=True,
+                          shared_context={"read_set": read_set(),
+                                          "reads_format": RL.READS_FORMAT})
 
 
 def plans_offered(plan_engine) -> list:
@@ -148,6 +289,40 @@ def plan_of(words) -> tuple:
     return {"plan": plan.key, "params": held, "title": plan.title(held)}, ""
 
 
+def handoff_of(words, place: dict) -> tuple:
+    """``(handoff, why)``: the gated flow *words* hands a change to, pre-filled for what the
+    person is looking at (*place*), as ``{"flow", "words", "device", "incident", "network"}``;
+    ``(None, "")`` for none; ``(None, why)`` dropped (a flow with nothing in view to hand to,
+    words past `MAX_HANDOFF`, or beside a plan). Reads nothing and starts nothing."""
+    from modules import redact
+
+    hand = getattr(words, "handoff", None)
+    if hand is None:
+        return None, ""
+    place = place or {}
+    if getattr(words, "plan", None) is not None:
+        return None, "it names a plan and a hand-off; the plan is offered"
+    said = " ".join(str(hand.words or "").split())
+    if not said:
+        return None, "its hand-off has no words"
+    if len(said) > MAX_HANDOFF:
+        return None, f"its hand-off is {len(said)} characters, past {MAX_HANDOFF}"
+    flow = HandoffFlow(hand.flow).value
+    network = place.get("network") or ""
+    if flow == HandoffFlow.intent_words.value:
+        devices = list(place.get("devices") or [])
+        device = place.get("device") or (devices[0] if len(devices) == 1 else "")
+        if not device:
+            return None, "it hands a change to a device's Intent tab, and no one device is in view"
+        return {"flow": flow, "words": redact.redact_text(said), "device": device,
+                "incident": "", "network": network}, ""
+    if not place.get("incident"):
+        return None, ("it hands a change to an incident's AI troubleshooting, and no incident "
+                      "is in view")
+    return {"flow": flow, "words": redact.redact_text(said), "device": "",
+            "incident": place["incident"], "network": network}, ""
+
+
 def passages_sent(chosen: list) -> list:
     """What the model is sent of each chosen passage: its link, its page, its heading, its
     text."""
@@ -156,23 +331,35 @@ def passages_sent(chosen: list) -> list:
 
 
 def context() -> dict:
-    """The stable prefix every call shares, cached: the screens the manual names."""
+    """The stable prefix every call shares, cached: the screens the manual names and the plans
+    (the read set and the reads' format are the loop feature's, `loop_feature`)."""
     from modules import manual
     from modules import plan_engine
     return {"screens": sorted(manual.SCREENS), "plans": plans_offered(plan_engine)}
 
 
-def parts(question: str, screen: str, chosen: list) -> dict:
+def looking_at(place: dict, screen: str = "") -> dict:
+    """What the model is told the person is looking at: the screen, the network, the device,
+    the incident and the devices a read may be of (names only)."""
+    place = place or {}
+    return {"screen": place.get("screen") or screen or "", "network": place.get("network") or "",
+            "device": place.get("device") or "", "incident": place.get("incident") or "",
+            "devices": list(place.get("devices") or [])}
+
+
+def parts(question: str, screen: str, chosen: list, place: dict = None) -> dict:
     """The call's own data, after the cached prefix."""
-    return {"question": question, "screen": screen or "", "passages": passages_sent(chosen)}
+    return {"question": question, "screen": screen or "",
+            "looking_at": looking_at(place, screen), "passages": passages_sent(chosen)}
 
 
-def check(words, chosen: list) -> str:
-    """Why *words* (an `AssistantAnswer`) is refused, or ``""``: a citation that is no passage
-    sent, a screen the manual does not name, an answer past `MAX_ANSWER`."""
+def check(words, chosen: list, read_ids=()) -> str:
+    """Why *words* (an `AssistantAnswer` of any version) is refused, or ``""``: a citation that
+    is neither a passage sent nor a read that ran (*read_ids*), a screen the manual does not
+    name, an answer past `MAX_ANSWER`."""
     from modules import manual
 
-    sent = {p["link"] for p in chosen}
+    sent = {p["link"] for p in chosen} | set(read_ids or ())
     stray = [c for c in words.cites if c not in sent]
     if stray:
         return f"it cites {', '.join(stray)}, which it was not sent"
@@ -184,20 +371,78 @@ def check(words, chosen: list) -> str:
     return ""
 
 
-def subject(screen: str) -> dict:
-    return {"kind": SUBJECT_KIND, "id": screen or "", "devices": []}
+def subject(screen: str, place: dict = None) -> dict:
+    devices = list((place or {}).get("devices") or [])
+    return {"kind": SUBJECT_KIND, "id": screen or "", "devices": devices}
 
 
-def prepare(question: str, *, screen: str = "") -> dict:
+def model_words() -> dict:
+    """The model the assistant's task is pinned to: its id and its name, as the answer draws
+    it ("Haiku 5.5")."""
+    from modules.ai import profiles
+
+    model = profiles.task(FEATURE)["model"]
+    return {"model": model, "model_words": profiles.profile(model)["words"]}
+
+
+def scope_of(place: dict, actor: str) -> tuple:
+    """``(scope, devices, why)``: what the read family's comparisons read for what the person is
+    looking at (*place*): a device page's device (`router_reads.scope_for`), an incident's
+    device and its streams (`fixit_reads.scope_for`, the incident as its fix-it record takes
+    it); the devices a read may be of; and why no read may be asked ("" when one may). Read
+    only at a press, and only when the device state class is on for the network
+    (`read_loop.reads_off`); every read it allows is recorded as the assistant's, asked by the
+    person."""
+    from modules.nsot import listref
+
+    place = place or {}
+    network = place.get("network") or ""
+    device, incident = place.get("device") or "", place.get("incident") or ""
+    if not network or not (device or incident):
+        return None, [device] if device else [], NO_PLACE
+    try:
+        net_id = listref.network_id(network)
+    except Exception as exc:                          # noqa: BLE001 (no read: said)
+        return None, [device] if device else [], f"the network {network} is not known ({exc})"
+    off = RL.reads_off(FAMILY, net_id)
+    if off:
+        return None, [device] if device else [], off
+    try:
+        if device:
+            scope = RR.scope_for(network, [device], turned_on_by=actor)
+        else:
+            from modules import incident_page
+            from modules.fixit import section
+
+            got = section.incident_of(network, incident_page.resolve(network, incident))
+            if got["incident"] is None:
+                return None, [], got["why"]
+            scope = FR.scope_for(network, got["incident"], actor=actor)
+    except Exception as exc:                          # noqa: BLE001 (no read: said)
+        log.error("assistant: the reads' scope of %s could not be built: %s",
+                  device or incident, exc)
+        return None, [device] if device else [], (f"what Mercury holds about "
+                                                  f"{device or incident} could not be read "
+                                                  f"({type(exc).__name__})")
+    scope["actor"] = f"the toolbar assistant, asked by {actor or 'nobody named'}"
+    scope["purpose"] = "the toolbar assistant's read"
+    return scope, sorted(scope.get("devices") or {}), ""
+
+
+def prepare(question: str, *, screen: str = "", place: dict = None,
+            reads_off: str = NO_PLACE) -> dict:
     """`answer`'s steps before its call, the one code path a person's press and an evaluation's
     batched request share (scripts/nmas-assistant-cases): the question's checks, the passages
-    chosen from it as it leaves (masked, the mask's placeholders out), and the request.
+    chosen from it as it leaves (masked, the mask's placeholders out), the call's data, its
+    context and the loop feature, and the request of the plain pass (the one a press sends
+    when no read may be asked, *reads_off* saying why).
     ``{"done": <answer's result, no call>}`` when it is refused (empty, too long) or no passage
-    is chosen (a manual gap); else ``{"chosen", "drawn", "request"}``, *request* what
-    `gateway.ask` takes for it: ``{"feature", "prompt", "schema", "parts", "context",
-    "subject"}``."""
+    is chosen and nothing may be read (a manual gap); else ``{"chosen", "drawn", "data",
+    "ctx", "feature", "place", "request"}``, *request* what `gateway.ask` takes for it:
+    ``{"feature", "prompt", "schema", "parts", "context", "subject"}``."""
     from modules.ai import manual_index
 
+    place = dict(place or {})
     question = (question or "").strip()
     if not question:
         return {"done": {"ok": False, "state": "refused", "error": "empty",
@@ -212,72 +457,193 @@ def prepare(question: str, *, screen: str = "") -> dict:
     ranked_by = re.sub(r"<redacted[^>]*>", " ", redact.redact_typed(question))
     chosen = manual_index.select(ranked_by, screen=screen)
     drawn = [{"link": p["link"], "page": p["page"], "heading": p["heading"]} for p in chosen]
-    if not chosen:
+    if not chosen and (reads_off or not place.get("devices")):
         return {"done": {"ok": True, "state": "not_covered", "error": "", "detail": NOT_COVERED,
                          "passages": [], "gap": True}}
-    return {"chosen": chosen, "drawn": drawn,
-            "request": {"feature": FEATURE, "prompt": PROMPT, "schema": AssistantAnswerV2,
-                        "parts": parts(question, screen, chosen), "context": context(),
-                        "subject": subject(screen)}}
+    data = parts(question, screen, chosen, place)
+    ctx = context()
+    feature = loop_feature(chosen)
+    prompt, schema, sent, ctx_ = RL.first_request(feature, data, ctx, plain=True)
+    return {"chosen": chosen, "drawn": drawn, "data": data, "ctx": ctx, "feature": feature,
+            "place": place,
+            "request": {"feature": FEATURE, "prompt": prompt, "schema": schema, "parts": sent,
+                        "context": ctx_, "subject": subject(screen, place)}}
 
 
 @acts_as_ai("assistant")
-def answer(question: str, *, screen: str = "", actor: str, trigger: dict, send=None,
-           today: str = None) -> dict:
-    """A person's question answered from the manual, or why not: ``{"ok", "state", "error",
-    "detail", "answer"?, "cites"?, "passages", "call_id"?, "gap"}``. *state* ``answered``,
-    ``not_covered`` (no passage chosen, or the passages do not cover it: no answer drawn),
-    ``refused`` (a gate, or Mercury's check) or ``failed``; *gap* True when the manual's gap
-    is the route's to record; *passages* each chosen one's link, page and heading. Its steps:
-    `prepare`, one call through the gateway, `judge`."""
+def answer(question: str, *, screen: str = "", place: dict = None, actor: str, trigger: dict,
+           send=None, today: str = None) -> dict:
+    """A person's question answered from the manual and the reads, or why not: ``{"ok",
+    "state", "error", "detail", "answer"?, "cites"?, "sources"?, "reads"?, "calls"?,
+    "passages", "call_id"?, "gap", ...}``. *state* ``answered``, ``not_covered`` (no passage
+    chosen and nothing to read, or the answer is not covered: no answer drawn), ``refused`` (a
+    gate, or Mercury's check) or ``failed``; *gap* True when the manual's gap is the route's
+    to record; *passages* each chosen one's link, page and heading. *place* is what the person
+    is looking at (`assistant_context.resolve`). Its steps: `scope_of`, `prepare`, the read loop
+    through the gateway (`read_loop.run`), `settle`."""
     from modules.ai import gateway
+    from modules.nsot import listref
 
-    prep = prepare(question, screen=screen)
+    place = dict(place or {})
+    scope, devices, reads_off = scope_of(place, actor)
+    place["devices"] = devices
+    prep = prepare(question, screen=screen, place=place, reads_off=reads_off)
     if "done" in prep:
         return prep["done"]
-    req = prep["request"]
-    got = gateway.ask(req["feature"], req["prompt"], req["schema"], req["parts"],
-                      actor=actor, trigger=trigger, context=req["context"],
-                      subject=req["subject"], send=send, today=today)
-    return judge(got, prep, actor=actor)
+    seen = {}
+
+    def ask(*a, trigger, **k):
+        # The gateway's own result, its typed part's mask kept to say what was removed.
+        got = gateway.ask(*a, trigger=trigger, **k)
+        if got.get("typed_masked") and "typed_masked" not in seen:
+            seen["typed_masked"] = got["typed_masked"]
+        return got
+
+    network = place.get("network") or ""
+    try:
+        net_id = listref.network_id(network) if network else ""
+    except Exception:                                  # noqa: BLE001 (the installation's)
+        net_id = ""
+    got = RL.run(FAMILY, prep["feature"], ask=ask, network=net_id, data=prep["data"],
+                 actor=actor, trigger=trigger, context=prep["ctx"],
+                 subject=prep["request"]["subject"], scope=scope, send=send, today=today,
+                 reads_off=reads_off)
+    return settle(got, prep, actor=actor, typed_masked=seen.get("typed_masked") or "")
+
+
+def _reads_drawn(records: list, place: dict) -> list:
+    """Each read the answer asked for, as the panel draws it: its id, what it read in a person's
+    words, its verdict and reason, the device and the tab it opens on, and its run on History ›
+    Reads."""
+    out = []
+    for r in records or []:
+        op = r.get("op") or ""
+        dev = str((r.get("args") or {}).get("device") or "")
+        out.append({"id": r.get("id") or "", "words": FR.checked_words([r]),
+                    "verdict": r.get("verdict") or "", "reason": r.get("reason") or "",
+                    "device": dev, "tab": READ_TAB.get(op, "ask"),
+                    "tab_words": TAB_WORDS.get(READ_TAB.get(op, "ask"), "Ask the device"),
+                    "run": r.get("run") or "", "network": (place or {}).get("network") or ""})
+    return out
+
+
+def settle(got: dict, prep: dict, *, actor: str, typed_masked="") -> dict:
+    """`answer`'s steps after the read loop (*got*, `read_loop.run`'s result): its state read as
+    the panel's, the answering call's use recorded, then `drawn`."""
+    from modules.ai import calls
+
+    records = got.get("reads") or []
+    first = got.get("first") or {}
+    base = {"calls": [c for c in got.get("call_ids") or [] if c],
+            "reads": _reads_drawn(records, prep.get("place")), "passages": prep["drawn"],
+            "typed_masked": typed_masked, **model_words()}
+    if got["state"] == "failed":
+        return dict(base, ok=False, state="refused", error=first.get("error") or "failed",
+                    detail=first.get("detail") or "", call_id=first.get("call_id") or "",
+                    gap=False)
+    if got["state"] == "refused_by_check":
+        why = got.get("why") or ""
+        calls.record_use(first.get("call_id") or "", "refused by validation", actor=actor,
+                         detail=why)
+        return dict(base, ok=False, state="refused", error="couldnt_answer",
+                    detail=f"Couldn't answer: {why}. The call is in History.",
+                    call_id=first.get("call_id") or "", gap=True)
+    second = got.get("second") or {}
+    if second.get("ok") and second.get("why"):
+        calls.record_use(second.get("call_id") or "", "refused by validation", actor=actor,
+                         detail=second["why"])
+    call_id = got.get("answer_call") or first.get("call_id") or ""
+    out = drawn(got["answer"], prep, actor=actor, call_id=call_id,
+                cost_usd=float(got.get("cost_usd") or 0.0), records=records,
+                typed_masked=typed_masked)
+    if got["state"] == "first_pass":
+        out["note"] = ("Mercury's reads were not answered on: " + (got.get("words") or "")
+                       .replace("AI analysis: ", ""))[:400]
+    return dict(base, **out)
 
 
 def judge(got: dict, prep: dict, *, actor: str) -> dict:
-    """`answer`'s steps after its call, the one code path a call and an evaluation's batched
-    answer share: *got* is `gateway.ask`'s result (or a batch's for one request, the same
-    shape), *prep* `prepare`'s. Mercury's check (`check`), then covered or not, the use
-    recorded on the call; the result is `answer`'s."""
+    """`answer`'s steps after one call, the code path an evaluation's batched answer takes: *got*
+    is `gateway.ask`'s result (or a batch's for one request, the same shape), *prep*
+    `prepare`'s. Mercury's check (`check`), then `drawn`; the result is `answer`'s."""
     from modules.ai import calls
 
-    chosen, drawn = prep["chosen"], prep["drawn"]
+    chosen, drawn_ = prep["chosen"], prep["drawn"]
     if not got.get("ok"):
         return {"ok": False, "state": "refused", "error": got.get("error") or "failed",
                 "detail": got.get("detail") or "", "call_id": got.get("call_id") or "",
-                "passages": drawn, "gap": False}
+                "passages": drawn_, "gap": False}
     words = got["output"]
     why = check(words, chosen)
     if why:
         calls.record_use(got["call_id"], "refused by validation", actor=actor, detail=why)
         return {"ok": False, "state": "refused", "error": "couldnt_answer",
                 "detail": f"Couldn't answer: {why}. The call is in History.",
-                "call_id": got["call_id"], "passages": drawn, "gap": True,
+                "call_id": got["call_id"], "passages": drawn_, "gap": True,
                 "typed_masked": got.get("typed_masked") or ""}
+    return drawn(words, prep, actor=actor, call_id=got["call_id"],
+                 cost_usd=got.get("cost_usd") or 0.0, records=(),
+                 typed_masked=got.get("typed_masked") or "")
+
+
+def drawn(words, prep: dict, *, actor: str, call_id: str, cost_usd: float, records,
+          typed_masked="") -> dict:
+    """An answer Mercury's check passed, as the panel draws it: not covered (no citation, or
+    the answer says so), or answered with its sources (each passage and read it cites), a
+    plan held to the plan engine's schema and a hand-off to a gated flow; the use recorded on
+    *call_id*."""
+    from modules.ai import calls
+
+    place = prep.get("place") or {}
+    passages = prep["drawn"]
     if not words.covered or not words.cites:
-        calls.record_use(got["call_id"], "shown: not covered", actor=actor)
+        calls.record_use(call_id, "shown: not covered", actor=actor)
         return {"ok": True, "state": "not_covered", "error": "", "detail": NOT_COVERED,
-                "call_id": got["call_id"], "passages": drawn, "gap": True,
-                "typed_masked": got.get("typed_masked") or ""}
-    calls.record_use(got["call_id"], "shown: answered", actor=actor)
-    cited = [d for d in drawn if d["link"] in set(words.cites)]
+                "call_id": call_id, "passages": passages, "gap": True,
+                "cost_usd": cost_usd, "typed_masked": typed_masked}
+    calls.record_use(call_id, "shown: answered", actor=actor)
+    cited = [d for d in passages if d["link"] in set(words.cites)]
+    by_id = {r["id"]: r for r in _reads_drawn(list(records or ()), place)}
+    sources = ([dict(c, kind="manual") for c in cited]
+               + [dict(by_id[c], kind="read") for c in words.cites if c in by_id])
     # A plan named (v2): proposed only, held to the plan engine's schema by `check`; the panel
     # offers its preview, and a person approves it or not.
     plan, dropped = plan_of(words)
+    handoff, handoff_dropped = handoff_of(words, place)
     return {"ok": True, "state": "answered", "error": "", "detail": "", "plan": plan,
             "plan_dropped": (f"Mercury dropped the plan the answer named: {dropped}" if dropped
                              else ""),
-            "answer": words.answer, "cites": cited, "passages": drawn,
-            "call_id": got["call_id"], "cost_usd": got.get("cost_usd") or 0.0, "gap": False,
-            "typed_masked": got.get("typed_masked") or ""}
+            "handoff": handoff,
+            "handoff_dropped": (f"Mercury dropped the hand-off the answer named: "
+                                f"{handoff_dropped}" if handoff_dropped else ""),
+            "answer": words.answer, "cites": cited, "sources": sources, "passages": passages,
+            "call_id": call_id, "cost_usd": cost_usd, "gap": False,
+            "typed_masked": typed_masked}
+
+
+def button_state() -> dict:
+    """The top bar's AI Assistant as every page draws it, from settings alone (no spend read,
+    no call): ``{"switched_on", "ready", "why"}``. *switched_on*: the Assistant's switch
+    (`installation_settings.assistant_on`); off, the button is disabled, its title saying where
+    it is turned on. *ready*: hosted AI is allowed (`controls._hosted`, the AI controls' own
+    seam); not ready, the button is greyed and still opens the panel, whose Ask says why in
+    full (`ai_control('assistant')`)."""
+    from modules import installation_settings
+    from modules.ai import controls
+
+    if not installation_settings.assistant_on():
+        return {"switched_on": False, "ready": False,
+                "why": installation_settings.ASSISTANT_OFF_WORDS}
+    try:
+        hosted = controls._hosted()
+    except Exception as exc:                          # noqa: BLE001 (read as not ready)
+        hosted = {"allowed": False, "why": f"hosted AI's setting cannot be read ({exc})"}
+    if not hosted.get("allowed"):
+        return {"switched_on": True, "ready": False,
+                "why": ("The Assistant cannot answer now: hosted AI is off. A person who may "
+                        "configure allows it on Settings › Installation › AI, the AI (hosted) "
+                        "card. The panel still opens, and its manual links work.")}
+    return {"switched_on": True, "ready": True, "why": ""}
 
 
 # ── the manual's gaps (board P7's answer 11: counted and listed, never Needs attention) ────────

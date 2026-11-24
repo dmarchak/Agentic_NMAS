@@ -2383,28 +2383,40 @@ def change_record():
 
 
 def assistant():
-    return svg(470, (
-        "The toolbar assistant's answer. You ask how to do something; Mercury chooses the "
-        "manual's passages for the question by code (keyword ranking with the aliases and the "
-        "boost for the screen you are on; below the floor, the manual's gap, and no call); it "
-        "sends one recorded, capped call through the AI gateway, the instructions and the "
-        "screens cached, then your question masked and the passages; it checks that every "
-        "citation is a passage it sent and every screen named exists; and it draws the answer "
-        "with its passages' links, or says the manual does not cover it and records the gap. "
-        "Nothing changes anywhere."), [
-        lanes(20, 464, right="THE SERVICES"),
-        person(14, 40, 186, 30, "You ask"), num(14, 40, 1),
-        doc("box", 14, 84, 186, 40, "The passages, chosen", "by code; none: a gap"),
+    # Its steps are `assistant.STEPS` as built: place, choose, ask, read, check, draw (C3709).
+    return svg(540, (
+        "The toolbar assistant's answer. You ask on any page; Mercury notes what you are "
+        "looking at from the page's path (the screen, the network, the device and the "
+        "incident), chooses the manual's passages for the question by code (below the floor, "
+        "the manual's gap, and no call), and sends one recorded, capped call through the AI "
+        "gateway, your question masked. When the answer asks for reads, Mercury runs them on "
+        "the device in view only, each judged by its read-only check and recorded, then makes "
+        "one more recorded call with their answers. It checks that every citation is a passage "
+        "it sent or a read that ran, and draws the answer with its sources, the model and the "
+        "cost, offering a hand-off to the gated flow for a change, or says the manual does not "
+        "cover it and records the gap. Only reads reach a device; nothing is changed."), [
+        lanes(20, 534, right="THE SERVICES"),
+        person(14, 40, 186, 30, "You ask, on a page"), num(14, 40, 1),
+        doc("box", 14, 84, 186, 40, "What you are looking at", "from the page's path"),
         num(14, 84, 2),
-        doc("box", 14, 138, 186, 36, "Your question, masked", "secrets never leave"),
+        doc("box", 14, 138, 186, 40, "The passages, chosen", "by code; none: a gap"),
         num(14, 138, 3),
-        svc(250, 138, 130, 36, "The AI gateway", "capped, recorded"),
-        arrow("send", 202, 156, 248, 156), num(14, 188, 4),
-        doc("box", 14, 202, 186, 36, "Checked", "cites only what it sent"),
-        num(14, 250, 5),
-        doc("box", 14, 264, 186, 40, "The answer, drawn", "or the gap, recorded"),
-        t(14, 330, "It never changes, deploys or saves.", "sm"),
-        nosend(310, 420, ("nothing is sent", "to a device")),
+        doc("box", 14, 192, 186, 40, "Your question, masked", "secrets never leave"),
+        num(14, 192, 4),
+        svc(250, 194, 130, 36, "The AI gateway", "capped, recorded"),
+        arrow("send", 202, 212, 248, 212),
+        doc("box", 14, 246, 186, 40, "Reads it asks for", "the device in view, checked"),
+        num(14, 246, 5),
+        svc(250, 248, 130, 36, "The device", "read-only commands"),
+        arrow("send", 202, 266, 248, 266),
+        t(14, 302, "then one more recorded call", "sm"),
+        doc("box", 14, 316, 186, 40, "Checked", "cites only what it sent or read"),
+        num(14, 316, 6),
+        doc("box", 14, 370, 186, 40, "The answer, drawn", "sources, model, cost"),
+        num(14, 370, 7),
+        t(14, 428, "A change is handed to its gated flow;", "sm"),
+        t(14, 442, "it never changes, deploys or saves.", "sm"),
+        nosend(310, 480, ("no change is sent", "to a device")),
     ])
 
 

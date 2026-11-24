@@ -1381,7 +1381,7 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
         actor: str, trigger: dict, context: dict = None, subject: dict = None,
         scope: dict = None, actable=(), send=None, today: str = None,
         reads_context: dict = None, pregather=(), reuse: dict = None,
-        pregathered: list = None, lap: Callable = None) -> dict:
+        pregathered: list = None, lap: Callable = None, reads_off: str = "") -> dict:
     """The loop for one finding (the module's docstring has the steps): at most two calls of
     *feature*'s task through *ask* (the gateway's `ask`, given by the feature), each with
     *trigger*, *actor*, *subject* and *network*; *data* the call's own parts, *context* its
@@ -1407,7 +1407,11 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
     `pregather_run`'s records of *pregather*, when the caller ran them already (while it built
     *data*); they are then fitted and logged here, never run again. A later answer's request
     for a read the investigation already holds is answered from it (`_unread`), never by
-    another device round and another call."""
+    another device round and another call.
+
+    *reads_off* is the caller's own reason no read may be asked this time, said as the plain
+    pass's (the toolbar assistant's: no device or incident in view, `assistant.answer`); "" by
+    default, when only the egress classes decide (`_all_off`)."""
     if not isinstance(family, ReadFamily) or not isinstance(feature, LoopFeature):
         raise TypeError("read_loop.run takes a declared ReadFamily and LoopFeature")
     common = {"actor": actor, "trigger": trigger, "subject": subject, "network": network,
@@ -1430,7 +1434,7 @@ def run(family: ReadFamily, feature: LoopFeature, *, ask: Callable, network: str
     started = time.monotonic()              # an iterative loop's wall-time bound counts from here
     # *lap* (``lap(step)``, the caller's timer; the speed pass, 2026-11-17): measurement only.
     lap = lap or (lambda step: None)
-    off = _all_off(family, network)
+    off = reads_off or _all_off(family, network)
     plain = bool(off) and feature.plain is not None
     prompt, schema, parts, ctx = first_request(feature, data, ctx, reads_context, plain=plain)
     pre = []

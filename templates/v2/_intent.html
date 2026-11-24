@@ -55,7 +55,7 @@
     <p class="muted">Normalising it needs a verified person who may commit intent.</p>
     {%- endif %}</div></div>
   {%- endif %}
-  {%- if not iv.bootstrap %}{% with host=device.hostname, w=None %}{% include "v2/_intent_words.html" %}{% endwith %}{% endif %}
+  {%- if not iv.bootstrap %}{% with host=device.hostname, w=None, prefill=iw_words %}{% include "v2/_intent_words.html" %}{% endwith %}{% endif %}
   {%- if iv.profile.error %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>What the monitoring profile adds could not be read ({{ iv.profile.error }}).</p></div>
   {%- elif iv.profile.committed %}

@@ -6,12 +6,13 @@
     written; nothing reaches the device. An AI control (15.13): the mark, and disabled with its
     reason when hosted AI cannot answer, the editor beside it untouched.
     Set before the include: *host*, and *w* (`intent_words.change`'s answer, with `sentence`
-    and `model`), absent until a sentence is drafted. -#}
+    and `model`), absent until a sentence is drafted; *prefill*, the box's words before any
+    draft (the toolbar assistant's hand-off, `?words=` on the Intent tab), nothing drafted. -#}
 {%- set aic = ai_control('intent_in_words') %}
 <div class="intent-words" id="intent-words">
 <form class="iw-row" method="post" action="{{ url_for('intent_v2.words', name=host) }}" hx-post="{{ url_for('intent_v2.words', name=host) }}" hx-target="#intent-words" hx-swap="outerHTML" autocomplete="off">
   <label class="lq-lab" for="iw-words">Change it in words {{ ai.mark(aic) }}</label>
-  <div class="lq-line"><input id="iw-words" class="lq-words-in" type="text" name="words" maxlength="300" value="{{ w.sentence if w else '' }}" placeholder="describe GigabitEthernet3 as core uplink, shut GigabitEthernet4"{{ ai.input_attrs(aic) }}>
+  <div class="lq-line"><input id="iw-words" class="lq-words-in" type="text" name="words" maxlength="300" value="{{ w.sentence if w else (prefill or '') }}" placeholder="describe GigabitEthernet3 as core uplink, shut GigabitEthernet4"{{ ai.input_attrs(aic) }}>
   <span class="op-act"><button type="submit" class="btn btn-small" data-op="intent-in-words" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }} title="One recorded AI call, capped: it drafts a change to {{ host }}'s intent and previews it; nothing is written"><span class="op-idle">Draft the change</span><span class="op-busy">Drafting…</span></button>{{ how('intent-in-words', compact=True) }}</span>
   {{- ai.reason(aic) }}</div>
 </form>

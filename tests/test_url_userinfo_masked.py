@@ -105,6 +105,11 @@ ENTRY_POINTS = {
     # redact_text masks (2026-11-15).
     "modules/plan_engine.py:_masked": lambda: (
         __import__("modules.plan_engine", fromlist=["_masked"])._masked(PLANTED)),
+    # The toolbar assistant's thread, kept per person: the answer's words masked again at rest,
+    # through lists and dicts as redact_text masks a string (Stage 4, 2026-11-24).
+    "modules/ai/assistant_threads.py:_masked": lambda: __import__("json").dumps(
+        __import__("modules.ai.assistant_threads", fromlist=["_masked"])._masked(
+            {"answer": PLANTED, "cites": [PLANTED]})),
     # C1693's keyed-hash comparison masks each line as redact_text does, keeping the values.
     "modules/secret_compare.py:masked_values": lambda: (
         __import__("modules.secret_compare", fromlist=["masked_values"]).masked_values(PLANTED)[0]),

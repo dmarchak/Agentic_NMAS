@@ -121,6 +121,14 @@ def register_blueprints(app) -> list:
         return installation_settings.assistant_on()
     app.jinja_env.globals["assistant_on"] = assistant_on
 
+    # The top bar's Assistant button as every page draws it (stage 2, docs/design/assistant.md:
+    # always drawn, disabled while the switch is off, greyed while hosted AI is off), from
+    # settings alone (`assistant.button_state`).
+    def assistant_button():
+        from modules.ai import assistant
+        return assistant.button_state()
+    app.jinja_env.globals["assistant_button"] = assistant_button
+
     @app.before_request
     def _assistant_off():
         from flask import request

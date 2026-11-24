@@ -1,0 +1,254 @@
+{
+  "$defs": {
+    "AssistantReadArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "device": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Device"
+        },
+        "subscription": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subscription"
+        },
+        "words": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Words"
+        }
+      },
+      "title": "AssistantReadArgs",
+      "type": "object"
+    },
+    "AssistantReadAsk": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/AssistantReadArgs"
+        },
+        "hypothesis": {
+          "title": "Hypothesis",
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/$defs/AssistantReadOp"
+        },
+        "why": {
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "args",
+        "why",
+        "hypothesis"
+      ],
+      "title": "AssistantReadAsk",
+      "type": "object"
+    },
+    "AssistantReadOp": {
+      "enum": [
+        "show",
+        "show_config",
+        "ping",
+        "traceroute",
+        "intent",
+        "golden",
+        "neighbours",
+        "history",
+        "logs",
+        "metrics",
+        "collector_sessions",
+        "stream_series"
+      ],
+      "title": "AssistantReadOp",
+      "type": "string"
+    },
+    "Handoff": {
+      "additionalProperties": false,
+      "description": "A change the person asked for, handed to one gated flow with its words, not started.",
+      "properties": {
+        "flow": {
+          "$ref": "#/$defs/HandoffFlow"
+        },
+        "words": {
+          "title": "Words",
+          "type": "string"
+        }
+      },
+      "required": [
+        "flow",
+        "words"
+      ],
+      "title": "Handoff",
+      "type": "object"
+    },
+    "HandoffFlow": {
+      "description": "The gated flows a change is handed to: the device's Intent tab, Change it in words, and\nthe incident's AI troubleshooting.",
+      "enum": [
+        "intent_words",
+        "ai_troubleshooting"
+      ],
+      "title": "HandoffFlow",
+      "type": "string"
+    },
+    "PlanAsk": {
+      "additionalProperties": false,
+      "description": "A plan the answer names (`plan_engine.PLANS`), with every parameter it takes.",
+      "properties": {
+        "params": {
+          "items": {
+            "$ref": "#/$defs/PlanParam"
+          },
+          "title": "Params",
+          "type": "array"
+        },
+        "plan": {
+          "title": "Plan",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan",
+        "params"
+      ],
+      "title": "PlanAsk",
+      "type": "object"
+    },
+    "PlanParam": {
+      "additionalProperties": false,
+      "description": "One parameter of a plan the answer names: its name and its value, as the person gave it.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "PlanParam",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "v3 (stage 2): v2's answer, ``cites`` holding passages' links and ``read:<n>``, a\n``handoff`` (one gated flow and its words, or null) and ``reads`` (the read loop's\nrequests; run only in a pass that may ask for reads).",
+  "properties": {
+    "answer": {
+      "title": "Answer",
+      "type": "string"
+    },
+    "cites": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Cites",
+      "type": "array"
+    },
+    "covered": {
+      "title": "Covered",
+      "type": "boolean"
+    },
+    "handoff": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Handoff"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "plan": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlanAsk"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "reads": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/AssistantReadAsk"
+      },
+      "title": "Reads",
+      "type": "array"
+    },
+    "screens": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Screens",
+      "type": "array"
+    }
+  },
+  "required": [
+    "answer",
+    "cites",
+    "covered",
+    "screens"
+  ],
+  "title": "AssistantAnswerV3",
+  "type": "object"
+}

@@ -28,7 +28,8 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html, templates/v2/_intent_secrets.html
 Compared again 2026-11-13 (the operator's approved rule, "money shown as $"): `_intent_words.html` draws the drafting call's cost, in its three notices, through the `usd` filter (`modules.money.usd`, an exact amount). No element moves and no region's verdict moved; compared by the template's diff, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Money through one formatter"). Templates sha256 before: `88b16e5fd0b2ee63c061a5d8a0d1abad4235aaddc4c98b7c8c1156f00bee5f73`.
-Templates sha256: `2c8805fe7dbaf6963556923f5495346c704dd048806fc9d791de0494d97c1a6e`
+Compared again 2026-11-24 (the week plan's Stage 4, the toolbar assistant's hand-off, docs/design/assistant.md): `_intent.html` passes the Intent tab's `?words=` to `_intent_words.html` as *prefill*, and Change it in words' box holds those words before any draft, as F7-Q's box holds the decided sentence ("the box holding that sentence", same). Nothing is drafted or sent until the person presses Draft the change. No element is added or moves and no region's verdict moved; compared by the templates' diff, not by new shots; no deviation, so no log line. Templates sha256 before: `2c8805fe7dbaf6963556923f5495346c704dd048806fc9d791de0494d97c1a6e`.
+Templates sha256: `b047978dfd3784fbb79b49c26175b61b0b9788d9b792457c2c4f833cdbf49673`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_intent_edit.html`, `_intent_words.html` and

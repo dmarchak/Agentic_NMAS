@@ -101,7 +101,16 @@ healed and can't-fix incidents) beside `debt-incidents-board` (design/incidents-
 | Fix all and the switch-on batch | board G2 parts 1 and 2: the strip's run on THE stepper | the switch flips at once and answers "Starting N fixes…" in the strip; the run is each incident's own row and card | **same** (board G2's run part, its words the operator's of 2026-11-16) |
 | The top bar's Auto chip (962b2baf) | board T: "Self-healing: Auto until <time>" | the same, "until turned off" for an Auto with no expiry, sorted after every Auto with one | **same** |
 
-Templates sha256: `ad1623beabe78426a9b62742731020cecad0e1ba928682bfc5d39275fda962d7`
+Compared again 2026-11-24 (the week plan's Stage 4, docs/design/assistant.md as amended
+2026-11-23): `base.html`'s toolbar Assistant button is drawn on every page, disabled while the
+Assistant is off and greyed while hosted AI is off (compared in docs/fidelity/in-progress.md;
+log: "The Assistant's button is drawn disabled while it is off"), and its panel names the page
+it opened on. The button and the panel are no region of this page's boards, and nothing of the
+page, its strip or its fleet view moves; every verdict above stands. Compared by the templates'
+diff, not by new shots. Templates sha256 before:
+`ad1623beabe78426a9b62742731020cecad0e1ba928682bfc5d39275fda962d7`.
+
+Templates sha256: `560f2e016be7ea1c4245b0cb5a36db2df6725daa2db474f47761304b6c199ef8`
 
 Compared again 2026-11-14 04:2x UTC (the operator's notes on board T, 2026-11-14; provisional,
 operator review pending): "1. Remove the "N open" chip from Incidents in the sidebar. Needs

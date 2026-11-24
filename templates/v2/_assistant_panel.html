@@ -1,32 +1,42 @@
 {%- from "v2/_macros.html" import icon, how -%}
 {%- import "v2/_ai.html" as ai -%}
-{#- The toolbar assistant's panel (card P7, stage 1; board P7, parts 1g, 3 and 4; PHASE8_PLAN
-    16.10): on the right, in the help panel's place (one of the two at a time), opened by the top
-    bar's Assistant, closed by its ✕ or Esc. Stage 1 answers how to do something, from the
-    manual's passages code chose (routes/assistant_v2.ask); the screen the person is on boosts
-    its page's passages. base.html carries its shell; this, its head and body, is drawn by
+{#- The toolbar assistant's panel (card P7, stage 1; stage 2, docs/design/assistant.md; board P7,
+    parts 1g, 3 and 4; PHASE8_PLAN 16.10): on the right, in the help panel's place (one of the
+    two at a time), opened by the top bar's Assistant, closed by its ✕ or Esc. A self-contained
+    component: its markup, its requests and its answers are its own, so it may mount docked,
+    as a drawer or in a palette (the week plan's Stage 4). It answers how to do something, from
+    the manual's passages code chose, and what Mercury holds about the device or incident in
+    view, from the reads a person has (routes/assistant_v2.ask). Its head says what it is
+    looking at, resolved by the server from the page's path (*place*,
+    `assistant_context.resolve`). The person's thread (*thread*, `assistant_threads.read`) is
+    drawn as it was kept, oldest first, and a new answer is added under it; nothing is asked
+    again. base.html carries its shell; this, its head and body, is drawn by
     routes/assistant_v2.panel the first time a person opens it on a page. -#}
 {%- set aic = ai_control('assistant') %}
-{%- set screen_of = {'attention': 'Needs attention', 'devices': 'Devices', 'history': 'History',
-    'monitoring': 'Monitoring', 'topology': 'Topology', 'sdn': 'SDN',
-    'show_commands': 'Show commands', 'logs': 'Logs', 'dhcp': 'DHCP', 'intent': 'Intent',
-    'templates': 'Templates', 'netbox': 'NetBox', 'credentials': 'Credentials', 'help': 'Help',
-    'settings': 'Settings'} %}
   <div class="help-panel-head">
     <span class="grow">{{ ai.mark(aic) }} Assistant</span>
     {{ how('assistant', compact=True, op='the assistant') }}
     <button type="button" class="icon-btn" aria-label="Close the assistant" x-on:click="closeAssistant">{{ icon('x', 18) }}</button>
   </div>
   <div class="help-panel-body">
+    <p class="small asst-place" data-looking-at="{{ place.endpoint }}">Looking at: <strong>{{ place.label or 'no one screen' }}</strong>{% if place.device or place.incident %} <span class="faint">(it reads only {{ place.device or "the incident's device" }})</span>{% endif %}{{ how('assistant', 'looking-at', compact=True, op='what the assistant looks at') }}</p>
     <p class="small betaline"><strong>Advisory (beta)</strong>: not yet measured on its recorded cases. A person should confirm.</p>
-    <form class="op-act asst-ask" hx-post="{{ url_for('assistant_v2.ask') }}" hx-target="#asst-answer" hx-swap="innerHTML" hx-disabled-elt="find button">
-      <label for="asst-q"><strong>Ask how to do something in Mercury</strong></label>
+    {%- if thread.state == 'unreadable' %}
+    <p class="small notice notice-warn" role="alert">Your earlier questions could not be read ({{ thread.error }}). The next question you ask starts the thread again.</p>
+    {%- endif %}
+    <div id="asst-answer" class="asst-thread" aria-live="polite" aria-label="Your questions and the assistant's answers">
+      {%- for row in thread.rows %}
+      {%- with got=dict(row.got, question=row.question, looking_at=row.looking_at, at=row.at) %}{% include "v2/_assistant_answer.html" %}{% endwith %}
+      {%- endfor %}
+    </div>
+    <form class="op-act asst-ask" hx-post="{{ url_for('assistant_v2.ask') }}" hx-target="#asst-answer" hx-swap="beforeend" hx-disabled-elt="find button">
+      <label for="asst-q"><strong>Ask about this screen, or how to do something in Mercury</strong></label>
       <textarea id="asst-q" name="question" maxlength="600" rows="3" required{{ ai.input_attrs(aic) }}></textarea>
-      <input type="hidden" name="screen" value="{{ screen_of.get(active_nav or '', '') }}">
-      <div class="asst-row"><span class="small faint">Masked before it leaves Mercury.</span>
+      <input type="hidden" name="screen" value="{{ place.screen }}">
+      <input type="hidden" name="path" value="{{ place.asked }}">
+      <div class="asst-row"><span class="small faint">Masked before it leaves Mercury. Each question is one recorded AI call, and one more for each round of reads.</span>
         <span><button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="assistant"{{ ai.attrs(aic, 'configure') }}><span class="op-idle">Ask</span><span class="op-busy">Asking…</span></button>{{ how('assistant', 'answer', compact=True, op='Ask') }}</span></div>
       {{ ai.reason(aic) }}
     </form>
-    <p class="small faint">Stage 1 answers how to do something, from the manual. For a fact about your network use Ask in words (History › Query); to change a device, Change it in words on its Intent tab.</p>
-    <div id="asst-answer"></div>
+    <p class="small faint">It changes nothing: a change you ask for is handed to its own gated flow (Change it in words on the device's Intent tab, or the incident's AI troubleshooting), where you preview and confirm it.</p>
   </div>

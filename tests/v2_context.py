@@ -3232,6 +3232,26 @@ def _assistant(client, _lab, mp):
         "not_covered": {"ok": True, "state": "not_covered", "error": "",
                         "detail": assistant.NOT_COVERED, "passages": [link],
                         "call_id": "ai-0123456789abcdef", "gap": True, "typed_masked": ""}}
+    # Stage 2 (docs/design/assistant.md): an answer resting on a passage and a read of the
+    # device in view, its reads (one run, one refused), both calls, the model and the cost,
+    # and a change handed to the device's Intent tab, as `assistant.answer` draws one.
+    from modules.nsot import reads
+    read = {"id": "read:1", "words": "r2's version", "verdict": "run", "reason": "",
+            "device": "r2", "tab": "ask", "tab_words": "Ask the device", "run": reads.new_id(),
+            "network": "Lab"}
+    refused = dict(read, id="read:2", words="r6's version", verdict="refused", run="",
+                   device="r6", reason="r6 is not a device the incident names in Lab")
+    states["read"] = {
+        "ok": True, "state": "answered", "error": "", "detail": "",
+        "answer": "r2 runs 17.9; reload it from Actions › Reload…", "cites": [link],
+        "sources": [dict(link, kind="manual"), dict(read, kind="read")],
+        "reads": [read, refused], "calls": ["ai-0123456789abcdee", "ai-0123456789abcdef"],
+        "call_id": "ai-0123456789abcdef", "model": "claude-haiku-5-5",
+        "model_words": "Haiku 5.5", "cost_usd": 0.0031, "plan": None, "plan_dropped": "",
+        "handoff": {"flow": "intent_words", "words": "shut GigabitEthernet4", "device": "r2",
+                    "incident": "", "network": "Lab"},
+        "handoff_dropped": "", "note": "", "passages": [link], "gap": False,
+        "typed_masked": ""}
     for state, got in states.items():
         mp.setattr(assistant, "answer", lambda *a, got=got, **k: dict(got))
         r = client.post("/v2/assistant/ask", data={"question": "How do I reload?",

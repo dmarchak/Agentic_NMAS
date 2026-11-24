@@ -384,6 +384,14 @@ FIELDS = {
         "form.question": TYPED("assistant", "question"),
         "form.screen": "the screen asked from (manual.SCREENS' name), boosting its page's "
                        "passages, sent as the call's screen",
+        # Stage 2 (docs/design/assistant.md): the page's own path and query, which the panel
+        # drew from the page's request; never sent as typed: the server resolves it against its
+        # own URL map (`assistant_context.resolve`) into the screen, device and incident names
+        # the call's looking_at part carries, and a path that is not one of Mercury's pages
+        # names nothing.
+        "form.path": "the page's path, resolved by Mercury's URL map into what the panel is "
+                     "looking at (assistant_context.resolve); only the names it resolves to "
+                     "are sent",
         # The plan engine (2026-11-14): the page's own network, read after the call for a plan
         # the answer named (its preview's `list`); never a part, never sent.
         "request.<passed to named_list>": "the network the panel was asked from, which a "

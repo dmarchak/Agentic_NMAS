@@ -130,13 +130,18 @@
       <summary id="nmas-ai" aria-haspopup="dialog" hx-get="{{ url_for('v2.ai_chip') }}" hx-trigger="load, nmas:ai_calls from:body, nmas:settings from:body" hx-swap="innerHTML"><span class="ai-chip ai-neutral"><span class="ai-chip-mark" aria-hidden="true">AI</span><span class="ai-text">reading spend…</span><span class="ai-short" aria-hidden="true">…</span></span></summary>
       <div class="menu ai-menu card" role="dialog" aria-label="AI spend" id="nmas-ai-panel" hx-get="{{ url_for('v2.ai_spend') }}" hx-trigger="nmas-ai-open, nmas:ai_spend" hx-swap="innerHTML"><p class="menu-note">Reading AI spend…</p></div>
     </details>
-    {%- if assistant_on() %}
     {#- Board P7 (card P7, stage 1): the Assistant after the AI chip and before Live, one button
-        opening its panel; drawn only while the Assistant is on (`ai_assistant_on`, Settings ›
-        Installation › AI; off by default, the operator, 2026-11-16). The panel draws the
-        control itself, and when it cannot answer, says why in full (`ai.reason`, the
-        control's own template's). -#}
-    <button type="button" class="asb" id="nmas-assistant" aria-label="Assistant" aria-controls="asst-panel" x-bind:aria-expanded="asst ? 'true' : 'false'" x-on:click="openAssistant" title="Ask Mercury how to do something. Answers cite the manual. Each question is one recorded AI call."><span class="asb-mark" aria-hidden="true">AI</span><span class="asb-word">Assistant</span></button>
+        opening its panel. Stage 2 (docs/design/assistant.md, "Greyed out when AI is off"):
+        always drawn; disabled while the Assistant is off (`ai_assistant_on`, Settings ›
+        Installation › AI; off by default, the operator, 2026-11-16), its title saying where it
+        is turned on; greyed while hosted AI is off, still opening the panel, whose Ask says why
+        in full (`ai.reason`, the control's own template's). Read from settings alone
+        (`assistant.button_state`): no spend read and no call on a page's draw. -#}
+    {%- set asb = assistant_button() %}
+    {%- if asb.switched_on %}
+    <button type="button" class="asb{{ '' if asb.ready else ' asb-off' }}" id="nmas-assistant" aria-label="Assistant" aria-controls="asst-panel" x-bind:aria-expanded="asst ? 'true' : 'false'" x-on:click="openAssistant" title="{{ asb.why or 'Ask Mercury about what is on this screen, or how to do something. Answers cite the manual and the reads Mercury ran. Each question is one recorded AI call, and one more for each round of reads.' }}"><span class="asb-mark" aria-hidden="true">AI</span><span class="asb-word">Assistant</span></button>
+    {%- else %}
+    <button type="button" class="asb" id="nmas-assistant" aria-label="Assistant" disabled aria-disabled="true" title="{{ asb.why }}"><span class="asb-mark" aria-hidden="true">AI</span><span class="asb-word">Assistant</span></button>
     {%- endif %}
     <span class="live" id="nmas-live" data-live="unknown"><span class="live-dot"></span><span class="live-word">Connecting</span></span>
     <div class="menu-wrap theme" x-data="theme" x-on:keydown.escape="close" x-on:click.outside="close">
@@ -163,9 +168,12 @@
 </aside>
 {%- if assistant_on() %}
 {#- The toolbar assistant's panel: its shell here, its head and body asked the first time it
-    opens on the page (routes/assistant_v2.panel), so every page carries only this. -#}
+    opens on the page (routes/assistant_v2.panel), so every page carries only this. The mount
+    is this dock; the panel's markup and its requests are its own (stage 2: it may mount as a
+    drawer or a palette). *path* is this page's path and query, which the server resolves into
+    what the panel is looking at. -#}
 <aside class="help-panel asst-panel" id="asst-panel" aria-label="Assistant" x-show="asst" x-cloak>
-  <div class="asst-body" id="asst-body" hx-get="{{ url_for('assistant_v2.panel', nav=active_nav or '') }}" hx-trigger="nmas-asst-open once" hx-swap="innerHTML">
+  <div class="asst-body" id="asst-body" hx-get="{{ url_for('assistant_v2.panel', nav=active_nav or '', path=request.full_path.rstrip('?')) }}" hx-trigger="nmas-asst-open once" hx-swap="innerHTML">
     <div class="help-panel-head"><span class="grow">Assistant</span><button type="button" class="icon-btn" aria-label="Close the assistant" x-on:click="closeAssistant">{{ icon('x', 18) }}</button></div>
     <p class="help-panel-body small faint">Opening the assistant…</p>
   </div>

@@ -1,28 +1,70 @@
 {%- from "v2/_macros.html" import badge, how -%}
 {%- import "v2/_ai.html" as ai -%}
-{#- The toolbar assistant's answer (card P7, stage 1; board P7; routes/assistant_v2.ask): drawn in
-    the panel in place of the last one. An answer drawn is one Mercury's check passed: every
-    citation a passage it was sent, each a link into the manual. A question the manual does not
-    cover is said, never padded; a refusal says why; what was masked before sending is said,
-    never its value; Was this right? under every answer a call made. -#}
-<div class="asst-answer" role="region" aria-live="polite" aria-label="The assistant's answer">
+{#- One exchange of the toolbar assistant's thread (card P7, stage 1; stage 2,
+    docs/design/assistant.md, "Every answer shows"; routes/assistant_v2.ask): the question as it
+    left (masked) and what the panel was looking at, then the answer. Added under the thread by
+    a press, and drawn again from the person's kept thread when the panel opens. An answer
+    drawn is one Mercury's check passed: every citation a passage it was sent or a read that
+    ran. Each source has Open (a passage its section of the manual, a read the device tab it
+    came from and its record on History › Reads); the model and the cost; each call's History
+    link. A change asked for is handed to its gated flow, pre-filled and not started. A
+    question the manual does not cover is said, never padded; a refusal says why; what was
+    masked before sending is said, never its value; Was this right? under every answer a call
+    made. -#}
+{%- set calls = got.calls or ([got.call_id] if got.call_id else []) %}
+{%- set sources = got.sources if got.sources is defined and got.sources is not none else (got.cites or []) %}
+<div class="asst-answer" role="group" aria-label="The assistant's answer"{% if got.at %} data-at="{{ got.at }}"{% endif %}>
+  {%- if got.question %}<p class="asst-q"><span class="small faint">You asked{% if got.looking_at %}, looking at {{ got.looking_at }}{% endif %}:</span> {{ got.question }}</p>{% endif %}
   {{ ai.typed_masked(got.typed_masked) }}
   {%- if got.state == 'answered' %}
-  <p class="small faint">{{ badge('AI', 'info', title='Answered by AI from the manual; every citation checked in code') }} From the manual</p>
+  <p class="small faint">{{ badge('AI', 'info', title='Answered by AI from the manual and the reads Mercury ran; every citation checked in code') }} {{ "From the manual and Mercury's reads" if got.reads else 'From the manual' }}</p>
   <div class="asst-said">{{ got.answer }}</div>
-  <p class="small"><strong>From:</strong> {% for c in got.cites %}<a href="{{ c.link }}">{{ c.page }} › {{ c.heading }}</a>{% if not loop.last %}; {% endif %}{% endfor %}</p>
+  {%- if sources %}
+  <div class="small asst-sources"><strong>Sources:</strong>
+    <ul>{% for s in sources %}
+      {%- if s.kind == 'read' %}
+      <li data-source="{{ s.id }}">{{ s.id }}, {{ s.words }}: <a href="{{ url_for('device_v2.device', name=s.device, tab=s.tab, list=s.network or none) }}">Open {{ s.tab_words }}</a>{% if s.run %} · <a href="{{ url_for('reads_v2.show_commands_result', run_id=s.run, list=s.network or none) }}">Open the read on History › Reads</a>{% endif %}</li>
+      {%- else %}
+      <li data-source="manual">{{ s.page }} › {{ s.heading }}: <a href="{{ s.link }}">Open</a></li>
+      {%- endif %}
+    {%- endfor %}</ul></div>
+  {%- endif %}
+  {%- if got.note %}<p class="small warn-text" data-reads-note>{{ got.note }}.</p>{% endif %}
   {%- if got.plan_dropped %}<p class="small warn-text" data-plan-dropped>{{ got.plan_dropped }}.</p>{% endif %}
+  {%- if got.handoff_dropped %}<p class="small warn-text" data-handoff-dropped>{{ got.handoff_dropped }}.</p>{% endif %}
   {%- if got.plan %}
   {#- A plan the answer named, held to the plan engine's schema: proposed only. Its preview is
       the engine's own, drawn here in place; a person approves it there by its hash, or not. -#}
-  <div id="plan-card"><p class="small"><strong>Proposed:</strong> {{ got.plan.title }}, on {{ got.plan.list }}.</p>
-    <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-get="{{ url_for('plans_v2.preview', list=got.plan.list, plan=got.plan.plan, params=got.plan.params | tojson) }}" hx-target="#plan-card" hx-swap="outerHTML" hx-disabled-elt="this" title="Previews each step by its own operation; nothing runs until you approve it"><span class="op-idle">Preview the plan…</span><span class="op-busy">Reading…</span></button>{{ how('plans', compact=True, op='a plan') }}</span></div>
+  {%- set pid = 'plan-card-' ~ (got.call_id or 'none') %}
+  <div id="{{ pid }}"><p class="small"><strong>Proposed:</strong> {{ got.plan.title }}, on {{ got.plan.list }}.</p>
+    <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-get="{{ url_for('plans_v2.preview', list=got.plan.list, plan=got.plan.plan, params=got.plan.params | tojson) }}" hx-target="#{{ pid }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Previews each step by its own operation; nothing runs until you approve it"><span class="op-idle">Preview the plan…</span><span class="op-busy">Reading…</span></button>{{ how('plans', compact=True, op='a plan') }}</span></div>
+  {%- endif %}
+  {%- if got.handoff %}
+  {#- A change handed to its gated flow (stage 2): the flow opened pre-filled, nothing started;
+      the person presses, previews and confirms there as ever. -#}
+  {%- set h = got.handoff %}
+  <div class="asst-handoff" data-handoff="{{ h.flow }}"><p class="small"><strong>To make this change:</strong> {{ h.words }}</p>
+    {%- if h.flow == 'intent_words' %}
+    <p class="small"><a class="btn btn-small" data-op="assistant" href="{{ url_for('device_v2.device', name=h.device, tab='intent', words=h.words, list=h.network or none) }}#intent-words" title="Opens {{ h.device }}'s Intent tab with Change it in words filled in; nothing is drafted, committed or sent until you press there">Change it in words…</a>{{ how('assistant', 'handoff', compact=True, op='a hand-off') }}</p>
+    {%- else %}
+    <p class="small"><a class="btn btn-small" data-op="assistant" href="{{ url_for('incident_v2.incident', incident_id=h.incident, list=h.network or none) }}#inc-fixit" title="Opens {{ h.incident }}'s AI troubleshooting; nothing starts until you press Start AI troubleshooting there">Open AI troubleshooting</a>{{ how('assistant', 'handoff', compact=True, op='a hand-off') }}</p>
+    {%- endif %}
+  </div>
   {%- endif %}
   {%- elif got.state == 'not_covered' %}
   <p class="small"><strong>{{ got.detail }}</strong> It is recorded as a gap in the manual.{% if got.passages %} The nearest it holds: {% for c in got.passages[:3] %}<a href="{{ c.link }}">{{ c.page }} › {{ c.heading }}</a>{% if not loop.last %}; {% endif %}{% endfor %}.{% endif %}</p>
   {%- else %}
   <p class="small notice notice-warn" role="alert">Couldn't answer: {{ got.detail | replace("Couldn't answer: ", "") }}</p>
   {%- endif %}
+  {%- if got.reads %}
+  <details class="small asst-reads"><summary>Mercury's reads for this answer ({{ got.reads | length }})</summary>
+    <ul>{% for r in got.reads %}<li data-read="{{ r.id }}" data-verdict="{{ r.verdict }}">{{ r.id }}, {{ r.words }}: {{ {'run': 'read', 'refused': 'refused by Mercury', 'failed': 'failed'}.get(r.verdict, r.verdict) }}{% if r.reason %} ({{ r.reason }}){% endif %}{% if r.run %} · <a href="{{ url_for('reads_v2.show_commands_result', run_id=r.run, list=r.network or none) }}">Open the read on History › Reads</a>{% endif %}</li>{% endfor %}</ul>
+  </details>
+  {%- endif %}
+  {%- if calls or got.model_words %}
+  <p class="small faint asst-meta" data-calls="{{ calls | length }}">{% if got.model_words %}<span title="{{ got.model }}">{{ got.model_words }}</span>{% endif %}{% if got.cost_usd is defined and got.cost_usd is not none %} · {{ got.cost_usd | usd(true) }}{% endif %}{% for c in calls %} · <a href="{{ url_for('v2.history_page', call=c) }}">{{ 'Open the call in History' if calls | length == 1 else 'Open call ' ~ loop.index ~ ' in History' }}</a>{% endfor %}</p>
+  {%- endif %}
+  {%- if got.kept %}<p class="small faint" data-not-kept>Not kept in your thread: {{ got.kept }}.</p>{% endif %}
   {%- if got.call_id and got.state != 'refused' %}
   {% with fb=ai_feedback(got.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}
   {%- endif %}

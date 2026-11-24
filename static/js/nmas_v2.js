@@ -1179,8 +1179,22 @@
     var box = root.document.getElementById('asst-q');
     if (box && !box.disabled && box.offsetParent) box.focus();
   }
+  /* A panel opened again on page load (`init`) takes no focus: the page keeps it. */
+  var asstQuiet = false;
   function assistantDrawn(e) {
-    if (e.target && e.target.id === 'asst-body') focusAssistant();
+    if (!e.target || e.target.id !== 'asst-body') return;
+    if (asstQuiet) { asstQuiet = false; return; }
+    focusAssistant();
+  }
+  /* Stage 2 (docs/design/assistant.md, "Persistent across pages"): whether the panel is open is
+     this browser's convenience, kept in localStorage and read in a try, so a blocked store
+     just starts closed. The thread itself is Mercury's (routes/assistant_v2.panel). */
+  var ASST_OPEN_KEY = 'nmas-asst-open';
+  function keepAssistantOpen(open) {
+    try { root.localStorage.setItem(ASST_OPEN_KEY, open ? '1' : '0'); } catch (e) { /* closed */ }
+  }
+  function assistantWasOpen() {
+    try { return root.localStorage.getItem(ASST_OPEN_KEY) === '1'; } catch (e) { return false; }
   }
   function aiSpendToggled(e) {
     if (e.target && e.target.id === 'ai-spend') aiSpendPanel();
@@ -2141,24 +2155,53 @@
         get jumpClass() { return this.jumpOpen ? 'open' : ''; },
         get jumpExpanded() { return this.jumpOpen ? 'true' : 'false'; },
         open: function () { this.drawer = true; },
+        // The assistant's panel opens again on the next page when it was left open there
+        // (keepAssistantOpen), and only where the page carries its shell (the Assistant on).
+        // Opened so, it takes no focus: the page keeps it.
+        init: function () {
+          if (!assistantWasOpen() || !root.document.getElementById('asst-panel')) return;
+          this.asst = true;
+          asstQuiet = true;
+          // Asked once htmx has read the page (its own DOMContentLoaded handler, registered
+          // first, runs before this one), so the shell's trigger is listened for.
+          var load = function () {
+            var body = root.document.getElementById('asst-body');
+            if (body && root.htmx) root.htmx.trigger(body, 'nmas-asst-open');
+          };
+          if (root.document.readyState === 'loading') {
+            root.document.addEventListener('DOMContentLoaded', load);
+          } else {
+            this.$nextTick(load);
+          }
+        },
         close: function () { this.drawer = false; this.help = false; this.asst = false; },
-        openHelp: function () { this.asst = false; this.help = true; },
+        openHelp: function () {
+          if (this.asst) keepAssistantOpen(false);
+          this.asst = false;
+          this.help = true;
+        },
         closeHelp: function () { this.help = false; this.jumpOpen = false; },
         // Esc closes whichever side panel is open (one handler: the CSP build of Alpine runs a
         // method by name, never two calls in one expression).
-        closeSides: function () { this.closeHelp(); this.asst = false; },
+        closeSides: function () {
+          this.closeHelp();
+          if (this.asst) keepAssistantOpen(false);
+          this.asst = false;
+        },
         // The panel's head and body are asked the first time it opens on a page (`once` on
-        // #asst-body); its box takes the focus once drawn (assistantDrawn, below).
+        // #asst-body); its box takes the focus once drawn (assistantDrawn, below). Opening it
+        // reads the person's thread and asks nothing.
         openAssistant: function () {
           this.help = false;
           this.asst = true;
+          keepAssistantOpen(true);
           this.$nextTick(function () {
             var body = root.document.getElementById('asst-body');
             if (body && root.htmx) root.htmx.trigger(body, 'nmas-asst-open');
             focusAssistant();
           });
         },
-        closeAssistant: function () { this.asst = false; },
+        closeAssistant: function () { this.asst = false; keepAssistantOpen(false); },
         toggleJump: function () {
           var self = this;
           this.jumpOpen = !this.jumpOpen;

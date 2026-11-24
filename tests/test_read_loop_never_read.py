@@ -39,6 +39,10 @@ STEP_NAMES = ("advisories", "record_advisory")
 #: AI troubleshooting's feature and its read family (S5, S6; the operator's W2, 2026-11-12).
 KNOWN_LOOP = {"modules/ai/router_reads.py", "modules/ai/heal_analysis.py", "modules/ai/sdn_analyst_tools.py",
               "modules/ai/fixit_troubleshoot.py", "modules/ai/fixit_reads.py",
+              # The toolbar assistant (Stage 4, docs/design/assistant.md): its own read family
+              # and feature asked through the loop; it draws the answer and offers a hand-off a
+              # person confirms in the gated flow, and acts on nothing the loop produced.
+              "modules/ai/assistant.py",
               # The read-only account probe (board R's R8, its one home since it moved from
               # scripts/nmas-read-account-probe, which imported it the same way): it judges
               # each request by the loop's own check (`read_loop.check`), so what it sends is

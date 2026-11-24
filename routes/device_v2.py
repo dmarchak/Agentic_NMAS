@@ -177,7 +177,10 @@ def _intent_ctx(ref, dev):
     from routes.intent_v2 import may_commit
 
     ctx = {"device": dev, "list_name": ref.name, "iv": device_page.intent_view(ref, dev),
-           "may_edit": may_commit().get("may")}
+           "may_edit": may_commit().get("may"),
+           # `?tab=intent&words=…` fills Change it in words, nothing drafted (the toolbar
+           # assistant's hand-off, stage 2): the person presses Draft the change there.
+           "iw_words": " ".join(request.args.get("words", "").split())[:300]}
     # `?tab=intent&edit=1` opens H's editor in place (Templates board B's "Acknowledge it on
     # the Intent tab"; Edit again after a commit), without script too.
     if request.args.get("edit"):
