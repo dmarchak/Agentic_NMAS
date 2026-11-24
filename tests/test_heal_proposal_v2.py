@@ -209,6 +209,27 @@ def test_an_unmeasured_reset_draws_approve_disabled_saying_why(app_client, unmea
     assert app_client.started == [] and [x["id"] for x in DS.proposals("Default")] == [d["id"]]
 
 
+def test_while_a_run_holds_its_device_the_cards_approve_is_disabled_naming_it(
+        app_client, measured, monkeypatch):
+    """C3093: the card read on its own drew Approve offered while another run held edge-b (the
+    row's line showed the run, and the server refused at apply); it now reads the same held
+    mark (`in_flight.mark_held`) and draws Approve disabled, the run named."""
+    import time as _t
+    from modules.nsot import device_ops
+    d = proposed()
+    monkeypatch.setattr(device_ops, "held", lambda network: [
+        {"device": "edge-b", "operation": "deploy", "started": _t.time() - 60,
+         "actor": "someone@example.com"}])
+    _r, html = _card(app_client, d)
+    approve = html.split("Approve and run on edge-b")[0].rsplit("<button", 1)[1]
+    assert " disabled " in approve and "held by " in approve
+    assert 'data-held="edge-b"' in html and "Approve is offered again when the run ends" in html
+    monkeypatch.setattr(device_ops, "held", lambda network: [])
+    _r, html = _card(app_client, d)
+    approve = html.split("Approve and run on edge-b")[0].rsplit("<button", 1)[1]
+    assert " disabled " not in approve and 'data-held="edge-b"' not in html, "free: offered"
+
+
 def test_a_proposal_no_longer_held_says_so_in_place(app_client):
     d = proposed()
     r = app_client.post(_base(d) + "/decline", data={"reason": "not during the lab"},

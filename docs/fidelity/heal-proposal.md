@@ -33,7 +33,14 @@ History** (was "Open the incident"): it opens the device's History tab, and a ha
 incident page. Words only, in the same element; no element moves and no region's verdict moved;
 compared by the template's diff, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md,
 "C3489: the halt card's link says what it opens"). Templates sha256 before: `aefbb6b253321af4d6c63f8a278545922e4e353a9ff40760746aa4d5adcbdf13`.
-Templates sha256: `cde54e5fd71ea1e6c034c5253888f06ef2edfd65a4d1741754dbdf89ce35c742`
+Compared again 2026-11-24 (C3093): while another run holds the proposal's device, the card's
+Approve is drawn disabled, its hover the run ("held by <run> since <time>"), and one line after
+it names the run and says Approve is offered again when it ends, as the row's line does (the
+same `in_flight.mark_held` mark). The disabled state and its reason follow the card's existing
+refusal pattern (an unmeasured reset); no element moves; compared by the template's diff and
+tests/test_heal_proposal_v2.py, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md,
+"C3093: a held device's proposal card"). Templates sha256 before: `cde54e5fd71ea1e6c034c5253888f06ef2edfd65a4d1741754dbdf89ce35c742`.
+Templates sha256: `af68ed89c4f628c5eec2f38b275f00d56256fe3a0c2c1b64a5594301b0d5df22`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_heal_proposal.html`, each place that draws a person

@@ -102,6 +102,24 @@ def _who() -> dict:
             "person": bool(ident is not None and ident.kind == "person")}
 
 
+def _held(list_name: str, v) -> dict:
+    """The run holding the proposal's device now, as its Needs attention row reads it
+    (`in_flight.mark_held`, C3093): the card's Approve is drawn disabled from the same mark, and
+    the server still refuses by name at apply. {} when nothing holds it or the holds cannot be
+    read (the server still refuses)."""
+    from modules import in_flight
+    from routes.operations import viewer_key
+
+    if not v or not v.get("device"):
+        return {}
+    row = {"action": {"open": "heal_proposal", "device": v["device"], "list": list_name}}
+    try:
+        in_flight.mark_held([row], viewer_key())
+    except Exception as exc:                          # noqa: BLE001 (the server still refuses)
+        log.warning("heal proposal: whether %s is held could not be read: %s", v["device"], exc)
+    return row.get("held") or {}
+
+
 def _card(list_name: str, decision_id: str, code: int = 200, **ctx):
     """The proposal's card, read again, with an answer in place (`ctx`). A proposal no longer
     held (declined, approved or never there) is drawn as that, never as an empty card."""
@@ -115,7 +133,7 @@ def _card(list_name: str, decision_id: str, code: int = 200, **ctx):
     except propose.Refused as exc:
         v, gone = None, str(exc)
     html = render_template("v2/_heal_proposal.html", v=v, gone=gone, list_name=list_name,
-                           decision_id=decision_id,
+                           decision_id=decision_id, held=_held(list_name, v),
                            confirming=preview_confirm.confirm_part(request,
                                                                    "confirm")["statement"],
                            **ctx)
