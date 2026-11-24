@@ -76,8 +76,11 @@ line by `~/mercury-runs/register_count.py`, run from the checkout), run the aime
 - **Stage 2:** the serial run finished (6,522 s): 25 failed, 21 of them only serially (C4222,
   `~/mercury-runs/suite/serial-vs-m.txt`). C4200's whole-suite probe runs detached from 19:04
   Denver in `~/nmas-worktrees/c4200-probe` (b0e450c2), about 110 minutes: the first line of
-  `~/mercury-runs/c4200-full.jsonl` with rows names the test that leaves an incident behind.
-  Then remove that worktree. Fixes change tests: BLOCKED.
+  `~/mercury-runs/c4200-full.jsonl` with rows names the test that leaves an incident behind:
+  **found at 19:56: `tests/test_fault_drills.py::TestTheTag::test_a_tag_that_cannot_be_read_is_real`**
+  (C4200's row). Next: find where its incident is written outside its `lab` store and fix it
+  there; then compare the probe's JUnit (`suite/c4200-serial.xml`) with `serial.xml`, and
+  remove the worktree once the probe ends (about 20:55). Fixes that change tests: BLOCKED.
 - **Stage 3: DONE** (fd9e6e77, a287651e, 15da95a2, 401dc9a4). The operator is asked to pick a
   direction (OPERATOR.md#gui-direction); Stage 5's after-pick items wait on it.
 - **Stage 4 next:** the assistant (`docs/design/assistant.md`); code and tests, so built as a
