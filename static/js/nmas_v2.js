@@ -406,7 +406,7 @@
      the server's value changed or not; a press swapping a part inside a region is the page's
      own and was kept). Its answers (`.set-result`) are unread, kept parts, until the person
      presses or types in that region (`answersSeen`); then the next redraw draws the state in
-     their place (`answerRevisited`). */
+     their place (`keptRevisited`). */
   function markUnread(el) {
     var said = el.querySelectorAll('.set-result');
     for (var i = 0; i < said.length; i++) said[i].nmasUnread = true;
@@ -431,7 +431,7 @@
      focus was given, and the
      page the server draws holds no answer, so the merge removed it and the focus fell to the
      page (measured 2026-11-24 on Hand over's confirm). Kept while the focus is on it; once the
-     focus has left, the next redraw draws the state in its place (`answerRevisited`). */
+     focus has left, the next redraw draws the state in its place (`keptRevisited`). */
   function answerRead(region) {
     var a = root.document.activeElement;
     if (!a || a === region || !a.closest || !region.contains(a)) return null;
@@ -439,30 +439,46 @@
     return said && said !== region && region.contains(said) ? said : null;
   }
 
-  /* After a merge that kept an answer being read: each element from the answer's parent up to
-     the region is remembered as differing from the server's drawing (a marker in its copy), so
-     the next merge goes down to the answer again and drops it once the focus has left it.
-     Remembered as equal, the merge would stop above it (`morph` leaves an unchanged copy
-     untouched) and the old answer would stay under a newer state. */
-  function answerRevisited(keep, region) {
+  /* After a merge that kept a part a person was working in (an answer being read, a field's
+     form, an open entry, a held card): each element from the part's parent up to the region is
+     remembered as differing from the server's drawing (a marker in its copy), so the next merge
+     goes down to the part again and draws what the server draws there once the person is done.
+     Remembered as equal, the merge stopped above it (`morph` leaves an unchanged copy
+     untouched): C4081 found it for an answer; C4230 measured it for an open entry and a form
+     typed in (the row's old words under a card read as current, until something else in the
+     card changed). Not the control under the pointer or focused (*pointed*, C2841's keep):
+     revisited, the next merge went down through the opened record it sits in and Right moved
+     80 to 182 px from where the person aimed (tests/test_live_marks.py, the same incident
+     held); its staleness is C4223's, open. */
+  function keptRevisited(keep, region, pointed) {
     for (var i = 0; i < keep.length; i++) {
-      var said = keep[i];
-      if (!said.isConnected || !said.classList || !said.classList.contains('set-result')) continue;
-      revisitUp(said.parentNode, region);
+      if (keep[i] !== pointed && keep[i].isConnected) revisitUp(keep[i].parentNode, region);
     }
   }
 
   /* Each element from *n* up to *region* remembered as differing from the server's drawing,
      so the next merge goes down to *n* (a marker in each copy). */
+  var REVISIT = 'a part kept while it was worked in';
   function revisitUp(n, region) {
     for (; n && n.nodeType === 1; n = n.parentNode) {
       var copy = drawnFrom.get(n);
       if (copy && copy.nodeType === 1 && !copy.nmasRevisit) {
-        copy.appendChild(root.document.createComment('an answer kept while it was read'));
+        copy.appendChild(root.document.createComment(REVISIT));
         copy.nmasRevisit = true;
       }
       if (n === region) break;
     }
+  }
+
+  /* PURE over two elements: whether copy *was*, marked to be revisited, is *next* once its
+     markers are taken out (what the server drew is the same). */
+  function drawnAlike(was, next) {
+    if (!was.nmasRevisit) return false;
+    var bare = was.cloneNode(true), gone = [];
+    var walk = root.document.createTreeWalker(bare, 128 /* NodeFilter.SHOW_COMMENT */);
+    while (walk.nextNode()) if (walk.currentNode.nodeValue === REVISIT) gone.push(walk.currentNode);
+    for (var i = 0; i < gone.length; i++) gone[i].parentNode.removeChild(gone[i]);
+    return bare.isEqualNode(next);
   }
 
   /* C4226: a person's press inside a region that swaps the whole region (a card's Close whose
@@ -956,8 +972,11 @@
     // they typed, or a kept part) is merged in place instead, so their work survives a redraw
     // they did not ask for (C4229: one Devices row's change cleared every tick). The control
     // under the pointer or focused is not such work (`holdsWork`).
+    // A copy marked only to go down to a kept part again (`revisitUp`) is not the server
+    // drawing the component differently: it is merged, never started again (C4230).
     var restart = startsAgain(was, next) ||
-        (live.hasAttribute('x-data') && !holdsWork(live, ctx) && !personsIn(live));
+        (live.hasAttribute('x-data') && !holdsWork(live, ctx) && !personsIn(live) &&
+         !drawnAlike(was, next));
     if (live !== ctx.root && restart && live.parentNode) {
       var made = root.document.importNode(next, true);
       live.parentNode.replaceChild(made, live);
@@ -1263,7 +1282,7 @@
     } finally {
       merging = false;
     }
-    answerRevisited(ctx.keep, target);
+    keptRevisited(ctx.keep, target, ctx.pointed);
     if (ctx.fresh) {
       // C4228 on a merged press: the answers it drew are unread until seen (`captureSwapped`
       // returns on a merge's own swap, so they are marked here).

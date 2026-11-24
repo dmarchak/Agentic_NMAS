@@ -424,6 +424,61 @@ class TestAPressInOneCardKeepsAnother:
             "b": "closed, newer", "said": True, "text": "half typed"}, got
 
 
+def _card_rows(words, kind):
+    """Three rows in one card (a list in its card: a kept row a level below the region)."""
+    if kind == "open":
+        row = ('<details class="r" data-key="r{i}" hx-get="/v2/"><summary>row {i} {w}</summary>'
+               '</details>')
+    else:  # a row whose form holds a field: typed in, the form is the part kept
+        row = ('<div class="r" data-key="r{i}"><form><span>row {i} {w}</span>'
+               '<input type="text" name="f{i}" value=""></form></div>')
+    return ('<section class="card" data-key="card"><h2>rows</h2>'
+            + "".join(row.format(i=i, w=w) for i, w in enumerate(words)) + '</section>')
+
+
+_WORK = {"open": "box.querySelectorAll('.r')[1].open = true;",
+         "typed": "var f = box.querySelectorAll('input')[1]; f.focus(); f.value = 'typing';"}
+_DONE = {"open": "box.querySelectorAll('.r')[1].open = false;",
+         "typed": "var f = box.querySelectorAll('input')[1]; f.value = ''; f.blur();"}
+_ROWS_READ = ("Array.prototype.map.call(document.querySelectorAll('#merge-box .r'),"
+              " function (r) { return r.textContent; })")
+
+
+class TestAReleasedPartIsDrawnAgain:
+    """C4230's cause 6: a part kept while a person worked in it kept its old drawing, and its
+    ancestors were recorded as drawn from the new answer, so once the person was done every
+    redraw that left its card alone stopped above it: the row's old words stayed under a card
+    that read as current, until something else in the card changed (measured 2026-11-24, an
+    open entry in a card)."""
+
+    @pytest.mark.parametrize("kind", ["open", "typed"])
+    def test_the_next_redraw_after_release_draws_what_the_server_draws(self, page, kind):
+        held = _merge(page, _card_rows(["v1"] * 3, kind), _card_rows(["v2"] * 3, kind),
+                      _WORK[kind] + "window.__check = function () { return " + _ROWS_READ + "; }")
+        assert held == ["row 0 v2", "row 1 v1", "row 2 v2"], held      # kept while worked in
+        got = page.js("var box = document.getElementById('merge-box');" + _DONE[kind] +
+                      "var t = document.createElement('template'); t.innerHTML = arguments[0];"
+                      "NMAS_V2.mergeInto(false, box, t.content); return " + _ROWS_READ,
+                      _card_rows(["v2"] * 3, kind))
+        assert got == ["row 0 v2", "row 1 v2", "row 2 v2"], got
+
+    def test_a_component_the_server_left_alone_is_not_started_again_to_get_there(self, page):
+        # The card a component (as Devices' selection form is): going down to the released row
+        # must not count as the server drawing the component differently, which starts it
+        # again and loses its own state, a whole card rebuilt for one row's words.
+        def comp(words):
+            return _card_rows(words, "open").replace('class="card"', 'class="card" x-data="menu"')
+        got = _merge(page, comp(["v1"] * 3), comp(["v2"] * 3),
+                     _WORK["open"] + "window.__card = box.firstChild;"
+                     "window.__check = function () { return 1; }")
+        got = page.js("var box = document.getElementById('merge-box');" + _DONE["open"] +
+                      "var t = document.createElement('template'); t.innerHTML = arguments[0];"
+                      "NMAS_V2.mergeInto(false, box, t.content);"
+                      "return {same: box.firstChild === window.__card, rows: " + _ROWS_READ + "}",
+                      comp(["v2"] * 3))
+        assert got == {"same": True, "rows": ["row 0 v2", "row 1 v2", "row 2 v2"]}, got
+
+
 # ── Needs attention ─────────────────────────────────────────────────────────────────────────
 
 
