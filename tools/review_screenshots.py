@@ -42,11 +42,50 @@ def main(argv=None) -> int:
 
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--out", default=os.path.join(ROOT, "design", "review", "shots"))
+    ap.add_argument("--static", metavar="DIR",
+                    help="shoot every .html file under DIR (static mockups, no app) into "
+                         "DIR/<folder>/shots/<size>/<name>.png instead")
     a = ap.parse_args(argv)
+    if a.static:
+        return shoot_static(os.path.abspath(a.static))
     os.environ[OUT_ENV] = os.path.abspath(a.out)
     os.chdir(ROOT)
     return pytest.main([os.path.abspath(__file__), "-p", "tests.conftest", "-p", "no:randomly",
                         "-p", "no:cacheprovider", "-q", "-s", "-o", "python_files=*.py"])
+
+
+def shoot_static(top: str) -> int:
+    """Every ``.html`` under *top* (a proposal's static mockups), shot at each of `SIZES`, the
+    viewport and the whole page, beside it in ``shots/<size>/``. Folders named ``shots`` or
+    starting with ``_`` are left out. No app is served: each file opens as ``file://``."""
+    import base64
+
+    sys.path.insert(0, ROOT)
+    from tests.browser import Browser
+
+    files = sorted(os.path.join(d, f) for d, subs, fs in os.walk(top)
+                   for f in fs if f.endswith(".html")
+                   and not any(p == "shots" or p.startswith("_")
+                               for p in os.path.relpath(d, top).split(os.sep)))
+    with Browser() as b:
+        for path in files:
+            for w, h in SIZES:
+                folder = os.path.join(os.path.dirname(path), "shots", f"{w}x{h}")
+                os.makedirs(folder, exist_ok=True)
+                b.go("about:blank")
+                b._call("POST", f"/session/{b.session}/window/rect", {"width": w, "height": h})
+                iw, ih = b.js("return [window.innerWidth, window.innerHeight]")
+                b._call("POST", f"/session/{b.session}/window/rect",
+                        {"width": w + (w - iw), "height": h + (h - ih)})
+                b.go("file://" + path)
+                time.sleep(0.3)
+                name = os.path.splitext(os.path.basename(path))[0]
+                b.screenshot(os.path.join(folder, f"{name}.png"))
+                png = b._call("GET", f"/session/{b.session}/moz/screenshot/full")
+                with open(os.path.join(folder, f"{name}.full.png"), "wb") as fh:
+                    fh.write(base64.b64decode(png))
+    print(f"review shots: {len(files)} mockups at {len(SIZES)} sizes under {top}")
+    return 0
 
 
 # --------------------------------------------------------------------------- under pytest

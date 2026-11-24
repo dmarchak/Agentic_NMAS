@@ -1,0 +1,87 @@
+/* Mercury's colour, type and radius tokens, light and dark: lines 16 to 99 of
+   static/css/nmas-v2.css as of the week plan's Stage 3 (2026-11-23), copied so a proposal's
+   mockups open from a zip. Fonts fall back to the system's: the mockups are static files. */
+:root {
+  --ground: #F4F5F2; --surface: #FFFFFF; --surface-2: #F9FAF8; --hover: #F1F2EF;
+  --ink: #15191E; --ink-2: #4A5260; --ink-3: #626A78;
+  --line: #DADDE2; --line-2: #EEF0EC;
+  --accent: #1E5E8C; --accent-ink: #14476B; --accent-soft: #E6EFF6;
+  --ok: #0B6B45; --ok-soft: #E7F5EE;
+  --warn: #9A4B00; --warn-mark: #D97706; --warn-soft: #FDF1E2;
+  --danger: #B42318; --danger-soft: #FDECEA;
+  --muted-soft: #E9EBE7;
+  --side: #14202B; --side-ink: #C9D2DB; --side-ink-2: #8FA1B2; --side-on: #22384A; --side-rule: #2A3B4B;
+  --brand: #1D9E75; --brand-hi: #9FE1CB;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --r: 6px; --r-card: 8px;
+  --shadow: 0 8px 24px rgba(20, 32, 43, 0.18);
+  --on-accent: #FFFFFF; --on-danger: #FFFFFF;
+  --warn-line: #F2D3A8; --danger-line: #F3C2BC;
+  --scrim: rgba(20, 32, 43, 0.4);
+  --series-0: #1E5E8C; --series-1: #D97706; --series-2: #0B6B45;
+  --series-3: #6B4C9A; --series-4: #4A5260; --series-5: #0E7490;
+  --gold: #8A6A00; --gold-soft: #FBF3DD; --lab: #6B4FA0; --lab-soft: #EFEAF7;
+  --code-bg: #14202B; --code-ink: #E6EDF3; --code-dim: #8FA1B2; --mark: #FFF1C2; --mark-ink: #14202B;
+  --sev-line: #E0B84A;
+  --ai: #0E6E78; --ai-soft: #E3F3F4;
+  --sdn: #2D5BB8; --sdn-soft: #E8EEF8;
+  color-scheme: light;
+}
+
+/* DARK (the operator, 2026-09-30). The same tokens, a second set: taken when
+   the browser prefers dark and the person has not chosen Light, or when they
+   chose Dark (`data-theme` on <html>, set by nmas_theme.js before the first
+   paint). Every colour on a v2 page is a token, so this block is the whole
+   theme; a status keeps its meaning by hue and is lightened to hold its
+   contrast on the dark ground. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0F1419; --surface: #161C23; --surface-2: #1B222A; --hover: #222B35;
+    --ink: #E6EAEE; --ink-2: #A9B3BE; --ink-3: #8E98A4;
+    --line: #2E3843; --line-2: #232C35;
+    --accent: #5AA2D8; --accent-ink: #8CC2EA; --accent-soft: #17324A;
+    --ok: #4CC38A; --ok-soft: #11301F;
+    --warn: #F0A450; --warn-mark: #F59E0B; --warn-soft: #362410;
+    --danger: #F2766B; --danger-soft: #3A1815;
+    --muted-soft: #252D36;
+    --side: #0A0F14; --side-ink: #C9D2DB; --side-ink-2: #8FA1B2; --side-on: #1B2B39; --side-rule: #22303D;
+    --brand: #1D9E75; --brand-hi: #9FE1CB;
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+    --on-accent: #0A0F14; --on-danger: #0A0F14;
+    --warn-line: #6B4715; --danger-line: #6E2B25;
+    --scrim: rgba(0, 0, 0, 0.55);
+    --series-0: #5AA2D8; --series-1: #F59E0B; --series-2: #4CC38A;
+    --series-3: #A98BD8; --series-4: #A9B3BE; --series-5: #2BB3CF;
+    --gold: #D9B44A; --gold-soft: #2E2610; --lab: #B39DDB; --lab-soft: #2A2240;
+    --code-bg: #0A0F14; --code-ink: #E6EAEE; --code-dim: #8FA1B2; --mark: #5C4A12; --mark-ink: #FFF1C2;
+    --sev-line: #D9B44A;
+    --ai: #5CC8D2; --ai-soft: #0F2E31;
+    --sdn: #7FA6F0; --sdn-soft: #182844;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #0F1419; --surface: #161C23; --surface-2: #1B222A; --hover: #222B35;
+  --ink: #E6EAEE; --ink-2: #A9B3BE; --ink-3: #8E98A4;
+  --line: #2E3843; --line-2: #232C35;
+  --accent: #5AA2D8; --accent-ink: #8CC2EA; --accent-soft: #17324A;
+  --ok: #4CC38A; --ok-soft: #11301F;
+  --warn: #F0A450; --warn-mark: #F59E0B; --warn-soft: #362410;
+  --danger: #F2766B; --danger-soft: #3A1815;
+  --muted-soft: #252D36;
+  --side: #0A0F14; --side-ink: #C9D2DB; --side-ink-2: #8FA1B2; --side-on: #1B2B39; --side-rule: #22303D;
+  --brand: #1D9E75; --brand-hi: #9FE1CB;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  --on-accent: #0A0F14; --on-danger: #0A0F14;
+  --warn-line: #6B4715; --danger-line: #6E2B25;
+  --scrim: rgba(0, 0, 0, 0.55);
+  --series-0: #5AA2D8; --series-1: #F59E0B; --series-2: #4CC38A;
+  --series-3: #A98BD8; --series-4: #A9B3BE; --series-5: #2BB3CF;
+  --gold: #D9B44A; --gold-soft: #2E2610; --lab: #B39DDB; --lab-soft: #2A2240;
+  --code-bg: #0A0F14; --code-ink: #E6EAEE; --code-dim: #8FA1B2; --mark: #5C4A12; --mark-ink: #FFF1C2;
+  --sev-line: #D9B44A;
+  --ai: #5CC8D2; --ai-soft: #0F2E31;
+  --sdn: #7FA6F0; --sdn-soft: #182844;
+  color-scheme: dark;
+}

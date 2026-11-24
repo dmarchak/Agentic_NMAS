@@ -101,3 +101,4 @@ deploy/grafana/provisioning/alerting/nmas-telemetry-delete.yaml
 # plan of 2026-11-23, Stage 3): made on demand, never committed
 /design/review/shots/
 /design/proposals.zip
+/design/proposals/*/shots/

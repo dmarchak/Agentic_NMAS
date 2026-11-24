@@ -1,63 +1,42 @@
-# Handoff: the week plan's Stage 1 in progress (2026-11-23)
+# Handoff: the week plan, Stage 3 in progress; Stage 1's test changes wait on the operator (2026-11-23, evening)
 
 Read CLAUDE.md, this file and the standing plan, `docs/plan/week-2026-11-23.md`, then
 `docs/handoff/OPERATOR.md` (what waits on the operator). docs/handoff/START.md is the standing
 prompt. Decisions: `docs/handoff/decisions-2026-11-23.md`. Today's report:
-`docs/handoff/reports/2026-11-23.md`.
+`docs/handoff/reports/2026-11-23.md`. The previous handoff is in git (e201a705's latest.md).
 
-## 1. Where the plan stands
+## 1. The blocker: a loop session cannot commit a test change
 
-**Stage 1 (green main and deploy) is in progress.** Its first items are the operator's rulings
-of 2026-11-23 (late evening), recorded in `docs/handoff/rulings-overnight-gui.md`. Take them in
-the plan's order:
-1. **C3886:** the masking placeholder carries a short keyed fingerprint of the secret (for
-   example `<secret:7f3a>`), so running against startup tells different secrets apart. Reads
-   stay recorded and masked, and the secret is never shown. Then the save check goes through
-   the reads engine again: 7d68fbf3's shape, reverted in f68d4f18 for C4204. Its device-write
-   review comes before any deploy.
-2. **C4090:** extend `scripts/nmas-config-read` with a read-only, masked reader for heal and
-   fix-it records (the operator authorised it), capture the ten loops' real records with it,
-   and fix the test.
-3. **C4207 and C4208:** the interim's can't-fix only stands and gives R1 its start; an
-   attached tail's R1 start fires no scripts. **C4206:** the behaviour stands; correct the
-   record's wording (9f456d31's claim, in the register).
-4. Then the rest of Stage 1 (C4205, C4081, C4200, C4195, C4196), a fully green full suite,
-   and the deploy.
+A session the loop starts has the AppArmor label `unconfined`, so `scripts/nmas-test` cannot make
+its network namespace, and the commit hook's red-green (`scripts/nmas-red-green`) says COULD NOT
+ASK and refuses any commit that adds or changes a test function. Commits that change no test
+function pass. Asked: `OPERATOR.md#session-namespace`. Never `--no-verify`; red-green is a
+protected guard. Tests themselves run with `scripts/nmas-test --allow-unconfined`.
 
-**Stage 2's first item is already running:** a serial full run of fdaec024 in
-`~/nmas-worktrees/serial`, logging to `~/mercury-runs/suite/serial.log` (JUnit `serial.xml`),
-started 16:14 Denver, expected about 20:30. Compare its counts with `m.xml`, the 12-worker run
-of d24cbdc4, then remove the worktree.
+## 2. Where the plan stands
 
-## 2. State
+- **Stage 1:** C3886 is built and hand-checked but not committed: the work is
+  `~/mercury-runs/c3886-keyed-placeholder.patch` (apply on main with `git apply --index`, after
+  `git merge` of anything since) and its message `~/mercury-runs/c3886-keyed-placeholder.msg`.
+  It is also staged in `~/nmas-worktrees/rulings-gui-kit` (branch rulings/gui-kit at 3f9c6b0d).
+  Its independent device-write review was started this evening; the report will be
+  `~/Documents/nmas-reports/review-devicewrite-2026-11-24-c3886.md`. C4206 is done (c591f1c6).
+  Every other Stage 1 item changes a test, so is BLOCKED on session-namespace.
+- **Stage 2:** the serial run started by the previous session died at 16:57 (54%), when that
+  session ended. Restarted detached (setsid) at 17:15 in `~/nmas-worktrees/serial` (fdaec024),
+  unconfined, logging to `~/mercury-runs/suite/serial.log`, JUnit `serial.xml`; about 80 min.
+  Compare with `m.xml` (12 workers, d24cbdc4) by `/tmp/c3886/junit_diff.py` (or rewrite it: it
+  parses both JUnit files by test id and prints what differs). Fixes are BLOCKED (tests).
+- **Stage 3, in progress:**
+  - DONE: `tools/review_screenshots.py` (fd9e6e77): 60 pages, both sizes, in 122 s.
+  - Running (background agents, writing only their files, uncommitted): `design/research.md`;
+    `design/review/SETTINGS.md`, `design/review/ACTIONS.md`, `design/review/WORST_CARD_PAGES.md`.
+  - Next: three proposals in `design/proposals/<letter>-<name>/` (A Workbench: list and detail,
+    assistant docked right; B Inbox: a triage queue first, the assistant a command palette;
+    C Document: one readable page per object, an outline, the assistant a drawer), each with a
+    README and static mockups using `design/proposals/_shared/tokens.css`; then the comparison
+    README, the zip, and the question to the operator.
 
-- **Branch `rulings/gui-kit`** (pushed) is main plus this handoff and two Phase 1 commits.
-  - **main is e201a705**: overnight/gui with the kit's merge (40e88747), the evening rulings
-    (cfe043d8, bd09416f), C3886's attempt reverted (f68d4f18), and the three reviewed branches
-    merged (cb50b80a, 827ba673, d24cbdc4).
-  - Work and commit in `~/nmas-worktrees/rulings-gui-kit`, outside the workspace.
-- **The full suite on d24cbdc4** (12 workers, 816 s): 32,219 passed, 4 failed:
-  - C3886 and C4090 (Stage 1 above);
-  - C4081's modal, a known flake (Stage 1);
-  - test_device_names, fixed in fdaec024.
-- **Nothing is deployed.**
-- **Suite runs:** at least 12 workers; `NMAS_TEST_TIMEOUT` over the run's length (nmas-test's
-  default session bound is 300 s). Measured: 816 s at 12 workers, 1,516 s at 4.
-- **The nightly loop script** (`tools/nightly/mercury-loop.sh`) is not added: its content
-  never arrived (OPERATOR.md#loop-script). The crontab still runs `mercury-session.sh` at
-  03:35.
+## 3. State
 
-## 3. The operator's standing decisions of 2026-11-23
-
-- The ruling policy:
-  - A behaviour change the operator decided, on record: update or retire the test, citing
-    the record.
-  - No record and accidental: fix the code.
-  - Unclear: ask in OPERATOR.md and move on.
-- Main moves when only the operator's open items fail. Deploy only on a fully green suite,
-  through nmas-deploy, never 02:30 to 03:30 Denver.
-- The assistant (Stage 4) uses a person's read-only tools, device reads included.
-  - Through Mercury's tools, never gated, each recorded in History.
-  - Only device changes go through the gated hand-offs (`docs/design/assistant.md`).
-- Keep working until near the context limit or 02:30. Progress goes in the report.
-- Write the STATE word on exit (START.md).
+- main is fd9e6e77 (pushed). Nothing deployed. No full suite this session yet.
