@@ -33,8 +33,11 @@
   same harness): an answer a press draws inside a part of a region (the Settings group card is
   no region) is kept in all eight cases; an answer drawn by a press that swaps a REGION itself
   (e.g. _ai_classes.html, _code_repo.html cards) is captured as the server's copy and removed
-  by the next merge. **Next:** survey which presses target a region or live part, then build
-  C4228's fix as a patch (keep that answer as a kept part); then C4226. The previous handoff is
+  by the next merge. Surveyed (`~/mercury-runs/c4228_survey.py`): 117 of 301 presses, in 57
+  templates, target a region (111) or live part (6) by id (an upper bound). **Next:** build
+  C4228's fix as a patch in nmas_v2.js (a press's own captured answer kept as a kept part
+  until the person presses, closes or types in its region), its test in test_live_merge.py
+  red first (the scratch region case is the shape); then C4226. The previous handoff is
   docs/handoff/2026-11-23.md.
 - **C4227 closed as measured** (the refresh audit's cause 2): the live merge keeps a tick, a
   radio and a chosen option (Devices through a real `reachability` redraw; keyed rows merged
