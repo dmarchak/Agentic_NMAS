@@ -219,7 +219,10 @@ after them are under Show the commands, collapsed. A part moved up into What and
 a deviation from the device-actions mockup's order, logged once (docs/STANDING_APPROVAL_LOG.md,
 "C3716: Persist's bottom line first"); compared by the templates' diff and
 tests/test_device_persist_v2.py (its browser walk included), not by new shots. Templates sha256 before: `16b825275d10d0abb64a51945372c4de049ef80fe4ebcc305ba94fe018dd00cb`.
-Templates sha256: `8c0323603032999430fcbc16d5478dc91c85708f1f667bc7ffdc5c3047d3ef70`
+Compared again 2026-11-24 (C3716's fix forward): the collapsed Show the commands carries its
+keep key (`data-keep`, C472), so a live redraw leaves it as the person left it; no element
+moves. Templates sha256 before: `8c0323603032999430fcbc16d5478dc91c85708f1f667bc7ffdc5c3047d3ef70`.
+Templates sha256: `9651b4b1c6053939170074a03807f43cedd3504317b483576cce9774f9c0147c`
 
 **Hashed again 2026-11-12 for the reopened card's banner** (the operator's F1 smoke test of r3,
 "no "Reopened" label"; his words of 2026-11-11, "Your run, started 13:01"; C3162, C3122, and

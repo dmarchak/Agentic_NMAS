@@ -91,7 +91,7 @@ class TestThePreview:
         lead = what.index("Saves r2&#39;s running config to startup")
         effect = what.index('id="persist-effect"')
         nothing = what.index("Nothing else on r2 changes.")
-        cmds = what.index('<details class="op-cmds">')
+        cmds = what.index('<details class="op-cmds" data-keep="persist-cmds-r2">')
         assert lead < effect < nothing < cmds, (lead, effect, nothing, cmds)
         assert what.index("write memory") > cmds, "the commands inside the collapsed part"
         assert "<details class=\"op-cmds\" open" not in what

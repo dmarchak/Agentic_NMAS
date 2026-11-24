@@ -27,7 +27,7 @@
     {%- endif %}
     {%- if c.sent %}
     <p>Nothing else on {{ c.host }} changes.</p>
-    <details class="op-cmds"><summary class="btn btn-small btn-outline">Show the commands</summary>
+    <details class="op-cmds" data-keep="persist-cmds-{{ c.host }}"><summary class="btn btn-small btn-outline">Show the commands</summary>
     <pre class="op-diff">{% for l in c.sent %}<span class="op-add">{{ l }}</span>
 {% endfor %}</pre>
     <p class="op-wait">Then, read from the device and recorded:</p>
