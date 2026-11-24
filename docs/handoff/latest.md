@@ -47,6 +47,13 @@ line by `~/mercury-runs/register_count.py`, run from the checkout), run the aime
   patches, N3 in the decisions file.
 - C4081 reproduced under load (3 of 14 runs, always the focus wait after Hand over's confirm);
   an agent was measuring the cause (`~/mercury-runs/c4081.patch` if it fixes it).
+- `stage4-assistant.patch` (base b0e450c2; applies on 64ed46b2): Stage 4, the assistant to
+  `docs/design/assistant.md`; 26 tests, the model mocked, 21 controls shown failing. Owed
+  before its deploy: the irreversible tier's hand check (new data to the model,
+  docs/TIER_HAND_CHECK.md). Its decisions are in the decisions file. Worktree
+  `~/nmas-worktrees/assistant`.
+- C4195-C4196's review said not safe (a HIGH: a scan's only replying host taken as a mirror and
+  rate-limited in AUTO; two MEDIUMs); its builder was fixing them in the same patch.
 - Land them in this order: C3886, C4207-C4208, C4205, C4090's reader, C4195-C4196 (after its
   review), C4081, then a full suite.
 
