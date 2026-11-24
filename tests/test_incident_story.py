@@ -29,7 +29,9 @@ RUN = [{"key": "approve", "since": "2026-11-17T18:01:35Z", "words": "the plan is
 
 def _model(resolved=True, header=HEADER, run=RUN, **fixit):
     return {"resolved": resolved, "header": header, "title": "s5: Gi0/3 err-disabled",
-            "ttr": {"words": "8 min 33 s"}, "todo": {"words": "Approve the plan"},
+            # The shape incident_page.timeline makes for a fix verified by its run (C4034).
+            "ttr": {"seconds": 513, "words": "lasted 8 min 33 s; the fix took 17 s"},
+            "todo": {"words": "Approve the plan"},
             "wrong": {"words": ""},
             "fixit": dict({"card": {"run": run},
                            "bluf": {"what": "Gi0/3 on s5 is err-disabled",
@@ -118,6 +120,15 @@ def test_the_summary_names_the_ais_first_hypothesis_and_four_evidence_lines():
     assert got["cause"].startswith("Unauthorised MAC aabb.cc00.8099 on VLAN 10")
     assert len(got["evidence"]) == S.EVIDENCE_SHOWN and got["evidence_more"] == 2
     assert got["next"] == "Nothing to do: resolved in 8 min 33 s" and not got["inconclusive"]
+
+
+def test_a_healed_incidents_next_says_the_one_duration_never_seconds():
+    """C4034: a heal's time to repair is worded "1,118 s" in its cell; the summary says the
+    stepper's one duration, and nothing when no repair was timed (a cleared incident)."""
+    healed = dict(_model(), ttr={"seconds": 1118, "words": "1,118 s", "span": "18 min 38 s"})
+    assert S.summary(healed, LINES)["next"] == "Nothing to do: resolved in 18 min 38 s"
+    cleared = dict(_model(), ttr={"seconds": None, "words": "cleared, no repair recorded"})
+    assert S.summary(cleared, LINES)["next"] == "Nothing to do"
 
 
 def test_an_ai_that_ended_without_a_fix_is_inconclusive():

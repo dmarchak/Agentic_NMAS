@@ -189,8 +189,12 @@ def summary(model: dict, lines: list) -> dict:
         cause = words[:1].upper() + words[1:]
     todo = model.get("todo") or {}
     if model.get("resolved"):
-        ttr = (model.get("ttr") or {}).get("words") or ""
-        nxt = "Nothing to do" + (f": resolved in {ttr}" if ttr else "")
+        # The one duration (C4034): the stepper's words for the time to repair's seconds, never
+        # the cell's own words ("1,118 s", or "lasted ...; the fix took ...").
+        from modules.run_stepper import duration_words
+        seconds = (model.get("ttr") or {}).get("seconds")
+        nxt = "Nothing to do" + (f": resolved in {duration_words(seconds)}"
+                                 if seconds is not None else "")
     else:
         nxt = str(todo.get("words") or "")
     return {"what": str(bluf.get("what") or model.get("title") or ""), "cause": cause,
