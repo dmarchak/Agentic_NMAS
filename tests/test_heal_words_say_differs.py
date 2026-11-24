@@ -3,7 +3,7 @@ device off its golden or its intent is said to DIFFER, never to have "departed".
 self-healing draws or records (every string constant in modules/heal/*.py but docstrings) says
 "departed"; the scan finds a planted one and counts its population."""
 import ast
-import glob
+
 import os
 import re
 
@@ -26,8 +26,9 @@ def _said(source: str) -> list:
 
 
 def _heal_sources() -> dict:
+    from tests import source_index
     return {os.path.relpath(p, ROOT): open(p, encoding="utf-8").read()
-            for p in sorted(glob.glob(os.path.join(ROOT, "modules", "heal", "*.py")))}
+            for p in source_index.tracked("modules/heal", suffix=".py", recursive=False)}
 
 
 def test_no_self_healing_words_say_departed():
