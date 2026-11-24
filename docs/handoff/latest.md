@@ -1,6 +1,45 @@
-# Handoff: every waiting patch run together as one stack; its failures fixed in the patches (2026-11-24, 01:00 to 02:30 Denver)
+# Handoff: the waiting patches as one stack, now 19 (2026-11-24, from 01:00 Denver)
 
-## 0000. The 04:49 session (2026-11-24): read this first
+## 00000. The 06:10 session (2026-11-24): read this first
+
+- **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md). This
+  session's host read was refused too (`Permission denied (publickey)`: no SSH key in its
+  environment), so Stage 6's host page times were not measured; not retried.
+- **The stack's tree is recorded**, `~/mercury-runs/tree-stack-18.txt` (`git write-tree` of
+  the landing worktree's 18 staged patches on 012526a8): new patches are made against it
+  (`git read-tree -u --reset <tree>` in a fresh worktree, then `git diff --cached --binary
+  <tree>`), and `~/mercury-runs/fidelity_mismatch.py <tree>` lists every fidelity record a
+  patch left stale.
+- **C2820 item 9 ("departs") BUILT as a patch**, `~/mercury-runs/c2820-departs.patch` and
+  `.msg` (worktree `~/nmas-worktrees/c2820-departs`, staged): a device off its intent is said
+  to differ, the lines in words (`intent_match.said`, `state_said`), on the Devices badge
+  (short, lines on hover), device page, History, capture, Save All denial, Needs attention,
+  diagnoses, guard 4 and the decision's words for new records, seven templates, six manual
+  quotes, five fidelity records compared again. Red first, three controls bite; aimed 8,712
+  passed, the only red C4090's loops. Its act.py change is a refusal's words only; it goes to
+  the device-write review with C4232. land_all.sh now ends `c2820-departs`.
+- **C4232 (new): the fleet change run and the read-only account rollout drew no stepper while
+  running** (the batch deploy draws one over the same engine): **fixed as a patch**,
+  `~/mercury-runs/c4232.patch` and `.msg` (worktree `~/nmas-worktrees/c4232-waves`, staged;
+  scratch `~/mercury-runs/c4232-scratch/`): deploy_job's recorder lifted out as `track` /
+  `track_wave` and its rows as `_live_rows` / `_ended_row`, `waves_card` drawing both runs;
+  read_account's `_PROGRESS` and text line gone. Red first, 7 controls; aimed 1,507 passed
+  (C4090's loops the one red). Its two fidelity records compared against their own words
+  (boards not on the machine) and FC5/R5 logged as one deviation. land_all.sh now ends
+  `c4232 c2820-departs` (20 patches; both checked to apply in that order).
+- **The device-write review of both: SAFE**
+  (`~/Documents/nmas-reports/review-devicewrite-2026-11-24-c4232-c2820-departs.md`). Its
+  MEDIUM fixed in c4232.patch: the two runs announce `device_progress` (`ENGINE_PROGRESS`),
+  never `deploy_job`, which wakes the `rip` and `endpoints` readers (sessions to every device
+  mid-rollout); tested, a control bites. The batch deploy's own case registered as C4233
+  (UNKNOWN, its measurement named). Its LOWs are in the report, not worked.
+- **Next:** land the 20 patches once session-namespace is answered (land_all.sh order), then
+  one full suite; meanwhile Stage 5's human-readable leftovers (the heal record words saying
+  "departed" need captured records; SDN catalogue keys; Settings) or Stage 6's rows.
+- Items 11 ("start not tracked", the operator's words) and SDN's mode names kept: decisions
+  file.
+
+## 0000. The 04:49 session (2026-11-24)
 
 - **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
 - **C4216 closed in a patch**, `~/mercury-runs/c4216.patch` and `.msg` (worktree
@@ -299,6 +338,8 @@ line by `~/mercury-runs/register_count.py`, run from the checkout), run the aime
 
 ## 3. State
 
-- main is f9ec3f88 plus this session's handoff commit (pushed). Nothing deployed. Main's CI
+- (06:10 session) main is 219e6faf plus this session's handoff commit (pushed); 20 patches
+  wait (land_all.sh). Nothing deployed.
+- (earlier) main is f9ec3f88 plus this session's handoff commit (pushed). Nothing deployed. Main's CI
   red as before (#2030: C3886's test_heal_act, C4090's loops). Full suites this session: two
   over the landing stack, 12 workers (775 s and 780 s).
