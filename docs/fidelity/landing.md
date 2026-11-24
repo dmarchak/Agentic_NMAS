@@ -273,7 +273,14 @@ without `_resubscribe.html`).
 | The lost stream's Re-subscribe card (C2838, folded in 2026-11-18) | logged 2026-11-14 as the card's own pattern, no board ("The re-subscribe card gains the collector step's controls") | in place on the row, its preview, the collector step, the result; while the device is held, "Not offered while <device> is held … Open the run", the run's own home | **deviation** (log: The re-subscribe card gains the collector step's controls) |
 | R5: phone (390) | lines wrap rather than cut | the title and the status wrap; the impact line is cut with an ellipsis, whole on hover | **deviation** (log: R5: some of a row's lines are cut at phone width, whole on hover) |
 
-Templates sha256: `3a29dfb59afdab5aed9467a8acb1ce894364b6b220d61308e14bbf62ca28392f`
+Compared again 2026-11-24 (C3505): an AI analysis's score beside its label (`_heal_analysis.html`)
+reads "its answers are not measured on recorded cases yet", the prompt and the model on its
+hover, where it drew "not measured yet: heal_analysis v1 on <model> …". Words only, in the same
+element; no element moves and no region's verdict moved; compared by the template's diff and
+tests/test_heal_analysis.py, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md,
+"C3505: an AI analysis's score in words"). Templates sha256 before: `3a29dfb59afdab5aed9467a8acb1ce894364b6b220d61308e14bbf62ca28392f`.
+
+Templates sha256: `654c35112da5a9f21c749e9bb80575e0182165daf1b3e597def0c76b6f7507ea`
 (before the combined gate's reviews, 2026-11-15, above: `95963b5612ee0d494c7192eb31a8ade9c34068395adb2cb9bdede8db69638a35`)
 (before the port problem's fold, 2026-11-15, above: `a894c8009f442e454c18b53caaaa6a23a7ad9a59f9a045a201afd44e2459c8c6`)
 (before the lost stream's Start, 2026-11-14, below: `df04b28a2f32a3505d0451f14d5f4dbad62cc0643c8e194e95a2522806aba5bd`)

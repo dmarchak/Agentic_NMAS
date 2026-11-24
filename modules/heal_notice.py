@@ -123,9 +123,6 @@ TODO = {
 #: is never offered Capture, which would record it as the approved state.
 TODO_DEFAULT = ("decide on the change: put it back to intent through the device's deploy plan, "
                 "or keep it by adding it to intent in the device's intent editor")
-#: An AI analysis not yet measured on its recorded cases, as a message says it beside its label
-#: (`analysis_block`; the incident page's AI troubleshooting section words it so).
-NOT_MEASURED_WORDS = "its answers are not measured on recorded cases yet"
 #: The act's outcomes that notify as a can't-fix, and what each says to do.
 TODO_OUTCOME = {
     "symptom_remains": "the configuration is back at intent and the symptom remains: read the "
@@ -1267,12 +1264,12 @@ def analysis_block(result: dict, lines) -> dict:
     out = {k: EP.withhold(b.get(k) or "", lines) for k in ("state", "words", "label", "score",
                                                            "rationale")}
     if out["score"]:
-        # Its measured reliability as the incident's page words it (the AI troubleshooting
-        # section's "beta": "The AI's answers are not measured on recorded cases yet"), never
-        # the prompt's name, its version or the model pinned (the GUI review's EM4).
+        # Its measured reliability as every screen words it (`heal_analysis.block`, C3505),
+        # never the prompt's name, its version or the model pinned (the GUI review's EM4); a
+        # message says "measured:" before a figure.
         label = (result or {}).get("label") or HA.beta()
-        out["score"] = (f"measured: {out['score']}" if label.get("state") == "measured"
-                        else NOT_MEASURED_WORDS)
+        if label.get("state") == "measured":
+            out["score"] = f"measured: {out['score']}"
     out["hypotheses"] = [{"claim": EP.withhold(h["claim"], lines),
                           "next": EP.withhold(h["next"], lines)} for h in b["hypotheses"]]
     return out

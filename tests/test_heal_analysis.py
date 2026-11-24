@@ -380,7 +380,13 @@ class TestTheCheck:
         b = HA.block(got)
         assert b["state"] == "answered" and b["label"] == "Advisory (beta), a person should " \
                                                           "confirm"
-        assert "not measured yet" in b["score"], "never Explain's figure"
+        # C3505: said plainly, never the prompt's name or the model; they are on hover.
+        assert b["score"] == "its answers are not measured on recorded cases yet", \
+            "never Explain's figure"
+        assert "heal_analysis v1, on " in b["score_hover"]
+        old = dict(got, label=dict(got["label"], hover="", words=(
+            "not measured yet: heal_analysis v1 on m is measured on three recorded cases")))
+        assert HA.block(old)["score"] == b["score"], "a stored answer's old words said plainly"
         (h,) = b["hypotheses"]
         assert h["next"] == "show ip interface GigabitEthernet2" and h["cites"] == ["tried:7"]
 

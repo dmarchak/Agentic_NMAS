@@ -114,6 +114,10 @@ ROWS = ("asked", "analysis", "notice", "told")
 STATES = ("answered", "pending", "off", "capped", "couldnt_analyse", "no_answer",
           "unanswerable", "not_cant_fix")
 LABEL = "Advisory (beta), a person should confirm"
+#: An analysis not yet measured on its recorded cases, in the words every screen and message
+#: draws beside its label (C3505: never the prompt's name, its version or the model pinned,
+#: which stay on hover).
+NOT_MEASURED_WORDS = "its answers are not measured on recorded cases yet"
 PENDING_WORDS = "AI analysis: pending"
 #: The gateway's refusals that are the feature or hosted AI being off, and what each says.
 OFF_KINDS = {"feature_off": "off for this network", "ai_off": "hosted AI is off",
@@ -188,20 +192,24 @@ def _iso(epoch: float) -> str:
 # ── The label ─────────────────────────────────────────────────────────────────────────────────
 
 def beta(measured: dict = None) -> dict:
-    """The "Advisory (beta)" label every analysis is drawn with: ``{"label", "state", "words"}``,
-    its measured score from *measured* (`MEASURED` by default) when it is of the prompt and the
-    model pinned now, else said not measured; never a figure measured on another prompt."""
+    """The "Advisory (beta)" label every analysis is drawn with: ``{"label", "state", "words",
+    "hover"}``, its measured score from *measured* (`MEASURED` by default) when it is of the
+    prompt and the model pinned now, else said not measured (`NOT_MEASURED_WORDS`); never a
+    figure measured on another prompt. *hover* names the prompt and the model, provenance on
+    hover only (C3505)."""
     from modules.ai import profiles
 
     m = MEASURED if measured is None else measured
     pin = profiles.task(FEATURE)["model"]
+    hover = f"The analysis's prompt {PROMPT[0]} v{PROMPT[1]}, on {pin}"
     if m and tuple(m.get("prompt") or ()) == tuple(PROMPT) and m.get("model") == pin:
         return {"label": LABEL, "state": "measured",
                 "words": (f"{m['reliable']} of {m['cases']} recorded cases reliable, "
-                          f"{m['runs']} runs each ({m['at']})")}
-    return {"label": LABEL, "state": "not_measured",
-            "words": (f"not measured yet: {PROMPT[0]} v{PROMPT[1]} on {pin} is measured on "
-                      "three recorded cases, ten runs each, before it is shown with a score")}
+                          f"{m['runs']} runs each ({m['at']})"),
+                "hover": f"{hover}, measured {m['at']}"}
+    return {"label": LABEL, "state": "not_measured", "words": NOT_MEASURED_WORDS,
+            "hover": (f"{hover}: measured on three recorded cases, ten runs each, before it is "
+                      "shown with a score")}
 
 
 # ── The store ─────────────────────────────────────────────────────────────────────────────────
@@ -912,12 +920,12 @@ def block(result: dict) -> dict:
     provider not answering): never a silent absence."""
     if not result:
         return {"state": "pending", "words": PENDING_WORDS, "label": "", "score": "",
-                "rationale": "", "hypotheses": [], "reads": "", "reads_call": ""}
+                "score_hover": "", "rationale": "", "hypotheses": [], "reads": "", "reads_call": ""}
     label = result.get("label") or beta()
     said = result.get("reads_said") or {}
     out = {"state": result.get("state") or "couldnt_analyse",
            "words": result.get("words") or words_of("couldnt_analyse", "no words recorded"),
-           "label": "", "score": "", "rationale": "", "hypotheses": [],
+           "label": "", "score": "", "score_hover": "", "rationale": "", "hypotheses": [],
            # The read loop's own words (19.5, board M: "Asked Mercury for 3 reads: 2 run, 1
            # refused"), with its first call, which History opens; "" for an analysis that
            # asked for none.
@@ -925,7 +933,13 @@ def block(result: dict) -> dict:
            "reads_call": (said.get("first_call") or "") if said.get("asked") else ""}
     if out["state"] == "answered" and result.get("answer"):
         a = result["answer"]
-        out.update(label=label.get("label") or LABEL, score=label.get("words") or "",
+        # C3505: a stored answer keeps the label it was made with, whose not-measured words
+        # named the prompt and the model before; every not-measured score is said plainly now,
+        # what it named kept on hover.
+        measured = label.get("state") == "measured"
+        out.update(label=label.get("label") or LABEL,
+                   score=(label.get("words") or "") if measured else NOT_MEASURED_WORDS,
+                   score_hover=label.get("hover") or label.get("words") or "",
                    rationale=a.get("rationale") or "",
                    hypotheses=[{"claim": h.get("claim") or "", "next": h.get("next") or "",
                                 "cites": list(h.get("cites") or [])}
