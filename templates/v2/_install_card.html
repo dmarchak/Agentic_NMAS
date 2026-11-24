@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how, stamp, resets, clock, zone_picker -%}
+{%- from "v2/_macros.html" import icon, badge, how, stamp, resets, clock, zone_picker, setting_desc -%}
 {%- import "v2/_ai.html" as ai -%}
 {#- Board F3 (signed off 2026-10-09): one of Settings › Installation's cards (NetBox
     connection, Proxmox, Commit author, Server), every setting a control, in the board's order
@@ -15,7 +15,7 @@
 {%- macro secret_row() -%}
     <span class="set-label">{{ 'Token' if s.with_id else s.secret[1] }}</span>
     <div>{% if s.with_id and k.id_value %}<span class="mono">{{ k.id_value }}</span> · {% endif %}{{ badge('set' if k.secret_set else 'not set', 'neutral' if k.secret_set else 'warn') }}
-      <span class="op-act"><a class="btn btn-small" data-op="installation-settings" href="{{ url_for('settings_v2.install_replace_form', name=k.name) }}" hx-get="{{ url_for('settings_v2.install_replace_form', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML" title="Opens the Replace form in the card: nothing is replaced until you enter the new one">Replace…</a>{{ how('installation-settings', 'replace', compact=True, op='replacing the ' ~ s.secret[1] | lower) }}</span></div>
+      <span class="op-act"><a class="btn btn-small" data-op="installation-settings" href="{{ url_for('settings_v2.install_replace_form', name=k.name) }}" hx-get="{{ url_for('settings_v2.install_replace_form', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML" title="Opens the Replace form in the card: nothing is replaced until you enter the new one">Replace…</a>{{ how('installation-settings', 'replace', compact=True, op='replacing the ' ~ s.secret[1] | lower) }}</span>{% if s.with_id %}{{ setting_desc(s.with_id[0]) }}{% endif %}{{ setting_desc(s.secret[0]) }}</div>
 {%- endmacro -%}
 <section class="card set-card" id="card-{{ k.name }}" aria-labelledby="h-{{ k.name }}">
   <div class="card-head"><h2 id="h-{{ k.name }}">{{ s.title }}</h2>{{ badge('this host' if k.name == 'server' else 'every network', 'neutral') }}
@@ -101,10 +101,10 @@
     {%- set fid = 'f-' ~ k.name ~ '-' ~ f.key %}
     {%- if f.kind == 'switch' %}
     <span class="set-label">{{ f.label }}</span>
-    <div><label class="set-switch"><input id="{{ fid }}" name="{{ f.key }}" type="checkbox" value="on"{% if f.value %} checked{% endif %}> on</label>{% if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
+    <div><label class="set-switch"><input id="{{ fid }}" name="{{ f.key }}" type="checkbox" value="on"{% if f.value %} checked{% endif %}> on</label>{{ setting_desc(f.key) }}{% if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
     {%- elif f.kind == 'choice' %}
     <label for="{{ fid }}">{{ f.label }}</label>
-    <div><select id="{{ fid }}" name="{{ f.key }}">{% for c in f.choices %}<option{% if c in f.words %} value="{{ c }}"{% endif %}{% if c == f.value %} selected{% endif %}>{{ f.words.get(c, c) }}</option>{% endfor %}</select>{% if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
+    <div><select id="{{ fid }}" name="{{ f.key }}">{% for c in f.choices %}<option{% if c in f.words %} value="{{ c }}"{% endif %}{% if c == f.value %} selected{% endif %}>{{ f.words.get(c, c) }}</option>{% endfor %}</select>{{ setting_desc(f.key) }}{% if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
     {%- elif f.kind == 'zone' %}
     {#- A zone is chosen, never only typed (the operator, 2026-11-13: "The day begins at" as a
         time-zone picker): the one picker, the viewer's own zone offered first, and beside it
@@ -113,6 +113,7 @@
     <label for="{{ fid }}">{{ f.label }}</label>
     <div>{{ zone_picker(fid, f.key, f.value if f.value is not none else '') }}
       {%- if k.resets %} <span class="set-origin set-day-begins">midnight in {{ k.resets.zone }}: next {{ clock(k.resets.at, 'date', note="when the day cap's count starts again") }}</span>{% endif %}
+      {{- setting_desc(f.key) }}
       {%- if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
     {%- else %}
     <label for="{{ fid }}">{{ f.label }}</label>
@@ -121,6 +122,7 @@
         sent stays a number. -#}
     <div>{% if f.kind == 'usd' %}<span class="in-usd">{% endif %}<input id="{{ fid }}" name="{{ f.key }}"{% if f.kind in ('url', 'name', 'host', 'port', 'vmids', 'usd') %} class="mono"{% endif %}{% if f.kind == 'usd' %} inputmode="decimal"{% endif %} type="{{ 'number' if f.kind == 'port' else ('date' if f.kind == 'date' else ('email' if f.kind == 'email' else 'text')) }}" value="{{ f.amount if f.kind == 'usd' else (f.value if f.value is not none else '') }}" autocomplete="off" title="{{ f.kind_words }}">{% if f.kind == 'usd' %}</span>{% endif %}
       {%- if k.no_cap and f.key == k.no_cap.key %} <label class="set-switch" title="No cap is a choice of its own: saving it asks you to type “{{ k.no_cap.typed }}” to confirm"><input id="{{ fid }}-none" name="no_cap" type="checkbox" value="on"{% if k.no_cap.set %} checked{% endif %}> No cap</label>{% endif %}
+      {{- setting_desc(f.key) }}
       {%- if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
     {%- endif %}
     {%- endfor %}
@@ -134,7 +136,7 @@
       <span class="set-origin">the master switch for every network's NetBox writes; turned on by confirming an authorised NetBox write, never from this card</span>
       {%- else %}
       <span class="set-origin">{% if k.writes.last_off %}turned off by {{ k.writes.last_off.actor_label | people }} {{ stamp(k.writes.last_off.at_iso) }}; {% endif %}no NetBox write runs until a person confirms an authorised one with writes permitted, which turns it on</span>
-      {%- endif %}</div>
+      {%- endif %}{{ setting_desc('netbox_allow_writes') }}</div>
     {%- endif %}
     {%- if k.hosted %}
     <span class="set-label">Hosted AI</span>
@@ -143,7 +145,7 @@
       <span class="set-origin">allowed by {{ k.hosted.by | people }} {{ stamp(k.hosted.at) }}: “{{ k.hosted.reason }}”</span>
       {%- else %}{{ badge('off', 'neutral') }}
       <span class="set-origin">every call is refused until a person allows hosted AI, below, with a reason of {{ k.reason_bounds[0] }} to {{ k.reason_bounds[1] }} characters, recorded</span>
-      {%- endif %}</div>
+      {%- endif %}{{ setting_desc('ai_hosted') }}</div>
     <span class="set-label">Spent today</span>
     <div>{%- if k.spent.state == 'unreadable' %}{{ badge('unreadable', 'danger') }} <span class="set-origin">the record of AI calls could not be read ({{ k.spent.error }}), so every call is refused</span>
       {%- else %}<span class="mono">{{ k.spent.usd | usd(true) }}</span> <span class="set-origin">in {{ k.spent.calls }} call{{ '' if k.spent.calls == 1 else 's' }} today, against the day cap; {{ resets(k.resets) }}</span>{% endif %}</div>

@@ -14,7 +14,8 @@ shot whole at 1280 and 390), `debt-fixes-sorted` at 1280 (Name's header pressed)
 with one saved fix (tests/test_saved_plans.py's BPDU guard match and fills, saved in Dry run from
 a verified errdisable-recover run) and Mercury's 17 built-ins.
 Templates compared: templates/v2/fixes.html, templates/v2/_macros.html
-Templates sha256: `8ee5ab408ce7c561531c2fd7f8a615dcbc1c2ba33ac2e2443760012b74daefa3`
+Compared again 2026-11-24 (the week plan's Stage 5, every setting's description): `_macros.html` gains the `setting_desc` macro, which only the Settings screens call; `fixes.html` calls none of it, so nothing on this page moves and no region's verdict changed. Compared by the templates' diff, not by new shots. Templates sha256 before: `8ee5ab408ce7c561531c2fd7f8a615dcbc1c2ba33ac2e2443760012b74daefa3`.
+Templates sha256: `9ca66335539a0b04fc710dd86564eb3276dca1a2fd651ec355d4f6dad29e8244`
 
 `_macros.html` is folded in here (a61bb071 changed it for this page; it was in no record); every
 page draws it, so a change to it asks for this page to be compared again.

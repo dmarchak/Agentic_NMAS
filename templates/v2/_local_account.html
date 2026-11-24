@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, how -%}
+{%- from "v2/_macros.html" import icon, how, setting_desc -%}
 {#- Settings › Installation › Access and identity: the installation's one local account
     (modules/local_account.py; C2520's first step, the operator 2026-11-10). Off by default,
     and offered only where Mercury listens on loopback only. Signed out and possible: the
@@ -6,6 +6,7 @@
     The password is never drawn back. -#}
 <section class="card set-card" id="card-local-account" aria-labelledby="h-local-account">
   <div class="card-head"><h2 id="h-local-account">Local account</h2></div>
+  {{ setting_desc("local_account_enabled") }}
   {%- if la_refused %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not signed in:</strong> {{ la_refused }}.</div></div>
   {%- endif %}

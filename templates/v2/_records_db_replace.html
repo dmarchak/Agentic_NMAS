@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, how -%}
+{%- from "v2/_macros.html" import icon, how, setting_desc -%}
 {#- Board F2 state 4 (approved 2026-10-09): Replace… the records database password, in place of
     the card. The order first (the operator's condition 3): the server, by the host step
     postgres-rotate.sh, then here, then the Test that proves both sides agree. The value is
@@ -17,7 +17,7 @@
   <form class="set-form" method="post" action="{{ url_for('settings_v2.records_replace') }}"
         hx-post="{{ url_for('settings_v2.records_replace') }}" hx-target="#records-db" hx-swap="outerHTML">
     <label for="f-records-password">New password</label>
-    <div><input id="f-records-password" name="records_db_password" type="password" value="" autocomplete="new-password" aria-describedby="records-password-rule">
+    <div><input id="f-records-password" name="records_db_password" type="password" value="" autocomplete="new-password" aria-describedby="records-password-rule">{{ setting_desc("records_db_password") }}
       <span class="set-origin" id="records-password-rule">{{ r.rule_words }}</span></div>
     <div class="set-foot set-form-note">
       <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="records-database" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Replace and Test</span><span class="op-busy">Replacing…</span></button>{{ how('records-database', 'replace', compact=True, op='replacing the password') }}</span>

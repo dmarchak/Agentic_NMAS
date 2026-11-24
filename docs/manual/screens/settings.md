@@ -2,11 +2,13 @@
 
 The tool's configuration, in three scopes of one page: **Installation** (what every network shares: sign-in, the central NetBox connection, this host), **Default** (the base layer the networks that inherit take their values from) and **a network** (its own settings). The scope bar at the top moves between them; its network picker, **Choose a network**, leads with the networks that differ from Default, standalone ones first.
 
+Every setting a Settings page draws has a one-line description under it, saying what the setting does in plain words: the same words wherever the setting appears (a card's field, a row of a table, a switch's preview).
+
 ## A network's page {#network}
 
 - **Its mode**, on the banner: it inherits from Default, or it is standalone and takes nothing from Default, with who made it so and when. The banner's button opens the switch's preview (see [Inherit or stand alone](settings-switch)).
 - **Self-healing**, a third tab, is the network's own heal policy and who is told about it (see [Self-healing](#self-healing)).
-- **One card per group**, on two tabs (Integrations: Grafana, Grafana dashboards, Prometheus, Loki, Kea, Monitoring profile and S3 archive; Network: Verify settle windows, Deploy workers, Deploy failure limit, Golden tags kept, Configuration read timeout, NetBox excluded VRFs, the three Show commands settings (answer cap in KiB, devices read at once, answers kept in days), SDN: escalate an unanswered incident after (minutes) (15 unless set; see [SDN](sdn#responses)), and the Inventory source card). Each card says where its values come from: *set here*, *inherited from Default*, *not configured for this network*, *not applicable here*, or *unset everywhere*; and every field shows its value with where it came from. A secret shows as "set", never its value.
+- **One card per group**, on two tabs (Integrations: Grafana, Grafana dashboards, Prometheus, Loki, Kea, Monitoring profile and S3 archive; Network: Verify settle windows, Deploy workers, Deploy failure limit, Golden tags kept, Configuration read timeout, NetBox excluded VRFs, the three Show commands settings (answer cap in KiB, devices read at once, answers kept in days), SDN: escalate an unanswered incident after (minutes) (15 unless set; see [SDN](sdn#responses)), and the Inventory source card). Each card says where its values come from: *set here*, *inherited from Default*, *not configured for this network*, *not applicable here*, or *unset everywhere*; and every field shows its value with where it came from, and what it does. A secret shows as "set", never its value.
 - **The S3 archive** is Mercury's connection to MinIO: Default's values are every network's
   unless a network sets its own. It holds each network's goldens, masked (a community, a
   password hash or a key reads `<redacted:…>`, so a copy there restores no secret; the

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how, info, stamp, clock -%}
+{%- from "v2/_macros.html" import icon, badge, how, info, stamp, clock, setting_desc -%}
 {#- Board AI3 (`SettingsAi`, the mockups canvas's page "C1843: AI cost safety", signed off under
     the Phase 7 mode 2026-10-27): Settings › AI's background features, one network at a time.
     Each feature Mercury knows with its state (off, on until its approval ends, stopped by a
@@ -15,6 +15,7 @@
     </form>
     <span class="card-head-how">{{ info('settings-ai', 'background-features', 'How background features work') }}</span>
   </div>
+  {{ setting_desc('ai_background') }}
   <p class="muted small ai-lead">A background feature calls the model with no person pressing, only when Mercury's own checks have found something. Each is off on every network until an admin turns it on here, after its estimate, with its own day and month caps inside the installation's. An approval lasts {{ ai.approval_days }} days. Reaching a cap stops that feature and raises a Needs attention row; Mercury never raises a cap. A network never inherits another's switch.</p>
   {%- if refused %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not changed:</strong> {{ refused }}</div></div>

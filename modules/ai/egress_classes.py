@@ -245,7 +245,8 @@ def turn_off_device_state(network: str, *, actor: str, actor_verified: str, pers
 
 def classes_view(network: str) -> dict:
     """Board N's "What AI may send" card for *network*: ``{"network", "marked", "rows"}``,
-    each row ``{"key", "name", "what", "state", "words", "detail"}`` in the board's order."""
+    each row ``{"key", "name", "what", "state", "words", "detail", "settings"}`` in the board's
+    order, ``settings`` the keys the row draws (each drawn with its description)."""
     marked = classification_marking(network)
     topo = topology_allowed(network)
     ds = device_state(network)
@@ -254,20 +255,22 @@ def classes_view(network: str) -> dict:
     return {"marked": marked, "device_state_on": ds["state"] == "on", "rows": [
         {"key": "allowed", "name": "Allowed",
          "what": "alert labels, metric series, masked log lines, intent diffs",
-         "state": "ok", "words": "on where AI is on", "detail": ""},
+         "state": "ok", "words": "on where AI is on", "detail": "", "settings": ()},
         {"key": "topology", "name": "Topology",
          "what": "the network model's slice: devices, links, adjacencies",
          "state": "ok" if topo["allowed"] else "muted",
-         "words": "on" if topo["allowed"] else "off", "detail": topo["why"]},
+         "words": "on" if topo["allowed"] else "off", "detail": topo["why"],
+         "settings": (TOPOLOGY_SETTING,)},
         {"key": "device_state", "name": "Device state",
          "what": ("answers to the AI read set's show commands (state, not configuration), "
                   "masked, a secret-shaped line dropped whole"),
          "state": "ok" if ds["state"] == "on" and not marked else "muted",
          "words": "off: the classification marking" if marked else ds_words,
          "detail": (f"turned on by {on.get('by')} at {on.get('at')}: “{on.get('reason')}”"
-                    if on else ds["why"])},
+                    if on else ds["why"]),
+         "settings": (DEVICE_STATE_SETTING, DEVICE_STATE_ON)},
         {"key": "configuration", "name": "Configuration",
          "what": "configuration lines, through the configuration masking",
          "state": "muted", "words": "off: the classification marking is not built",
-         "detail": "C1720"},
+         "detail": "C1720", "settings": ()},
     ]}

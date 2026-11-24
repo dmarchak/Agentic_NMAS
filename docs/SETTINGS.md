@@ -61,6 +61,14 @@ inherits Kea is owned by Default, whose layer every inheriting network reads.
 
 ## Surfaced in the UI
 
+**Every setting has one plain description, in one place:** `modules/settings_schema.py`'s
+`DESCRIPTIONS`, beside `DEFAULTS` and `SCHEMA` (one line per key `DEFAULTS` declares, drawn
+or not). Every v2 Settings
+screen draws it under the setting through `_macros.setting_desc(key)`; no template types its
+own. A new setting adds its line there in the same commit, read against its reader
+(`tests/test_settings_descriptions.py` refuses a declared key without one, and a drawn
+setting without its line).
+
 | Group | Where |
 |---|---|
 | `netbox_url`, `netbox_token`, `netbox_auth_scheme`, `netbox_verify_tls`, `netbox_allow_writes` | v2: Settings › Installation › Connections, the NetBox connection card (board F3, 2026-10-09). The token is a secret, shown only as set and changed by Replace… (then tested); `netbox_allow_writes` is shown with **Turn off** only: turning it on is an authorised NetBox write's confirm with writes permitted (Source of truth › NetBox's Import and Remove, C619). Each Save writes only the fields the person changed, and refuses a changed field another person moved since, naming both values (CONCURRENCY_AUDIT R17). The Test asks in the card's auth scheme, with NetBox's own reason for a refusal and each type the tool reads (C468), keeping nothing. Today's Settings → NetBox left at 7.8 (2026-10-15). |

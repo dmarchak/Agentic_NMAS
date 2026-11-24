@@ -21,7 +21,8 @@ Network stage line drops its parenthetical "(Auto is allowed only on a network m
 and Mode's options lose a second parenthetical of the same retired rule; no region moves.
 Compared by the template diff, not by new shots (owed in the full pass, docs/FAST_LANE_DEBT.md).
 Templates sha256 before: `455516ff4556a71207f2141145b95be9c0b61e72d638d086397ab4d2a9830949`.
-Templates sha256: `7f997a162e2d2d4adcfed10dfb15a40244deb368c0927541b1763511e3d3f1e5`
+Compared again 2026-11-24 (the week plan's Stage 5, every setting's description): `_heal.html` draws one line, what the setting does in plain words from `settings_schema.DESCRIPTIONS` through `_macros.setting_desc`, under the Mode (and Auto's expiry while Auto is in force), Set and Network stage rows, under Fix kinds' lead (the two kind lists), under each hard stop's label (each setting it shows), under Who is told's Team and Sent for, and above the stop everywhere control. Nothing else moves and no region's verdict changed. Artboard A draws no such line: a deviation, logged once (docs/STANDING_APPROVAL_LOG.md, "Settings: every setting's description"). Compared by the template's diff and tests/test_settings_descriptions.py's render, not by new shots. Templates sha256 before: `7f997a162e2d2d4adcfed10dfb15a40244deb368c0927541b1763511e3d3f1e5`.
+Templates sha256: `7daad0dda2cec19fcdc7c002339d1cfbae39c034d4232ba1fd73a3d073e90e3b`
 
 **Compared again 2026-11-12 for C3196 (the BGP session clear listed twice):** by the template's
 diff against the Fix kinds region, not from new shots. The table and the change card draw a

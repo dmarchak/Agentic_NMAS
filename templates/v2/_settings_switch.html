@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import badge, how -%}
+{%- from "v2/_macros.html" import badge, how, setting_desc -%}
 {#- One group's switch, previewed in place of its card (boards B, C and J2): what changes,
     each setting today and after (a secret only as set or unset), what is removed and where
     it survives, and the confirm. "Its own" takes the group's values here (B, I) and "not
@@ -25,6 +25,7 @@
       {%- else %}
       <input id="f-{{ f.key }}" name="{{ f.key }}" class="{{ 'mono' if f.kind != 'secret' }}" type="{{ 'password' if f.kind == 'secret' else 'number' if f.kind == 'number' else 'text' }}" value="{{ f.value }}" autocomplete="off">
       {%- endif %}
+      {{- setting_desc(f.key) }}
       {%- if f.note %}<span class="set-origin">{{ f.note }}</span>{% elif f.origin == 'inherited from Default' %}<span class="set-origin">from Default's</span>{% endif %}
     </div>
     {%- endfor %}
@@ -33,7 +34,7 @@
   {%- else %}
   <div class="op-part"><h3>{% if p.to == 'inherit' %}It would pick up{% else %}Today and after{% endif %}</h3><div>
     <table class="table set-table"><thead><tr><th scope="col">Setting</th><th scope="col">Today</th><th scope="col">After</th></tr></thead><tbody>
-      {%- for r in p.rows %}<tr><td>{{ r.key }}</td><td><span class="mono">{{ r.today }}</span> <span class="set-origin">{{ r.today_origin }}</span></td><td><span class="mono">{{ r.after }}</span> <span class="set-origin">{{ r.after_origin }}</span></td></tr>{% endfor %}
+      {%- for r in p.rows %}<tr><td>{{ r.key }}{{ setting_desc(r.key) }}</td><td><span class="mono">{{ r.today }}</span> <span class="set-origin">{{ r.today_origin }}</span></td><td><span class="mono">{{ r.after }}</span> <span class="set-origin">{{ r.after_origin }}</span></td></tr>{% endfor %}
     </tbody></table></div></div>
   {%- endif %}
   {%- if p.to == 'not_applicable' %}

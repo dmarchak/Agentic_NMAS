@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, how, stamp, setting_desc -%}
 {#- Settings › Integrations, the SDN controllers card (PHASE8_PLAN 17.1 S2's interface; board
     SdnSettings, signed off 2026-10-27; docs/fidelity/sdn-settings.md). Per network, each
     network's own list (C1841): the saved connections, each with Test connection, Edit and
@@ -10,6 +10,7 @@
 <section class="card set-card sdn-set" id="sdn-card" aria-labelledby="h-sdn">
   <div class="card-head"><h2 id="h-sdn">SDN controllers <span class="faint sdn-net">· network {{ k.network }}</span></h2>
     <span class="card-head-how">{{ how('settings', 'sdn-controllers') }}</span></div>
+  {{ setting_desc('sdn_controllers') }}
   {%- if refused is defined and refused %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not done:</strong> {{ refused }}.</p></div>
   {%- endif %}
@@ -36,7 +37,7 @@
   {%- set st = k.stage %}
   <div class="sdn-conn sdn-stage" id="sdn-stage">
     <div class="sdn-conn-what"><strong>Stage</strong> {{ badge(st.stage or ('unreadable' if st.state == 'unreadable' else 'not marked'), 'danger' if st.state == 'unreadable' else ('ok' if st.stage == 'lab' else 'muted')) }}
-      <span class="muted">{{ st.words }}. SDN responses' AUTO is turned on only on a network marked lab until the AUTO production-readiness gate is complete.</span></div>
+      <span class="muted">{{ st.words }}. SDN responses' AUTO is turned on only on a network marked lab until the AUTO production-readiness gate is complete.</span>{{ setting_desc('network_stage') }}</div>
     <form class="sdn-acts sdn-stage-form" method="post" action="{{ url_for('settings_v2.sdn_stage', list_name=list_name) }}" hx-post="{{ url_for('settings_v2.sdn_stage', list_name=list_name) }}" hx-target="#sdn-card" hx-swap="outerHTML">
       <input type="hidden" name="loaded" value="{{ st.stage }}">
       <label class="small">Mark it <select name="stage" aria-label="The network's stage">

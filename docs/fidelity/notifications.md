@@ -11,7 +11,8 @@ beside the board's shot from `test_heal_tab` (`heal-tab-board-1440`, artboard B)
 shots do not draw (each form open, a refusal, a code typed, an edit to a new URL, a removal's
 question) are compared by the templates and tests/test_notify_v2.py.
 Templates compared: templates/v2/_notify.html, templates/v2/_notify_relay.html
-Templates sha256: `cd468e69751a6502a653868135858fdcf3ab961036558b1d97ccb91a3bfb7901`
+Compared again 2026-11-24 (the week plan's Stage 5, every setting's description): `_notify_relay.html` draws one line under each relay field, what the setting does in plain words, from `settings_schema.DESCRIPTIONS` through `_macros.setting_desc`; the password (the credential store's, not a setting) has none. Nothing else moves and no region's verdict changed. Artboard B draws no such line: a deviation, logged once (docs/STANDING_APPROVAL_LOG.md, "Settings: every setting's description"). Compared by the template's diff and tests/test_settings_descriptions.py's render, not by new shots. Templates sha256 before: `cd468e69751a6502a653868135858fdcf3ab961036558b1d97ccb91a3bfb7901`.
+Templates sha256: `502c6c326404db0370a92164d4d58014fb773d4b83bd52179389e59f5e86ba11`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_notify_relay.html`, who set the relay's password is now

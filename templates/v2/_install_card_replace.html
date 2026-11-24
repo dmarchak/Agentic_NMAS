@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, how -%}
+{%- from "v2/_macros.html" import icon, how, setting_desc -%}
 {#- Board F3 (signed off 2026-10-09): a card's Replace… opens in the card, as the records
     database password's does (F2): the new value, Replace and Test, Cancel. Proxmox's takes the
     token's id and secret together (a token is the pair). The value is never drawn back. -#}
@@ -13,10 +13,10 @@
         hx-post="{{ url_for('settings_v2.install_replace', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML">
     {%- if s.with_id %}
     <label for="f-{{ k.name }}-id">{{ s.with_id[1] }}</label>
-    <div><input id="f-{{ k.name }}-id" name="{{ s.with_id[0] }}" class="mono" type="text" value="{{ k.id_value }}" autocomplete="off" placeholder="user@realm!name"></div>
+    <div><input id="f-{{ k.name }}-id" name="{{ s.with_id[0] }}" class="mono" type="text" value="{{ k.id_value }}" autocomplete="off" placeholder="user@realm!name">{{ setting_desc(s.with_id[0]) }}</div>
     {%- endif %}
     <label for="f-{{ k.name }}-secret">New {{ s.secret[1] | lower }}</label>
-    <div><input id="f-{{ k.name }}-secret" name="{{ s.secret[0] }}" class="mono" type="password" value="" autocomplete="new-password"></div>
+    <div><input id="f-{{ k.name }}-secret" name="{{ s.secret[0] }}" class="mono" type="password" value="" autocomplete="new-password">{{ setting_desc(s.secret[0]) }}</div>
     <div class="set-foot set-form-note">
       <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Replace and Test</span><span class="op-busy">Replacing…</span></button>{{ how('installation-settings', 'replace', compact=True, op='replacing the ' ~ s.secret[1] | lower) }}</span>
       <span class="muted small">Replace and Test stores it as a secret, records who and when (never the value), then {{ 'makes one small, recorded call to the model with it (refused while hosted AI is off)' if s.test == 'ai' else 'tests the connection with it' }}.</span>

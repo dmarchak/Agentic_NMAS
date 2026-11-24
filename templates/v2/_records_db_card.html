@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, how, stamp, setting_desc -%}
 {#- Board F2 (approved 2026-10-09): Settings › Installation › Connections, the records database
     card. Off (no host: every store on its files), not tested, answering (the last Test passed,
     each check named) or not answering (the check that failed named, the rest not tried); a
@@ -43,16 +43,16 @@
         refuses a change to a field another person moved since. -#}
     <input type="hidden" name="loaded" value='{{ r.loaded | tojson }}'>
     <label for="f-records-host">Host</label>
-    <div><input id="f-records-host" name="records_db_host" class="mono" type="text" value="{{ c.host }}" autocomplete="off" placeholder="empty: off, every store on its files"></div>
+    <div><input id="f-records-host" name="records_db_host" class="mono" type="text" value="{{ c.host }}" autocomplete="off" placeholder="empty: off, every store on its files">{{ setting_desc("records_db_host") }}</div>
     <label for="f-records-port">Port</label>
-    <div><input id="f-records-port" name="records_db_port" class="mono" type="number" value="{{ c.port }}" autocomplete="off"></div>
+    <div><input id="f-records-port" name="records_db_port" class="mono" type="number" value="{{ c.port }}" autocomplete="off">{{ setting_desc("records_db_port") }}</div>
     <label for="f-records-name">Database</label>
-    <div><input id="f-records-name" name="records_db_name" class="mono" type="text" value="{{ c.name }}" autocomplete="off"></div>
+    <div><input id="f-records-name" name="records_db_name" class="mono" type="text" value="{{ c.name }}" autocomplete="off">{{ setting_desc("records_db_name") }}</div>
     <label for="f-records-user">Role</label>
-    <div><input id="f-records-user" name="records_db_user" class="mono" type="text" value="{{ c.user }}" autocomplete="off"></div>
+    <div><input id="f-records-user" name="records_db_user" class="mono" type="text" value="{{ c.user }}" autocomplete="off">{{ setting_desc("records_db_user") }}</div>
     <span class="set-label">Password</span>
     <div>{{ badge('set' if c.password_set else 'not set', 'neutral' if c.password_set else 'warn') }}
-      <span class="op-act"><a class="btn btn-small" data-op="records-database" href="{{ url_for('settings_v2.records_replace_form') }}" hx-get="{{ url_for('settings_v2.records_replace_form') }}" hx-target="#records-db" hx-swap="outerHTML" title="Opens the rotation order: nothing is replaced until you enter the password">Replace…</a>{{ how('records-database', 'replace', compact=True, op='replacing the password') }}</span></div>
+      <span class="op-act"><a class="btn btn-small" data-op="records-database" href="{{ url_for('settings_v2.records_replace_form') }}" hx-get="{{ url_for('settings_v2.records_replace_form') }}" hx-target="#records-db" hx-swap="outerHTML" title="Opens the rotation order: nothing is replaced until you enter the password">Replace…</a>{{ how('records-database', 'replace', compact=True, op='replacing the password') }}</span>{{ setting_desc('records_db_password') }}</div>
     <span class="set-label">Stores on it</span>
     <div>{% if r.stores %}{{ r.stores | join(', ') }} <span class="muted small">· the rest still on files</span>{% else %}<span class="muted">none yet: every store on its files</span>{% endif %}</div>
     <div class="set-foot set-form-note">

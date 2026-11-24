@@ -111,6 +111,13 @@ def register_blueprints(app) -> list:
         return time_zones.zone_names(first=getattr(mine, "key", "") or "")
     app.jinja_env.globals["zone_names"] = zone_names
 
+    # Every setting's one-line description (the week plan of 2026-11-23, Stage 5), drawn under
+    # it by `_macros.setting_desc` from the one source, settings_schema.DESCRIPTIONS.
+    def setting_description(key):
+        from modules import settings_schema
+        return settings_schema.describe(key)
+    app.jinja_env.globals["setting_description"] = setting_description
+
     # The toolbar's Assistant on or off (the operator, 2026-11-16: "hide it via a setting",
     # off by default; `installation_settings.assistant_on`): base.html draws its button and
     # panel only while it is on, and while it is off every assistant route refuses before it

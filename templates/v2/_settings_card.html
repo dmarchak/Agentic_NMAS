@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, how, stamp, setting_desc -%}
 {#- One settings group's card (boards A, D, G and I). A network's card says the group's state
     and its own three-way choice; choosing another opens that switch's preview in place of the
     card (_settings_switch.html), and nothing is saved by the choice itself. Default's card
@@ -65,6 +65,7 @@
       {%- else %}
       <input id="f-{{ g }}-{{ f.key }}" name="{{ f.key }}" class="{{ 'mono' if f.kind != 'secret' }}" type="{{ 'password' if f.kind == 'secret' else 'number' if f.kind == 'number' else 'text' }}" value="{{ f.value }}" autocomplete="{{ 'new-password' if f.kind == 'secret' else 'off' }}">
       {%- endif %}
+      {{- setting_desc(f.key) }}
       {%- if f.note %}<span class="set-origin">{{ f.note }}</span>{% endif %}
     </div>
     {%- endfor %}
@@ -87,7 +88,7 @@
     {%- set ORIGIN = {'unset everywhere': 'built-in default, set nowhere' if not is_default else 'built-in default',
                       'unset here': "built-in default: this group is " ~ list_name ~ "'s own, never Default's"} %}
     <div><dt>{{ f.label }}</dt><dd><span class="{{ 'mono' if not f.secret }}">{{ f.value }}</span>
-      {%- if f.origin != 'set here' %} <span class="set-origin">{{ ORIGIN.get(f.origin, f.origin) }}</span>{% endif %}</dd></div>
+      {%- if f.origin != 'set here' %} <span class="set-origin">{{ ORIGIN.get(f.origin, f.origin) }}</span>{% endif %}{{ setting_desc(f.key) }}</dd></div>
     {%- endfor %}
   </dl>
   {%- if c.state == 'inherited' %}<p class="muted small">Every value here is Default's. A change in Default changes {{ list_name }}'s too.</p>{% endif %}

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, how, stamp, setting_desc -%}
 {#- Phase 4, section 7 (the agent's board under the Phase 7 operating mode, 2026-10-10,
     docs/STANDING_APPROVAL_LOG.md): Settings › Installation › Connections, Record stores. Each
     store, where it is now and its last check (the records-check reader's stored value, never the
@@ -73,7 +73,7 @@
     <tbody>
     {%- for s in st %}
     <tr>
-      <td>{{ s.words }}</td>
+      <td>{{ s.words }}{{ setting_desc('records_store_' ~ s.store) }}</td>
       <td>{{ badge('the records database', 'ok') if s.backend == 'postgres' else badge('its files', 'neutral') }}
         {%- if s.files %}<br><span class="muted small">{% for n, c in s.files.items() %}{{ n }}: {{ c }} {{ s.unit }}{{ '' if c == 1 else 's' }}{% if not loop.last %}, {% endif %}{% endfor %} in the files</span>{% endif %}</td>
       <td>

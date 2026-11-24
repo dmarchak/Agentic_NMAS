@@ -79,6 +79,16 @@
 <a class="how-link{{ ' compact' if compact }}" href="{{ url_for('v2.help_page', slug=slug) }}{{ '#' ~ section if section }}" hx-get="{{ url_for('v2.help_panel', slug=slug, section=section) if section else url_for('v2.help_panel', slug=slug) }}" hx-target="#help-panel-body" hx-swap="innerHTML" hx-select="unset" x-on:click="openHelp" data-manual="{{ slug }}{{ '#' ~ section if section }}"{% if compact %} title="How does this work?" aria-label="{{ words }}"{% endif %}>{{ icon('info', 15) }}{% if not compact %}<span>{{ words }}</span>{% endif %}</a>
 {%- endmacro %}
 
+{#- A setting's one-line description (the week plan of 2026-11-23, Stage 5): what the setting
+    *key* does, in a network engineer's words, drawn under the setting wherever a Settings
+    screen draws it. The words are `modules/settings_schema.DESCRIPTIONS`, the one
+    source, read through the `setting_description` global: never typed in a template.
+    `data-setting` names the key, so tests/test_settings_descriptions.py can hold every drawn
+    setting to a description. -#}
+{% macro setting_desc(key) -%}
+<span class="set-desc" data-setting="{{ key }}">{{ setting_description(key) }}</span>
+{%- endmacro %}
+
 {#- The time-range controls (NSOT_GUI_BRIEF 14.2), ONE for the fleet's Monitoring page and
     a device's Monitoring tab (2026-10-02, the operator: a note under the controls crowded
     the dashboard selector). What the backend keeps and the step are on the controls' hover

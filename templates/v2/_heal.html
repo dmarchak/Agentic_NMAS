@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, how, stamp, setting_desc -%}
 {%- from "v2/_heal_change.html" import change_modal -%}
 {#- Settings · <network> › Self-healing (board H, artboard A, approved by the operator
     2026-11-03; part H9; docs/fidelity/heal-policy.md). The network's own heal policy, never
@@ -42,9 +42,9 @@
     {%- endif %}
     <dl class="heal-kv">
       <dt>Mode</dt><dd><strong>{{ h.means.split(':')[0] }}</strong>:{{ h.means.split(':', 1)[1] }}{% if cur.mode == 'auto' and h.until_words %} ({{ h.until_words }}){% endif %}
-        <span class="set-origin heal-why">Now: {{ cur.words | people }}</span></dd>
-      <dt>Set</dt><dd>{%- if cur.confirmed.by %}{{ h.confirmed_words }} by {{ cur.confirmed.by | people }} ({{ 'verified' if cur.confirmed.actor_verified not in ('', 'none') else 'not verified' }}), “{{ cur.confirmed.reason }}”{% else %}<span class="muted">never confirmed: the defaults are in force, and they heal nothing</span>{% endif %}</dd>
-      <dt>Network stage</dt><dd>{{ cur.stage.stage or ('cannot be read' if cur.stage.state == 'unreadable' else 'not marked') }}</dd>
+        <span class="set-origin heal-why">Now: {{ cur.words | people }}</span>{{ setting_desc('heal_mode') }}{% if cur.mode == 'auto' and h.until_words %}{{ setting_desc('heal_mode_until') }}{% endif %}</dd>
+      <dt>Set</dt><dd>{%- if cur.confirmed.by %}{{ h.confirmed_words }} by {{ cur.confirmed.by | people }} ({{ 'verified' if cur.confirmed.actor_verified not in ('', 'none') else 'not verified' }}), “{{ cur.confirmed.reason }}”{% else %}<span class="muted">never confirmed: the defaults are in force, and they heal nothing</span>{% endif %}{{ setting_desc('heal_policy_confirmed') }}</dd>
+      <dt>Network stage</dt><dd>{{ cur.stage.stage or ('cannot be read' if cur.stage.state == 'unreadable' else 'not marked') }}{{ setting_desc('network_stage') }}</dd>
       <dt>Production's bar</dt><dd>{{ h.bar }}. <span class="muted">Lab drills never count toward it.</span></dd>
       <dt>Policy fingerprint</dt><dd class="mono">{{ cur.fingerprint or 'none' }}{% if cur.confirmed.fingerprint and cur.confirmed.fingerprint != cur.fingerprint %} <span class="set-origin">(confirmed {{ cur.confirmed.fingerprint }})</span>{% endif %}</dd>
     </dl>
@@ -85,6 +85,7 @@
   <section class="card set-card heal-card" id="heal-kinds" aria-labelledby="h-heal-kinds">
     <div class="card-head"><h2 id="h-heal-kinds">Fix kinds</h2><span class="card-head-how">{{ how('settings', 'self-healing') }}</span></div>
     <p class="muted small heal-lead">A kind's tier is fixed by Mercury. Here you choose whether each Tier 1 kind heals in Auto or stays in dry run, and whether Tier 2 kinds are proposed. Allow a kind in Auto only after its lab scenario has passed.</p>
+    {{ setting_desc('heal_kinds_auto') }}{{ setting_desc('heal_kinds_propose') }}
     <div class="table-wrap"><table class="table heal-table">
       <thead><tr><th>Fix kind</th><th>Tier</th><th>In Auto</th></tr></thead>
       <tbody>
@@ -116,7 +117,7 @@
       <thead><tr><th>Guard</th><th>Value</th><th>Default</th><th><span class="sr-only">Change</span></th></tr></thead>
       <tbody>
         {%- for g in h.guards %}
-        <tr><td>{{ g.label }}</td><td>{{ g.value }} <span class="set-origin">{{ g.source }}</span></td><td>{{ g.default }}</td>
+        <tr><td>{{ g.label }}{% for key in g['keys'] %}{{ setting_desc(key) }}{% endfor %}</td><td>{{ g.value }} <span class="set-origin">{{ g.source }}</span></td><td>{{ g.default }}</td>
           <td class="set-row-acts"><span class="op-act"><button type="button" class="btn btn-small" data-op="settings" data-modal-open="heal-guard-{{ g.part }}" aria-haspopup="dialog" aria-controls="heal-guard-{{ g.part }}" title="Opens the change over the page: nothing changes until you confirm it">Edit…</button>{{ how('settings', 'self-healing', compact=True, op='changing a hard stop') }}</span></td></tr>
         {%- endfor %}
         {%- for label, words in h.always %}
@@ -152,9 +153,9 @@
             {%- for t in h.teams %}<option value="{{ t.id }}"{% if t.id == h.told.team %} selected{% endif %}>{{ t.name }}</option>{% endfor %}
           </select>
           {%- if h.team %} <span class="muted">{{ h.team.words }}</span>{% endif %}
-          (<a href="{{ url_for('settings_v2.installation', tab='notifications') }}">Settings › Installation › Notifications</a>)</dd>
+          (<a href="{{ url_for('settings_v2.installation', tab='notifications') }}">Settings › Installation › Notifications</a>){{ setting_desc('heal_notify_team') }}</dd>
         <dt>Sent for</dt>
-        <dd class="heal-events">{%- for key, words, _covers in h.choices %}<label class="set-switch"><input type="checkbox" name="events" value="{{ key }}"{% if key in h.told.choices %} checked{% endif %}> {{ words }}</label>{% endfor %}</dd>
+        <dd class="heal-events">{%- for key, words, _covers in h.choices %}<label class="set-switch"><input type="checkbox" name="events" value="{{ key }}"{% if key in h.told.choices %} checked{% endif %}> {{ words }}</label>{% endfor %}{{ setting_desc('heal_notify_events') }}</dd>
         <dt>AI analysis of a can't-fix</dt>
         {#- C2647: from the background feature's own state on this network, never fixed text. -#}
         <dd>{{ badge(h.analysis.badge, h.analysis.level) }} <span class="muted">{{ h.analysis.words }}</span> <a href="{{ url_for('settings_v2.installation', tab='ai') }}">Settings › Installation › AI</a> {{ how('ai-background', compact=True, op='a background AI feature') }}</dd>
@@ -164,6 +165,7 @@
   </section>
 
   <div class="heal-kill" id="heal-kill">
+    {{ setting_desc('heal_stopped') }}
     {%- if stopped_now %}
     <div class="notice notice-{{ 'muted' if stopped_now.recorded or stopped_now.nothing else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p>{% if stopped_now.nothing %}<strong>{{ stopped_now.words | people }}.</strong>{% else %}<strong>Stopped everywhere</strong> {{ stamp(stopped_now.at) }}: {{ stopped_now.words | people }}.{% if not stopped_now.recorded %} <strong>Stopped, and its record could not be written.</strong>{% endif %}{% endif %}</p></div>
     {%- endif %}

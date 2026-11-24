@@ -1368,6 +1368,430 @@ SCHEMA: dict = {
 }
 
 
+#: Every setting's one-line description (the week plan of 2026-11-23, Stage 5): what each
+#: key in DEFAULTS does, in words a network engineer reads without knowing Mercury's code (no
+#: key, module or function names; one line). The one source: every Settings screen draws it
+#: under the setting it draws, through `templates/v2/_macros.html`'s ``setting_desc(key)``
+#: (the ``setting_description`` global, `describe` below), so no template types its own.
+#: Started from the usability review's inventory (design/review/SETTINGS.md, "What it
+#: does"), each line read against the key's readers and corrected where the code does
+#: something else. A key no screen draws yet still has its line, for the screen that draws
+#: it later; a key nothing reads says so. A new setting adds its line here, in the same
+#: commit (tests/test_settings_descriptions.py refuses a declared key without one).
+DESCRIPTIONS: dict = {
+    # ── The settings file and this host ───────────────────────────────────────────────────
+    "settings_schema_version": "Version of the settings file's layout, used to upgrade it.",
+    "flask_host": "Address the web server listens on; takes effect at the next restart.",
+    "flask_port": "TCP port the web server listens on; takes effect at the next restart.",
+    "auto_open_browser": "No longer used: whether starting the app opened a browser.",
+    "tftp_root": "No longer used: the folder the old file-transfer pages served from.",
+    "ai_enabled": "No longer used: the switch for the first AI assistant, since removed.",
+    "background_agent_enabled": "No longer used: the switch for the old background AI agent.",
+    # ── AI ────────────────────────────────────────────────────────────────────────────────
+    "anthropic_api_key": "The AI provider's API key, typed by an admin and never shown again.",
+    "person_label_key": "Secret Mercury makes at start to hide people's names before they reach "
+                        "the AI.",
+    "ai_hosted": "An admin's recorded permission (who, when and why) to use hosted AI at all; "
+                 "without it every AI call is refused.",
+    "ai_cap_usd_per_call": "No longer used: the old cap per AI call; each task has its own "
+                           "now.",
+    "ai_cap_usd_per_day": "The most this installation may spend on AI in one day, in US "
+                          "dollars.",
+    "ai_cap_day_boundary": "The time zone whose midnight starts a new day for the AI day cap.",
+    "ai_background": "Per network: which background AI features are on, their spending caps "
+                     "and who turned them on.",
+    "ai_troubleshoot_mode": "Default AI troubleshooting mode for incidents: on a person's "
+                            "press, or off.",
+    "ai_cap_usd_per_incident": "Default most one incident's AI troubleshooting may spend, in "
+                               "US dollars; a network may set its own.",
+    "ai_read_account_ping_traceroute": "Let the read-only device account run ping and "
+                                       "traceroute too.",
+    "ai_device_reads_as": "Which device account the AI's show commands sign in as: Mercury's "
+                          "or the read-only one.",
+    "ai_assistant_on": "Show the Assistant button and its panel in every page's top bar.",
+    # ── The old assistant's workflow (removed) ────────────────────────────────────────────
+    "wf_read_first": "No longer used: told the removed assistant to read before changing.",
+    "wf_auto_backup": "No longer used: told the removed assistant to back up first.",
+    "wf_run_jenkins": "No longer used: told the removed assistant to run Jenkins.",
+    "wf_save_golden": "No longer used: told the removed assistant to save a golden config "
+                      "after its checks.",
+    "wf_update_vars": "No longer used: told the removed assistant to update variables.",
+    "wf_require_approval": "No longer used: told the removed assistant to ask for approval.",
+    "tftp_server_ip": "No longer used: the TFTP server address for the old file-transfer "
+                      "pages.",
+    # ── NetBox ────────────────────────────────────────────────────────────────────────────
+    "netbox_url": "Address of the central NetBox, the source of truth for every network.",
+    "netbox_token": "The NetBox API token Mercury signs in with.",
+    "netbox_auth_scheme": "How the token is sent: Bearer for NetBox 4.x, Token for older "
+                          "releases.",
+    "netbox_verify_tls": "Check NetBox's TLS certificate.",
+    "netbox_allow_writes": "Master switch: whether Mercury may write to NetBox at all.",
+    "netbox_remove_on_list_delete": "No longer used: once deleted NetBox objects when a device "
+                                    "list was deleted.",
+    # ── Prometheus ────────────────────────────────────────────────────────────────────────
+    "prometheus_url": "Address of the network's Prometheus.",
+    "prometheus_auth_mode": "How Mercury signs in to Prometheus: none, a username and "
+                            "password, or a bearer token.",
+    "prometheus_username": "Username for Prometheus' basic sign-in.",
+    "prometheus_password": "Password for Prometheus' basic sign-in.",
+    "prometheus_bearer_token": "Bearer token Mercury sends to Prometheus.",
+    "prometheus_verify_tls": "Check Prometheus' TLS certificate.",
+    "prometheus_targets_dir": "Folder where Mercury writes Prometheus' scrape-target files.",
+    # ── Grafana ───────────────────────────────────────────────────────────────────────────
+    "grafana_url": "Address of the network's Grafana.",
+    "grafana_token": "The Grafana API token Mercury signs in with.",
+    "grafana_token_expires": "When the Grafana token expires, as declared: Grafana cannot "
+                             "report it.",
+    "grafana_embed_mode": "No longer used: whether Grafana was linked or embedded.",
+    "grafana_verify_tls": "Check Grafana's TLS certificate.",
+    "grafana_device_dashboard_uid": "Grafana dashboard drawn on every device page's "
+                                    "Monitoring tab.",
+    "grafana_fleet_dashboard_uid": "Grafana dashboard drawn on the fleet's Monitoring page.",
+    "grafana_history_datasource_uid": "Grafana data source holding long-term metrics, for "
+                                      "ranges the live store no longer keeps.",
+    "metrics_live_retention_days": "Days the live metrics store keeps data; longer ranges use "
+                                   "the long-term data source.",
+    "grafana_device_variable": "Name of the device variable in the device dashboard.",
+    "grafana_device_variable_value": "What fills that variable: the device's hostname or its "
+                                     "address.",
+    # ── Loki ──────────────────────────────────────────────────────────────────────────────
+    "loki_url": "Address of the network's Loki, where device logs are kept.",
+    "loki_auth_mode": "How Mercury signs in to Loki: none, a username and password, or a "
+                      "bearer token.",
+    "loki_username": "Username for Loki's basic sign-in.",
+    "loki_password": "Password for Loki's basic sign-in.",
+    "loki_bearer_token": "Bearer token Mercury sends to Loki.",
+    "loki_verify_tls": "Check Loki's TLS certificate.",
+    "loki_selector_template": "No longer used: the Loki label pattern for one device's logs; "
+                              "logs are found by hostname now.",
+    "logs_retention_days": "Days the network's Loki keeps logs; the Logs view uses it to "
+                           "explain gaps.",
+    # ── Oxidized (retired) ────────────────────────────────────────────────────────────────
+    "oxidized_url": "No longer used: the address of Oxidized, since retired.",
+    "oxidized_username": "No longer used: the sign-in name for Oxidized, since retired.",
+    "oxidized_password": "No longer used: the password for Oxidized, since retired.",
+    "oxidized_node_identity": "No longer used: how Oxidized named devices.",
+    "oxidized_verify_tls": "No longer used: whether Oxidized's TLS certificate was checked.",
+    # ── Kea DHCP ──────────────────────────────────────────────────────────────────────────
+    "kea_url": "Address of the network's Kea DHCP Control Agent.",
+    "kea_username": "Username for the Kea Control Agent.",
+    "kea_password": "Password for the Kea Control Agent.",
+    "kea_services": "Kea services the connection test asks; the DHCP pages always ask both "
+                    "IPv4 and IPv6.",
+    "kea_verify_tls": "Check the Kea Control Agent's TLS certificate.",
+    # ── Proxmox ───────────────────────────────────────────────────────────────────────────
+    "proxmox_url": "Address of the Proxmox hypervisor, for the nightly backup and storage "
+                   "checks.",
+    "proxmox_node": "Name of the Proxmox node Mercury checks.",
+    "proxmox_token_id": "ID of the Proxmox API token, replaced together with its secret.",
+    "proxmox_token_secret": "Secret of the Proxmox API token.",
+    "proxmox_token_expires": "When the Proxmox token expires, as declared: the token cannot "
+                             "read its own.",
+    "proxmox_backup_storage": "Proxmox storage that holds the backups Mercury checks.",
+    "proxmox_backup_vmids": "IDs of the virtual machines whose backups Mercury checks.",
+    "proxmox_verify_tls": "Check Proxmox's TLS certificate.",
+    # ── The topology service (retired) ────────────────────────────────────────────────────
+    "topology_service_url": "No longer used: the address of the old topology service.",
+    "topology_service_type": "No longer used: the old topology service's format.",
+    "topology_service_token": "No longer used: the old topology service's token.",
+    "topology_service_verify_tls": "No longer used: whether the old topology service's "
+                                   "certificate was checked.",
+    # ── The configuration repository ──────────────────────────────────────────────────────
+    "nsot_git_repo_path": "No longer used: the old single configuration repository's folder; "
+                          "each network has its own.",
+    "nsot_git_remote_url": "No longer used: the old repository's remote; each network sets "
+                           "its own under History.",
+    "nsot_git_branch": "No longer used: the old repository's branch.",
+    "nsot_git_author_name": "Author name on every commit Mercury makes.",
+    "nsot_git_author_email": "Author email address on every commit Mercury makes.",
+    "nsot_git_auto_push": "No longer used: the old switch to push every commit.",
+    "nsot_git_auth_mode": "No longer used: how the old repository was pushed to.",
+    "nsot_git_token": "No longer used: the old repository's push token.",
+    # ── Sign-in and access ────────────────────────────────────────────────────────────────
+    "cf_access_team_domain": "Cloudflare Access team domain whose sign-ins Mercury trusts.",
+    "cf_access_aud": "Audience tag of Mercury's Cloudflare Access application.",
+    "cf_access_trusted_peers": "Proxy addresses allowed to hand Mercury a sign-in; any other "
+                               "peer is refused.",
+    "cf_access_jwks_ttl": "How long, in seconds, Cloudflare's signing keys are kept before "
+                          "they are read again.",
+    "allowed_host_names": "Host names a request may be addressed to, against DNS rebinding; "
+                          "empty checks none.",
+    "require_same_origin_writes": "Refuse a change that does not come from Mercury's own "
+                                  "pages.",
+    "local_account_enabled": "Allow the one local account to sign in, on an installation "
+                             "that listens on this machine only.",
+    "installation_kind": "A server installation or a laptop kit; on a kit, server-only checks "
+                         "are listed as not applicable.",
+    "cf_access_service_labels": "Friendly names for Cloudflare service tokens, shown in "
+                                "records; never a permission.",
+    "credential_rotation_policies": "Per credential profile, the scheduled password rotation: "
+                                    "how often, when and how many devices at once.",
+    "no_change_windows": "Daily times when no scheduled change may start, such as a backup "
+                         "window.",
+    "heal_stopped": "Stop switch: when on, no network heals, whatever its own mode.",
+    "require_identity_for_reveal": "Require a verified sign-in to reveal a secret or a "
+                                   "device's configuration.",
+    "require_identity_for_approve": "Require a verified sign-in to approve a change.",
+    "require_identity_for_confirm": "Require a verified sign-in to confirm a change.",
+    "require_identity_for_publish_remote": "Require a verified sign-in to publish to a git "
+                                           "remote.",
+    "require_identity_for_configure": "Require a verified sign-in to change settings, "
+                                      "inventory, credentials or Mercury's own records.",
+    "require_identity_for_break_glass": "No longer asked: once required a verified sign-in "
+                                        "for the removed terminal.",
+    "require_person_for_reveal": "Require a person, not a service token, to reveal a secret "
+                                 "or a device's configuration.",
+    "require_person_for_approve": "Require a person, not a service token, to approve a "
+                                  "change.",
+    "require_person_for_confirm": "Require a person, not a service token, to confirm a "
+                                  "change.",
+    "require_person_for_publish_remote": "Require a person, not a service token, to publish "
+                                         "to a git remote.",
+    "require_person_for_configure": "Require a person, not a service token, to change "
+                                    "settings, inventory, credentials or records.",
+    "require_person_for_break_glass": "No longer asked: once required a person for the "
+                                      "removed terminal.",
+    "service_allowed_operations": "Actions a service token may still take where a person is "
+                                  "otherwise required; empty allows none.",
+    "access_rights": "Who holds the self-healing and admin approval rights; empty means every "
+                     "verified person.",
+    # ── Per network: inventory, DHCP and the monitoring profile ───────────────────────────
+    "netbox_excluded_vrfs": "VRFs whose addresses are skipped when devices are read from "
+                            "NetBox.",
+    "settings_not_applicable": "Settings declared deliberately unused on this installation, "
+                               "with who declared it and why.",
+    "kea_ztp_fragment": "Path of the Kea reservations file Mercury owns for zero-touch "
+                        "provisioning.",
+    "kea_dhcp4_config": "Path of the Kea DHCPv4 configuration that includes Mercury's file.",
+    "kea_dhcp6_config": "Path of the Kea DHCPv6 configuration used to check IPv6 "
+                        "reservations.",
+    "syslog_host": "Syslog collector every onboarded device sends to; onboarding refuses "
+                   "while it is empty.",
+    "syslog_trap_level": "Lowest syslog severity devices send.",
+    "syslog_origin_id": "What devices stamp in each syslog line to say who sent it.",
+    "syslog_source_interface": "Interface devices send syslog, traps, file transfers and SSH "
+                               "from.",
+    "syslog_heartbeat_seconds": "How often devices send the heartbeat message that proves "
+                                "their logging works.",
+    "ntp_servers": "NTP servers the monitoring profile gives devices.",
+    "telemetry_receiver": "Telegraf listener devices stream model-driven telemetry to "
+                          "(address:port).",
+    "snmp_trap_host": "Where devices send SNMP traps.",
+    "snmp_exporter_config": "Path of the SNMP exporter's configuration, which holds the SNMP "
+                            "community.",
+    "snmp_exporter_auth": "Which of the SNMP exporter's authentication modules to use.",
+    "oxidized_rest_url": "No longer used: a second copy of Oxidized's address.",
+    "oxidized_router_db": "No longer used: the path of Oxidized's device list.",
+    "yang_push_script": "Path of a lab telemetry script that holds a fixed device password; "
+                        "a password change that touches its device warns.",
+    # ── The S3 archive ────────────────────────────────────────────────────────────────────
+    "s3_endpoint": "Address of the S3 or MinIO archive: masked golden configs, old show-command "
+                   "answers and old alert history go there.",
+    "s3_bucket": "Name of the archive's S3 bucket.",
+    "s3_access_key": "Access key for the S3 archive.",
+    "s3_secret_key": "Secret key for the S3 archive.",
+    "s3_region": "Region of the S3 archive.",
+    "s3_prefix": "Folder prefix inside the bucket that Mercury writes under.",
+    "s3_verify_tls": "Check the S3 archive's TLS certificate.",
+    # ── Notifications ─────────────────────────────────────────────────────────────────────
+    "notify_smtp_host": "Email relay notifications are sent through; empty sends no email.",
+    "notify_smtp_port": "Port of the email relay.",
+    "notify_smtp_tls": "How the relay connection is secured; none only to a relay on this "
+                       "machine.",
+    "notify_smtp_username": "Sign-in name at the relay; empty sends without signing in.",
+    "notify_smtp_from": "Sender address on notification emails.",
+    "notify_link_base": "Mercury's address as people open it, used to build links in "
+                        "messages.",
+    # ── The records database ──────────────────────────────────────────────────────────────
+    "records_db_host": "PostgreSQL host for Mercury's records; empty keeps every record in "
+                       "files.",
+    "records_db_port": "Port of the records database.",
+    "records_db_name": "Name of the records database.",
+    "records_db_user": "Database role Mercury signs in to the records database as.",
+    "records_db_password": "Password of that database role.",
+    "records_store_receipts": "Where deploy receipts are kept: files or the records database.",
+    "records_store_acknowledgements": "Where Needs attention acknowledgements are kept: files "
+                                      "or the records database.",
+    "records_store_restarts": "Where the device restarts Mercury saw are kept: files or the "
+                              "records database.",
+    "records_store_restart_windows": "Where planned-restart windows are kept: files or the "
+                                     "records database.",
+    "records_store_restart_window_ends": "Where restart windows ended early are kept: files "
+                                         "or the records database.",
+    "records_store_rotations": "Where credential rotations and saves are kept: files or the "
+                               "records database.",
+    "records_store_breakglass_exports": "Where break-glass exports are kept: files or the "
+                                        "records database.",
+    "records_store_breakglass_intact": "Where whether each break-glass download arrived intact "
+                                       "is kept: files or the records database.",
+    "records_store_breakglass_checks": "Where break-glass checks are kept: files or the "
+                                       "records database.",
+    "records_store_breakglass_drills": "Where break-glass drills are kept: files or the "
+                                       "records database.",
+    "records_store_reveals": "Where the record of revealed secrets is kept: files or the "
+                             "records database.",
+    "records_store_host_steps_done": "Where host steps marked done are kept: files or the "
+                                     "records database.",
+    "records_store_heartbeat_rules": "Where heartbeat-window measurements are kept: files or "
+                                     "the records database.",
+    "records_store_netbox_removals": "Where NetBox removals are kept: files or the records "
+                                     "database.",
+    "records_store_network_settings_record": "Where each network's record of settings changes "
+                                             "is kept: files or the records database.",
+    "records_store_onboarding_runs": "Where onboarding runs are kept: files or the records "
+                                     "database.",
+    "records_store_inventory_edits": "Where inventory edits are kept: files or the records "
+                                     "database.",
+    "records_store_approval_queue": "Where each network's approval queue is kept: files or "
+                                    "the records database.",
+    "records_store_rollback_blocks": "Where rollback blocks are kept: files or the records "
+                                     "database.",
+    "records_store_retry_log": "Where authorised retries are kept: files or the records "
+                               "database.",
+    "records_store_netbox_created": "Where the NetBox objects Mercury created are listed: "
+                                    "files or the records database.",
+    "records_store_netbox_modified": "Where the NetBox objects Mercury changed are listed: "
+                                     "files or the records database.",
+    "records_store_netbox_adopted": "Where the NetBox objects Mercury adopted are listed: "
+                                    "files or the records database.",
+    "records_store_interrupted_holds": "Where operations interrupted while holding a device "
+                                       "are kept: files or the records database.",
+    "records_store_reader_values": "Where the background checks' latest values are kept: "
+                                   "files or the records database.",
+    "records_store_ai_calls": "Where the record of AI calls, which the day cap adds up, is "
+                              "kept: files or the records database.",
+    "records_store_evidence_packs": "Where alerts' evidence packs are kept: files or the "
+                                    "records database.",
+    "records_store_alert_history": "Where alert state changes are kept: files or the records "
+                                   "database.",
+    "records_store_flow_intent": "Where SDN flow intent is kept: files or the records "
+                                 "database.",
+    "records_store_explain_answers": "Where Explain's AI answers are kept: files or the "
+                                     "records database.",
+    "records_store_alert_rule_changes": "Where Grafana alert-rule changes are kept: files or "
+                                        "the records database.",
+    "records_store_ai_feedback": "Where \"Was this right?\" answers on AI results are kept: "
+                                 "files or the records database.",
+    "records_store_heal_steps": "Where the self-healing step log is kept: files or the "
+                                "records database.",
+    # ── Platforms ─────────────────────────────────────────────────────────────────────────
+    "platform_map": "Per NetBox platform: the driver Mercury connects with, the config dialect "
+                    "it renders and how it delivers.",
+    "platform_default_netmiko_type": "Driver for a device whose platform is not in the map; "
+                                     "empty skips the device instead of guessing.",
+    # ── Per network: deploys, reads and retention ─────────────────────────────────────────
+    "verify_settle_windows": "Per protocol, how long verify waits for the network to settle "
+                             "after a change.",
+    "deploy_max_workers": "How many devices a deploy changes at once.",
+    "deploy_verify_failure_limit": "Failed devices after which a deploy or restore batch stops "
+                                   "trying the rest.",
+    "nsot_device_tag_retention": "Golden-config tags kept per device before the oldest are "
+                                 "pruned.",
+    "nsot_config_read_timeout": "Seconds to wait for a device's running configuration.",
+    "reads_answer_cap_kib": "Largest show-command answer kept, in KiB; a longer one is cut.",
+    "reads_max_workers": "How many devices Show commands reads at once.",
+    "reads_retention_days": "Days show-command answers are kept before they move to the "
+                            "archive.",
+    "alert_history_retention_days": "Days alert state changes are kept before they move to "
+                                    "the archive.",
+    "ai_topology_class": "Whether AI calls about this network may include its topology: "
+                         "devices and links.",
+    "ai_device_state_class": "Whether AI calls about this network may include show-command "
+                             "answers.",
+    "ai_device_state_on": "Who turned on sending show-command answers to AI, when and why.",
+    "endpoint_read_interval_minutes": "How often the MAC, ARP and IPv6 neighbour tables are "
+                                      "read, in minutes.",
+    "endpoint_stale_after_hours": "Hours after which an endpoint's last seen location is "
+                                  "called stale.",
+    # ── Per network: SDN ──────────────────────────────────────────────────────────────────
+    "sdn_controllers": "The network's SDN controllers and how Mercury connects to each.",
+    "network_stage": "Lab, pilot or production; only a lab allows automatic SDN responses "
+                     "and BGP session clears that run on their own.",
+    "code_repository": "Git repository holding the network's SDN apps and jobs.",
+    "code_repository_branch": "Branch of that repository to fetch; empty takes its default "
+                              "branch.",
+    "code_review": "Who may publish an app version: another person, or its own author, "
+                   "recorded.",
+    "sdn_scan_ports": "Distinct ports one source must reach to count as a scan.",
+    "sdn_scan_window_seconds": "Seconds within which those ports must be reached.",
+    "sdn_scan_fallback_pps": "Packets a second on one port that raise a watch-only high-rate "
+                             "alert where flows carry no port numbers.",
+    "sdn_flood_factor": "Times a port's normal rate that counts as a flood.",
+    "sdn_flood_window_seconds": "Seconds the high rate must last to count as a flood.",
+    "sdn_flood_max_mean_bytes": "Mean packet size at or below which a high rate counts as a "
+                                "flood.",
+    "sdn_response_hard_timeout_seconds": "Default lifetime of a flow installed in response "
+                                         "to a threat.",
+    "sdn_response_max_seconds": "Longest a response flow may live.",
+    "sdn_escalate_after_minutes": "Minutes an SDN incident waits for a person before Needs "
+                                  "attention escalates it.",
+    "sdn_response_policy": "Per detection rule, which responses are allowed; the first is "
+                           "the default.",
+    # ── Per network: self-healing ─────────────────────────────────────────────────────────
+    "heal_mode": "The network's self-healing mode: off, dry run, or automatic.",
+    "heal_mode_until": "When automatic self-healing ends and the network returns to dry run.",
+    "heal_policy_confirmed": "Who confirmed the self-healing policy in force, when and why.",
+    "heal_kinds_auto": "Fix kinds automatic mode may apply without asking a person.",
+    "heal_kinds_propose": "Fix kinds proposed for a person to approve.",
+    # The "Not used today" keys below still count toward the policy's fingerprint, so a
+    # change to one still asks for the policy to be confirmed again.
+    "heal_topology_hold_minutes": "Not used today: a recent deploy, onboarding or link change "
+                                  "no longer holds healing.",
+    "heal_max_devices_drifting": "Not used today: many devices drifting at once no longer "
+                                 "holds or escalates healing.",
+    "heal_person_working_changes": "Outside changes on the far-end device that hold a port "
+                                   "bounce or OSPF reset: someone seems to be working.",
+    "heal_person_working_minutes": "Minutes within which those far-end changes are counted.",
+    "heal_grace_seconds": "How often, in seconds, a device with a fix proposal waiting is "
+                          "read again.",
+    "heal_max_per_device_hour": "Not used today: there is no limit on heals per device per "
+                                "hour.",
+    "heal_max_per_network_hour": "Not used today: there is no limit on heals per network per "
+                                 "hour.",
+    "heal_repeat_halts_hours": "Repeat window: a second port-bounce need inside it becomes a "
+                               "dampening proposal.",
+    "heal_max_removed_units": "Not used today: the lines one fix removes are not limited by "
+                              "this.",
+    "heal_max_units": "Not used today: the configuration sections one fix touches are not "
+                      "limited by this.",
+    "heal_flap_transitions": "Up and down changes of one interface that make it flapping.",
+    "heal_flap_minutes": "Minutes within which those changes count as a flap.",
+    "heal_bounce_per_port_hour": "0 turns port bounces off; 1 allows one bounce per port, and "
+                                 "a second need becomes a proposal.",
+    "heal_security_revert_adjacency": "Whether a heal may undo a one-sided security change "
+                                      "that broke an adjacency.",
+    "heal_recurrence_count": "Times the same problem opens within the window before it is "
+                             "flagged as recurring; it never stops a fix.",
+    "heal_recurrence_hours": "Hours within which those returns are counted.",
+    "heal_fight_count": "Times a fix is undone soon after that make it a fight; it raises an "
+                        "alert only.",
+    "heal_fight_minutes": "A fix undone within this many minutes counts toward a fight.",
+    "heal_fight_stop": "Not used today: a fight never stops fixing; it only raises an alert.",
+    "heal_auto_default_hours": "How long one press of Self-healing's Auto lasts, in hours.",
+    "heal_notify_team": "Team told about this network's self-healing.",
+    "heal_notify_events": "Which self-healing events tell that team.",
+    # ── Retired ───────────────────────────────────────────────────────────────────────────
+    "jenkins_step_shell": "No longer used: the shell for the removed Jenkins step.",
+    "collector_trap_enabled": "No longer used: the old trap receiver switch.",
+    "collector_netflow_enabled": "No longer used: the old NetFlow collector switch.",
+    "collector_syslog_enabled": "No longer used: the old syslog collector switch.",
+    "monitoring_identity_mode": "No longer used: how monitoring once identified a device.",
+    "monitoring_identity_field": "No longer used: the NetBox field for that identity.",
+    "monitoring_prom_label": "No longer used: the Prometheus label once used for a device.",
+    "monitoring_strip_port": "No longer used: whether the port was cut from monitoring "
+                             "targets.",
+    "promql_device_up": "No longer used: the Prometheus query for whether a device is up.",
+    "promql_cpu": "No longer used: the Prometheus query for CPU.",
+    "promql_interface_oper": "No longer used: the Prometheus query for interface state.",
+}
+
+
+def describe(key: str) -> str:
+    """The one-line description of setting *key*: ``""`` for a key with none, which
+    tests/test_settings_descriptions.py refuses for every declared key and every drawn one."""
+    return DESCRIPTIONS.get(key, "")
+
+
 def validate(settings: dict) -> tuple:
     """Validate *settings* against :data:`SCHEMA`.
 

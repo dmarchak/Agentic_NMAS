@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_macros.html" import icon, badge, how, setting_desc -%}
 {#- Board F4, decision B (signed off 2026-10-10 with the operator's validation): Settings ›
     Installation › Platforms and roles. The platform and role maps, editable (C622). The driver
     is chosen from the drivers Mercury supports; a config dialect from the dialects it knows
@@ -17,6 +17,7 @@
   {%- endif %}
   <section class="card set-card set-card-wide" id="card-platform-map" aria-labelledby="h-platform-map">
     <div class="card-head"><h2 id="h-platform-map">Platform map</h2>{{ badge('every network', 'neutral') }}</div>
+    {{ setting_desc('platform_map') }}
     <p class="muted small">A NetBox platform (its slug) → the driver Mercury opens a session with, the config dialect it renders from, and how it delivers. An unmapped platform is skipped with its reason, or takes the default driver below. Devices from a local list keep the driver their list names.</p>
     {#- C2981 (the operator, the Lab 9 sitting, 2026-11-10: four previews answered and none
         was seen): Add, Remove and Preview changes answer with the preview card drawn
@@ -54,6 +55,7 @@
       <div class="set-form">
         <label for="f-default-driver">Default driver</label>
         <div><select id="f-default-driver" name="default_driver"><option value=""{% if not pm.default_driver %} selected{% endif %}>none: skip an unmapped platform</option>{% for d in pm.drivers %}<option{% if d == pm.default_driver %} selected{% endif %}>{{ d }}</option>{% endfor %}</select>
+          {{- setting_desc('platform_default_netmiko_type') }}
           <span class="set-origin">set, it trades a skip for a guess</span></div>
         <div class="set-foot set-form-note">
           <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Preview changes</span><span class="op-busy">Previewing…</span></button>{{ how('installation-settings', 'platforms', op='changing the platform map') }}</span>

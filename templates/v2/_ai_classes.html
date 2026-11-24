@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_macros.html" import icon, badge, how, setting_desc -%}
 {#- Board H, artboard N (right; H28, the operator's N20): a network's "What AI may send": its AI
     data classes, each with its state. Device state is off by default; Turn on… opens the
     reason in place, an admin's with at least three words; Turn off is one press, no confirm.
@@ -20,7 +20,7 @@
   <div class="table-wrap"><table class="table"><thead><tr><th scope="col">Class</th><th scope="col">What</th><th scope="col">State</th><th scope="col"><span class="sr">Actions</span></th></tr></thead><tbody>
     {%- for r in aic.rows %}<tr data-ai-class="{{ r.key }}">
       <th scope="row">{{ r.name }}</th>
-      <td>{{ r.what }}</td>
+      <td>{{ r.what }}{% for key in r.settings %}{{ setting_desc(key) }}{% endfor %}</td>
       <td><span title="{{ r.detail | people }}">{{ badge(r.words, r.state) }}</span>{% if r.key == 'device_state' and r.detail %}<div class="small muted">{{ r.detail | people | times }}</div>{% endif %}</td>
       <td>
         {%- if r.key == 'device_state' and not aic.marked %}

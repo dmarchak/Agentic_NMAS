@@ -1924,6 +1924,10 @@ input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft);
 .set-choice { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .set-choice .seg-btn { cursor: pointer; }
 .set-origin { font-size: 11.5px; color: var(--ink-3); }
+/* A setting's one-line description (`_macros.setting_desc`): its own line under the setting,
+   in the secondary ink, above the state notes in the tertiary one. */
+.set-desc { display: block; font-size: 12px; line-height: 1.35; color: var(--ink-2); overflow-wrap: anywhere; }
+.card-head + .set-desc { margin-top: -4px; }
 /* The AI card's price table (read-only): scrolls inside the card on a narrow screen. */
 .set-prices { margin-top: 12px; overflow-x: auto; }
 .set-prices .set-origin { display: block; margin-top: 6px; overflow-wrap: anywhere; }

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, how, stamp, setting_desc -%}
 {#- Settings › Installation › Notifications, the Email relay card (board H, artboard B; H9;
     docs/fidelity/notifications.md): the installation's one relay, its fields saved by
     settings_v2.install_save (the "relay" card of installation_settings.CARDS: checked, written,
@@ -48,10 +48,10 @@
     {%- endif %}
     {%- if f.kind == 'choice' %}
     <label for="{{ fid }}">{{ f.label }}</label>
-    <div><select id="{{ fid }}" name="{{ f.key }}">{% for ch in f.choices %}<option value="{{ ch }}"{% if ch == f.value %} selected{% endif %}>{{ rl.tls_words.get(ch, ch) }}</option>{% endfor %}</select>{% if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
+    <div><select id="{{ fid }}" name="{{ f.key }}">{% for ch in f.choices %}<option value="{{ ch }}"{% if ch == f.value %} selected{% endif %}>{{ rl.tls_words.get(ch, ch) }}</option>{% endfor %}</select>{{ setting_desc(f.key) }}{% if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
     {%- else %}
     <label for="{{ fid }}">{{ f.label }}</label>
-    <div><input id="{{ fid }}" name="{{ f.key }}"{% if f.kind in ('relay_host', 'port', 'url') %} class="mono"{% endif %} type="{{ 'number' if f.kind == 'port' else 'text' }}" value="{{ f.value if f.value is not none else '' }}" autocomplete="off" title="{{ f.kind_words }}">{% if f.note %}<span class="set-origin">{{ f.note }}</span>{% endif %}</div>
+    <div><input id="{{ fid }}" name="{{ f.key }}"{% if f.kind in ('relay_host', 'port', 'url') %} class="mono"{% endif %} type="{{ 'number' if f.kind == 'port' else 'text' }}" value="{{ f.value if f.value is not none else '' }}" autocomplete="off" title="{{ f.kind_words }}">{{ setting_desc(f.key) }}{% if f.note %}<span class="set-origin">{{ f.note }}</span>{% endif %}</div>
     {%- endif %}
     {%- endfor %}
     <div class="set-foot">
