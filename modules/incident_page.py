@@ -118,8 +118,14 @@ FIXIT_WORKING = {"running": "attempt_running", "passed": "attempt_passed",
                  # R1: the AI investigating by itself, nobody needed until it proposes.
                  "investigating": "ai_investigating"}
 #: Why the page's state is what it is (`status`), each said once, as What to do's words.
+#: An open incident the off decision sent back to watching (`heal.decide`: "waits for
+#: self-healing: <the Off's words>", kept as its record's ``deferred`` why, C3880): it waits for
+#: self-healing to be on, never "Mercury is reading it".
+HEAL_OFF = "heal_off"
+HEAL_OFF_WORDS = "waits for self-healing:"
+
 WHYS = RESOLVED + ("healing", "watching", "verify_failed", "proposal", "decided",
-                   "lost_stream", "mercury_working") + tuple(FIXIT_WAITS.values()) + tuple(
+                   "lost_stream", "mercury_working", HEAL_OFF) + tuple(FIXIT_WAITS.values()) + tuple(
                        FIXIT_WORKING.values())
 #: A level in Needs attention's own words (`templates/v2/_attention.html`, ``LEVEL_WORDS``).
 LEVEL_WORDS = {"danger": "Critical", "warning": "Warning", "unknown": "Unknown"}
@@ -692,6 +698,11 @@ def status(incident, entry: dict, decisions: list, fixit: str = "") -> dict:
                else "decided")
     elif diagnose_stream.target_from(incident or {}):
         state, why = "needs_person", "lost_stream"
+    elif str(((incident or {}).get("deferred") or {}).get("why") or "").startswith(
+            HEAL_OFF_WORDS):
+        # C3880: self-healing is Off (or stopped everywhere), so nothing decides it now; it is
+        # read again once self-healing is on.
+        state, why = "open", HEAL_OFF
     else:
         state, why = "open", "watching"
     # The reason in plain words for a decided or failed one (`waits_words`): every part that
@@ -1230,6 +1241,10 @@ def _todo(st: dict, device: str, tl: dict, fixit: dict, item: dict) -> dict:
     if why == "watching":
         return {"words": "Nothing yet: Mercury is working on it. This page says what it "
                          "decided as soon as it does.", "more": "", "links": ["device"]}
+    if why == HEAL_OFF:
+        return {"words": "Self-healing is off on this network, so Mercury decides nothing about "
+                         "it now. It is read again once self-healing is on (Settings › "
+                         "Self-healing), or fix it yourself.", "more": "", "links": ["device"]}
     if why == MERCURY_WORKING:
         return {"words": "Nothing yet: Mercury is working on it (a self-healing restore, a saved "
                          "script's run or an AI investigation). Its outcome is drawn here when "

@@ -126,6 +126,23 @@ class TestAnOffDecision:
         said = (got.get("deferred") or {}).get("why") or ""
         assert "waits for self-healing" in said, said
 
+    @pytest.mark.parametrize("why", ["a person's Off", "Stop everywhere"])
+    def test_the_page_says_it_waits_for_self_healing_never_that_mercury_reads_it(
+            self, lab, monkeypatch, why):  # noqa: F811
+        """C3880's second half: the incident the off decision sent back is open, drawn as
+        waiting for self-healing (on its page's status and What to do, and Incidents' words),
+        never "Mercury is reading it, before it decides"."""
+        from modules import incident_page, incidents_list
+        inc = settle(RUNNING, device="edge-b", claim=False)
+        OFF[why](monkeypatch)
+        DC.run(NET, now=T0, sources=Fake(RUNNING))
+        got = incident_page.status(_of(inc["id"]), {}, [])
+        assert (got["state"], got["why"]) == ("open", incident_page.HEAL_OFF), got
+        words = incidents_list.WAITS[got["why"]]
+        assert "self-healing is off" in words and "reading it" not in words, words
+        todo = incident_page._todo(got, "edge-b", {}, {}, {"row": None})
+        assert "Self-healing is off on this network" in todo["words"], todo
+
     def test_a_standing_incident_decided_off_goes_back_on_its_decision(self, lab):  # noqa: F811
         inc_id, decision = _would_heal("edge-b")
         taken = I.take_standing(NET, inc_id, by="a test", now=T0 + 10)
