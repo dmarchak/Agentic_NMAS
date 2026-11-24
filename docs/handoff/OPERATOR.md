@@ -36,6 +36,27 @@ and the next session unblocks the item and moves the entry to Answered.
 - **Options:** A, B, C, or C with B's Needs attention queue and step timeline.
 - **Recommendation:** C with B's queue and timeline (about 30 build days by its estimate).
 
+### ci-shards-gate
+
+- **Asked (2026-11-24):** your 10-shard words cover ci.yml and scripts/nmas-shards, but the gate
+  runs CI's shards argument for argument (C349): tests/test_nmas_gate.py holds
+  `nmas-shards.matrix(...) == nmas-gate.SHARDS`, so ten shards also changes scripts/nmas-gate
+  (`SHARDS`, `BROWSER_SHARDS`, the memory `WAVES`), a protected guard. ci.yml itself needs no
+  edit (its matrix is nmas-shards' output; `-n auto` is already 4 on a 4-core runner).
+  **Options:** (a) your words for nmas-gate's shard constants and waves too; (b) CI's ten split
+  from the gate's five, which drops C349's parity (a guard test changed: your words as well).
+  **Recommendation:** (a).
+
+### c4090-confirms
+
+- **Asked (2026-11-24):** C4090's records need two confirms only a verified person can give:
+  a command plan's run approved by hash (its Fixed run with a net-zero difference and its reads),
+  and two saved fixes matching one incident. The host takes identity only from the access
+  proxy's assertion (no local exemption), and a confirm is a person's decision (CLAUDE.md), so
+  the agent cannot press them. **Options:** (a) the agent writes a walk sheet for s1 (cause, the
+  clicks, about 10 min), you press the confirms, the agent captures masked and lands C4090;
+  (b) another way you name. **Recommendation:** (a). Meanwhile the agent does the CI shards.
+
 ### c4090-records
 
 - **Asked:** C4090's three loops are the last red once the patches land (stacked suite, 2026-11-24);
