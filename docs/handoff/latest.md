@@ -39,7 +39,14 @@
   `~/nmas-worktrees/c4228`, branch fix/c4228, staged): `markUnread`, `answersSeen`, `heldParts`
   keeps an unread answer. Keep test red on cc39f197, seen test bites under a control; aimed
   798 passed. Applies cleanly after c4229 (checked); added to land_all.sh last. At landing,
-  move C4228's row to Closed. **Next:** C4226 measured with the same harness. The previous handoff is
+  move C4228's row to Closed.
+- **C4226 measured, UNKNOWN to B** (scratch `~/mercury-runs/c4226_measure_test.py`: a real
+  htmx press, its answer set on the region's own beforeSwap): a press in card B swapping the
+  whole live region (outerHTML or innerHTML) drops card A's typed text, tick and open state,
+  the focus in the field notwithstanding. **Next:** C4226's fix as a patch (a press's answer
+  into a remembered region merged, held parts outside the pressed card kept: `mergeSpec`
+  ~1125 and `holdWhileEditing` ~480 in nmas_v2.js), its test red first from the scratch shape;
+  then C4230. The previous handoff is
   docs/handoff/2026-11-23.md.
 - **C4227 closed as measured** (the refresh audit's cause 2): the live merge keeps a tick, a
   radio and a chosen option (Devices through a real `reachability` redraw; keyed rows merged
