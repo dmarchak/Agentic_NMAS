@@ -1,4 +1,4 @@
-# Handoff: the week plan, Stage 3 in progress; Stage 1's test changes wait on the operator (2026-11-23, evening)
+# Handoff: Stage 3 done; Stage 1's test changes built as patches, waiting on the operator (2026-11-23, evening)
 
 Read CLAUDE.md, this file and the standing plan, `docs/plan/week-2026-11-23.md`, then
 `docs/handoff/OPERATOR.md` (what waits on the operator). docs/handoff/START.md is the standing
@@ -13,30 +13,38 @@ ASK and refuses any commit that adds or changes a test function. Commits that ch
 function pass. Asked: `OPERATOR.md#session-namespace`. Never `--no-verify`; red-green is a
 protected guard. Tests themselves run with `scripts/nmas-test --allow-unconfined`.
 
+**Test-changing work is kept as patches in `~/mercury-runs/`**, each with its commit message
+(`.msg`), made with `git diff --cached --binary` on main at a287651e. Once a commit can be made:
+`git apply --3way --index <patch>` on main, resolve docs/OPEN_FINDINGS.md (both patches and later
+commits add a Count line and Closed rows at the same places: keep every row, write one fresh Count
+line by `~/mercury-runs/register_count.py`, run from the checkout), run the aimed tests named in the message, commit with
+`git commit -F <msg>` (check its first line), push.
+- `c3886-keyed-placeholder.patch`: C3886 (the operator's keyed-fingerprint ruling), its
+  device-write review done (`~/Documents/nmas-reports/review-devicewrite-2026-11-24-c3886.md`:
+  safe, its MEDIUM 2 and LOWs 1 to 4 and 7 answered in the patch; MEDIUM 1 is C4210). Hand check
+  in the patch (14 of 14 mutants died). Worktree `~/nmas-worktrees/c3886` (branch
+  rulings/c3886-keyed, staged). `~/nmas-worktrees/rulings-gui-kit` holds an older staged copy:
+  ignore it.
+- `c4207-c4208.patch`: C4207 and C4208 (the operator's rulings). Its device-write review was
+  started at about 17:30 Denver; its report will be
+  `~/Documents/nmas-reports/review-devicewrite-2026-11-24-c4207-c4208.md`. Worktree
+  `~/nmas-worktrees/c4207` (branch rulings/c4207-c4208, staged).
+
 ## 2. Where the plan stands
 
-- **Stage 1:** C3886 is built and hand-checked but not committed: the work is
-  `~/mercury-runs/c3886-keyed-placeholder.patch` (apply on main with `git apply --index`, after
-  `git merge` of anything since) and its message `~/mercury-runs/c3886-keyed-placeholder.msg`.
-  It is also staged in `~/nmas-worktrees/rulings-gui-kit` (branch rulings/gui-kit at 3f9c6b0d).
-  Its independent device-write review was started this evening; the report will be
-  `~/Documents/nmas-reports/review-devicewrite-2026-11-24-c3886.md`. C4206 is done (c591f1c6).
-  Every other Stage 1 item changes a test, so is BLOCKED on session-namespace.
-- **Stage 2:** the serial run started by the previous session died at 16:57 (54%), when that
-  session ended. Restarted detached (setsid) at 17:15 in `~/nmas-worktrees/serial` (fdaec024),
-  unconfined, logging to `~/mercury-runs/suite/serial.log`, JUnit `serial.xml`; about 80 min.
-  Compare with `m.xml` (12 workers, d24cbdc4) by `/tmp/c3886/junit_diff.py` (or rewrite it: it
-  parses both JUnit files by test id and prints what differs). Fixes are BLOCKED (tests).
-- **Stage 3, in progress:**
-  - DONE: `tools/review_screenshots.py` (fd9e6e77): 60 pages, both sizes, in 122 s.
-  - Running (background agents, writing only their files, uncommitted): `design/research.md`;
-    `design/review/SETTINGS.md`, `design/review/ACTIONS.md`, `design/review/WORST_CARD_PAGES.md`.
-  - Next: three proposals in `design/proposals/<letter>-<name>/` (A Workbench: list and detail,
-    assistant docked right; B Inbox: a triage queue first, the assistant a command palette;
-    C Document: one readable page per object, an outline, the assistant a drawer), each with a
-    README and static mockups using `design/proposals/_shared/tokens.css`; then the comparison
-    README, the zip, and the question to the operator.
+- **Stage 1:** C4206 DONE (c591f1c6). C3886, C4207 and C4208 built as patches (above). C4090,
+  C4205, C4081, C4200, C4195 and C4196 not started: each changes a test (BLOCKED).
+- **Stage 2:** the serial run died at 16:57 with the session that started it; restarted detached
+  (setsid) at 17:15 in `~/nmas-worktrees/serial` (fdaec024), unconfined, logging to
+  `~/mercury-runs/suite/serial.log`, JUnit `~/mercury-runs/suite/serial.xml`; about 80 minutes.
+  Compare with `m.xml` (12 workers, d24cbdc4) by `~/mercury-runs/junit_diff.py serial.xml m.xml`
+  (parses both JUnit files by test id and prints what differs).
+  Then remove the worktree. Its fixes are BLOCKED (tests).
+- **Stage 3: DONE** (fd9e6e77, a287651e, 15da95a2, 401dc9a4). The operator is asked to pick a
+  direction (OPERATOR.md#gui-direction); Stage 5's after-pick items wait on it.
+- **Stage 4 next:** the assistant (`docs/design/assistant.md`); code and tests, so built as a
+  patch until session-namespace is answered.
 
 ## 3. State
 
-- main is fd9e6e77 (pushed). Nothing deployed. No full suite this session yet.
+- main is 401dc9a4 (pushed). Nothing deployed. No full suite this session.
