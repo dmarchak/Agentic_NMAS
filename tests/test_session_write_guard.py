@@ -268,9 +268,23 @@ NOT_A_DEVICE = {
 }
 
 
+#: `_writer_sites`' answer, once a process: the program as git tracks it does not change while
+#: the suite runs, and each scan of it took about 13 s (two callers in this file and two in
+#: tests/test_one_home_per_action.py; the week plan's Stage 2, C4184).
+_WRITER_SITES: list = []
+
+
 def _writer_sites():
     """(file, enclosing functions, command) for every command string the
-    program sends that the read-only allowlist refuses, or cannot know."""
+    program sends that the read-only allowlist refuses, or cannot know. Scanned once a
+    process; each caller gets its own list."""
+    if not _WRITER_SITES:
+        _WRITER_SITES.append(_scan_writer_sites())
+    return list(_WRITER_SITES[0])
+
+
+def _scan_writer_sites():
+    """`_writer_sites`' scan."""
     import ast
 
     from modules.readonly_commands import refusal
