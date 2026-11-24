@@ -1,6 +1,29 @@
 # Handoff: the waiting patches landed; main red only on C4090 (2026-11-24, 10:45 Denver)
 
-## 00000000000. The 10:45 session (2026-11-24, from VS Code): read this first
+## 000000000000. The operator's decisions of 2026-11-24, 11:50 Denver: read this first
+
+- **The order:** (1) deploy, C4090 the only allowed failure (decisions file, 11:50 line, the
+  operator's words); (2) then make C4090's records on the sandbox device through Mercury on the
+  deployed version (outside 02:30-03:30 Denver, never on s3), capture them masked
+  (`nmas-config-read --records`), and make C4090 green; (3) Stage 2's serial vs parallel
+  counts; (4) Stage 5's direction-independent items, each deployed when green; (5) Stage 6.
+- **The deploy:** wait for GitHub's CI on **7fa974fa** (main's newest code-relevant sha;
+  later commits docs only). CI was about 20 runs behind at 12:20 Denver (4 at a time, ~26 min
+  each). When it completes, read its failures (`scripts/nmas-ci-log failed`): if the only one is
+  tests/test_v2_context_is_drawn.py::TestTheFixturesReachTheState::test_every_loop_drew_or_is_declared,
+  deploy with `scripts/nmas-deploy --to 7fa974fa… --fast-lane "<CI run #, its result: only C4090's
+  loop test failed, the operator's exception of 2026-11-24>"` (the fast lane keeps the window,
+  preflight and smoke check; `--override-ci-red` cannot carry it: it needs another source
+  green). Any other red: fix forward first, no exception for it. Log the deploy in the report.
+- **Stage 2:** the under-10-minute target is DONE (587 s at 10 workers on 3f478dda). The serial
+  run (one process, for the counts) started 12:20 Denver in an nmas-control tree; its log and
+  JUnit file: `/tmp/claude-1000/-home-dustin-Documents-Python-Agentic-NMAS/77e28053-940e-4cab-8945-86a73d686146/scratchpad/serial.log`
+  and `serial.xml` beside it (gone after a reboot: then run it again). Compare its failures with
+  the parallel run's (C4090's loop test only): any test failing serially alone is C4222's.
+- design/proposals.zip exists (53 MB, 2026-11-23); the proposals are A Workbench, B Inbox,
+  C Document.
+
+## 00000000000. The 10:45 session (2026-11-24, from VS Code)
 
 - **The overnight loop is retired** (the operator, 2026-11-24): START.md no longer writes a
   STATE word or restarts at 03:35. Sessions run from VS Code, whose label makes the namespace,
