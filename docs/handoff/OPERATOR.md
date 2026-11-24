@@ -8,16 +8,6 @@ and the next session unblocks the item and moves the entry to Answered.
 
 ## Open
 
-### session-namespace
-
-- **Asked:** a session the loop starts (systemd/cron, AppArmor label `unconfined`) cannot make a
-  network namespace, so the commit hook's red-green (`scripts/nmas-red-green` → `nmas-test`)
-  says COULD NOT ASK and refuses every commit that changes a test. VS Code's label grants it.
-- **Options:** (a) install docs/TESTING.md's `nmas-test` AppArmor profile (sudo, yours), its
-  path covering the checkout and `~/nmas-worktrees/*`; (b) start the loop from VS Code's
-  terminal; (c) let red-green pass `--allow-unconfined` (a protected guard: your words).
-- **Recommendation:** (a). C3886's finished work waits as `~/mercury-runs/c3886-keyed-placeholder.patch`.
-
 ### gui-direction
 
 - **Asked:** which GUI direction to build (the week plan's one big decision). Three drawn on the
@@ -37,6 +27,11 @@ and the next session unblocks the item and moves the entry to Answered.
 - **Recommendation:** (b), outside the backup window, never on s3. File: C4090's row, docs/OPEN_FINDINGS.md.
 
 ## Answered
+
+- **2026-11-24, session-namespace:** no longer blocking. The operator retired the overnight loop,
+  and a session from VS Code (whose label makes the namespace) landed every waiting patch,
+  eac546ae to d030f04a, the hook's red-green run on each. Its option (a), the AppArmor profile,
+  stays open only if a session outside VS Code is wanted again.
 
 - **2026-11-23, loop-script:** the script arrived (3f9c6b0d) and the crontab runs it at 03:35.
 

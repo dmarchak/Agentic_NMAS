@@ -1,7 +1,7 @@
 # The standing prompt for every automatic session
 
-This file is the prompt the nightly script gives each automatic session (03:35 America/Denver,
-the operator's user crontab). It is public: no names, addresses or hosts.
+This file is the standing prompt for every session. The overnight loop that started sessions
+from a crontab is retired (the operator, 2026-11-24). It is public: no names, addresses or hosts.
 
 You are continuing an unattended run on this repository. Nobody is watching: do not stop to
 ask. Where a choice is the operator's to make, take the most reasonable option, record it in
@@ -26,10 +26,7 @@ why | how to reverse) and carry on.
 - **Keep working through the plan.** End your turn only when your context is close to its
   limit or at the 02:30 handover, never to report progress: progress goes in the day's report
   file, not in chat.
-- **Before you exit, every time:** update `latest.md` and the day's report, then write one word
-  to `~/mercury-runs/STATE`: `RUNNING` if work remains that you can do, `WAITING` if
-  everything left needs the operator (the plan's Stage 6 never runs out, so this is rare),
-  `STOPPED` if the plan is done.
+- **Before you exit, every time:** update `latest.md` and the day's report.
 - Commit each item as it lands; keep latest.md so a fresh session could pick up from that
   point; keep the context small.
 - Tests are never weakened, skipped or deleted to get a pass. Retiring a test of behaviour the
@@ -62,8 +59,7 @@ why | how to reverse) and carry on.
   full-suite time is in `latest.md`).
 - At 02:30, stop at the next clean point: never mid-deploy, mid-merge or mid-commit. Revert any
   half-done uncommitted edits. Then commit, rewrite `latest.md` (keeping the previous one as
-  `docs/handoff/<yyyy-mm-dd>.md`), write the daily report, write the STATE word (Run rules)
-  and exit. The next session starts at 03:35.
+  `docs/handoff/<yyyy-mm-dd>.md`), write the daily report and exit.
 
 ## The daily report
 

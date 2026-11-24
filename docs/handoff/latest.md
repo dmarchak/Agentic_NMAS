@@ -1,6 +1,42 @@
-# Handoff: the waiting patches as one stack, now 36 (2026-11-24, from 01:00 Denver)
+# Handoff: the waiting patches landed; main red only on C4090 (2026-11-24, 10:45 Denver)
 
-## 0000000000. The 09:34 session (2026-11-24): read this first
+## 00000000000. The 10:45 session (2026-11-24, from VS Code): read this first
+
+- **The overnight loop is retired** (the operator, 2026-11-24): START.md no longer writes a
+  STATE word or restarts at 03:35. Sessions run from VS Code, whose label makes the namespace,
+  so the hook's red-green runs and test changes commit. OPERATOR.md#session-namespace answered.
+- **Everything that waited landed on main**, one commit per patch, hooks run (decisions file,
+  10:45 lines, for each excuse):
+  eac546ae c3886 · adfe287a c4207-c4208 · b6454600 c4205 · 2ab64859 c4090-reader ·
+  c164dc6b c4195-c4196 · (c4081 already ccbdeceb) · d58e9cb9 c4200 · 96ef2a41 render-cache ·
+  ab5f8be4 stage4-assistant · c55c9c54 stage5-settings-descriptions · 12856126 c4229 ·
+  c12f21a6 c4228 · 05757d72 c4226 · 35f915d4 c4230 · ad4ac142 c4216 · 0c298581 c2820-held ·
+  3d9e4595 c4231 · 73139098 c4232 · 7981f6f5 c2820-departs · 1c65f99b c2820-sdn ·
+  480486c2 c2820-settings · 00f1fe69 c2820-ai-words · 500c03c9 c2820-codes ·
+  d6c75170 c2820-labels · c285269a c2820-guards · cc2ff86d c2820-tiers ·
+  4b3db80c c4234-measured · a64c1d38 c4234 · 41d1cf02 c2820-departs-rid · f430983a c4234-manual
+  · edeaf472 c3601-coverage · 6cda46f4 c3601-pathtrace · 51184a35 c3601-fleetchange ·
+  f91ba3f8 c3601-rotation · d030f04a c3601-save. Then 8cd85190 (C4234's two test defects the
+  full suite found) and **fa7e5f0a** (C4237 to C4239, C3886's final review's MEDIUMs; its own
+  device-write review SAFE, review-devicewrite-2026-11-24-c4237-c4239.md).
+- `~/mercury-runs/*.patch` are all landed: do not apply them again. The worktree
+  `~/nmas-worktrees/rulings-gui-kit` (branch rulings/gui-kit) is at fa7e5f0a, clean, behind main
+  by this handoff's docs commit (`git merge --ff-only origin/main` there first).
+- **Full suite on d030f04a** (scripts/nmas-control, 8 workers, worksteal, 639 s): 10 failed,
+  32,045 passed, 425 skipped: C4090's loops (1), and C4234's two test defects (9), fixed in
+  8cd85190 (131 passed). So main is red only on C4090 (OPERATOR.md#c4090-records): no deploy.
+- **Browser tests and red-green:** the hook's runner cannot start Firefox (nor
+  `nmas-test --allow-unconfined` here); CI's interpreter run directly can
+  (`~/.local/share/nmas-py312/bin/python -m pytest`). Show a browser test red on its parent in
+  an nmas-control tree with the parent's code and the commit's tests, then write its
+  Guards-Existing trailer (the scratchpad's red_on_parent.sh did this; see decisions).
+- **A test importing a name its commit adds to an existing module** at module level never
+  collects on the parent and no trailer excuses it: import the module, read the name in the body.
+- **Next:** read CI on fa7e5f0a (`scripts/nmas-ci-log main-ci`), fix forward any red but
+  C4090's; then Stage 6: C3601's next callers (reads and the logging path, scoped in the 09:34
+  section below), C4235's measurement; C4240 to C4242 are C.
+
+## 0000000000. The 09:34 session (2026-11-24)
 
 - **Still blocked the same way** (label `unconfined`, no answer in OPERATOR.md).
 - **The stack's trees:** `~/mercury-runs/tree-stack-33.txt` (with c3601-pathtrace),
