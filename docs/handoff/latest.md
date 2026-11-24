@@ -60,7 +60,13 @@ line by `~/mercury-runs/register_count.py`, run from the checkout), run the aime
   `~/nmas-worktrees/assistant`.
 - C4195-C4196's review said not safe (a HIGH: a scan's only replying host taken as a mirror and
   rate-limited in AUTO; two MEDIUMs); its builder was fixing them in the same patch.
-- Land them in this order: C3886, C4207-C4208, C4205, C4090's reader, C4195-C4196 (after its
+- C4195-C4196: reviewed three times, the third safe (`...-c4195-c4196-r3.md`); its under-
+  responses are C4224 (on main).
+- `stage5-settings-descriptions.patch` (on 17e86d7c): every Settings screen's setting shows its
+  one line from `settings_schema.DESCRIPTIONS`; run the publication denylist test in the
+  checkout before committing it (the worktree lacks the local files). Worktree
+  `~/nmas-worktrees/settings-desc`.
+- Land them in this order (then the assistant and the settings descriptions): C3886, C4207-C4208, C4205, C4090's reader, C4195-C4196 (after its
   review), C4081, then a full suite.
 
 ## 2. Where the plan stands
