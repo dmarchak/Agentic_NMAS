@@ -172,7 +172,7 @@ class TestTheRow:
         assert r["level"] == "danger" and r["devices"] == ["r4", "r6"]
         assert "r4 logged it from 192.0.2.42 (r6) on GigabitEthernet5" in r["cause"]
         assert "r6 logged it from 192.0.2.41 (r4) on GigabitEthernet2" in r["cause"]
-        assert "Committed intent gives 192.0.2.14 to r4, so r6 departed" in r["cause"]
+        assert "Committed intent gives 192.0.2.14 to r4, so r6 differs from its intent" in r["cause"]
         assert r["action"]["href"] == "/v2/device/r6?tab=intent&list=Lab"
         assert "r4 and r6" in r["action"]["label"]
         assert r["operands"]["claimers"] == ["r4", "r6"]
