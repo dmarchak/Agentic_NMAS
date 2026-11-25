@@ -346,11 +346,11 @@ def fit_words(fit: dict, n: int) -> str:
     if fit["unknown"]:
         return "Type this feature's day and month caps to see how many fit under them."
     if not n:
-        return "None ticked: nothing starts."
+        return "None listed: nothing starts."
     if not fit["refused_incident"] and not fit["refused_cap"]:
-        return ("The ticked one fits under every cap." if n == 1 else
-                f"All {n} ticked fit under every cap.")
-    parts = [f"{fit['start']} of the {n} ticked fit under the caps"]
+        return ("The one listed fits under every cap." if n == 1 else
+                f"All {n} fit under every cap.")
+    parts = [f"{fit['start']} of the {n} fit under the caps"]
     if fit["refused_cap"]:
         parts.append(f"the later {fit['refused_cap']} would pass "
                      f"{FIT_LABELS[fit['binding']]}")

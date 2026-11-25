@@ -1562,3 +1562,26 @@ def test_a_rung_says_a_person_s_approve_sends_its_provisional_lines(key):
                     network=NET, store=store)
     assert got["refusals"] and sorted(got["provisional"]) == sorted(shapes), got
     assert len(got["refusals"]) == len(shapes), "every refusal is a provisional shape's"
+
+
+class TestTheDevicesOwnIntent:
+    """C3869: a plan needs only its own device's committed intent, so another device's file
+    that does not parse refuses nothing; the device's own missing behind that error refuses,
+    naming it, and a network whose intent reads cleanly answers {} for a device it lacks."""
+
+    BROKEN = "host_vars/s9.yml does not parse: planted"
+
+    def test_its_own_document_is_taken_when_another_file_fails(self, monkeypatch):
+        monkeypatch.setattr("modules.neighbours.committed_intents_of",
+                            lambda network: ({"s1": T.s1_intent()}, self.BROKEN))
+        assert CP.Sources("Lab").intent("s1") == (T.s1_intent(), "")
+
+    def test_its_own_missing_behind_the_error_refuses_naming_it(self, monkeypatch):
+        monkeypatch.setattr("modules.neighbours.committed_intents_of",
+                            lambda network: ({"s1": T.s1_intent()}, self.BROKEN))
+        assert CP.Sources("Lab").intent("s9") == (None, self.BROKEN)
+
+    def test_a_clean_read_answers_nothing_for_a_device_it_lacks(self, monkeypatch):
+        monkeypatch.setattr("modules.neighbours.committed_intents_of",
+                            lambda network: ({"s1": T.s1_intent()}, ""))
+        assert CP.Sources("Lab").intent("s9") == ({}, "")

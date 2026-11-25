@@ -118,12 +118,12 @@
     if (fit.unknown.length) {
       return "Type this feature's day and month caps to see how many fit under them.";
     }
-    if (!n) return 'None ticked: nothing starts.';
+    if (!n) return 'None listed: nothing starts.';
     if (!fit.refused_incident && !fit.refused_cap) {
-      return n === 1 ? 'The ticked one fits under every cap.'
-                     : 'All ' + n + ' ticked fit under every cap.';
+      return n === 1 ? 'The one listed fits under every cap.'
+                     : 'All ' + n + ' fit under every cap.';
     }
-    var parts = [fit.start + ' of the ' + n + ' ticked fit under the caps'];
+    var parts = [fit.start + ' of the ' + n + ' fit under the caps'];
     if (fit.refused_cap) {
       parts.push('the later ' + fit.refused_cap + ' would pass ' + FIT_LABELS[fit.binding]);
     }

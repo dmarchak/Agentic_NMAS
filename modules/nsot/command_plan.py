@@ -401,9 +401,19 @@ class Sources:
         from modules.neighbours import committed_intents_of
 
         intents, error = committed_intents_of(self.network)
+        # The device's own document whenever it parsed (C3869): another device's file that
+        # does not parse is that file's error, said in the log, never this plan's refusal.
+        # A manifest that does not parse leaves each document unleased (an `ip address dhcp`
+        # interface without its address); a plan reads intent's interface names, modes, access
+        # VLANs and subscription lines, never an address, so it is taken then too.
+        if host in (intents or {}):
+            if error:
+                log.warning("command plan: %s's intent read; the network's other intent: %s",
+                         host, error)
+            return intents[host] or {}, ""
         if error:
             return None, error
-        return (intents or {}).get(host) or {}, ""
+        return {}, ""
 
     def golden(self, host: str) -> tuple:
         from modules import prometheus_targets

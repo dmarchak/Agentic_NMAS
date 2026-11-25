@@ -117,9 +117,8 @@ its own for, or a heal held by a guard a person resolves (for example guard 4, t
 golden departing from its intent). Each row names the device, the incident's title (a link to
 its page), why ("held by guard 4: …", "Mercury's fix was rolled back") and about what its
 investigation costs. The line above them reads "Starts on these N open incidents, about $X";
-the line under them says how many fit under each cap, held against the network's limits (its words still those of the
-former ticked list: "2 of the 4 ticked fit under the caps; the later 2 would pass this
-feature's day cap"). With none to list it
+the line under them says how many fit under each cap, held against the network's limits ("2 of the 4 fit under the caps; the later 2 would
+pass this feature's day cap"). With none to list it
 says "No open incident to start on". Turning Automatic on starts every one of them, in that
 order, within every cap; after that, every new failure starts by itself
 ([Starting by itself](fixit-troubleshoot#automatic)).
