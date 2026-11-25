@@ -1061,6 +1061,11 @@ def run_card(network: str, key: str, *, incident: str = "", device: str = "",
                                              list=network),
                               "vals": {"key": key, "hash": offer["hash"], "view": "fix"}})
         c["none_open"] = True
+        # C3860 (the operator, 2026-11-16: "Run... with no matching incident shows one plain
+        # message ("No open incident needs this fix right now"), not a device dropdown"): the
+        # card says so and nothing else; the device and port path stays its own choice
+        # (`port`, "Or choose a device and interface…").
+        return dict(c, state="none", why="No open incident needs this fix right now")
     intents, err = committed_intents_of(network)
     if porting is None:
         others = [n for n in t.parameters if n not in ("device", "interface")]

@@ -75,8 +75,10 @@ the plan takes; **Or run on an open incident…** goes back to the incidents. Ne
 device to draw the card. The card shows exactly what it sends, its checks and its verify; the
 device is held while it runs, and a failed verify is rolled back. **Run on <device>** runs
 exactly that preview, bound to its hash, through the incident's or the device's own run path,
-and the answer is drawn in the card, with Open the run. A fix no open incident needs says so,
-with no Run button. **Cancel** or **Close** closes the card, sending nothing.
+and the answer is drawn in the card, with Open the run. A fix no open incident needs says so in
+one line, "No open incident needs this fix right now", with no device, no interface and no Run
+button; **Or choose a device and interface…** beside it opens the device path when you ask for
+it. **Cancel** or **Close** closes the card, sending nothing.
 
 ## Set Automatic, Delete and Restore {#how-it-runs}
 

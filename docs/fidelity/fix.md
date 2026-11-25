@@ -18,7 +18,14 @@ and 390 (How it runs opened, Set Automatic… and Delete… open) beside
 built-in errdisable-recover's page). The shots' world holds no committed intent, so Run…'s card
 says why it cannot offer a port; its layout is what is compared.
 Templates compared: templates/v2/fix.html, templates/v2/_fix_how.html, templates/v2/_fix_run.html, templates/v2/_fix_contents.html, templates/v2/_fix_form.html
-Templates sha256: `3854a50b173d38410725a4952003eb9d9bb18c178bcdfb494ffc6292a6a8d592`
+Compared again 2026-11-24 (C3860, the operator's review of 2026-11-16): Run… on a fix that
+matches no open incident draws one plain message, "No open incident needs this fix right now.",
+with "Or choose a device and interface…" (board fix-manual-controls screen 1's own link) and
+Close, where it drew that line above a device and interface form; the region is the same card,
+narrower in what it holds, as the operator asked, no deviation to log. Compared by the
+template's diff and tests/test_fixes_routes_rights.py's browser case, not by new shots.
+Templates sha256 before: `3854a50b173d38410725a4952003eb9d9bb18c178bcdfb494ffc6292a6a8d592`.
+Templates sha256: `4cec85a56f90a569abcb6079a06cf742ede343d03510fecdd7544309bb23c14e`
 
 Compared again 2026-11-18 (the skip-mode debt's carried-fields pass, 67b90db3): in
 `_fix_run.html` the Run button posts to `c.post.url`, which `fix_page.run_card` builds with

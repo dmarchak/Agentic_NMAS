@@ -73,6 +73,9 @@
   </div>
   {%- elif c.state == 'none' %}
   <p>{{ c.why }}.</p>
+  {%- if c.none_open and c.port_ok %}
+  <p class="small"><button type="button" class="bluf-link" data-op="fix-run-port" hx-get="{{ url_for('fixes_v2.run', key=c.key, list=c.network, port='1') }}" hx-target="#fix-run" hx-swap="outerHTML" hx-disabled-elt="this">{{ c.port_words or 'Or choose a device and interface…' }}</button></p>
+  {%- endif %}
   <div class="simple-acts">{{ cancel('Close') }}</div>
   {%- elif c.state == 'refused' %}
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not offered:</strong> {{ (c.preview.refusals if c.preview else []) | join('; ') }}</p></div>

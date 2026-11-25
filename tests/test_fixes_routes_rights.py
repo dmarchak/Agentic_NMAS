@@ -96,3 +96,52 @@ class TestDelete:
         code, html = post(card, key, "restore", reason="brought back after review")
         assert code == 200 and "Restored BPDU guard recovery" in html, (code, html[:300])
         assert "retired" not in stored(key)
+
+
+class TestRunWithNoOpenIncident:
+    """C3860 (the operator, 2026-11-16: "Run... with no matching incident shows one plain
+    message ("No open incident needs this fix right now"), not a device dropdown"): the card
+    says that and offers no device, interface or Run; its "Or choose a device and interface…"
+    opens the device path when pressed."""
+
+    def test_the_card_is_one_message_with_no_device_and_no_run(self, card, monkeypatch):  # noqa: F811
+        from modules import fix_page
+        key = saved(card, dry_run=False)
+        monkeypatch.setattr(S, "_incidents_problems", lambda network: [])
+        import app as A
+        with A.app.test_request_context(f"/v2/fixes/{key}/run?list={NET}"):
+            c = fix_page.run_card(NET, key)
+        assert (c["state"], c["why"], c["none_open"]) == (
+            "none", "No open incident needs this fix right now", True), c
+        assert c["devices"] == [] and c["ports"] == [] and c["post"] is None, c
+        assert c["port_ok"], "the device path stays its own choice"
+
+    def test_in_a_real_browser_run_then_the_port_link(self, card, monkeypatch):  # noqa: F811
+        from tests import browser
+        ok, why = browser.available()
+        if not ok:
+            pytest.skip(f"no real browser here ({why}); the card's data test above still runs")
+        import app as APP
+        key = saved(card, dry_run=False)
+        monkeypatch.setattr(S, "_incidents_problems", lambda network: [])
+        with browser.Served(APP.app) as srv, browser.Browser() as b:
+            try:
+                b.go(srv.url(f"/v2/fixes/{key}?list={NET}"))
+                b.wait_for("return !!window.htmx && !!document.querySelector("
+                           "'button[hx-get*=\"/run\"][data-op=\"plans\"]')")
+                b.click('button[hx-get*="/run"][data-op="plans"]')
+                b.wait_for("var c = document.getElementById('fix-run');"
+                           " return c && c.getAttribute('data-run-state') === 'none'"
+                           " && !document.querySelector('.htmx-request')")
+                got = b.js("var c = document.getElementById('fix-run');"
+                           " return {text: c.innerText, dev: !!c.querySelector('#fix-run-dev'),"
+                           " run: !!c.querySelector('button.btn-primary')}")
+                assert "No open incident needs this fix right now." in got["text"], got
+                assert not got["dev"] and not got["run"], got
+                b.click('#fix-run button[data-op="fix-run-port"]')
+                # The device path's own answer (this store holds no committed intent).
+                b.wait_for("return /No device of " + NET + " has an access port/.test("
+                           "document.getElementById('fix-run').innerText)")
+            finally:
+                b.go("about:blank")
+                browser.close_socketio_sessions()
