@@ -80,6 +80,11 @@ def _post(card, what, **data):
     data.setdefault("drawn", drawn_of(_get(card).get_data(as_text=True)))
     if what == "save-script":
         data.setdefault("runs_on", runs_on_of(card["client"], INC, NET, **data))
+    if what == "promote" and "runs_on" not in data:
+        # As the Promote button sends it: the line the card drew for that script (C4261).
+        m = re.search(r'"key": "%s", "list": "[^"]*", "runs_on": "([0-9a-f]*)"'
+                      % re.escape(data.get("key", "")), _get(card).get_data(as_text=True))
+        data["runs_on"] = m.group(1) if m else ""
     return card["client"].post(f"/v2/saved-plans/{INC}/{what}?list={NET}", data=data,
                                headers={"HX-Request": "true"})
 
@@ -199,6 +204,38 @@ class TestTheCard:
         r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1",
                   dry_run="1")
         assert r.status_code == 200 and S.scripts(NET) and started == [], _html(r)[:600]
+
+    def test_promote_names_what_it_runs_on_and_is_bound_to_it(self, card, monkeypatch):
+        """C4261: Promote's line names the other open incidents it runs on now, its press is
+        bound to them (refused, nothing changed, when they moved), and the retry it starts
+        runs only on those named (`retry.run`'s *only*)."""
+        from modules.heal import retry
+        r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1", dry_run="1")
+        key = S.scripts(NET)["fix-bpdu-guard-recovery"]["key"]
+        hits = [{"incident": "hi-edge1", "device": "edge1"}]
+        asked = []
+        monkeypatch.setattr(retry, "would_run", lambda network, match, **kw: asked.append(kw) or {
+            "auto": True, "devices": sorted({h["device"] for h in hits}), "error": "",
+            "incidents": list(hits)})
+        started = []
+        monkeypatch.setattr(retry, "run_soon", lambda *a, **kw: started.append(kw))
+        html = _html(_get(card))
+        asked[:] = [kw for kw in asked if kw.get("exclude") != (INC,)]   # Save's own line
+        # The card's own incident counts (the review of C4261): the retry has always sent it
+        # back too when it stands, so the line asks for every match, none left out.
+        assert f'data-runs-on="{key}">Promote runs it now on 1 open incident, on edge1' \
+            in html, html[:900]
+        assert asked and all(kw.get("exclude") == ("",) for kw in asked), asked
+        drawn = re.search(r'"key": "%s", "list": "[^"]*", "runs_on": "([0-9a-f]{16})"'
+                          % re.escape(key), html).group(1)
+        hits.append({"incident": "hi-edge2", "device": "edge2"})
+        r = _post(card, "promote", key=key, runs_on=drawn)
+        assert r.status_code == 409 and "moved since its line was drawn" in _html(r), \
+            _html(r)[:600]
+        assert S.scripts(NET)[key]["mode"] != "auto" and started == []
+        r = _post(card, "promote", key=key)
+        assert r.status_code == 200 and S.scripts(NET)[key]["mode"] == "auto", _html(r)[:600]
+        assert [sorted(kw["only"]) for kw in started] == [["hi-edge1", "hi-edge2"]], started
 
     def test_the_runs_on_line_follows_the_ticks_and_the_dry_run_box(self, card, monkeypatch):
         """C4205 (the review of 33bf385f, MEDIUM: the line counted the default match while Save

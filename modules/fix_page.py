@@ -767,7 +767,9 @@ def automatic_form(network: str, key: str, who: dict) -> dict:
         return {"offer": False, "right": "", "ran": {}, "why": "", "version": 0}
     n = S.versions(f)[-1]["version"]
     ran = S.verified_run(network, f)
-    return {"offer": True, "version": n, "ran": ran,
+    # What it runs on now, said before the press and bound to it (C4261): *runs_on* the
+    # digest the form sends, *runs_on_words* the line.
+    return {"offer": True, "version": n, "ran": ran, **S.promote_line(network, key),
             "right": (identity.ai_acting_refusal("set a fix Automatic")
                       or identity.right_refusal("self_healing", **who)),
             "why": "" if ran else (f"version {n} has no verified run yet: press Run… once, on a "

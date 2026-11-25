@@ -25,7 +25,15 @@ Close, where it drew that line above a device and interface form; the region is 
 narrower in what it holds, as the operator asked, no deviation to log. Compared by the
 template's diff and tests/test_fixes_routes_rights.py's browser case, not by new shots.
 Templates sha256 before: `3854a50b173d38410725a4952003eb9d9bb18c178bcdfb494ffc6292a6a8d592`.
-Templates sha256: `6846e56e47df66e3f90eced5797956d98cca3ae1b43c660c784a527e2e96095e`
+Compared again 2026-11-25 (C4261): Set Automatic…'s form draws one more line under its verified
+run, what it runs on now ("Set Automatic runs it now on N open incidents, on <devices>", or
+"It runs on no open incident now"), with the digest its press is bound to as a hidden field.
+The board drew the form with no such line: a deviation, logged (docs/STANDING_APPROVAL_LOG.md,
+"Promote and Set Automatic name what they run on (C4261)"). No other region moved. Compared by
+the template's diff and tests/test_fixes_routes_rights.py's Set Automatic tests, not by new
+shots. Templates sha256 before:
+`6846e56e47df66e3f90eced5797956d98cca3ae1b43c660c784a527e2e96095e`.
+Templates sha256: `b44713e5451132ece10d4766ab9d922f9de525739b0abde295d00a0a8a383e07`
 
 Compared again 2026-11-18 (the skip-mode debt's carried-fields pass, 67b90db3): in
 `_fix_run.html` the Run button posts to `c.post.url`, which `fix_page.run_card` builds with

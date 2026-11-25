@@ -4605,9 +4605,14 @@ def _saved_plans(client, _lab, _mp):
                         data={"name": "BPDU guard recovery", "keep_cause": "1", "dry_run": "1",
                               "drawn": drawn.group(1) if drawn else "",
                               "runs_on": runs_on.group(1) if runs_on else ""})
-        assert "BPDU guard recovery</a>, Dry run." in r.get_data(as_text=True), r.status_code
+        saved_card = r.get_data(as_text=True)
+        assert "BPDU guard recovery</a>, Dry run." in saved_card, r.status_code
+        # Promote sends the line its card drew (C4261), as its button's hx-vals carry it.
+        line = re.search(r'"key": "fix-bpdu-guard-recovery", "list": "Lab", "runs_on": '
+                         r'"([0-9a-f]*)"', saved_card)
         r = client.post(f"{base}/promote?list=Lab", headers=hx,
-                        data={"key": "fix-bpdu-guard-recovery"})
+                        data={"key": "fix-bpdu-guard-recovery",
+                              "runs_on": line.group(1) if line else ""})
         assert "Promoted BPDU guard recovery" in r.get_data(as_text=True), r.status_code
         assert command_policy.propose("Lab", "cisco_ios",
                                       "interface {interface} > description {description}",

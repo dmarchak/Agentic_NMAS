@@ -99,11 +99,16 @@ NOT_DIRECT = {
     # Gate 1b: saving and promoting record a network's scripts, actions and line shapes; none
     # configures a device (a saved action's own run is DIRECT above, `device_run`; a promoted
     # script's runs are self-healing's, as a proposal's are, C2477).
-    "saved_plans_v2.save_script": "records a self-heal script in Dry run; configures no device",
+    "saved_plans_v2.save_script": "records a self-heal script; configures no device itself "
+                                  "(an Automatic one starts self-healing's retry on the open "
+                                  "incidents its line named, C4050, whose runs are "
+                                  "self-healing's)",
     "saved_plans_v2.save_action": "records a reusable action in the catalog; configures no "
                                   "device",
     "saved_plans_v2.promote": "changes a saved script's mode and binds its plan's digest; "
-                              "configures no device (its runs are self-healing's)",
+                              "configures no device itself (it starts self-healing's retry "
+                              "on the open incidents its line named, C4261, whose runs are "
+                              "self-healing's)",
     "saved_plans_v2.approve_shape": "approves a line shape into Mercury's rule for raw lines; "
                                     "configures no device",
     # Troubleshooting › Fixes (the Fixes page as one list, the operator 2026-11-16): a saved
@@ -116,7 +121,8 @@ NOT_DIRECT = {
     "fixes_v2.delete": "marks a saved fix deleted, its record kept; configures no device",
     "fixes_v2.restore": "clears a saved fix's deletion; configures no device",
     "fixes_v2.automatic": "changes a saved fix's mode and binds its plan's digest; configures "
-                          "no device (its runs are self-healing's, as saved_plans_v2.promote's)",
+                          "no device itself (saved_plans_v2.promote's own path: it starts "
+                          "self-healing's retry on the open incidents its line named, C4261)",
     "adopt_v2.confirm": "adoption names an address, not an inventory device",
     "oob_onboard_v2.confirm": "out-of-band onboarding names a console port, not an inventory "
                               "device",

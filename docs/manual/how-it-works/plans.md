@@ -115,7 +115,10 @@ and the card then says so in one line with **Save this fix…**, which shows the
 Save saves what the card drew: if another fix verified on the incident, its problem's match
 moved, or the other open incidents its line names changed, between the card being drawn and
 your press, nothing is saved and nothing is started, and the card says what moved, both sides
-named, to read again. Every saved fix is listed on [Fixes](fixes).
+named, to read again. **Promote** (and a fix page's **Set Automatic…**) says the same before
+you press it, "Promote runs it now on 2 open incidents, on edge1 and edge2" (this incident among
+them when it matches), and runs only on those; if they changed since it was drawn, nothing is promoted. Every saved fix is listed on
+[Fixes](fixes).
 
 **When a script fires.** After each self-healing decision that Mercury's own code cannot fix
 (a can't-fix), and again before the AI starts by itself on an incident, every saved script of

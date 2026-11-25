@@ -42,6 +42,11 @@ def saved(card, dry_run=True):  # noqa: F811
 
 
 def post(card, key, what, **data):  # noqa: F811
+    if what == "automatic" and "runs_on" not in data:
+        # As Set Automatic…'s form sends it: the line its page drew (C4261).
+        page = card["client"].get(f"/v2/fixes/{key}?list={NET}").get_data(as_text=True)
+        m = re.search(r'name="runs_on" value="([0-9a-f]*)"', page)
+        data["runs_on"] = m.group(1) if m else ""
     r = card["client"].post(f"/v2/fixes/{key}/{what}?list={NET}", data=data, headers=HX)
     return r.status_code, re.sub(r"\s+", " ", r.get_data(as_text=True))
 

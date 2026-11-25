@@ -29,7 +29,7 @@
   <ul class="small tl-record">
   {%- for s in c.scripts %}
     <li data-script="{{ s.key }}">{{ s.name }}: {{ 'Auto, promoted by ' ~ (s.promoted_by | people) if s.mode == 'auto' else 'Dry run' }}; fired {{ s.fired }} time{{ 's' if s.fired != 1 }}
-    {%- if s.mode != 'auto' %} <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-post="{{ url_for('saved_plans_v2.promote', incident=c.incident, list=c.list) }}" hx-vals='{{ {"key": s.key, "list": c.list} | tojson }}' hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this"{% if c.rights.script %} disabled title="{{ c.rights.script | people }}"{% endif %}{{ gate('approve') }}><span class="op-idle">Promote {{ s.name }}</span><span class="op-busy">Promoting…</span></button>{{ how('plans', compact=True, op='a saved plan') }}</span>{% endif %}</li>
+    {%- if s.mode != 'auto' %} <span class="small" data-runs-on="{{ s.key }}">{{ s.runs_on_words }}.</span> <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-post="{{ url_for('saved_plans_v2.promote', incident=c.incident, list=c.list) }}" hx-vals='{{ {"key": s.key, "list": c.list, "runs_on": s.runs_on} | tojson }}' hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this"{% if c.rights.script %} disabled title="{{ c.rights.script | people }}"{% endif %}{{ gate('approve') }}><span class="op-idle">Promote {{ s.name }}</span><span class="op-busy">Promoting…</span></button>{{ how('plans', compact=True, op='a saved plan') }}</span>{% endif %}</li>
   {%- endfor %}
   </ul>
 {%- endif %}
@@ -112,7 +112,8 @@
     <details class="simple-menu menu-wrap" data-keep="saved-promote-{{ c.incident }}"><summary role="button" title="Opens Promote: the script then runs, verified and recorded, when its match holds, while self-healing is in Auto">Promote…</summary>
       <div class="menu simple-promote" role="group" aria-label="Promote {{ SV.script.name }}">
         <p class="small">From Dry run to Auto: when its match holds it runs, its own preview, verify and rollback, recorded, while self-healing is in Auto.</p>
-        <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="plans" hx-post="{{ url_for('saved_plans_v2.promote', incident=c.incident, list=c.list) }}" hx-vals='{{ {"key": SV.script.key, "list": c.list} | tojson }}' hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this"{% if c.rights.script %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">Promote {{ SV.script.name }}</span><span class="op-busy">Promoting…</span></button>{{ how('plans', compact=True, op='a saved plan') }}</span>
+        <p class="small" data-runs-on="{{ SV.script.key }}">{{ SV.script.runs_on_words }}.</p>
+        <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="plans" hx-post="{{ url_for('saved_plans_v2.promote', incident=c.incident, list=c.list) }}" hx-vals='{{ {"key": SV.script.key, "list": c.list, "runs_on": SV.script.runs_on} | tojson }}' hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this"{% if c.rights.script %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">Promote {{ SV.script.name }}</span><span class="op-busy">Promoting…</span></button>{{ how('plans', compact=True, op='a saved plan') }}</span>
       </div>
     </details>
     {%- endif %}

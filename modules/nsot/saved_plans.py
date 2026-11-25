@@ -1625,6 +1625,9 @@ def offer(network: str, incident_id: str, *, actor: str, actor_verified: str,
                        "fired": len(e.get("track") or []), "match": e.get("match") or {}}
                       for k, e in sorted(scripts(network).items())
                       if prob.condition and matches(e.get("match") or {}, prob)]
+    for s in out["scripts"]:
+        if s["mode"] != "auto":
+            s.update(promote_line(network, s["key"], incident_id))
     inc = section.incident_of(network, found).get("incident")
     if inc is None:
         return dict(out, why=f"{incident_id}'s record could not be read")
@@ -1643,7 +1646,9 @@ def offer(network: str, incident_id: str, *, actor: str, actor_verified: str,
     fills = default_fills(t, prob, rec.get("params") or {})
     out.update(state="ready", run=run_id, plan=rec.get("title") or t.title, match=match,
                fills=fills, drawn=drawn_digest(run_id, match, fills),
-               preview=match_preview(network, match), saved=saved_from(network, run_id),
+               preview=match_preview(network, match),
+               saved=_with_promote_line(network, saved_from(network, run_id),
+                                        incident_id),
                name=default_name(prob, rec.get("title") or t.title),
                dismissed=put_off(inc), runs_on=runs_on(network, match, incident_id))
     return out
@@ -1673,6 +1678,27 @@ def drawn_refusal(offered: dict, posted: str) -> str:
             "card again and save what it draws; nothing was saved")
 
 
+def promote_line(network: str, key: str, incident_id: str = "") -> dict:
+    """What Promote (Set Automatic… on a fix's page) runs on now, said before the press
+    (C4261, as Save's line, C4050): ``{"runs_on", "runs_on_words"}``, the digest its press is
+    bound to and the line's words, for the saved script *key*'s match. *incident_id* (the card
+    it is pressed on) names the press only: the card's own incident is counted, as the retry
+    has always sent it back too when it stands (the review of C4261), unlike Save's line, whose
+    own incident is the one just fixed. A read."""
+    f = scripts(network).get(key) or {}
+    on = runs_on(network, f.get("match") or {"condition": ""}, "",
+                 press="Set Automatic" if not incident_id else "Promote")
+    return {"runs_on": on["digest"], "runs_on_words": on["words"]}
+
+
+def _with_promote_line(network: str, saved: dict, incident_id: str) -> dict:
+    """*saved* (`saved_from`) with its script's Promote line when it is not Automatic yet."""
+    s = (saved or {}).get("script")
+    if not s or s.get("mode") == "auto":
+        return saved
+    return dict(saved, script=dict(s, **promote_line(network, s["key"], incident_id)))
+
+
 #: The most devices Save's line names; the rest are counted ("and 3 more").
 RUNS_ON_NAMED = 10
 
@@ -1685,9 +1711,11 @@ def kept_match(match: dict, keep) -> dict:
             **{k: v for k, v in match.items() if k in OPTIONAL_MATCH and keep(k)}}
 
 
-def runs_on(network: str, match: dict, incident_id: str, dry_run: bool = False) -> dict:
+def runs_on(network: str, match: dict, incident_id: str, dry_run: bool = False, *,
+            press: str = "Save") -> dict:
     """What Save (Automatic, or Dry run when *dry_run*, with *match*) runs on besides
-    *incident_id*, said before the press (ruling 3, the operator, 2026-11-18: "Save names the
+    *incident_id* ("" for none: a fix's own page), said before the press (*press* names it:
+    Save, Promote or Set Automatic, C4261) (ruling 3, the operator, 2026-11-18: "Save names the
     count and the devices it will run on. No new confirm"; C4205: the match the ticks keep,
     redrawn as they change): ``{"count", "devices", "words"}``, read from the script-saved
     retry's own selection (`heal.retry.would_run`), never a second matching. A read."""
@@ -1696,23 +1724,26 @@ def runs_on(network: str, match: dict, incident_id: str, dry_run: bool = False) 
     try:
         got = retry.would_run(network, match, exclude=(incident_id,))
     except Exception as exc:                            # noqa: BLE001 (said on the card)
-        log.error("saved plans: what %s's Save runs on could not be read: %s", incident_id, exc)
+        log.error("saved plans: what %s's %s runs on could not be read: %s", incident_id,
+                  press, exc)
         got = {"auto": False, "incidents": [], "devices": [], "error": str(exc)}
     n, devices = len(got["incidents"]), got["devices"]
+    other = "other " if incident_id else ""
     if got["error"]:
-        words = f"Which other open incidents Save runs it on could not be read ({got['error']})"
+        words = (f"Which {other}open incidents {press} runs it on could not be read "
+                 f"({got['error']})")
     elif not n:
-        words = "It runs on no other open incident now"
+        words = f"It runs on no {other}open incident now"
     else:
         named = devices[:RUNS_ON_NAMED]
         more = len(devices) - len(named)
         on = (", ".join(named[:-1]) + " and " + named[-1] if len(named) > 1 and not more
               else ", ".join(named) + (f" and {more} more" if more else ""))
-        what = f"{n} other open incident{'s' if n != 1 else ''}" + (f", on {on}" if on else "")
+        what = f"{n} {other}open incident{'s' if n != 1 else ''}" + (f", on {on}" if on else "")
         # A Dry run save starts no retry (the second review's N4): each records what it would
         # do when it is next decided.
         words = (f"In Dry run it changes nothing: it records what it would do on {what}, "
-                 "each when it is next decided" if dry_run else f"Save runs it now on {what}" if got["auto"]
+                 "each when it is next decided" if dry_run else f"{press} runs it now on {what}" if got["auto"]
                  else f"It runs on {what}, once self-healing is on")
     # What the press is bound to (C4050): the incidents named, by id, and whether they run now.
     import hashlib

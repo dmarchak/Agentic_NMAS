@@ -47,6 +47,7 @@
       <form class="simple-form" hx-post="{{ url_for('fixes_v2.automatic', key=p.key, list=p.network) }}" hx-target="#fix-how" hx-swap="outerHTML">
         {%- if auto.ran %}
         <p>Version {{ auto.version }} verified on run <span class="mono">{{ auto.ran.id[-8:] }}</span>{% if auto.ran.at %}, {{ clock(auto.ran.at, 'date') }}{% endif %}. Automatic, it runs by itself on a matching incident while {{ p.network }}'s self-healing is in Auto, on your standing approval of this version's plan.</p>
+        <p class="small" data-runs-on="automatic"><input type="hidden" name="runs_on" value="{{ auto.runs_on }}">{{ auto.runs_on_words }}.</p>
         {%- else %}
         <p>Not yet: {{ auto.why }}.</p>
         {%- endif %}

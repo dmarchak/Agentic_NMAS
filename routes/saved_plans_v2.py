@@ -106,10 +106,10 @@ def not_now(incident):
     return _draw(network, incident)
 
 
-def _refused(network, incident, exc, code=409):
+def _refused(network, incident, exc, code=409, lead="Not saved"):
     return _draw(network, incident, 403 if "may not approve" in str(exc)
                  or "does not hold" in str(exc) or "verified person" in str(exc) else code,
-                 level="danger", words=f"Not saved: {exc}")
+                 level="danger", words=f"{lead}: {exc}")
 
 
 def _already(network, incident, e):
@@ -218,19 +218,43 @@ def promote(incident):
     """Promote a saved script from Dry run to Auto (self-healing rights)."""
     from modules.nsot import saved_plans as S
 
-    network = _list_name()
+    network, form = _list_name(), request.form
     try:
-        e = S.promote((request.form.get("key") or "").strip(), network=network, **_who())
+        e = promote_bound(network, (form.get("key") or "").strip(),
+                          (form.get("runs_on") or "").strip(), incident)
     except S.Refused as exc:
-        return _refused(network, incident, exc)
-    # C3805, and the retry policy (the operator, 2026-11-16): its open matches whose fixes
-    # failed are tried again once, keyed by this promotion.
-    from modules.heal import retry
-    retry.run_soon(network, "script_saved", script=e["key"],
-                   instance=f"{e['key']}:{e.get('promoted_at') or ''}", how="promoted",
-                   by=_who()["actor"])
+        return _refused(network, incident, exc, lead="Not promoted")
     return _draw(network, incident, level="ok", words=(
         f"Promoted {e['name']}: when its match holds it runs, while self-healing is in Auto"))
+
+
+def promote_bound(network: str, key: str, posted: str, incident: str = ""):
+    """THE one path a promotion takes (the card's Promote and a fix page's Set Automatic…,
+    C4261): the open incidents it runs on now, as its line named them before the press
+    (`saved_plans.promote_line`, *posted* its digest), are read again and a moved or unread
+    list refuses before anything changes; then the promotion, and the retry pass of its open
+    matches whose fixes failed (C3805, the retry policy, the operator, 2026-11-16), keyed by
+    this promotion and run only on the incidents named (`retry.run`'s *only*, C4050).
+    Returns the promoted fix; raises `saved_plans.Refused` naming why."""
+    from modules.heal import retry
+    from modules.nsot import saved_plans as S
+
+    f = S.scripts(network).get(key) or {}
+    press = "Promote" if incident else "Set Automatic"
+    # Every open incident it matches, the card's own counted (`saved_plans.promote_line`).
+    on = S.runs_on(network, f.get("match") or {"condition": ""}, "", press=press)
+    if posted != on["digest"]:
+        raise S.Refused(f"the open incidents {press} runs on moved since its line was drawn "
+                        f"(drawn {posted or 'none'}, now {on['digest']}: {on['words']}); "
+                        "read it again; nothing was changed")
+    if on["unread"]:
+        raise S.Refused(f"{on['words']}, so {press} cannot name what it would run on; read it "
+                        "again; nothing was changed")
+    e = S.promote(key, network=network, **_who())
+    retry.run_soon(network, "script_saved", script=e["key"],
+                   instance=f"{e['key']}:{e.get('promoted_at') or ''}", how="promoted",
+                   by=_who()["actor"], only=on["ids"])
+    return e
 
 
 @bp.route("/<incident>/approve-shape", methods=["POST"])

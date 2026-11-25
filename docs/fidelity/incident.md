@@ -196,7 +196,15 @@ tests/test_saved_plans_v2.py's
 `test_a_save_whose_other_incidents_moved_is_refused_and_starts_nothing`, not by new shots.
 Templates sha256 before:
 `692878743ef29c51d1b75590e0a4f02b76d645ea6e913db5b44b1d61af42b5ef`.
-Templates sha256: `5a384c73ead8b09ccb2e81ea5a6ceb41b06b5c4709baae86ff49e5ce6de0cd46`
+Compared again 2026-11-25 (C4261): the saved card's Promote… menu and each listed script's
+Promote draw one line, what Promote runs on now ("Promote runs it now on N open
+incidents, on <devices>", the card's own counted), the button carrying the digest its press is bound to. The boards drew
+Promote with no such line: a deviation, logged (docs/STANDING_APPROVAL_LOG.md, "Promote and Set
+Automatic name what they run on (C4261)"). No other region moved. Compared by the template's diff
+and tests/test_saved_plans_v2.py's `test_promote_names_what_it_runs_on_and_is_bound_to_it`, not
+by new shots. Templates sha256 before:
+`5a384c73ead8b09ccb2e81ea5a6ceb41b06b5c4709baae86ff49e5ce6de0cd46`.
+Templates sha256: `f877272171b2a0626ca1114816e065f058a15ba31d48d9e0bc579a8a58468ea6`
 Templates sha256 before the saved plans card said a right's holders unset (2026-11-15, Gate 1b's review, item 7; the row "Rights not set" below): `770515ac382839dde54d1ae789920a7578375acf87fe6fb9d221961273361976`
 Templates sha256 before C3725's session moved from a press to the proposal's record (2026-11-15, the operator; the session row below): `90974cd13f0f0f2aece5e005c3cc5e3c2c21726aa22192e6535bce1ca4953909`
 Templates sha256 before the verify-speed gate's page fixes (2026-11-14, C3725, C3727, C3728, C3729, below): `b8969275f9560c0d423e154d881391989736eb6548a35bb27ab4020fa5542a6c`

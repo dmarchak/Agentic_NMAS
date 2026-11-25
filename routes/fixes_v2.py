@@ -217,21 +217,18 @@ def automatic(key):
     (`saved_plans.promote`, the incident card's Promote's own path); then, as that Promote does,
     the retry pass tries its open matches whose fixes failed once (`heal.retry.run_soon`).
     The self-healing right; the AI none. Sends nothing to a device itself."""
-    from modules.heal import retry
     from modules.nsot import saved_plans as S
-    from routes.saved_plans_v2 import _who as who
+    from routes.saved_plans_v2 import promote_bound
 
     ref = _page_ref()
     key = str(key)[:64]
     try:
-        e = S.promote(key, network=ref.name, **who())
+        # The card's Promote's own path (C4261): bound to the line Set Automatic… drew.
+        e = promote_bound(ref.name, key, (request.form.get("runs_on") or "").strip())
     except S.Refused as exc:
         return _how(ref.name, key, 403 if "may not" in str(exc) or "does not hold" in str(exc)
                     or "verified person" in str(exc) else 409, level="danger",
                     words=f"Not set Automatic: {exc}")
-    retry.run_soon(ref.name, "script_saved", script=e["key"],
-                   instance=f"{e['key']}:{e.get('promoted_at') or ''}", how="promoted",
-                   by=who()["actor"])
     return _how(ref.name, key, level="ok", words=(
         f"Set Automatic: {e.get('name') or key} runs by itself on a matching incident while "
         f"{ref.name}'s self-healing is in Auto"))
