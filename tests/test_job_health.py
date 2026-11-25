@@ -222,10 +222,12 @@ def test_the_headline_counts_and_names():
     # this headline "5 of 6 job(s) ok; not ok: startup-check" (CI run 1607); their own tests
     # are tests/test_c53_device_stage.py's `TestTheRows`.
     h = J.health(NOW, _runner(LOADED, journal), images=[], settings=[],
-                 rotations=[], sessions=[], version=[], readers=[], updater=[], startup=[])
+                 rotations=[], sessions=[], version=[], readers=[], updater=[], startup=[],
+                 heal_runner=[])
     assert h["headline"] == f"{len(J.JOBS)} of {len(J.JOBS)} job(s) ok"
     h = J.health(NOW, _runner(LOADED, _fail(NOW - 60)), images=[], settings=[],
-                 rotations=[], sessions=[], version=[], readers=[], updater=[], startup=[])
+                 rotations=[], sessions=[], version=[], readers=[], updater=[], startup=[],
+                 heal_runner=[])
     assert h["headline"].startswith("0 of") and J.JOBS[0]["unit"] in h["headline"]
 
 
@@ -774,3 +776,26 @@ class TestAGateVerdictIsTheCauseNeverItsAdvice:
         assert s["last_error"].startswith("r7   NOT BUILT - baseline/20261001T235242Z holds no")
         assert not J._NAMES_A_FAILURE.search("it was not built yet")
         assert J._NAMES_A_FAILURE.search("UNPROVEN: Default has no earned baseline")
+
+
+def test_a_stopped_heal_detect_pass_is_a_row_while_healing_is_on():
+    """C2393: a dead runner stopped self-healing with nothing on screen. Its row is ok while it
+    runs, or while healing is off on every network; not running while healing is on, it is
+    stale, naming those networks and how it clears; networks that cannot be read say so."""
+    from modules.heal import detect_read
+    import pytest as _pt
+    mp = _pt.MonkeyPatch()
+    try:
+        mp.setattr(detect_read, "_healing_on", lambda names: [n for n in names if n != "Off"])
+        (row,) = J.heal_runner_rows(running=True, networks=["Lab"])
+        assert (row["unit"], row["state"]) == ("self-healing:detect-pass", "ok")
+        (row,) = J.heal_runner_rows(running=False, networks=["Off"])
+        assert row["state"] == "ok" and "healing is off on every network" in row["detail"]
+        (row,) = J.heal_runner_rows(running=False, networks=["Lab", "Off"])
+        assert row["state"] == "stale" and row["list"] == "Lab"
+        assert "decides nothing on Lab" in row["detail"] and row["action"]["label"]
+        mp.setattr(detect_read, "_healing_on", lambda names: 1 / 0)
+        (row,) = J.heal_runner_rows(running=False, networks=["Lab"])
+        assert row["state"] == "unknown" and "ZeroDivisionError" in row["detail"]
+    finally:
+        mp.undo()

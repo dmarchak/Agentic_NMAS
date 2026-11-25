@@ -1544,6 +1544,36 @@ def updater_rows() -> list:
                  "detail": f"the check raised {type(exc).__name__}: {exc}"}]
 
 
+def heal_runner_rows(running=None, networks=None) -> list:
+    """Self-healing's detect pass, its runner thread (`heal.detect.start`, `running`; C2393: a
+    dead runner stopped healing with nothing on screen): one row, ``ok`` while it runs or while
+    healing is off on every network, else ``stale``, naming the networks whose healing is on
+    and how it clears. *running* and *networks* are for tests."""
+    from modules.heal import detect, detect_read
+    from modules import integration_groups
+
+    base = {"unit": "self-healing:detect-pass", "max_age_minutes": 0,
+            "what": "Self-healing's detect pass: each watching incident read and decided"}
+    alive = detect.running() if running is None else running
+    try:
+        names = integration_groups.network_names() if networks is None else list(networks)
+        on = detect_read._healing_on(names)
+    except Exception as exc:                            # noqa: BLE001 (said, never lost)
+        return [dict(base, state="unknown",
+                     detail=f"the networks could not be read: {type(exc).__name__}: {exc}")]
+    if alive:
+        return [dict(base, state="ok", detail="running")]
+    if not on:
+        return [dict(base, state="ok", detail="not running, and healing is off on every "
+                                              "network")]
+    return [dict(base, state="stale", list=", ".join(on),
+                 detail=(f"the detect pass is not running, so self-healing decides nothing on "
+                         f"{', '.join(on)}: an incident is opened and watched, never decided "
+                         "or healed. Clears when the pass runs again"),
+                 action={"label": ("Read the app log for the heal detect pass; a restart of "
+                                   "Mercury starts it again")})]
+
+
 def helper_rows() -> list:
     """Every root-installed helper the updater's rows do not cover, compared with this
     release by its own check (`modules.host_helpers`): a drifted or missing helper is a row
@@ -1569,7 +1599,7 @@ def health(now: float = None, run=None, images=None, settings=None,
            rotations=None, ztp=None, responder=None,
            startup=None, sessions=None, version=None, readers=None,
            breakglass=None, prometheus=None, monitoring=None, updater=None,
-           helpers=None, serials=None, lease_identity=None) -> dict:
+           helpers=None, serials=None, lease_identity=None, heal_runner=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
     are read from Proxmox. *settings*, *rotations*: likewise."""
     jobs = [job_status(j, now, run) for j in JOBS]
@@ -1591,6 +1621,7 @@ def health(now: float = None, run=None, images=None, settings=None,
     jobs += updater_rows() if updater is None else list(updater)
     jobs += helper_rows() if helpers is None else list(helpers)
     jobs += serial_rows() if serials is None else list(serials)
+    jobs += heal_runner_rows() if heal_runner is None else list(heal_runner)
     bad = [j["unit"] for j in jobs if j["state"] not in OK_STATES]
     na = sum(1 for j in jobs if j["state"] == "not_applicable")
     gone = sum(1 for j in jobs if j["state"] == "departed")

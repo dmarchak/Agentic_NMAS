@@ -32,7 +32,7 @@ def _health(journal, **rows):
     """job_health.health() over the measured systemd shapes, with every other
     family empty unless given."""
     kw = dict(images=[], settings=[], rotations=[], ztp=[], responder=[],
-              startup=[], sessions=[], version=[], readers=[], updater=[])
+              startup=[], sessions=[], version=[], readers=[], updater=[], heal_runner=[])
     kw.update(rows)
     return lambda: J.health(NOW, _runner(LOADED, journal), **kw)
 
