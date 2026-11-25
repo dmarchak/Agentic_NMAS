@@ -29,7 +29,17 @@ Hashed again 2026-11-22 for the merge of the Lab 9 kit's hotfix branch into main
 templates with the two `_sdn_op.html` changes above; nothing drawn on Policies changes (the
 templates before it, main's, hashed
 `3894edfb5841d59908c2c56202fb91257d4e73df9e572c244bdc39b3f1d9b389`).
-Templates sha256: `22f2f4f4dd4dea5c1cbbf8a53bbe6b4660cd5d624b3df0e0d1c3ebc0174bb295`
+Compared again 2026-11-24 (C2968, the operator's layout of 2026-11-10): Describe a policy's
+label sits above its field (the shared stacked field, `.heal-field`, where History's grid label
+had left it inline beside the textarea), the field four rows, the card's width and resizable;
+what the model returns and its cost directly under it, the cost "about … a call, its typical
+cost; the spending limits govern" (it said "at most", C4031's class); then Draft the policy
+and How does this work?. With no readable committed export Draft is disabled, its reason on
+hover, the field still editable. The same card and its regions, laid out as the operator
+described; compared by the template's diff and tests/test_sdn_policies_v2.py, not by new shots
+(the boards are not on this machine). Templates sha256 before:
+`22f2f4f4dd4dea5c1cbbf8a53bbe6b4660cd5d624b3df0e0d1c3ebc0174bb295`.
+Templates sha256: `54e15dcf4b61f9331c94abf2afb54230ef9793a0d00992c9899be34e99531f1e`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_sdn_policies.html`, the policies table's "by" column

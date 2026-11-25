@@ -3360,6 +3360,10 @@ dialog.modal.modal-wide { width: min(46rem, calc(100vw - 32px)); }
 .heal-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2); }
 .heal-field input, .heal-field select, .heal-field textarea { font: inherit; font-size: 13px; padding: 6px 8px;
   border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); box-sizing: border-box; max-width: 100%; }
+/* C2968: SDN › Policies' field, the stacked field above, the card's width and resizable; its
+   help directly under it, then the actions. */
+.pol-field textarea { width: 100%; resize: vertical; }
+.pol-help { margin: 4px 0 8px; }
 .heal-kind-pick { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .heal-kind-pick .set-switch, .heal-events .set-switch { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
 .heal-events { display: flex; flex-wrap: wrap; gap: 4px 14px; }

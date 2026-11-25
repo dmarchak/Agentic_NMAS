@@ -63,9 +63,42 @@ def test_the_tab_draws_the_words_box_and_lists_no_policy_yet(ui):
     assert (f'<a class="tab on" href="/v2/sdn/policies?list={NET}" aria-current="page">'
             'Policies</a>') in html
     assert "Describe a policy" in html and 'data-op="sdn-policy"' in html
-    assert "Claude Haiku 5.5 (the economy tier) · at most $" in html
+    # Premise corrected (C2968, C4031's class): the amount is the task's typical cost, no call
+    # has a cap of its own (7b0bb884), and the help sits under the field.
+    assert "Claude Haiku 5.5 (the economy tier), about $" in html
+    assert "its typical cost; the spending limits govern" in html
     assert f"No policy is committed on {NET}" in html
     assert F.intent(NET)["flows"] == [] and ui.sent == []
+
+
+def test_the_field_is_stacked_and_draft_waits_on_an_export(ui, monkeypatch):
+    """C2968 (the operator, 2026-11-10): the label above its field (the shared stacked field),
+    four rows, the help under it, then Draft and How does this work?; with no committed export
+    Draft is disabled, its reason on hover, the field still editable, and a draft sent anyway
+    is refused with no AI call."""
+    html = _text(ui.client.get(f"/v2/sdn/policies?list={NET}"))
+    start = html.index('<form class="pol-form"')
+    form = html[start:html.index("</form>", start)]
+    label = re.search(r'<label class="heal-field pol-field" for="pol-words">(.*?)</label>',
+                      form, re.S)
+    assert label and '<textarea id="pol-words"' in label.group(1), form[:600]
+    assert 'rows="4"' in label.group(1)
+    assert (form.index('class="faint small pol-help"') < form.index('data-op="sdn-policy"')
+            < form.index('data-manual="sdn-policy'))
+    from modules.nsot import export as X
+    monkeypatch.setattr(X, "read", lambda network: {"ok": False, "absent": True,
+                                                    "error": "no committed export"})
+    html = _text(ui.client.get(f"/v2/sdn/policies?list={NET}"))
+    button = re.search(r'<button type="submit" class="btn btn-primary" data-op="sdn-policy"'
+                       r'[^>]*>', html).group(0)
+    assert " disabled" in button and "No policy can be drafted" in button, button
+    area = re.search(r'<textarea id="pol-words"[^>]*>', html).group(0)
+    assert " disabled" not in area, area
+    # Pressed anyway (the route is the guard, the button only its face): refused, nothing
+    # asked of the model.
+    r = ui.client.post("/v2/sdn/policies/draft", data={"list": NET, "words": "Block desk2"},
+                       headers={"HX-Request": "true"})
+    assert r.status_code == 409 and ui.sent == [], (r.status_code, len(ui.sent))
 
 
 def test_the_ai_control_in_each_state(ui, monkeypatch):

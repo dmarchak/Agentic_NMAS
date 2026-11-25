@@ -8,9 +8,11 @@ it contacts no switch and no controller, and calls no model. How a draft works, 
 
 ## Describe a policy
 
-Type the policy as you would say it, and press **Draft the policy** (one recorded AI call,
-capped; the model and the most a call can cost are beside it, with the committed NSOT export's
-short hash the checks read). The answer is drawn under the box:
+Type the policy as you would say it, and press **Draft the policy** (one recorded AI call, held
+to the spending limits). Under the box: what the model returns, the model, about what a call
+costs (its typical cost, measured; no call has a cap of its own), and the committed NSOT
+export's short hash the checks read. With no readable committed export, Draft the policy is
+disabled and says why on hover; the box stays editable. The answer is drawn under the box:
 
 - **Checked against NetBox and the network**: the hosts named, where it applies, conflicts with
   installed flows, committed policies and protected flows, then **Preview the flows…**;
