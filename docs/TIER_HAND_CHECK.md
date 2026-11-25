@@ -5070,3 +5070,22 @@ persons_approved'`, 8 tests) run.
 **The result: the canary and every mutant died.** A first build kept a filter in `actions_due`
 skipping a heal's other ends; its mutant survived, equivalent to the empty map, so the filter
 was taken out and the map is the one place that says which ends are told.
+
+**Then, the same evening: a proposal told (C2443's next part).** `heal_notice._proposals_due`
+tells each proposal that waits for a person (`decisions.proposals`: not taken), recorded within
+`NEW_WITHIN_S`, once, as the `proposal` event, its claim its own key (`proposal_key`, so the act
+a person's approval starts is told on its own end), What to do the one sentence its Needs
+attention row's action draws (`action_todo`'s `propose`, which `attention._heal_proposal_rows`
+now calls), its lines withheld by `action_facts`. Run by `c2443_hand2.sh` (scratch), the
+notices' tests `-k 'proposal or heal_to_intent or each_end_is_told'` (14 tests):
+
+| # | Mutant | Result |
+|---|---|---|
+| canary | the decision's words sent without `EP.withhold` | **died**: `test_a_proposal_waiting_for_a_person_is_told_once_and_not_once_taken` and the heal's |
+| 1 | a proposal's claim keyed as its decision | **died**: `test_a_told_proposal_s_approved_act_is_told_on_its_own_end` (the act's end blocked) |
+| 2 | a told proposal not skipped | **died**: told twice |
+| 3 | the window dropped | **died**: a proposal of the past told |
+| 4 | a security proposal given the plain words | **died**: `test_a_security_proposal_says_its_two_answers` |
+| 5 | no proposal due at all | **died**: three tests |
+
+**The result: the canary and every mutant died.**

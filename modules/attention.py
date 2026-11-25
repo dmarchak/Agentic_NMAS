@@ -7871,11 +7871,10 @@ def _heal_proposal_rows(lst: str, rows: list) -> list:
         # C2817 (mock 1): in Critical, the item with the action on it; what happened and what
         # the fix does in plain words; the hash and ids under "Details for the record".
         # C2839: a security control's proposal names its two answers, each a person's.
-        label = (f"Review the security change on {host}, then remove it (back to intent) with "
-                 "a reason, or keep it: add it to intent"
-                 if security_choice(d) else
-                 f"Review the fix for {host}, then approve it (a reason optional) or decline "
-                 "it with a reason")
+        # The one sentence its notice carries too (`heal_notice.action_todo`, C2443).
+        from modules import heal_notice
+        label = heal_notice.action_todo(d.get("kind") or "", "propose", host,
+                                        security=bool(security_choice(d)))
         out.append(row(
             source="heal", kind="proposal", key=d.get("id") or "?", level="danger",
             devices=[host] if host else [], since=float(d.get("epoch") or 0) or None,

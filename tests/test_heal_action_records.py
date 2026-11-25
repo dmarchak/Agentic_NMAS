@@ -342,6 +342,73 @@ class TestTheNotices:
         assert "logging host" not in ev["detected"] and "withheld" in ev["detected"], ev
         message.check_event(ev)
 
+    def test_a_proposal_waiting_for_a_person_is_told_once_and_not_once_taken(self, networks):
+        """C2443's remainder: a proposal (a fix that waits for a person) was never told, though
+        a team can choose "a fix waiting for a person". It is told once, as the ``proposal``
+        event, on its incident's thread, What to do the words its Needs attention row's action
+        draws, its configuration lines withheld; its claim is its own key, so the act a
+        person's approval starts is told on its own end. A proposal already taken (approved or
+        declined) is not told."""
+        from modules.heal import decisions as DS
+        from modules.notify import message
+        d = DS.record(NET, {"outcome": "propose", "device": "r3", "incident": "hi-11",
+                            "kind": "missing_line", "tier": 2, "mode": "auto",
+                            "words": "propose: put back logging host 192.0.2.10 on r3",
+                            "program": ["logging host 192.0.2.10"],
+                            "units": [{"kind": "missing_line", "words": "a missing line"}]},
+                      T0)
+        key = N().proposal_key(d["id"])
+        due = N().actions_due(NET, now=T0 + 30)
+        assert [(x["act"]["decision"], x["event"]) for x in due] == [(key, "proposal")], due
+        events = []
+        got = N().run(NET, now=T0 + 30, action_starter=inline(events),
+                      starter=lambda *a, **k: None)
+        assert got["told"] == [key]
+        (ev,) = events
+        assert ev["event"] == "proposal" and ev["incident"] == "hi-11"
+        assert ev["todo"] == ("Review the fix for r3, then approve it (a reason optional) or "
+                              "decline it with a reason")
+        assert "logging host" not in ev["detected"] + ev["outcome"], ev
+        message.check_event(ev)
+        assert N().run(NET, now=T0 + 40, action_starter=inline(events))["told"] == [], \
+            "told once"
+        taken = DS.record(NET, {"outcome": "propose", "device": "r4", "incident": "hi-12",
+                                "kind": "missing_line", "tier": 2, "mode": "auto",
+                                "words": "propose: a line", "program": []}, T0)
+        DS.take(NET, taken["id"], by="op@example.invalid", now=T0 + 10)
+        assert N().actions_due(NET, now=T0 + 30) == [], "taken: a person has it"
+        DS.record(NET, {"outcome": "propose", "device": "r5", "incident": "hi-13",
+                        "kind": "missing_line", "tier": 2, "words": "propose: old",
+                        "program": []}, T0 - N().NEW_WITHIN_S - 60)
+        assert N().actions_due(NET, now=T0 + 30) == [], "a proposal of the past is not told"
+
+    def test_a_security_proposal_says_its_two_answers(self, networks):
+        from modules.heal import decisions as DS
+        DS.record(NET, {"outcome": "propose", "device": "r3", "incident": "hi-14",
+                        "kind": "security_acl", "tier": 2, "words": "propose: an ACL",
+                        "program": [],
+                        "units": [{"kind": "security_acl", "words": "an ACL", "remove": [],
+                                   "add": []}]}, T0)
+        (due,) = N().actions_due(NET, now=T0 + 30)
+        facts = N().action_facts(NET, due)
+        assert facts["todo"] == ("Review the security change on r3, then remove it (back to "
+                                 "intent) with a reason, or keep it: add it to intent")
+
+    def test_a_told_proposal_s_approved_act_is_told_on_its_own_end(self, networks):
+        """The proposal's claim is its own key: once a person approves it, its act's end (a
+        bounce still flapping, a person must look) is told too, never blocked by the proposal
+        told before it."""
+        from modules.heal import decisions as DS
+        d = DS.record(NET, dict(bounce_decision(outcome="propose"), id=None), T0)
+        events = []
+        assert N().run(NET, now=T0 + 30, action_starter=inline(events))["told"] == [
+            N().proposal_key(d["id"])]
+        write(dict(bounce_decision(outcome="propose"), id=d["id"], incident=d["incident"]),
+              act_result("still_flapping"), now=T0 + 40)
+        got = N().run(NET, now=T0 + 60, action_starter=inline(events))
+        assert got["told"] == [d["id"]], got
+        assert [e["event"] for e in events] == ["proposal", "cant_fix"]
+
     def test_a_persons_approved_success_and_the_past_are_not_told(self, networks):
         write(clear_decision(outcome="propose"), act_result("cleared"))
         write(bounce_decision(did="hd-5", incident="hi-5"), act_result("failed"),

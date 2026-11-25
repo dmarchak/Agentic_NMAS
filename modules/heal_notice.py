@@ -178,15 +178,22 @@ TOLD_AS = {"action": "healed"}
 
 
 def action_todo(kind: str, outcome: str, host: str, *, interface: str = "", peer: str = "",
-                far_device: str = "", far_interface: str = "") -> str:
+                far_device: str = "", far_interface: str = "", security: bool = False) -> str:
     """What to do about an action's end, in the words its Needs attention row's action draws
-    (`attention._heal_bounce_rows`, `_heal_clear_rows`, `_heal_dampening_rows`) and its notice
-    carries: one sentence, so the row and the message never say different things."""
+    (`attention._heal_bounce_rows`, `_heal_clear_rows`, `_heal_dampening_rows`,
+    `_heal_proposal_rows`) and its notice carries: one sentence, so the row and the message
+    never say different things. A proposal (``propose``, C2443) is a person's to approve or
+    decline; *security* when it is a security change's (`propose.security_choice`)."""
     from modules.heal import steplog
 
     fam = steplog.ACTION_FAMILY.get(kind or "", "") or "heal"
     if outcome == ACTION_DONE.get(fam):
         return f"nothing: read the steps on {host}'s History if you want them"
+    if outcome == "propose" and fam != "dampening":
+        return (f"Review the security change on {host}, then remove it (back to intent) with a "
+                "reason, or keep it: add it to intent" if security else
+                f"Review the fix for {host}, then approve it (a reason optional) or decline it "
+                "with a reason")
     if fam == "bounce":
         return (f"Read the bounce's steps on {host}'s History, check {interface} and its far end "
                 f"({far_device or 'not named'} {far_interface or ''}), then acknowledge with "
@@ -238,6 +245,42 @@ def actions_due(network: str, now: float = None) -> list:
             event = "action" if d.get("outcome") == "heal" else None
         if event:
             out.append({"act": r, "decision": d, "event": event, "family": fam})
+    return out + _proposals_due(network, now, told)
+
+
+def proposal_key(decision_id: str) -> str:
+    """A proposal's notice's claim (`heal_analysis.claim_told`'s key, C2443): its own, so the
+    act a person's approval starts is told on its own end, the proposal told before it."""
+    return f"{decision_id}:proposal"
+
+
+def _proposals_due(network: str, now: float, told: set) -> list:
+    """C2443: each proposal that waits for a person (`decisions.proposals`: ``propose``, not
+    taken, so neither approved nor declined), recorded within `NEW_WITHIN_S` and not told, as
+    "a fix waits for a person" on its incident's thread; its row the action ends' shape
+    (`action_facts`), with no steps. A store that cannot be read gives none, logged."""
+    from modules.heal import decisions, steplog
+    from modules.heal.propose import security_choice
+
+    try:
+        waiting = decisions.proposals(network)
+    except Exception as exc:                          # said; the next pass reads it again
+        log.error("heal notice: %s's proposals cannot be read: %s", network, exc)
+        return []
+    out = []
+    for d in waiting:
+        did = d.get("id") or ""
+        key = proposal_key(did)
+        if not did or not d.get("incident") or key in told \
+                or now - float(d.get("epoch") or 0) > NEW_WITHIN_S:
+            continue
+        act = {"row": "proposal", "decision": key, "incident": d["incident"],
+               "device": d.get("device") or "", "kind": d.get("kind") or "",
+               "action": d.get("action") or {}, "outcome": "propose", "steps": [],
+               "words": d.get("outcome_words") or d.get("words") or "",
+               "security": bool(security_choice(d))}
+        out.append({"act": act, "decision": d, "event": "proposal",
+                    "family": steplog.ACTION_FAMILY.get(d.get("kind") or "", "") or "heal"})
     return out
 
 
@@ -273,7 +316,8 @@ def action_facts(network: str, due_one: dict, entry: dict = None) -> dict:
             "todo": action_todo(r.get("kind") or "", r.get("outcome") or "", host,
                                 interface=a.get("interface") or "", peer=a.get("peer") or "",
                                 far_device=a.get("far_device") or "",
-                                far_interface=a.get("far_interface") or ""),
+                                far_interface=a.get("far_interface") or "",
+                                security=bool(r.get("security"))),
             "link": incident_link(network, r.get("incident") or "", host)}
 
 

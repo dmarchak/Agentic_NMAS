@@ -89,7 +89,10 @@ Self-healing's actions (a port bounce, an OSPF adjacency reset, a BGP session cl
 approved dampening change; [Self-healing](heal#actions)) each end in their own job, often minutes
 after the can't-fix that led to them was told. A heal to intent that put a device back by itself
 (automatic, healed and verified) is told the same way, under **every automatic heal**; any other
-end of a heal to intent stands on its incident, whose can't-fix is told. Each end is told once,
+end of a heal to intent stands on its incident, whose can't-fix is told. A fix that waits for a
+person (a proposal, not yet approved or declined) is told once, under **a fix waiting for a
+person**, What to do the words its Needs attention item's action says ("Review the fix for …,
+then approve it … or decline it with a reason"); once approved, its own end is told as above. Each end is told once,
 on that incident's thread, so it arrives under the first message:
 
 1. `due`: the notifier finds each action that ended in the last 10 minutes and is to be told:
