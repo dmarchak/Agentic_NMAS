@@ -450,6 +450,8 @@ FIELDS = {
         "args.v": "a version Mercury drew on an app's page",
         "args.controller": "a controller's name Mercury drew on SDN › Apps",
         "args.receipt": "a receipt's id Mercury drew on SDN › Apps",
+        "args.deploy_job": "a deploy's job id Mercury drew in In progress's link, kept only "
+                           "with a job id's shape (`capture_job.job_id`, C3601, C4260)",
         "request.<passed to submitted_list>": "the network's name (routes.list_param)",
         "request.<passed to named_list>": "the network's name (routes.list_param)"},
     # Lab 9 B1 (board I): Analyse this network sends the snapshot's facts and nothing typed;
@@ -494,6 +496,8 @@ FIELDS = {
         "args.v": "a version Mercury drew on an app's page",
         "args.controller": "a controller's name Mercury drew on SDN › Apps",
         "args.receipt": "a receipt's id Mercury drew on SDN › Apps",
+        "args.deploy_job": "a deploy's job id Mercury drew in In progress's link, kept only "
+                           "with a job id's shape (`capture_job.job_id`, C3601, C4260)",
         "request.<passed to submitted_list>": "the network's name (routes.list_param)",
         "request.<passed to named_list>": "the network's name (routes.list_param)"},
     "settings_v2.install_replace": {
