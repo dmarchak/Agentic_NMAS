@@ -9,8 +9,8 @@ one-button batch, on Needs attention (C3789; `modules/control_strip.py`, `module
   person who may change self-healing settings: on is Auto for the network's default duration,
   off is Dry run, through the policy's own write; the strip again with the answer in place.
   With ``hash`` (C3823), on is the batch of the open problems its line drew, bound to that
-  hash (`control_strip.switch_on`): restores and saved scripts, never the AI; refused, nothing
-  turned on, when they moved since drawn, the strip drawn again with the new line. C3866: the
+  hash (`control_strip.switch_on`): restores and saved scripts, never the AI; when they moved
+  since drawn, the problems open at the press (C3909), the strip drawn again. C3866: the
   press is checked against the line as this process drew it (no second preview), turns Auto
   on and records the batch's approval inside the request, and answers at once with the switch
   On and "Starting N fixes…"; the fixes are the batch's job, drawn live on the strip.

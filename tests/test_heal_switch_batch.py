@@ -315,3 +315,18 @@ def test_the_switch_line_promises_a_fix_only_for_what_it_fixes():
     assert "fixes" not in alone.lower() and "fixed now" not in alone, alone
     assert alone.startswith("Decides 1 open problem again in Auto"), alone
     assert B.switch_words(2, 0) == "Also fixes the 2 open problems (2 restores)"
+
+
+def test_the_switchs_contract_says_a_moved_line_is_taken_never_refused():
+    """C3982: since C3909 the switch takes the problems open at the press when its line moved
+    (this file's moved-line test), and its declared contract, its route's docstring and
+    `control_strip`'s said it was refused; each now says what it does."""
+    import inspect
+    from modules import control_strip, route_gates
+    from routes import control_v2
+    for words in (route_gates.GATES["control_v2.heal"].reason,
+                  inspect.getsource(control_v2).split('"""', 2)[1],
+                  inspect.getsource(control_strip).split('"""', 2)[1]):
+        flat = " ".join(words.split())
+        assert "refused, nothing turned on, when they moved" not in flat, flat[:200]
+        assert "the problems open at the press" in flat, flat[:200]

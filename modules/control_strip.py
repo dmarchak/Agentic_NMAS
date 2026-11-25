@@ -14,8 +14,8 @@ Troubleshoot › Incidents, for the page's network (C3789: on Incidents alone, t
   saved scripts)", `heal.batch.switch_words`) and the switch carries that line's hash; turning
   it on runs them as C3819's batch (`switch_on`, `heal.batch.press` with ``switch``: every
   device at once, each verified on its own, guard 6 resolved for those listed, the runs named
-  after the switch-on), never the AI, and is refused, nothing turned on, when they moved since
-  drawn.
+  after the switch-on), never the AI; when they moved since drawn it takes the problems open
+  at the press (C3909), never refusing for that.
   G6's Fix all card on Needs attention stays only for guard 6 holds formed while it is On.
 - **AI troubleshooting** (Gate 2, C3769; the operator's minimal design, 2026-11-15): "AI
   troubleshooting: Automatic", the network's one control's Automatic (`troubleshoot_control`). On
