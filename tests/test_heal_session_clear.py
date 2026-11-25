@@ -927,3 +927,16 @@ class TestTheWiring:
         assert "session_clear" in policy.TIER1_KINDS and "session_clear" in policy.TIER2_KINDS
         assert [g for g, _n, _k, kinds in actions.GUARDS if "session_clear" in kinds] == [
             "13a", "13c", "13d"]
+
+
+def test_a_clear_proposals_card_says_the_clears_own_steps_never_the_deploy_pipeline():
+    """C2735: the proposal card said a session clear was "sent through the deploy pipeline",
+    which a clear is not (it runs through the privileged path); the card now lists What
+    approving runs from the act's own steps (`propose._steps_of`), the clear's for a clear and
+    the heal's for a heal, so its words name what a clear does."""
+    from modules.heal import propose, session_clear
+    clear = {"action": {"kind": "session_clear"}}
+    assert propose._steps_of(clear) == session_clear.STEPS
+    words = " ".join(w for _k, w in session_clear.STEPS)
+    assert "send the clear once" in words and "pipeline" not in words, words
+    assert propose._steps_of({"action": {"kind": "missing_line"}}) == propose.STEPS
