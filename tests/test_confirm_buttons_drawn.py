@@ -2680,7 +2680,10 @@ class TestSavedPlansCards(_Cards):
         c, html = self._get(request)
         r = c["client"].post(f"/v2/saved-plans/{self._spv.INC}/save-script?list=Lab",
                              data={"name": "BPDU guard recovery", "keep_cause": "1",
-                                   "dry_run": "1", "drawn": self._spv.drawn_of(html)},
+                                   "dry_run": "1", "drawn": self._spv.drawn_of(html),
+                                   "runs_on": self._spv.runs_on_of(
+                                       c["client"], self._spv.INC, "Lab", keep_cause="1",
+                                       dry_run="1")},
                              headers={"HX-Request": "true"})
         assert r.status_code == 200, "floor: the save in Dry run is kept"
         return c

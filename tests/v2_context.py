@@ -4597,9 +4597,14 @@ def _saved_plans(client, _lab, _mp):
         body = client.get(f"{base}/card?list=Lab", headers=hx).get_data(as_text=True)
         assert "Save this fix so Mercury handles it automatically?" in body, body[:400]
         drawn = re.search(r'name="drawn" value="([0-9a-f]*)"', body)
+        # The line as its redraw draws it for these choices (C4050), as the browser sends it.
+        line = client.get(f"{base}/runs-on?list=Lab&keep_cause=1&dry_run=1",
+                          headers=hx).get_data(as_text=True)
+        runs_on = re.search(r'name="runs_on" value="([0-9a-f]*)"', line)
         r = client.post(f"{base}/save-script?list=Lab", headers=hx,
                         data={"name": "BPDU guard recovery", "keep_cause": "1", "dry_run": "1",
-                              "drawn": drawn.group(1) if drawn else ""})
+                              "drawn": drawn.group(1) if drawn else "",
+                              "runs_on": runs_on.group(1) if runs_on else ""})
         assert "BPDU guard recovery</a>, Dry run." in r.get_data(as_text=True), r.status_code
         r = client.post(f"{base}/promote?list=Lab", headers=hx,
                         data={"key": "fix-bpdu-guard-recovery"})

@@ -188,7 +188,15 @@ Nothing drawn changes, no region's verdict moved, no deviation. Compared by the 
 and tests/test_saved_plans_v2.py's `test_a_save_is_bound_to_the_card_it_drew`, not by new shots.
 Templates sha256 before:
 `f1af136880b8e19abb2b71e3517d3861882941402587b393487ae90d1198bd03`.
-Templates sha256: `692878743ef29c51d1b75590e0a4f02b76d645ea6e913db5b44b1d61af42b5ef`
+Compared again 2026-11-25 (C4050, Save bound to the incidents its line named):
+`_saved_plans_runs_on.html`'s line holds one hidden field, `runs_on` (the other open incidents
+it names, as a digest), and the default Save's `hx-include` adds the line. Nothing drawn
+changes, no region's verdict moved, no deviation. Compared by the templates' diff and
+tests/test_saved_plans_v2.py's
+`test_a_save_whose_other_incidents_moved_is_refused_and_starts_nothing`, not by new shots.
+Templates sha256 before:
+`692878743ef29c51d1b75590e0a4f02b76d645ea6e913db5b44b1d61af42b5ef`.
+Templates sha256: `5a384c73ead8b09ccb2e81ea5a6ceb41b06b5c4709baae86ff49e5ce6de0cd46`
 Templates sha256 before the saved plans card said a right's holders unset (2026-11-15, Gate 1b's review, item 7; the row "Rights not set" below): `770515ac382839dde54d1ae789920a7578375acf87fe6fb9d221961273361976`
 Templates sha256 before C3725's session moved from a press to the proposal's record (2026-11-15, the operator; the session row below): `90974cd13f0f0f2aece5e005c3cc5e3c2c21726aa22192e6535bce1ca4953909`
 Templates sha256 before the verify-speed gate's page fixes (2026-11-14, C3725, C3727, C3728, C3729, below): `b8969275f9560c0d423e154d881391989736eb6548a35bb27ab4020fa5542a6c`

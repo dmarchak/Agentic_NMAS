@@ -224,6 +224,25 @@ class TestAScriptSaved:
                         now=T0, decide_now=False)
         assert sorted(got["retried"]) == sorted([b, d, own]), got
 
+    def test_a_save_s_retry_runs_only_on_the_incidents_its_line_named(
+            self, scripts, monkeypatch):
+        """C4050 (the review of the Save's binding): the pass a Save starts is given the ids
+        its line named (*only*), so neither an incident that matches after the press (edge-f)
+        nor the card's own (edge-e, which the line leaves out) is retried by it."""
+        conditions = {"edge-b": "err_disabled", "edge-d": "err_disabled",
+                      "edge-e": "err_disabled", "edge-f": "err_disabled"}
+        monkeypatch.setattr(P, "classify", lambda page: P.Problem(
+            device=page["device"], object="Gi1/0", condition=conditions[page["device"]]))
+        b, d, own = standing("edge-b"), standing("edge-d"), standing("edge-e")
+        said = retry.would_run(NET, {"condition": "err_disabled"}, now=T0, exclude=(own,))
+        named = [x["incident"] for x in said["incidents"]]
+        assert sorted(named) == sorted([b, d]), said
+        late = standing("edge-f")                     # opened between the line and the pass
+        got = retry.run(NET, "script_saved", script=SCRIPT, instance=f"{SCRIPT}:t1",
+                        now=T0, decide_now=False, only=named)
+        assert sorted(got["retried"]) == sorted([b, d]), got
+        assert not record_of(late).get("retries") and not record_of(own).get("retries")
+
 
 class TestNowAuto:
     """C3844 (c4948c2c, the operator, 2026-11-16): while the network is in Auto, each standing

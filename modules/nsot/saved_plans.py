@@ -1714,7 +1714,18 @@ def runs_on(network: str, match: dict, incident_id: str, dry_run: bool = False) 
         words = (f"In Dry run it changes nothing: it records what it would do on {what}, "
                  "each when it is next decided" if dry_run else f"Save runs it now on {what}" if got["auto"]
                  else f"It runs on {what}, once self-healing is on")
-    return {"count": n, "devices": devices, "words": words}
+    # What the press is bound to (C4050): the incidents named, by id, and whether they run now.
+    import hashlib
+    import json
+
+    ids = sorted(str(i.get("incident") or "") for i in got["incidents"])
+    body = json.dumps({"ids": ids, "auto": bool(got["auto"]) and not dry_run,
+                       "error": bool(got["error"])}, sort_keys=True)
+    # *ids* the incidents named, the only ones the press's retry may run on (`retry.run`'s
+    # *only*); *unread* when the list could not be read, so nothing can be named.
+    return {"count": n, "devices": devices, "words": words, "ids": ids,
+            "unread": bool(got["error"]), "auto": bool(got["auto"]) and not dry_run,
+            "digest": hashlib.sha256(body.encode()).hexdigest()[:16]}
 
 
 def default_name(problem, plan_title: str) -> str:

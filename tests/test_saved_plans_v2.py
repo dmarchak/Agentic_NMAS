@@ -63,9 +63,23 @@ def drawn_of(html):
     return m.group(1) if m else ""
 
 
+def runs_on_of(client, incident, network, **choices):
+    """The `runs_on` field the line draws for the form's *choices* (its keep_* ticks and Dry
+    run), from the line's own redraw route, as the browser has it when Save is pressed
+    (C4050)."""
+    args = "&".join(f"{k}={v}" for k, v in choices.items() if k.startswith("keep_")
+                    or k == "dry_run")
+    html = client.get(f"/v2/saved-plans/{incident}/runs-on?list={network}"
+                      + (f"&{args}" if args else "")).get_data(as_text=True)
+    m = re.search(r'name="runs_on" value="([0-9a-f]*)"', html)
+    return m.group(1) if m else ""
+
+
 def _post(card, what, **data):
     # As the card's form sends it: bound to the card it drew (C4057), unless the test says.
     data.setdefault("drawn", drawn_of(_get(card).get_data(as_text=True)))
+    if what == "save-script":
+        data.setdefault("runs_on", runs_on_of(card["client"], INC, NET, **data))
     return card["client"].post(f"/v2/saved-plans/{INC}/{what}?list={NET}", data=data,
                                headers={"HX-Request": "true"})
 
@@ -99,7 +113,8 @@ class TestTheCard:
         url = re.search(r'hx-post="([^"]*save-script[^"]*)"', html).group(1)
         r = card["client"].post(url.replace("&amp;", "&"), headers={"HX-Request": "true"},
                                 data={"name": "BPDU guard recovery", "keep_cause": "1",
-                                      "drawn": drawn_of(html)})
+                                      "drawn": drawn_of(html), "runs_on": re.search(
+                                          r'name="runs_on" value="([0-9a-f]*)"', html).group(1)})
         assert r.status_code == 200
         e = S.scripts(NET)["fix-bpdu-guard-recovery"]                     # 3a659d6b's key
         assert e["match"] == {"condition": "err_disabled", "cause": "BPDU guard"}
@@ -136,6 +151,54 @@ class TestTheCard:
             "incidents": [{"incident": "hi-s3", "device": "s3"}]})
         assert ("It runs on 1 other open incident, on s3, once self-healing is on"
                 in _html(_get(card)))
+
+    def test_a_save_whose_other_incidents_moved_is_refused_and_starts_nothing(
+            self, card, monkeypatch):
+        """C4050: the line names the other open incidents Save runs on, and the press is bound
+        to them (its `runs_on` field); one opened between the draw and the press refuses the
+        Save, naming both and the list now, with nothing saved and no retry started."""
+        from modules.heal import retry
+        hits = [{"incident": "hi-edge1", "device": "edge1"}]
+
+        def would_run(network, match, **kw):
+            return {"auto": True, "devices": sorted({h["device"] for h in hits}), "error": "",
+                    "incidents": list(hits)}
+        monkeypatch.setattr(retry, "would_run", would_run)
+        started = []
+        monkeypatch.setattr(retry, "run_soon", lambda *a, **kw: started.append((a, kw)))
+        html = _get(card).get_data(as_text=True)
+        drawn = re.search(r'name="runs_on" value="([0-9a-f]{16})"', html).group(1)
+        hits.append({"incident": "hi-edge2", "device": "edge2"})
+        r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1",
+                  runs_on=drawn)
+        said = _html(r)
+        assert r.status_code == 409, r.status_code
+        assert f"moved since its line was drawn (drawn {drawn}, now " in said, said[:600]
+        assert "Save runs it now on 2 other open incidents, on edge1 and edge2" in said
+        assert S.scripts(NET) == {} and started == []
+        # Pressed again from the line as it reads now, it saves and starts the retry.
+        r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1")
+        assert r.status_code == 200 and S.scripts(NET) and len(started) == 1, _html(r)[:600]
+        # The retry it starts runs only on what the line named (`retry.run`'s *only*).
+        assert sorted(started[0][1]["only"]) == ["hi-edge1", "hi-edge2"], started
+
+    def test_an_automatic_save_whose_list_cannot_be_read_is_refused(self, card, monkeypatch):
+        """C4050 (the review): a line that could not read the other incidents names nothing,
+        so an Automatic Save is refused, nothing saved or started; Dry run still saves."""
+        from modules.heal import retry
+
+        def unread(network, match, **kw):
+            raise OSError("the incidents store could not be read")
+        monkeypatch.setattr(retry, "would_run", unread)
+        started = []
+        monkeypatch.setattr(retry, "run_soon", lambda *a, **kw: started.append((a, kw)))
+        r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1")
+        assert r.status_code == 409 and "cannot name what it would run on" in _html(r), \
+            _html(r)[:600]
+        assert S.scripts(NET) == {} and started == []
+        r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1",
+                  dry_run="1")
+        assert r.status_code == 200 and S.scripts(NET) and started == [], _html(r)[:600]
 
     def test_the_runs_on_line_follows_the_ticks_and_the_dry_run_box(self, card, monkeypatch):
         """C4205 (the review of 33bf385f, MEDIUM: the line counted the default match while Save

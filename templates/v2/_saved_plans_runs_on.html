@@ -1,3 +1,4 @@
 {#- What Save runs on, for the match the Customize… ticks keep (C4205): the card's line, and
-    its redraw when a tick changes (`saved_plans_v2.runs_on`). -#}
-<span id="runs-on-{{ incident }}" data-runs-on="{{ on.count }}" data-devices="{{ on.devices | join(' ') }}">{{ on.words }}</span>
+    its redraw when a tick changes (`saved_plans_v2.runs_on`). Its `runs_on` field rides with
+    Save (C4050): the incidents it named, as a digest, so a list that moved is refused. -#}
+<span id="runs-on-{{ incident }}" data-runs-on="{{ on.count }}" data-devices="{{ on.devices | join(' ') }}"><input type="hidden" name="runs_on" value="{{ on.digest }}">{{ on.words }}</span>

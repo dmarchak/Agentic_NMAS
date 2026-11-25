@@ -270,7 +270,8 @@ def would_run(network: str, match: dict, *, now: float = None, exclude=()) -> di
 
 
 def run(network: str, trigger: str, *, instance: str, script: str = "", how: str = "saved",
-        by: str = "", now: float = None, decide_now: bool = True, skip=()) -> dict:
+        by: str = "", now: float = None, decide_now: bool = True, skip=(),
+        only=None) -> dict:
     """The retry pass for *network* and one *trigger* instance (the module's docstring):
     ``{"ran", "network", "trigger", "key", "words", "retried", "skipped", "decided"}``,
     *retried* and *skipped* the incidents' ids. *script*: the saved script's key (for
@@ -278,7 +279,9 @@ def run(network: str, trigger: str, *, instance: str, script: str = "", how: str
     at once (`decide.run`); a network busy with another pass decides them at its next one.
     *skip* (C3823): incidents a batch turning self-healing on fixes itself (the switch-on's
     restores and saved scripts, `heal.batch.run`), never retried by this pass: no retry row,
-    nothing sent back."""
+    nothing sent back. *only* (C4050): when given, the incidents' ids a person was shown
+    before the press that started this pass (a Save's line, `saved_plans.runs_on`); an
+    incident outside them is never retried by it, whatever this pass's own read selects."""
     from modules.heal import incidents, policy
     from modules.nsot import saved_plans
 
@@ -325,6 +328,9 @@ def run(network: str, trigger: str, *, instance: str, script: str = "", how: str
     from modules.heal import batch as B
     plans = _selected(network, trigger, key, entry.get("match") or {}, got["incidents"], now,
                       skip)
+    if only is not None:
+        shown = {str(i) for i in only}
+        plans = {i: p for i, p in plans.items() if i in shown}
     if not plans:
         return dict(out, ran=True, words="nothing to retry")
 

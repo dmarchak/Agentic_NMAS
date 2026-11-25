@@ -46,6 +46,13 @@ def _who() -> dict:
             "person": bool(ident is not None and ident.kind == "person")}
 
 
+def _line(on: dict) -> dict:
+    """What the Save's line draws of `saved_plans.runs_on` (C4050): its words, count and
+    devices, and the digest its press is bound to; the ids it binds stay the route's."""
+    return {"count": on.get("count", 0), "devices": on.get("devices") or [],
+            "words": on.get("words") or "", "digest": on.get("digest") or ""}
+
+
 def _draw(network: str, incident: str, code: int = 200, *, show: bool = False, **said):
     from modules.nsot import command_policy, saved_plans
 
@@ -56,6 +63,7 @@ def _draw(network: str, incident: str, code: int = 200, *, show: bool = False, *
                              "scripts", "unset", "saved", "name", "dismissed", "runs_on")}
     # What a Save is bound to (C4057): the run, match and fills as drawn, never their values.
     c["drawn"] = got.get("drawn") or ""
+    c["runs_on"] = _line(got.get("runs_on") or {})
     c.update(preview={"matched": len((got.get("preview") or {}).get("matched") or []),
                       "read": (got.get("preview") or {}).get("read") or 0},
              list=network, incident=incident, shapes=command_policy.provisional(network),
@@ -125,7 +133,8 @@ def runs_on(incident):
     else:
         on = S.runs_on(network, S.kept_match(o["match"], lambda k: args.get(f"keep_{k}") == "1"),
                        incident, dry_run=args.get("dry_run") == "1")
-    return _strict(render_template("v2/_saved_plans_runs_on.html", incident=incident, on=on))
+    return _strict(render_template("v2/_saved_plans_runs_on.html", incident=incident,
+                                   on=_line(on)))
 
 
 @bp.route("/<incident>/save-script", methods=["POST"])
@@ -142,6 +151,20 @@ def save_script(incident):
     if moved:
         return _draw(network, incident, 409, level="danger", words=f"Not saved: {moved}")
     match = S.kept_match(o["match"], lambda k: form.get(f"keep_{k}") == "1")
+    # C4050: the other open incidents it runs on are those its line named, or nothing is saved.
+    dry_run = form.get("dry_run") == "1"
+    on = S.runs_on(network, match, incident, dry_run=dry_run)
+    posted = (form.get("runs_on") or "").strip()
+    if posted != on["digest"]:
+        return _draw(network, incident, 409, level="danger", words=(
+            f"Not saved: the open incidents Save runs on moved since its line was drawn (drawn "
+            f"{posted or 'none'}, now {on['digest']}: {on['words']}); read the card again; "
+            "nothing was saved"))
+    if on["unread"] and not dry_run:
+        # Nothing could be named, so an Automatic save would run on what was never shown.
+        return _draw(network, incident, 409, level="danger", words=(
+            f"Not saved: {on['words']}, so Save cannot name what it would run on; read the "
+            "card again, or tick Dry run under Customize…; nothing was saved"))
     try:
         e = S.save_script(network, run_id=o["run"], name=(form.get("name") or "").strip(),
                           match=match, fills=o["fills"], dry_run=form.get("dry_run") == "1",
@@ -156,11 +179,12 @@ def save_script(incident):
     log.info("saved plans: %s saved as a self-heal script of %s", e["key"], network)
     if e.get("mode") == "auto":
         # C3805, and the retry policy (the operator, 2026-11-16): every open incident it
-        # matches whose fixes failed is tried again once, keyed by this save.
+        # matches whose fixes failed is tried again once, keyed by this save; only those the
+        # line named before the press (C4050), never one selected after it.
         from modules.heal import retry
         retry.run_soon(network, "script_saved", script=e["key"],
                        instance=f"{e['key']}:{e.get('saved_at') or ''}", how="saved",
-                       by=_who()["actor"])
+                       by=_who()["actor"], only=on["ids"])
     return _draw(network, incident)
 
 
