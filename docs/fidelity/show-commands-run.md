@@ -35,7 +35,8 @@ Compared again 2026-11-15 (C3715): THE stepper's step lines name each person by 
 no element moves. Compared by the template's diff (tests/test_actors_drawn_by_name.py); logged
 once (docs/STANDING_APPROVAL_LOG.md, "Records name people by display name on every v2 screen
 (C3715)"). Templates sha256 before: `ac5f63296228f8a71f8347d8224fb23239f2dddec385bdeb658e8c8e07fbdc29`.
-Templates sha256: `e4e04c2df3b444a4174877e218dec7655d2e8d4d966f04dcedebbf99564c4c2c`
+Compared again 2026-11-24 (C3087, its card half): a read under a step that the read engine kept draws "its answer" after its line, opening the stored, masked answer on its run page, where the card that draws the stepper names its network (the heal run card, the re-subscribe card); words added at a line's end, nothing moves; compared by the template's diff and the v2 walk, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "C3087: a run card's reads open their answers"). Templates sha256 before: `e4e04c2df3b444a4174877e218dec7655d2e8d4d966f04dcedebbf99564c4c2c`.
+Templates sha256: `d67ab837c92d14ebdc0ed79469426d0b9a387650a634f37ac92948d0a94103d2`
 
 **Hashed again 2026-11-13 for the one stepper's stages** (C3454, docs/fidelity/stepper.md): a
 stage draws its whole sentence one level down where its line was cut. This page draws the

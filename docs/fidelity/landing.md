@@ -280,7 +280,8 @@ element; no element moves and no region's verdict moved; compared by the templat
 tests/test_heal_analysis.py, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md,
 "C3505: an AI analysis's score in words"). Templates sha256 before: `3a29dfb59afdab5aed9467a8acb1ce894364b6b220d61308e14bbf62ca28392f`.
 
-Templates sha256: `654c35112da5a9f21c749e9bb80575e0182165daf1b3e597def0c76b6f7507ea`
+Compared again 2026-11-24 (C3087, its card half): a read under a step that the read engine kept draws "its answer" after its line, opening the stored, masked answer on its run page, where the card that draws the stepper names its network (the heal run card, the re-subscribe card); words added at a line's end, nothing moves; compared by the template's diff and the v2 walk, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "C3087: a run card's reads open their answers"). Templates sha256 before: `654c35112da5a9f21c749e9bb80575e0182165daf1b3e597def0c76b6f7507ea`.
+Templates sha256: `ef6b7f12e66821af9f95777452f298fc18dbed2d0267531e1e40e0f5ae7642f7`
 (before the combined gate's reviews, 2026-11-15, above: `95963b5612ee0d494c7192eb31a8ade9c34068395adb2cb9bdede8db69638a35`)
 (before the port problem's fold, 2026-11-15, above: `a894c8009f442e454c18b53caaaa6a23a7ad9a59f9a045a201afd44e2459c8c6`)
 (before the lost stream's Start, 2026-11-14, below: `df04b28a2f32a3505d0451f14d5f4dbad62cc0643c8e194e95a2522806aba5bd`)

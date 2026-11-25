@@ -39,13 +39,13 @@
 {%- if c.state == 'failed' %}
 {%- elif c.state == 'running' %}
   <p><strong>Re-subscribing on {{ c.host }}.</strong> {{ c.host }} is held: {% if c.subs|length > 1 %}every chosen receiver is removed, {{ c.wait_s }} s pass, each is added back, then for each one the device, the stream and the collector are read for up to {{ c.bound_s }} s{% else %}the receiver is removed, {{ c.wait_s }} s pass, it is added back, then the device, the stream and the collector are read for up to {{ c.bound_s }} s{% endif %}. This answer updates at each step, and when the run ends.</p>
-  {%- if c.steps %}{{ run_stepper(c.steps) }}{% endif %}
+  {%- if c.steps %}{{ run_stepper(c.steps, c.list) }}{% endif %}
 {%- elif c.state == 'stopped' %}
   {#- A run whose record says running, with no job here and no hold on the device: it stopped
       before it recorded an outcome (Mercury restarted, or its job ended). Said, with the
       steps it had recorded and what a person does next. -#}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>This run stopped before it recorded an outcome:</strong> no step recorded since {{ stamp(c.stopped_since) }}, and nothing holds {{ c.host }} now, so Mercury restarted or the run's job ended while it ran. Whether each receiver is in place is not known from the record: read {{ c.host }}'s configuration first. A receiver the run removed and did not put back leads the card below, with Re-add the receiver.</p></div>
-  {%- if c.steps %}{{ run_stepper(c.steps) }}{% endif %}
+  {%- if c.steps %}{{ run_stepper(c.steps, c.list) }}{% endif %}
   <div class="att-action"><span class="op-act"><button type="button" class="btn btn-small" data-op="telemetry-resubscribe" hx-get="{{ url_for('resubscribe_v2.preview', name=c.host, list=c.list, subs=c.subs|join(',')) }}" hx-target="#{{ cid }}" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Open the card again…</span><span class="op-busy">Reading…</span></button>{{ how('telemetry-resubscribe', 're-add-the-receiver', compact=True, op='Re-add the receiver') }}</span></div>
 {%- elif c.state == 'result' %}
   {%- set r = c.record %}
@@ -62,7 +62,7 @@
   {#- The collector step's receipt (C3078): the close helper's own code, exit code and words. -#}
   <p class="small" data-close-receipt="{{ r.collector_close.code }}"><strong>The collector's session:</strong> the close helper answered {{ r.collector_close.code }} (exit {{ r.collector_close.exit }}): {{ r.collector_close.words }}</p>
   {%- endif %}
-  {%- if c.steps %}{{ run_stepper(c.steps) }}{% endif %}
+  {%- if c.steps %}{{ run_stepper(c.steps, c.list) }}{% endif %}
   <p class="small">Recorded by {{ r.actor | people }}, {{ stamp(r.at) }}{% if r.reason %}, with the reason “{{ r.reason }}”{% endif %}; hash {{ r.hash or 'none' }}. <a href="{{ url_for('device_v2.device', name=c.host, list=c.list, tab='history') }}">Open {{ c.host }}'s History</a></p>
   {%- if not ok %}
   {#- The next action: the card again, which leads with Re-add the receiver for each one a

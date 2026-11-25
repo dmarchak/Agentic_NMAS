@@ -14,13 +14,16 @@
 {#- What a step read: its few lines in place (its final checks, or the newest read of each
     check while it runs, then one line saying its reads), and every read one level down in a
     closed list, newest first: a verify makes up to 120 reads, never one long expanded list. -#}
-{%- macro _lines(lines, more=none, key='') %}
+{#- *list_name*: the network the run is on, given by a caller that knows it; with it, a
+    read the reads engine kept (its `read_id`) links its stored, masked answer (C3087). -#}
+{%- macro _answer(ln, list_name) %}{% if ln.read_id and list_name %} <a class="run-read-answer" href="{{ url_for('reads_v2.show_commands_result', run_id=ln.read_id, list=list_name) }}" title="Its stored answer, masked, as the read engine kept it">its answer</a>{% endif %}{% endmacro %}
+{%- macro _lines(lines, more=none, key='', list_name=none) %}
 <ul class="run-lines">
   {%- for ln in lines %}
   {%- if ln.summary %}
   <li class="run-line run-reads-said">{{ ln.words | people }}</li>
   {%- else %}
-  <li class="run-line run-line-{{ ln.state }}"><strong>{{ ln.what }}</strong> ({{ ln.state_words }}){% if ln.words %}: {{ ln.words | people }}{% endif %}{% if ln.at %} <span class="run-at">{{ clock(ln.at) }}</span>{% endif %}</li>
+  <li class="run-line run-line-{{ ln.state }}"><strong>{{ ln.what }}</strong> ({{ ln.state_words }}){% if ln.words %}: {{ ln.words | people }}{% endif %}{% if ln.at %} <span class="run-at">{{ clock(ln.at) }}</span>{% endif %}{{ _answer(ln, list_name) }}</li>
   {%- endif %}
   {%- endfor %}
 </ul>
@@ -29,7 +32,7 @@
   <summary>{{ m.title }}</summary>
   <ol class="run-lines">
     {%- for ln in m.reads %}
-    <li class="run-line run-line-{{ ln.state }}"><strong>{{ ln.what }}</strong> ({{ ln.state_words }}){% if ln.words %}: {{ ln.words | people }}{% endif %}{% if ln.at %} <span class="run-at">{{ clock(ln.at) }}</span>{% endif %}</li>
+    <li class="run-line run-line-{{ ln.state }}"><strong>{{ ln.what }}</strong> ({{ ln.state_words }}){% if ln.words %}: {{ ln.words | people }}{% endif %}{% if ln.at %} <span class="run-at">{{ clock(ln.at) }}</span>{% endif %}{{ _answer(ln, list_name) }}</li>
     {%- endfor %}
   </ol>
 </details>
@@ -71,7 +74,7 @@
     declared words on hover), with what a step that did not pass read, and a step's own
     sub-steps under it (the deploy's stages under a heal's Apply): one stepper, never two.
     The running stage's time counts and its declared wait counts down (nmas_stepper.js). -#}
-{%- macro _stages(r) %}
+{%- macro _stages(r, list_name=none) %}
 <ol class="run-stages" aria-label="{{ r.label }}: stage {{ r.stage_at }} of {{ r.stage_of }}">
   {%- for g in r.stages %}
   <li class="run-stage run-stage-{{ g.state }}" data-stage="{{ g.key }}"{% if g.lead_key %} data-lead="{{ g.lead_key }}"{% endif %}{% if g.state == 'running' %} aria-current="step"{% endif %}>
@@ -85,9 +88,9 @@
       <ol class="run-stage-list" aria-label="{{ g.name }}'s steps">
         {%- for s in g.steps %}
         <li class="run-step run-step-{{ s.state }}" data-step="{{ s.key }}"{% if s.long %} title="{{ s.long }}"{% endif %}><strong>{{ s.words }}</strong> ({{ s.state_words }}){% if s.at %} <span class="run-at">{{ clock(s.at) }}</span>{% endif %}{% if s.said and s.state != 'running' %}: {{ s.said }}{% elif s.note %}: {{ s.note }}{% endif %}
-          {%- if s.lines and s.state == 'running' %}{{ _lines(s.lines, s.more, r.key ~ '-' ~ s.key) }}{% endif %}
+          {%- if s.lines and s.state == 'running' %}{{ _lines(s.lines, s.more, r.key ~ '-' ~ s.key, list_name) }}{% endif %}
           {%- for x in s.read %}
-          <details class="run-checks" data-keep="{{ r.key }}-checks-{{ s.key }}-{{ loop.index }}"><summary>What it read{% if x.of %} ({{ x.of }}){% endif %}</summary>{{ _lines(x.checks, x.more, r.key ~ '-took-' ~ s.key ~ '-' ~ loop.index) }}</details>
+          <details class="run-checks" data-keep="{{ r.key }}-checks-{{ s.key }}-{{ loop.index }}"><summary>What it read{% if x.of %} ({{ x.of }}){% endif %}</summary>{{ _lines(x.checks, x.more, r.key ~ '-took-' ~ s.key ~ '-' ~ loop.index, list_name) }}</details>
           {%- endfor %}
           {%- if s.substeps %}
           <ol class="run-sub" aria-label="{{ s.words }}'s stages">
@@ -104,10 +107,10 @@
 </ol>
 {%- endmacro %}
 
-{% macro run_stepper(r) -%}
+{% macro run_stepper(r, list_name=none) -%}
 <div class="run{% if r.single %} run-single{% endif %}{% if r.stages %} run-staged{% endif %}" data-run-stepper aria-label="{{ r.label }}">
   {%- if r.stages %}
-  {{ _stages(r) }}
+  {{ _stages(r, list_name) }}
   {%- else %}
   {%- if not r.single %}
   <progress class="run-bar" max="{{ r.bar.max }}" value="{{ r.bar.value }}" aria-label="{{ r.bar.words }}"></progress>

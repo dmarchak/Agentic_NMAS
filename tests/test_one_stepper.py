@@ -408,3 +408,14 @@ class TestTheClock:
                            "Date.parse('2026-10-12T20:01:05Z')),"
                            " window.nmasStepper.secondsSince('not a time', 0)]")
         assert got == [65, None]
+
+
+def test_a_read_line_keeps_the_engine_run_that_holds_its_answer():
+    """C3087 (its card half): a read under a step keeps the reads engine's run holding its
+    masked answer (`read_id`), which the stepper links where its caller names the network;
+    a read with none (not a device's through the engine) keeps "" and links nothing."""
+    from modules import run_stepper as RS
+    got = RS._read_line({"command": "show telemetry ietf subscription 101 receiver",
+                         "result": "fail", "words": "Disconnected", "read_id": "r-7"})
+    assert got["read_id"] == "r-7" and got["state"] == "fail"
+    assert RS._read_line({"check": "stream", "result": "pass"})["read_id"] == ""

@@ -295,7 +295,9 @@ def _read_line(r: dict) -> dict:
     state = str(r.get("result") or "")
     return {"what": str(r.get("check") or r.get("command") or ""), "state": state,
             "state_words": READ_WORDS.get(state, state or "not said"),
-            "words": str(r.get("words") or ""), "at": str(r.get("at") or "")}
+            "words": str(r.get("words") or ""), "at": str(r.get("at") or ""),
+            # C3087: the reads engine's run holding the read's masked answer, or "".
+            "read_id": str(r.get("read_id") or "")}
 
 
 def reads_words(reads: list) -> str:

@@ -4830,6 +4830,8 @@ def _resubscribe(client, _lab, _mp):
             failed = client.get(f"{base}?list=Lab&subs=101&run={run.group(1)}",
                                 headers=hx).get_data(as_text=True)
             assert "What it read" in failed and "The 3 reads" in failed, failed[:400]
+            # C3087's card half: each read the engine kept links its stored answer.
+            assert 'href="/v2/show-commands/run/r-1?list=Lab"' in failed, failed[:400]
             # C3087: History's row of that run opens its verify step's newest stored read.
             hist = client.get("/v2/history?list=Lab&since=").get_data(as_text=True)
             assert "Open the verify step's last read" in hist, hist[:400]
