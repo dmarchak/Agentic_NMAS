@@ -102,8 +102,19 @@ class TestC399:
                     # The button of THIS attempt's page (C1469): with page_load "none", `go`
                     # returns before the navigation commits, and the previous attempt's page,
                     # its Alpine already run, still answered the query (CI #1028, attempt 2).
-                    b.wait_for(f"return location.search.indexOf('cold={attempt}') !== -1 && "
-                               f"!!document.querySelector('{BUTTON}')", 10)
+                    try:
+                        b.wait_for(f"return location.search.indexOf('cold={attempt}') !== -1"
+                                   f" && !!document.querySelector('{BUTTON}')", 10)
+                    except AssertionError as exc:
+                        # C4254 (CI #2217, attempt 2): the page never drew its button and the
+                        # server saw no request after its HTML; what the page held says where.
+                        held = b.js("return {href: location.href, ready: document.readyState,"
+                                    " nodes: document.getElementsByTagName('*').length,"
+                                    " sheets: document.styleSheets.length,"
+                                    " scripts: document.scripts.length,"
+                                    " body: document.body ? document.body.innerHTML.length : -1}")
+                        raise AssertionError(f"attempt {attempt}: {exc}; the page held {held}"
+                                             ) from exc
                     # C2234 (CI #1631, 2026-11-12): the early click left no "kept" step, so it
                     # reached no script-driven control: WebDriver aims at the button's centre,
                     # and the page's stylesheet, still arriving, moved it. A person clicks what
