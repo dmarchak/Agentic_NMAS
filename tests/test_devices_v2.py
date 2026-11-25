@@ -635,9 +635,14 @@ class TestOneIntentState:
         assert row["why"].startswith(
             f"its committed intent (host_vars/r2.yml) changed in {intent} at "), row["why"]
         assert f"after its last measurement ({measured[0]}, " in row["why"], row["why"]
-        # The device page draws that state and its live comparison, and says which is which.
-        assert "<dt>Intent state</dt>" in html and "intent changed since measured" in html
-        assert "the Intent check compares it now" in html
+        # The device page answers once (C3714, the operator's Part C review: "two contradicting
+        # statements never show together"): its Intent state says the live comparison, the
+        # Intent check's, and names the Devices list's measured state as the list's.
+        state = html[html.index("<dt>Intent state</dt>"):]
+        state = state[:state.index("</dd>")]
+        assert "at its intent" in state and "compared now, as the Intent check below" in state
+        assert "the Devices list shows “intent changed since measured”" in state, state
+        assert "its last measurement read" not in state, "no second answer beside the first"
         assert "<strong>Intent</strong>: matches its committed intent" in html
         # The Overview redraws when what decides the state moves.
         trigger = re.search(r'id="overview"[^>]*hx-trigger="([^"]*)"', html, re.S).group(1)

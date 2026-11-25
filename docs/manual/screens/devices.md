@@ -61,8 +61,10 @@ device's committed intent, the network's monitoring profile or the template libr
 commit after it, the row says **intent changed since measured** instead, and its hover names
 what changed, when, and what the measurement had read: the recorded "differs" or "at intent"
 may no longer be true. A capture or Save All (see [Capture and Save All](capture)) brings it
-up to date. The device page's Overview shows the same state, from the same reading, beside
-its Intent check, which compares the golden with intent now.
+up to date. The device page's Overview shows the same state, from the same reading, while
+its Intent check (which compares the golden with intent now) agrees; when the check answers
+otherwise, the Overview's Intent state says the check's answer, compared now, and names this
+list's state as the list's until a capture or Save All measures it again.
 
 A Save All that changed some goldens before 2026-10-02 named only those devices, so an
 unchanged device's read in it is not recoverable; its last measurement reads as the save
