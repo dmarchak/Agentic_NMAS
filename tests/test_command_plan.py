@@ -1073,6 +1073,19 @@ class TestThePooledSession:
             session({"ip": signed, "username": user}, lambda c: c)
         assert got == [], "nothing was asked of the pool"
 
+    @pytest.mark.parametrize("ip", ["192.0.2.11", "2001:db8::11"])
+    @pytest.mark.parametrize("run_user, read_user", [("", "mercury-ro"), ("mercury", "")])
+    def test_an_account_not_named_on_either_side_is_never_read_on_it(
+            self, pooled, ip, run_user, read_user):
+        """C3852: a run whose row names no account (resolved at connect time) never carries a
+        read-only read on its deploy-account session, nor a run's named session a read whose
+        account is unknown: an empty name is no match."""
+        ctx, got = pooled
+        session = CR.pool_session(ctx, {"ip": ip, "username": run_user})
+        with pytest.raises(ValueError, match="it is not read on that session"):
+            session({"ip": ip, "username": read_user}, lambda c: c)
+        assert got == [], "nothing was asked of the pool"
+
 
 # ── C3847's follow-ups (ec92d62b): the stage callback, verify's own step, stage 7's read ────
 

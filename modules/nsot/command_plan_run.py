@@ -333,7 +333,11 @@ def pool_session(ctx, dev: dict):
 
     def session(signed, fn):
         s_ip, s_user = (signed or {}).get("ip", ""), (signed or {}).get("username", "")
-        if not _same_address(s_ip, ip) or (s_user and user and s_user != user):
+        # C3852: the account names must be equal. An empty one is unknown, never a match: a
+        # read-only read on a run whose inventory row names no account (its credentials
+        # resolved at connect time) would otherwise ride a session signed in as the deploy
+        # account (H28). Refusing by resemblance is safe; that read fails, said.
+        if not _same_address(s_ip, ip) or s_user != user:
             raise ValueError(f"this read is of {s_ip or 'no address'} as "
                              f"{s_user or 'no account'}, and the run's session is {ip} as "
                              f"{user or 'no account'}: it is not read on that session")

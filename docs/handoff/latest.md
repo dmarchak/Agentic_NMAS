@@ -1,6 +1,44 @@
-# Handoff: the waiting patches landed; main red only on C4090 (2026-11-24, 10:45 Denver)
+# Handoff: main red only on C4090; nothing deployed (2026-11-25, 02:30 Denver)
 
-## 000000000000000. The evening of 2026-11-24 (15:45 to 17:05 Denver): read this first
+## 0000000000000000. The night of 2026-11-24 to 25 (17:05 to 02:30 Denver): read this first
+
+- **State.** Main's head is 788388cb plus this handoff's commit. CI on cdd4e46c is red on C4090's
+  loop test alone: its three loops, `_fixit_section.html` F.more and `_inc_proof.html`
+  P.net_zero.lines and P.reads, wait on records only the operator can make
+  (OPERATOR.md#c4090-records). Nothing was deployed: there has been no fully green CI. The full
+  local suite at 788388cb: see the last bullet.
+- **What landed.** Every item, with its sha, is in docs/handoff/reports/2026-11-24.md, under
+  Done. Since 23:40 Denver:
+  - C3601 closed: every page job is listed by In progress and reopens.
+  - C4260: job ids in page links are shape-checked.
+  - C4253.
+  - Save, Promote and Set Automatic are bound to what their card drew (C4057, C4050, C4261);
+    the retry runs only on the incidents named (`retry.run`'s `only`). Each was reviewed
+    independently before any deploy.
+  - C2528: EOS, AOS-CX and ProCurve credential lines are masked by position, its tier hand
+    check logged.
+  - Measured and closed: C4041, C3983, C3986, C4040, C3409. Measured and re-sorted: C4037 and
+    C4106 to B, C4048 to C.
+- **Register:** 2,032 open (A 9, B 453, UNKNOWN 285, C 1,285), counted at 07:50 UTC.
+- **Waiting on the operator (OPERATOR.md):**
+  - c4090-records and c4090-confirms: the last red.
+  - c4075-smoke (new): should `--wait` deploys run the smoke check with the local-account
+    flag?
+  - claude-md-0230, gui-direction, ci-shards-gate, c2518-runner, c4135-age.
+- **Lessons** (decisions-2026-11-24.md, the last eight entries):
+  - Read a standing red by its list, not its name.
+  - Run the presence scan for any test that reads a page.
+  - A review of a new link pattern asks what else uses it.
+  - Measure with the caller's own input.
+  - A close note is one paragraph.
+  - The aimed set for a page's new query field includes tests/test_ai_typed_text.py (the
+    cdd4e46c red).
+  - A fix's shape copied to a neighbour needs its premise checked there (C4261's own incident).
+- **Next session:** C4090's records first (the operator's 13:15 order). Then CI's 10 shards,
+  then Stage 5's direction-independent items, each deployed on a fully green CI.
+- **The full suite at 788388cb** (local, six workers, confined, started 07:55 UTC): RESULT_PENDING.
+
+## 000000000000000. The evening of 2026-11-24 (15:45 to 17:05 Denver)
 
 - **Landed (each pushed, CI running):** C3157 a run reopened by its record (bd03b81d); C4034
   the summary's one duration (c3c54925); C4033 the strip's open count (f66333ff); C3489 the halt
