@@ -801,7 +801,6 @@ EMPTY_IN_FIXTURE = {
     "v2/_templates_table.html lib.rows": _LIBRARY,
     "v2/_templates_table.html r.bound": _LIBRARY,
     "v2/_templates_table.html r.bound #2": _LIBRARY,
-    "v2/_timeline.html (e.marks or ())": "a History event's marks (a baseline, a golden state): no event on the walk's store carries one",
     "v2/_timeline.html h.errors": _ERRORS + " (a History source that could not be read)",
     "v2/_topology_map.html at.groups.apart": _TOPOLOGY,
     "v2/_topology_map.html b.hops": _TOPOLOGY,
@@ -859,7 +858,9 @@ EMPTY_IN_FIXTURE = {
 #: 324 with a fleet change's plan and run listed by In progress (C3601, 2026-11-24): the walk's
 #: own plan and run jobs carry the intent page, so In progress's finished rows
 #: (`ip.finished`) drew, measured.
-EMPTY_IN_FIXTURE_CEILING = 324
+#: 323 with a re-subscribe's History row read in the walk (C3087, 2026-11-24): its stored reads'
+#: buttons drew, and with them the timeline's marks (`e.marks`), measured.
+EMPTY_IN_FIXTURE_CEILING = 323
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.
