@@ -1,9 +1,10 @@
 """NO-CHANGE WINDOWS: the daily spans, in UTC, in which this installation starts no scheduled
 change (C1317; the operator, 2026-10-18).
 
-One setting, ``no_change_windows``, the installation's (Settings: Installation), a list of
+One setting, ``no_change_windows``, the installation's, a list of
 ``{"start": "HH:MM", "end": "HH:MM", "reason": "..."}``. None by default: an installation
-with nothing set holds nothing. A window is ``[start, end)``; a start after its end wraps
+with nothing set holds nothing. No Settings card draws it yet (C2611): it is set only in the
+installation's settings file. A window is ``[start, end)``; a start after its end wraps
 past midnight; a start equal to its end holds nothing, and says so in its words.
 
 What an installation puts here is its own (a nightly backup, a maintenance freeze): nothing

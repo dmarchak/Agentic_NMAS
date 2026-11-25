@@ -2,11 +2,11 @@
 
 ## 0000000000000000. The night of 2026-11-24 to 25 (17:05 to 02:30 Denver): read this first
 
-- **State.** Main's head is 788388cb plus this handoff's commit. CI on cdd4e46c is red on C4090's
+- **State.** Main's head is dbeaed3f plus this handoff's commit. CI on cdd4e46c is red on C4090's
   loop test alone: its three loops, `_fixit_section.html` F.more and `_inc_proof.html`
   P.net_zero.lines and P.reads, wait on records only the operator can make
   (OPERATOR.md#c4090-records). Nothing was deployed: there has been no fully green CI. The full
-  local suite at 788388cb: see the last bullet.
+  local suite at dbeaed3f: see the last bullet.
 - **What landed.** Every item, with its sha, is in docs/handoff/reports/2026-11-24.md, under
   Done. Since 23:40 Denver:
   - C3601 closed: every page job is listed by In progress and reopens.
@@ -19,7 +19,9 @@
     check logged.
   - Measured and closed: C4041, C3983, C3986, C4040, C3409. Measured and re-sorted: C4037 and
     C4106 to B, C4048 to C.
-- **Register:** 2,032 open (A 9, B 453, UNKNOWN 285, C 1,285), counted at 07:50 UTC.
+  - C3852: a pooled read needs the same named account (a defence: not reachable through
+    today's callers, reviewed) (dbeaed3f).
+- **Register:** 2,031 open (A 9, B 453, UNKNOWN 284, C 1,285), counted at 07:57 UTC.
 - **Waiting on the operator (OPERATOR.md):**
   - c4090-records and c4090-confirms: the last red.
   - c4075-smoke (new): should `--wait` deploys run the smoke check with the local-account
@@ -36,7 +38,24 @@
   - A fix's shape copied to a neighbour needs its premise checked there (C4261's own incident).
 - **Next session:** C4090's records first (the operator's 13:15 order). Then CI's 10 shards,
   then Stage 5's direction-independent items, each deployed on a fully green CI.
-- **The full suite at 788388cb** (local, six workers, confined, started 07:55 UTC): RESULT_PENDING.
+- **Rows read tonight and left, each for a reason:**
+  - C3884: an act's flag kept across a re-decision. Eight modules read that flag
+    (incident_page, heal_notice, and heal's decide, retry, detect, triggers, act and
+    incidents), so the change needs a review across them all. Its neighbours' tests are in
+    tests/test_heal_standing.py and tests/test_heal_off_keeps_incidents.py.
+  - C3911: a moved switch-on line's batch words and guard 8's grace. C3909 keeps "the
+    problems open at the press" by design, so the change is to recording and grace, inside
+    the batch.
+  - C2490: a late can't-fix notice can start AI analysis calls, a cost decision.
+  - C4262: the card's per-line reads, to be measured on the host.
+  - C2717 and C3002: each needs a vocabulary or wording choice first.
+  - The Lab 9 apps' A rows (C3925, C3929, C3936, C3938): their corrected copies are outside
+    the repository, and Lab 9 work waits for the operator's go.
+- **The full suite at dbeaed3f** (local, six workers, confined, `NMAS_TEST_TIMEOUT=1500`,
+  started 07:58 UTC): **1 failed, 32,207 passed, 432 skipped in 700 s.** The one failure is
+  C4090's loop test (its three loops); the browser tests skip confined, and CI runs them. The
+  first run, at 788388cb, was stopped by the default
+  300 s whole-run bound at 34%, with no failure in the 11,290 tests that had finished.
 
 ## 000000000000000. The evening of 2026-11-24 (15:45 to 17:05 Denver)
 
