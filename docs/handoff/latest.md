@@ -21,6 +21,16 @@
     C4106 to B, C4048 to C.
   - C3852: a pooled read needs the same named account (a defence: not reachable through
     today's callers, reviewed) (dbeaed3f).
+  - C3977 narrowed:
+    - its cap case already held;
+    - Gate 2's limits guard given back its test, shown red with the guard off (4d623a2e);
+    - the cap's refusals name the next call's cost, not a worst case, with a canary
+      (c8feebef);
+    - a failed AI start leads its incident's Incidents row (e1d65f16).
+  - C2611 narrowed (abaf4b45).
+  - C3977's stepper part (`record` drawn skipped before it ran) looks covered by C3988's rule
+    (a step after the one the run is on draws as waiting). Not measured, so it stays on the
+    row: a plan run mid-apply, read on its stepper, settles it.
 - **Register:** 2,031 open (A 9, B 453, UNKNOWN 284, C 1,285), counted at 07:57 UTC.
 - **Waiting on the operator (OPERATOR.md):**
   - c4090-records and c4090-confirms: the last red.
