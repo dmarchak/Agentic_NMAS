@@ -527,6 +527,18 @@ class TestRefusedOrQuestioned:
         assert got["state"] == "question" and got["words"].startswith("Should h1")
         assert calls.uses()[got["call_id"]][0]["use"] == "asked a question back"
 
+    def test_a_long_question_is_kept_whole_and_marked_cut_on_screen(self, lab):
+        """C3041: the call's use detail keeps the model's whole question; the screen's words
+        are a short form that says it was cut ("…"), never a silent 200 characters."""
+        long_q = "Should h1 reach web-1 " + "or web-1 reach h1, on which ports exactly " * 8 + "?"
+        assert len(long_q) > 300
+        lab.answer = answer(outcome="ask", question=long_q)
+        got = draft(lab, "only h1 and web-1 on tcp 80")
+        assert got["state"] == "question" and len(got["words"]) <= 200
+        assert got["words"].endswith("…") and long_q.startswith(got["words"][:-1].rstrip())
+        kept = calls.uses()[got["call_id"]][0]["detail"]
+        assert " ".join(long_q.split()) in " ".join(str(kept).split()), kept
+
 
 # ───────────────────────────────────────────────────────────────────────────── never trusted
 

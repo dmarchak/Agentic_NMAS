@@ -76,6 +76,7 @@ from enum import Enum
 
 from modules.ai.nl_query import Outcome
 from modules.ai.schemas import StrictModel, register
+from modules.cut import cut
 
 log = logging.getLogger(__name__)
 
@@ -594,15 +595,16 @@ def draft(network: str, sentence: str, *, actor: str, trigger: dict, send=None,
                     error=asked.get("error", ""))
     answer = asked["output"]
     if answer.outcome is Outcome.ask:
+        # The whole question in the call's use detail, a marked short form on screen (C3041).
         calls.record_use(asked["call_id"], "asked a question back", actor=actor,
-                         detail=_masked(answer.question[:200]), links=links)
+                         detail=_masked(answer.question), links=links)
         return dict(base, ok=False, state="question", kind="question",
-                    title=TITLES["question"], words=answer.question[:200])
+                    title=TITLES["question"], words=cut(answer.question, 200))
     if answer.outcome is Outcome.refuse:
         calls.record_use(asked["call_id"], "shown: not stated as a policy", actor=actor,
-                         detail=_masked(answer.why_not[:200]), links=links)
+                         detail=_masked(answer.why_not), links=links)
         return dict(base, ok=False, state="refused", kind="model_refused",
-                    title=TITLES["model_refused"], words=answer.why_not[:200])
+                    title=TITLES["model_refused"], words=cut(answer.why_not, 200))
     policy = {"id": new_id(), "network": network, "words": _masked(base["words_typed"]),
               "call_id": asked["call_id"],
               "rules": [r.model_dump(mode="json") for r in answer.rules]}

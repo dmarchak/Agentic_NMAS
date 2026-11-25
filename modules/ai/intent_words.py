@@ -71,6 +71,7 @@ from enum import Enum
 
 from modules.ai.nl_query import Outcome
 from modules.ai.schemas import StrictModel, register
+from modules.cut import cut
 
 from modules.identity import acts_as_ai  # noqa: E402 (the AI's own identity, its role)
 
@@ -1110,15 +1111,17 @@ def _drafted(list_name: str, sentence: str, named: list, *, actor: str, trigger:
             # What of the person's sentence was masked before sending (C1845), said on the tab.
             **({"typed_masked": asked["typed_masked"]} if asked.get("typed_masked") else {})}
     links = {"page": f"/v2/device/{named[0]}?tab=intent"}
-    question, why_not = choices["question"][:200], choices["why_not"][:200]
+    # The whole question or reason in the call's use detail, a marked short form on screen
+    # (C3041).
+    question, why_not = cut(choices["question"], 200), cut(choices["why_not"], 200)
     if answer.outcome is Outcome.ask:
         calls.record_use(asked["call_id"], "asked a question back", actor=actor,
-                         detail=detail(answer.question[:200]), links=links)
+                         detail=detail(answer.question), links=links)
         return dict(base, ok=False, error="ask", clarify=question,
                     detail=f"one question first: {question}")
     if answer.outcome is Outcome.refuse:
         calls.record_use(asked["call_id"], "shown: the operations cannot make it", actor=actor,
-                         detail=detail(answer.why_not[:200]), links=links)
+                         detail=detail(answer.why_not), links=links)
         return dict(base, ok=False, error="unanswerable",
                     detail=f"this change cannot be drafted in words: {why_not}")
     if not answer.patches:

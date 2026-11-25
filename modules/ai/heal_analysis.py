@@ -75,6 +75,7 @@ from enum import Enum
 
 from modules import display_names
 from modules.ai import calls, gateway
+from modules.cut import cut
 from modules.ai import read_loop as RL
 from modules.ai import router_reads as RR
 from modules.ai.explain import Hypothesis
@@ -674,9 +675,10 @@ def ask_prepared(prep: dict, *, trigger: dict, send=None, today: str = None,
     answer = checked["answer"]
     if answer.outcome.value == "refuse":
         calls.record_use(got["call_id"], "shown: the evidence cannot say", actor=actor,
-                         detail=answer.why_not[:200], links=links)
-        return dict(base, state="unanswerable", detail=answer.why_not[:200],
-                    words=words_of("unanswerable", answer.why_not[:200]))
+                         detail=answer.why_not, links=links)
+        # The whole reason kept, a marked short form in the words (C3041).
+        return dict(base, state="unanswerable", detail=answer.why_not,
+                    words=words_of("unanswerable", cut(answer.why_not, 200)))
     note = "; ".join(f"cited by Mercury: {a['device']} by the pack's {a['ref']}"
                      for a in checked["added"])
     calls.record_use(got["call_id"], "shown: advisory analysis", actor=actor, links=links,
@@ -871,9 +873,10 @@ def _ask_looped(prep: dict, *, trigger: dict, network: str, send, today, base: d
     answer = checked["answer"]
     if answer.outcome.value == "refuse":
         calls.record_use(shown_call, "shown: the evidence cannot say", actor=actor,
-                         detail=answer.why_not[:200], links=links)
-        return dict(base, state="unanswerable", detail=answer.why_not[:200],
-                    words=words_of("unanswerable", answer.why_not[:200]))
+                         detail=answer.why_not, links=links)
+        # The whole reason kept, a marked short form in the words (C3041).
+        return dict(base, state="unanswerable", detail=answer.why_not,
+                    words=words_of("unanswerable", cut(answer.why_not, 200)))
     note = "; ".join(f"cited by Mercury: {a['device']} by the pack's {a['ref']}"
                      for a in checked["added"])
     calls.record_use(shown_call, "shown: advisory analysis", actor=actor, links=links,
