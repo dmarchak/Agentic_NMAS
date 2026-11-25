@@ -40,8 +40,10 @@ def page():
 
     ctx = _ctx()
     layer = (request.args.get("layer") or "").strip()
-    plan_job = (request.args.get("plan_job") or "").strip()
-    run_job = (request.args.get("run_job") or "").strip()
+    from modules.nsot import capture_job
+
+    plan_job = capture_job.job_id(request.args.get("plan_job"))
+    run_job = capture_job.job_id(request.args.get("run_job"))
     if ctx["known"] and run_job:
         ctx["r"] = _run_of_job(run_job, ctx["list_name"], layer)
     elif ctx["known"] and plan_job:

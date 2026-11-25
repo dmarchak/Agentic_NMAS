@@ -236,6 +236,14 @@ def take_over(job_id: str, state: str, payload: dict) -> bool:
     return True
 
 
+def job_id(value) -> str:
+    """*value* when it has a job id's shape (`start`'s ``uuid4().hex``), else "": the one check
+    for a job id a page takes from its query (In progress's links, C3601) before it reaches a
+    card's URL, where a path such as ``../../devices/x`` would load another page's HTML."""
+    text = str(value or "").strip()
+    return text if len(text) == 32 and all(c in "0123456789abcdef" for c in text) else ""
+
+
 def get(job_id: str):
     """The job as the page reads it, or None when this server has no record
     of it (never started here, expired, or the server restarted)."""

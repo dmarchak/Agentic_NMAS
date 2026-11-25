@@ -213,3 +213,10 @@ class TestInProgressListsAnAdoption:
         done = self._done(lab, monkeypatch, {"ok": False, "state": "stopped", "steps": [],
                                              "remaining": [], "reason": "the device moved"})
         assert (done["level"], done["words"]) == ("danger", "stopped: the device moved"), done
+
+    def test_an_adopt_job_not_shaped_as_a_job_id_draws_no_card(self, lab):  # noqa: F811
+        """The review of C3601's slices: a crafted ``adopt_job`` (``../../x``) would have
+        loaded another page's HTML into the Adopt card; only a job id's shape is drawn."""
+        page = lab["client"].get("/v2/devices?list=Lab&adopt_job=../../../v2/settings"
+                                 "&hostname=r9").get_data(as_text=True)
+        assert not re.search(r'id="adopt-card" hx-get=', page), page[:0]

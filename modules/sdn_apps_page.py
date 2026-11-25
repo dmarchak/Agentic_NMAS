@@ -246,7 +246,7 @@ def _dhcp_card(network: str):
 def apps_view(network: str, args=None) -> dict:
     """The Apps tab's region: ``g`` for `v2/_sdn_apps.html`."""
     from modules.apps import deploy_op, draft_write
-    from modules.nsot import export_op
+    from modules.nsot import capture_job, export_op
 
     args = args or {}
     src = deploy_op.sources()
@@ -267,7 +267,7 @@ def apps_view(network: str, args=None) -> dict:
            "dhcp": _dhcp_card(network),
            "controllers": [], "app": None, "receipt": None,
            # A deploy opened from In progress (C3601): its job, whose card the tab loads.
-           "deploy_job": str(args.get("deploy_job") or "").strip()[:64]}
+           "deploy_job": capture_job.job_id(args.get("deploy_job"))}
     if listed.get("state") != "ok":
         return out
     want = (args.get("controller") or "").strip()

@@ -3167,8 +3167,10 @@ def devices():
     them, searchable and filtered; ticking rows raises the selection bar. Opened from In
     progress on an adoption (``adopt_job``, C3601), its card loads that job's result."""
     from flask import request
+
+    from modules.nsot import capture_job
     return _page("v2/devices.html", active_nav="devices",
-                 adopt_job=(request.args.get("adopt_job") or "").strip()[:64],
+                 adopt_job=capture_job.job_id(request.args.get("adopt_job")),
                  adopt_host=(request.args.get("hostname") or "").strip()[:64],
                  **_devices_ctx(request))
 

@@ -289,6 +289,16 @@ class TestInProgressListsADeploy:
         assert done["words"].startswith(f"{CTL}: Refused: "), done
 
 
+def test_a_deploy_job_not_shaped_as_a_job_id_draws_no_card(apps):
+    """The review of C3601's slice: a crafted ``deploy_job`` such as ``../../devices/x`` would
+    have made the tab load another page's HTML into itself; only a job id's shape is drawn."""
+    for bad in ("../../../devices/x", "0" * 31 + "/", "A" * 32, "0" * 33):
+        page = apps["client"].get(f"/v2/sdn/apps?list={NET}&deploy_job={bad}")
+        assert 'id="apps-deploy-job"' not in page.get_data(as_text=True), bad
+    page = apps["client"].get(f"/v2/sdn/apps?list={NET}&deploy_job={'0' * 32}")
+    assert f'/v2/sdn/apps/run/{"0" * 32}' in page.get_data(as_text=True)
+
+
 def test_the_routes_are_declared_everywhere_a_mutating_route_must_be():
     from modules import invalidation, operation_stages, route_gates
     assert route_gates.GATES["sdn_v2.apps_confirm"].kind == "confirm"

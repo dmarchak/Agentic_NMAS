@@ -45,12 +45,14 @@ def page():
 
     from modules import credential_profiles_page as P
 
-    rot_job = (request.args.get("rot_job") or "").strip()
+    from modules.nsot import capture_job
+
+    rot_job = capture_job.job_id(request.args.get("rot_job"))
     op = ({"op": _rotate_op(rot_job, (request.args.get("rot_run") or "").strip())}
           if rot_job else {})
     return _page("v2/credentials.html", active_nav="credentials", tab="profiles",
                  list_name=_credentials_list(request), known=True, ro=P.read_view(),
-                 **_ctx(**op), **fleet_ctx(), ra_job=(request.args.get("ra_job") or "").strip())
+                 **_ctx(**op), **fleet_ctx(), ra_job=capture_job.job_id(request.args.get("ra_job")))
 
 
 @bp.route("/region", methods=["GET"])
