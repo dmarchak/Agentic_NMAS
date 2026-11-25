@@ -2,8 +2,8 @@
 {#- A fix's How it runs fold (board fix-bpdu-guard, artboard 1, approved 2026-11-16): the ways
     a fix runs, this one's marked, what changed it and when, and what its checks cannot prove
     on a port that is down (the operator's change 1). A saved fix's Delete… or Restore… is
-    here, inside the fold (the operator, 2026-11-16: the default view keeps one button): a
-    reason, then the press, the answer drawn in place (`routes/fixes_v2.delete`, `restore`).
+    below the fold, a visible secondary control (C3859): a reason, then the press, the answer
+    drawn in place (`routes/fixes_v2.delete`, `restore`).
     Drawn by fix.html and again, alone, by those two posts. -#}
 <section class="card inc-fold" id="fix-how" aria-labelledby="h-fx-how"{% if said and said.words %} data-holds-live="review"{% endif %}>
   <details class="inc-fold-d" data-keep="fx-how-{{ p.key }}"{% if open_fold %} open{% endif %}><summary class="card-head"><h2 id="h-fx-how">How it runs · {{ p.words }}</h2></summary>
@@ -55,9 +55,13 @@
       </form>
     </details>
   {%- endif %}
+  </details>
+  {#- Delete… (or Restore…) as a visible secondary control, outside the fold (C3859, the
+      operator, 2026-11-16: "on the fix page, Delete as a visible secondary button, not hidden
+      inside the How it runs fold"); the Fixes list's rows open it here (?delete=1). -#}
   {%- if form %}
     {%- set restoring = form.action == 'restore' %}
-    <details class="small" data-keep="fx-delete-{{ p.key }}"{% if said and said.level == 'danger' %} open{% endif %}><summary>{{ 'Restore…' if restoring else 'Delete…' }}</summary>
+    <details class="small fx-delete" id="fix-delete" data-keep="fx-delete-{{ p.key }}"{% if (said and said.level == 'danger') or open_delete %} open{% endif %}><summary class="btn btn-small" data-op="plans">{{ 'Restore…' if restoring else 'Delete…' }}</summary>
       <form class="simple-form" hx-post="{{ url_for('fixes_v2.restore', key=p.key, list=p.network) if restoring else url_for('fixes_v2.delete', key=p.key, list=p.network) }}" hx-target="#fix-how" hx-swap="outerHTML">
         {%- if restoring %}
         <p>Restoring brings {{ p.name }} back as it was: offered, matched and run again by its own mode, and in the AI's catalog. Its deletion stays in its record and in History.</p>
@@ -70,5 +74,4 @@
       </form>
     </details>
   {%- endif %}
-  </details>
 </section>

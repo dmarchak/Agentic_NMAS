@@ -17,7 +17,9 @@ A summary line first: how many fixes, how many saved (by how each runs) and how 
 and, when any saved fix was deleted, a link to them. Then one table, each row a fix:
 
 - **Name**, which opens the fix's page (**Shared** beside a fix saved on another network and
-  shared with every network);
+  shared with every network), and beside a saved fix **Delete…** (**Restore…** for a deleted
+  one), which opens its page with the reasoned confirm open ([Delete and
+  Restore](#how-it-runs));
 - **Mode**: Automatic, Dry run, Manual only or Off, its reason on hover;
 - **Source**: Mercury built-in, AI (the AI proposed it and a person saved it) or Person;
 - **Fixes**: the problem it fixes;
@@ -87,9 +89,13 @@ Inside **How it runs**, for a saved fix:
 - **Set Automatic…**, after the fix's first verified run (or its new version's): **Set
   Automatic** makes it run by itself on a matching incident while the network's self-healing is
   in Auto, on your standing approval of this version's plan. It needs self-healing rights.
+
+Below the fold, a visible secondary button:
+
 - **Delete…** takes a reason, then **Delete this fix**: the fix is no longer offered, matched or
   run, and leaves the AI's catalog; its record, origin and runs are kept here and in History.
-  **Restore…** with a reason, then **Restore this fix**, brings it back as it was.
+  **Restore…** with a reason, then **Restore this fix**, brings it back as it was. A row's
+  Delete… or Restore… on the Fixes list opens this page with it open.
 
 Each answer is drawn in place; a right you do not hold is said beside its button, which is
 drawn disabled.

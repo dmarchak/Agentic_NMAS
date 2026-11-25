@@ -15,7 +15,7 @@ with one saved fix (tests/test_saved_plans.py's BPDU guard match and fills, save
 a verified errdisable-recover run) and Mercury's 17 built-ins.
 Templates compared: templates/v2/fixes.html, templates/v2/_macros.html
 Compared again 2026-11-24 (the week plan's Stage 5, every setting's description): `_macros.html` gains the `setting_desc` macro, which only the Settings screens call; `fixes.html` calls none of it, so nothing on this page moves and no region's verdict changed. Compared by the templates' diff, not by new shots. Templates sha256 before: `8ee5ab408ce7c561531c2fd7f8a615dcbc1c2ba33ac2e2443760012b74daefa3`.
-Templates sha256: `9ca66335539a0b04fc710dd86564eb3276dca1a2fd651ec355d4f6dad29e8244`
+Templates sha256: `d05390ff88fe3bd35bdafbc66d1a471b916fa6eb079ba4d936fbb718c240206f`
 
 `_macros.html` is folded in here (a61bb071 changed it for this page; it was in no record); every
 page draws it, so a change to it asks for this page to be compared again.
@@ -44,3 +44,13 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Sorting | not drawn | a header pressed sorts by its column, ▲ or ▼ beside it (shot `debt-fixes-sorted`: by Name, ascending) | **deviation** (log: Troubleshooting › Fixes: one sortable table, not the Saved and Built-in groups) |
 | New fix…'s form (fix-manual-controls screen 2) | the form in place under the head: Name, Description, What it fixes, Sends (a shape per line, Add a line…), Checks before, Verifies after, the preview on an example, Save as Manual only and Cancel; New fix… busy on itself while the form is open | the same sections in the same order, above the summary line; Save as Manual only disabled until a name and a line are given, saying so; New fix… not drawn busy while the form is open | **deviation** (log: Fixes: New fix… is not drawn busy while its form is open) |
 | Phone | not drawn | the table scrolls inside its card; the head, the summary and the link stack | **same** |
+
+**Compared again 2026-11-25 (C3859, the operator, 2026-11-16: "Delete on every row of the Fixes
+list, not only on the fix page"):** by the template diff, not by new shots. In `fixes.html`, a
+saved fix's Name cell gains, after its name, a small **Delete…** link (**Restore…** for a
+deleted fix) opening the fix's page with its reasoned confirm open; a built-in fix's row has
+none (a built-in fix is read-only). No column is added; the sort keys are unchanged.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| A row's Delete… (C3859) | the board's rows draw no Delete | Delete… beside a saved fix's name, opening its page's confirm | **deviation** (log: C3859 Delete… visible on the fix page and on each Fixes row) |

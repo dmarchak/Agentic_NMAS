@@ -25,7 +25,7 @@ Close, where it drew that line above a device and interface form; the region is 
 narrower in what it holds, as the operator asked, no deviation to log. Compared by the
 template's diff and tests/test_fixes_routes_rights.py's browser case, not by new shots.
 Templates sha256 before: `3854a50b173d38410725a4952003eb9d9bb18c178bcdfb494ffc6292a6a8d592`.
-Templates sha256: `4cec85a56f90a569abcb6079a06cf742ede343d03510fecdd7544309bb23c14e`
+Templates sha256: `6846e56e47df66e3f90eced5797956d98cca3ae1b43c660c784a527e2e96095e`
 
 Compared again 2026-11-18 (the skip-mode debt's carried-fields pass, 67b90db3): in
 `_fix_run.html` the Run button posts to `c.post.url`, which `fix_page.run_card` builds with
@@ -54,3 +54,14 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Run… (artboard 2, fix-manual-controls screen 1) | the card in place under the BLUF, before the folds: Run on an open incident (each matching incident a choice), Or choose a device and interface…, the program as it will be sent, Checks first, Then verifies, Run on <device> <port> and Cancel | the card in the same place, "Run this fix"; when nothing can be offered it says why with Close (shot `debt-fix-run`: no committed intent in the shots' world) | **same** |
 | A built-in's page | not drawn | read-only: no Edit…, How it runs says how it runs from code and the network's settings; a built-in command plan has Run… (the operator, 2026-11-17) | **same** (the board's own words: "A built-in fix is read-only") |
 | Phone | not drawn | the folds stack full width; Run…'s card the same | **same** |
+
+**Compared again 2026-11-25 (C3859, the operator, 2026-11-16: "on the fix page, Delete as a
+visible secondary button, not hidden inside the How it runs fold"):** by the template diff, not
+by new shots. In `_fix_how.html`, Delete… (Restore… for a deleted fix) leaves the How it runs
+fold: under it, in the same card, a secondary button opening the same reasoned confirm, its
+words, rights and answer unchanged. It opens by itself when the page is opened from a Fixes
+row's Delete… (`?delete=1`).
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| Delete… (C3859) | board fix-bpdu-guard's How it runs fold held Delete… | a visible secondary button under the fold, the same confirm | **deviation** (log: C3859 Delete… visible on the fix page and on each Fixes row) |

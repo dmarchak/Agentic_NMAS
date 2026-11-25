@@ -49,7 +49,7 @@
 <tbody>
 {%- for r in p.rows %}
   <tr data-fix="{{ r.key }}">
-    <td data-v="{{ r.name | lower }}"><a href="{{ url_for('fixes_v2.fix', key=r.key, list=p.network) }}">{{ r.name }}</a>{% if r.shared %} {{ badge('Shared', 'muted', title='Saved on another network and shared with every network') }}{% endif %}</td>
+    <td data-v="{{ r.name | lower }}"><a href="{{ url_for('fixes_v2.fix', key=r.key, list=p.network) }}">{{ r.name }}</a>{% if r.saved %} <a class="small fix-row-delete" data-op="plans" href="{{ url_for('fixes_v2.fix', key=r.key, list=p.network, delete='1') }}#fix-delete" title="{{ 'Restore' if r.deleted else 'Delete' }} {{ r.name }}: its page opens with the reasoned confirm">{{ 'Restore…' if r.deleted else 'Delete…' }}</a>{% endif %}{% if r.shared %} {{ badge('Shared', 'muted', title='Saved on another network and shared with every network') }}{% endif %}</td>
     <td data-v="{{ p.mode_rank | length if r.deleted else p.mode_rank.get(r.how, p.mode_rank | length) }}">{{ badge(r.words, r.badge, title=r.hover) }}</td>
     <td data-v="{{ p.source_words[r.source] | lower }}">{{ p.source_words[r.source] }}</td>
     <td data-v="{{ r.fixes | lower }}" class="small">{{ r.fixes }}</td>

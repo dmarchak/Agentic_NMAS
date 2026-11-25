@@ -150,3 +150,40 @@ class TestRunWithNoOpenIncident:
             finally:
                 b.go("about:blank")
                 browser.close_socketio_sessions()
+
+
+class TestDeleteFromTheList:
+    """C3859 (the operator, 2026-11-16: "Delete on every row of the Fixes list, not only on the
+    fix page; on the fix page, Delete as a visible secondary button, not hidden inside the How
+    it runs fold"): a saved row's Delete… opens its page with the reasoned confirm open, outside
+    the fold; the reason typed and Delete this fix pressed, the fix is deleted, its answer in
+    place."""
+
+    def test_in_a_real_browser_the_rows_delete_opens_the_confirm_and_deletes(self, card):  # noqa: F811
+        from tests import browser
+        ok, why = browser.available()
+        if not ok:
+            pytest.skip(f"no real browser here ({why}); the delete route's tests still run")
+        import app as APP
+        key = saved(card, dry_run=False)
+        with browser.Served(APP.app) as srv, browser.Browser() as b:
+            try:
+                b.go(srv.url(f"/v2/fixes?list={NET}"))
+                link = f'tr[data-fix="{key}"] a.fix-row-delete'
+                b.wait_for(f"return !!document.querySelector('{link}')")
+                assert b.js(f"return document.querySelector('{link}').textContent") == "Delete…"
+                b.click(link)
+                b.wait_for("var d = document.getElementById('fix-delete');"
+                           " return !!window.htmx && d && d.open && !!d.querySelector('textarea')"
+                           " && d.querySelector('textarea').offsetParent !== null")
+                assert b.js("return !document.getElementById('fix-delete')"
+                            ".closest('details.inc-fold-d')"), "Delete… sits outside the fold"
+                assert b.js("return location.search.indexOf('delete=1') !== -1")
+                b.type("#fix-delete textarea", "replaced by the newer recovery script")
+                b.click('#fix-delete button[type="submit"]')
+                b.wait_for("return /Deleted BPDU guard recovery/.test("
+                           "document.getElementById('fix-how').innerText)", 15)
+                assert stored(key)["retired"]["by"] == PERSON
+            finally:
+                b.go("about:blank")
+                browser.close_socketio_sessions()

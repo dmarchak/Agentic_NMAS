@@ -249,7 +249,9 @@ def fix(key):
     p = fix_page.page(ref.name, key)
     form = fix_page.delete_form(ref.name, key, person()) if p["kind"] == "saved" else None
     auto = fix_page.automatic_form(ref.name, key, person()) if p["kind"] == "saved" else None
+    # A Fixes row's Delete… (or Restore…) opens this page with its confirm open (C3859).
     return _strict(render_template("v2/fix.html", p=p, form=form, auto=auto, said={},
+                                   open_delete=request.args.get("delete") == "1",
                                    who=_who(), active_nav="fixes"),
                    404 if p["kind"] == "unknown" else 200)
 
