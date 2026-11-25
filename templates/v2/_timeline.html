@@ -112,6 +112,8 @@
             other record drawn open, as before. C3175 (the operator, 2026-11-12: "4. Step lines
             use display names. An email appears only under "The identity as recorded"."): each
             line names a person by display name, closed or open. -#}
+        {#- C3087: each step's newest stored read, one press from its record (the engine's run page). -#}
+        {%- if e.read_answers %}<p class="small tl-links tl-reads">{% for a in e.read_answers %}<a class="btn btn-small" href="{{ url_for('reads_v2.show_commands_result', run_id=a.run, list=a.list) }}" title="The masked answer this step read last, as the read engine kept it">Open the {{ a.step }} step's last read</a>{% endfor %}</p>{% endif %}
         {%- if e.record %}{% if e.record_closed %}<details class="tl-record-d" data-keep="tl-rec-{{ e.id }}"><summary>Details for the record</summary>{% endif %}<dl class="tl-record">{% for k2, v2 in e.record %}<dt>{{ k2 }}</dt><dd>{{ v2 | people | times }}</dd>{% endfor %}</dl>{% if e.record_closed %}</details>{% endif %}{% endif %}
         {#- Board E2a: the identity a row's By names, as recorded, closed and after the row's own
             record (a row's line names the person by display name). -#}

@@ -291,3 +291,17 @@ class TestDisplayNamesInSteps:
         (entry,) = steplog.incidents("Default")["entries"]
         assert entry["policy_by"] == SETTER and entry["policy"]["by"] == SETTER
         assert f"confirmed by {NAME}</dd>" in record, "the policy's line by display name"
+
+
+def test_each_steps_newest_stored_read_opens_from_the_record():
+    """C3087: an operation's History row says its reads in one line; each step that kept a read
+    through the reads engine also opens its newest stored answer (the engine's run page) in one
+    press, in the steps' order. A read with no id (not a device's through the engine) opens
+    nothing, and a step with none adds no link."""
+    from modules import history_sources as HS
+    steps = [{"step": "plan", "reads": [{"command": "show run", "read_id": ""}]},
+             {"step": "verify", "reads": [{"command": "a", "read_id": "r-1"},
+                                          {"command": "b", "read_id": "r-2"}, "a reference"]},
+             {"step": "record"}, "not a step"]
+    assert HS._read_answers(steps, NET) == [{"step": "verify", "run": "r-2", "list": NET}]
+    assert HS._read_answers(None, NET) == []

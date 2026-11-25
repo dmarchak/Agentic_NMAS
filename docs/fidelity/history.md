@@ -68,7 +68,14 @@ person by display name; no element moves. Compared by the template's diff
 people by display name on every v2 screen (C3715)"). Templates sha256 before:
 `881ecd57980fe7ee1f37b40821d125baba19e747deb12853f50b5f527d88bcc6`.
 Compared again 2026-11-18 (the skip-mode debt, docs/FAST_LANE_DEBT.md; 93120b2f, c4948c2c and 74303566): `_timeline.html`'s Open the card opens a run's own home when it has one (an approved plan's step: its incident's card, its hover saying so; 93120b2f), and an AI call's "Show the prompt and the answer" is busy on itself while its view loads ("Loading…", c4948c2c, its busy span corrected in 74303566). `_history_ai_call.html`, the AI call's view that button draws in place (`v2.history_ai_call`), is folded into this record (it was in none): since c4948c2c "Sent to the model" and "Received" each carry a **Copy** (every part as sent, each under its name; the answer's bytes as received). Shot again from this tree (`history-rows`, `-open` at 1440, 1280 and 390, `history-real-rows`, `history-kinds-menu`, `history-baselines-rows`, `history-unverified-rows`, and `history-ai-call-rows`, `-open` at 1280 and 390; tests/test_board_shots.py's `test_history` and `test_history_ai_call`) and read region by region against this record's verdicts: every verdict stands; one row added for the AI call's view. The History boards are the canvas's, not on disk, so they were not re-shot. Logged once (docs/STANDING_APPROVAL_LOG.md, "An AI call's view on History: Copy beside what was sent and received"). Templates sha256 before: `c4709279654eca11f8fd74a79b9fa954bb6492780edaf9b398736e58096663bc` (without `_history_ai_call.html`).
-Templates sha256: `ec848ff3ae52a38760ae1fba66d118f9a4a61316fd5b5569ae5cdae2f3e9a772`
+Compared again 2026-11-24 (C3087): an operation's opened row draws, before its record, one
+button per step that kept a stored read, **Open the <step> step's last read** (the read
+engine's run page, its masked answer), so what it read is one press from the record. A line of
+buttons added in the opened row, the same `tl-links` row its card's buttons use; no element
+moves and no region's verdict moved; compared by the template's diff and the v2 walk, not by
+new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "C3087: a run's stored reads one press
+from History"). Templates sha256 before: `ec848ff3ae52a38760ae1fba66d118f9a4a61316fd5b5569ae5cdae2f3e9a772`.
+Templates sha256: `19a7ad0f6c6093c97fdd336698e697200603ba799875afdbf2daf1050edbcc03`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_timeline.html` and `_history_remote.html`, each place

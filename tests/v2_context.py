@@ -4830,6 +4830,9 @@ def _resubscribe(client, _lab, _mp):
             failed = client.get(f"{base}?list=Lab&subs=101&run={run.group(1)}",
                                 headers=hx).get_data(as_text=True)
             assert "What it read" in failed and "The 3 reads" in failed, failed[:400]
+            # C3087: History's row of that run opens its verify step's newest stored read.
+            hist = client.get("/v2/history?list=Lab&since=").get_data(as_text=True)
+            assert "Open the verify step's last read" in hist, hist[:400]
         # A receiver the run left removed: the danger and Re-add the receiver lead the card.
         state["src"] = lab_src(box=T.Box(readd_fails=2))
         _body, hashes, program = drawn("subs=101")

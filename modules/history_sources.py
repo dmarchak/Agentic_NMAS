@@ -2239,6 +2239,24 @@ def _run_reads(steps) -> list:
     return out
 
 
+def _read_answers(steps, network: str) -> list:
+    """Where each step's newest stored read answer opens (C3087: one press from the
+    operation's record to what it read): ``[{"step", "run", "list"}]``, one per step that kept
+    a read through the reads engine (its ``read_id``, the engine's run holding the masked
+    answer), in the steps' order; a read with no id (not a device's through the engine) opens
+    nothing."""
+    out = []
+    for s in steps or []:
+        if not isinstance(s, dict):
+            continue
+        ids = [e.get("read_id") for e in s.get("reads") or []
+               if isinstance(e, dict) and e.get("read_id")]
+        if ids:
+            out.append({"step": str(s.get("step") or "a step"), "run": str(ids[-1]),
+                        "list": network})
+    return out
+
+
 def privileged(ctx):
     """Each Tier 2 run (Run a privileged command…, modules/nsot/privileged.py): who, why, the
     command, and its verdict. Its kept before-state stays in the record."""
@@ -2281,6 +2299,7 @@ def privileged(ctx):
                                      ("Verify", (r.get("verify") or {}).get("words")),
                                      ("Why", r.get("why")), ("Verified by", how)]
                              + _run_reads(r.get("steps"))))
+        events[-1]["read_answers"] = _read_answers(r.get("steps"), ctx["ref"].name)
         # C3172: a re-subscribe or re-add opens its card, drawn from this record on its
         # device's page (`run_card.named_record`). A Tier 2 run's card is drawn only from its
         # job, so its row has none yet (C3177).
