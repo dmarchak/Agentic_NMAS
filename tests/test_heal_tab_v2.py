@@ -40,6 +40,11 @@ def networks(tmp_path, monkeypatch):
     import app as A
 
     make_networks(tmp_path, monkeypatch)
+    # C4252: a switch to Auto starts the retry pass on its own thread (`policy.apply`,
+    # `retry.run_soon`), which outlived its test and wrote heal/incidents.json into the next
+    # test's store on the same worker (CI #2208's teardown error). No test here asks the retry
+    # pass (tests/test_heal_retry.py's); it is not started.
+    monkeypatch.setattr("modules.heal.retry.run_soon", lambda *a, **k: None)
     return {"client": A.app.test_client(), "dir": tmp_path}
 BASE = "/v2/settings/network/{n}/heal"
 
