@@ -63,9 +63,12 @@ import time
 log = logging.getLogger(__name__)
 
 #: How long the first message waits for the analysis (section 12: the operator's bound,
-#: named there `heal_analysis_wait_seconds`). A constant, not a setting, until section 12's
-#: measurement of Explain's answer time on the host is made: no measurement yet says it should
-#: move, and a setting nobody needs to change is one more thing to get wrong.
+#: named there `heal_analysis_wait_seconds`). A constant, not a setting: no measurement says it
+#: should move, and a setting nobody needs to change is one more thing to get wrong. Section
+#: 12's measurement, made 2026-11-25 on the host's AI calls record (C2488): Explain's 2,624
+#: live answers took a median of 11 s and at most 28.2 s, none over 60 s (its 1,447 batch rows
+#: are evaluation runs, which no notice waits on); the heal analysis has no call recorded yet,
+#: and its read loop's passes are C2691's.
 WAIT_S = 60.0
 #: The notice's steps, in order, for the manual's How it works page (H10).
 STEPS = (("due", "Find each new can't-fix: recorded in the last 10 minutes, not yet told"),
