@@ -321,7 +321,9 @@ cmd_preflight() {
     # step 3).
     local pep
     pep=$("${COMPOSE[@]}" exec -T netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py \
-          shell -c "from django.conf import settings as s; p = getattr(s, 'API_TOKEN_PEPPERS', {}) or {}; print('pepper', 1 in p, len(p.get(1) or ''))" 2>/dev/null | tail -1)
+          shell -c "from django.conf import settings as s; p = getattr(s, 'API_TOKEN_PEPPERS', {}) or {}; print('pepper', 1 in p, len(p.get(1) or ''))" 2>/dev/null | tail -1) || true
+    # C4117: under the kit's `set -euo pipefail` a failing read (NetBox down) ended the whole
+    # preflight here, before its FAIL line and its count; its empty answer is the FAIL below.
     case "$pep" in
       "pepper True "*) n=${pep##* }
         if [ "$n" -ge 50 ]; then echo "PASS NetBox can save a v2 token: its pepper (id 1) is set, $n characters"

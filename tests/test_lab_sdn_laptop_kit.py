@@ -1386,3 +1386,20 @@ class TestTheKitWithAnExternalNetBox:
         assert "NetBox connection (Mercury's Test)" not in r.stdout
         assert "SKIP" not in r.stdout
         self._fails(r)
+
+    def test_a_netbox_that_cannot_be_read_is_a_fail_line_and_the_count(self, kit, tmp_path):
+        """C4117: the pepper read under the kit's `set -euo pipefail` ended the preflight
+        silently when NetBox's container could not answer (no FAIL line, no total); its empty
+        answer is the FAIL it already draws, and the lines after it still run."""
+        docker = tmp_path / "bin" / "docker"
+        docker.write_text('#!/bin/sh\necho "docker $*" >> "$KIT_CALLS"\n'
+                          'case "$*" in *manage.py*) exit 1 ;; *version*) echo 27.0.0 ;; '
+                          '*"container inspect"*) exit 1 ;; esac\nexit 0\n')
+        r, calls = kit("preflight", "")
+        assert "manage.py" in calls, calls
+        assert ("FAIL NetBox can save a v2 token: NetBox's settings could not be read (is "
+                "NetBox up? kit start)") in r.stdout.splitlines(), r.stdout
+        # The lines after it still ran: the settings check's, whatever it found.
+        assert any(ln.startswith(("PASS settings check", "FAIL settings check"))
+                   for ln in r.stdout.splitlines()), r.stdout
+        assert self._fails(r) >= 1
