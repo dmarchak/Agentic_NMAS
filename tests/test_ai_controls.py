@@ -426,6 +426,9 @@ def test_the_day_cap_counts_today_s_spend_and_names_both_operands(chain):
     spent = 1.50 - per_call + 0.0001
     assert f"{money.usd(spent, exact=True)}" in got["reason"] and f"{money.usd(per_call, exact=True)}" in got["reason"]
     assert got["reason"].endswith("is over the day cap $1.50"), got["reason"]
+    # C4031: the amount added is the task's typical cost per call; no call has a cap of its
+    # own since 7b0bb884, so the refusal names none.
+    assert "typical cost per call" in got["reason"] and "per-call cap" not in got["reason"]
     # A cheaper task's call may still fit what is left.
     assert controls.readiness("nl_query", today="2026-10-25")["ready"] is True
 

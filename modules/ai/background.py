@@ -458,7 +458,8 @@ def _measured_cost(task: str, pin: dict, today: str) -> dict:
     return {"usd_per_call": stand_in, "calls": 0, "measured": False,
             "basis": (f"not measured yet: no {task} call on {pin['model']} in the last "
                       f"{COST_WINDOW_DAYS} days{unread}; its pin's {pin['max_prompt_tokens']:,} "
-                      f"prompt tokens and {pin['max_tokens']:,} answer tokens stand in")}
+                      f"prompt tokens and {pin['max_tokens']:,} answer tokens stand in for "
+                      "the estimate (they bound nothing: the spending limits govern a call)")}
 
 
 def typical_output(task: str, now=None) -> dict:

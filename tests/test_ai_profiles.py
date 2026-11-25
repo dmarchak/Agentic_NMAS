@@ -149,9 +149,12 @@ def test_the_cards_table_is_each_task_s_pin_its_model_and_its_cap_whole():
         "max_output_tokens": 128_000,
         "cap_usd": profiles.cap_per_call("connection_check"),
         "cap_label": "typical cost per call (measured)", "cap_measured": False,
+        # Premise corrected (C4031): the pin's figures price the estimate only; the words say
+        # they bound nothing, since the spending limits govern a call (7b0bb884).
         "cap_basis": ("not measured yet: no connection_check call on claude-haiku-5-5 in the "
                       "last 30 days; its pin's 2,000 prompt tokens and 64 answer tokens stand "
-                      "in")}
+                      "in for the estimate (they bound nothing: the spending limits govern a "
+                      "call)")}
     sonnet = [r for r in got["rows"] if r["model"] == "claude-sonnet-5-5"]
     assert sonnet and all(r["long_prompt_tokens"] is None for r in sonnet), \
         "a model with no long tier says none"

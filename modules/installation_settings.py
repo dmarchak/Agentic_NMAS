@@ -395,8 +395,9 @@ CARDS = {
     "ai": {
         "group": "ai_gateway", "title": "AI (hosted)", "tab": "ai",
         "fields": (_f("ai_cap_usd_per_day", "Cap per day", "usd",
-                      "today's spend plus a call's worst case, refused before it is sent; "
-                      "each call's own cap is its task's, below. No program maximum: the "
+                      "today's spend plus what a call is expected to cost (its prompt and its "
+                      "task's typical answer), refused before it is sent, and held live while "
+                      "it answers; no call has a cap of its own. No program maximum: the "
                       "limit is yours, and the provider bills what is spent"),
                    _f("ai_cap_day_boundary", "The day begins at", "zone",
                       "midnight in this zone, UTC unless set: when the day cap's count starts "

@@ -2,7 +2,8 @@
 NSOT_GUI_BRIEF section 6, "AI controls"; the operator, 2026-10-25).
 
 **The rule.** Every control that needs AI carries one shared **AI** mark (the macro `mark` in
-templates/v2/_ai.html), whose hover names the task, its pinned model and its per-call cap. When
+templates/v2/_ai.html), whose hover names the task, its pinned model and its typical cost per
+call (no call has a cap of its own since 7b0bb884: the spending limits govern). When
 hosted AI cannot answer (it is off, no key is set, or today's cap is reached), the control is
 drawn disabled, its input not fillable, with the reason in place and, for a viewer who may
 configure, a link to Settings › Installation › AI, the AI (hosted) card. The provider's workspace
@@ -15,7 +16,7 @@ the evidence pack, the intent editor, the card's Save, Replace… and Allow).
 **This module only reads.** `readiness` asks the same questions as the gateway, in the
 gateway's order, before anything would be sent: is hosted AI allowed (`gateway.hosted_allowed`),
 is a key set (presence only: `secrets_store.is_set`, which never decrypts; the key's value is
-never read, returned or logged here), and do today's spend plus the task's per-call cap fit
+never read, returned or logged here), and do today's spend plus the task's typical cost fit
 the day cap (`calls.spent_usd`, `gateway.caps`). The gateway still decides every call itself
 and refuses one that cannot be made; this draws the control so a person is not offered it.
 
@@ -284,8 +285,9 @@ def readiness(task: str, today: str = None, spent=None) -> dict:
         # When the day starts again is drawn by the reason's macro from `resets` (calls'
         # one answer), in the viewer's time and in UTC.
         return dict(out, kind="day_cap", spent=usd, resets=calls.reset_info(),
-                    reason=f"today's AI spend {_usd(usd)} plus this task's per-call cap "
-                           f"{_usd(cap['per_call'])} is over the day cap {_usd(cap['per_day'])}")
+                    reason=f"today's AI spend {_usd(usd)} plus this task's typical cost per "
+                           f"call {_usd(cap['per_call'])} is over the day cap "
+                           f"{_usd(cap['per_day'])}")
     return dict(out, ready=True, spent=usd)
 
 

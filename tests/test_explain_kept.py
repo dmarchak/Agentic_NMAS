@@ -82,7 +82,8 @@ class TestKeptWithThePack:
         assert "Explain again" in html, "once kept, the button is a new call, said so"
         card = _card(world)
         assert CLAIM in card and "kept with the pack" in card and "Explain again" in card
-        assert "A new call, up to $%.4f; this answer stays." % profiles.cap_per_call(
+        # Premise corrected (C4031): the amount is the task's typical cost, no bound (7b0bb884).
+        assert "A new call, about $%.4f; this answer stays." % profiles.cap_per_call(
             "explain") in card
         assert len(world.sent) == 1, "opening the card sends nothing"
 

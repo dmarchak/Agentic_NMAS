@@ -542,7 +542,8 @@ def test_explain_again_is_a_secondary_button_busy_on_itself(world):  # noqa: F81
     assert '<span class="op-idle">Explain again</span>' in button
     assert '<span class="op-busy">Explaining again…</span>' in button
     assert '<input type="hidden" name="again" value="1">' in form.group(0)
-    assert "A new call, up to $" in form.group(0) and "this answer stays" in form.group(0)
+    # Premise corrected (C4031): the amount is the task's typical cost, no bound (7b0bb884).
+    assert "A new call, about $" in form.group(0) and "this answer stays" in form.group(0)
     # Inside the card, at its foot, after Was this right?.
     card = re.search(r'<article class="answer-card".*?</article>', html, re.S).group(0)
     assert card.index("Was this right?") < card.index('class="explain-ask explain-again"') \
