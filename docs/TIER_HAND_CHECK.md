@@ -5089,3 +5089,25 @@ notices' tests `-k 'proposal or heal_to_intent or each_end_is_told'` (14 tests):
 | 5 | no proposal due at all | **died**: three tests |
 
 **The result: the canary and every mutant died.**
+
+## 2026-11-25: a part cannot close its frame (C3652), by hand
+
+**The change.** `gateway._delimited`, which frames every part of every AI request (the data parts
+in the message, the context blocks in the system text), writes each part's text through
+`_unframed`: every opening or closing form of a frame's own tag (`<data`, `</data`, `<context`,
+`</context`, any case, the tag name whole) has its `<` written `&lt;`, so no text can close its
+part or open another. Before it, the assistant's v2 measurement (case 36, 0 of 10) saw the model
+follow a part a question forged. Other angle brackets are sent as they are. Data off the host,
+so the irreversible tier's. Run by `c3652_hand.sh` (scratch), each mutant alone in an
+`nmas-control` worktree, tests/test_ai_gateway_parts.py (17 tests):
+
+| # | Mutant | Result |
+|---|---|---|
+| canary | the text framed unescaped | **died**: both forged cases of `test_a_part_cannot_close_its_frame_or_open_another` |
+| 1 | the case kept (no `re.IGNORECASE`) | **died**: the upper-case forged case |
+| 2 | a closing tag left alone | **died**: both forged cases |
+| 3 | context's tag left alone | **died**: both forged cases (the context block's tag) |
+| 4 | no word boundary after the tag name | **died**: `test_text_with_no_frame_tag_is_sent_as_it_is` (`<database>`, `<datum>` escaped) |
+| 5 | the bracket kept (`<` for `&lt;`) | **died**: both forged cases |
+
+**The result: the canary and every mutant died.**

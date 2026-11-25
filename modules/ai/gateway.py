@@ -328,8 +328,20 @@ def _api_key() -> str:
     return get_secret("anthropic_api_key") or ""
 
 
+#: A frame's own tag in a part's text, opening or closing, any case (C3652): escaped before the
+#: text is framed, so no text can close its part or open another (a question holding
+#: `</data><data name="rule">` once reached the model as a part named "rule").
+_FRAME_TAG = re.compile(r"<(/?)(data|context)\b", re.IGNORECASE)
+
+
+def _unframed(text) -> str:
+    """*text* with every frame tag's ``<`` written ``&lt;``: the same for every feature."""
+    return _FRAME_TAG.sub(lambda m: "&lt;" + m.group(1) + m.group(2), str(text))
+
+
 def _delimited(tag: str, parts: dict) -> str:
-    return "\n\n".join(f'<{tag} name="{name}">\n{parts[name]}\n</{tag}>' for name in sorted(parts))
+    return "\n\n".join(f'<{tag} name="{name}">\n{_unframed(parts[name])}\n</{tag}>'
+                       for name in sorted(parts))
 
 
 #: The tasks whose person's press is sent with the cache marks all the same (the operator,
