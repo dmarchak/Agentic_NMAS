@@ -195,7 +195,10 @@ It runs these steps, one investigation:
    engineer's troubleshooting reads, each in one of its forms, held whole by Mercury's
    allowlist too; standby and VRRP only in their brief forms; an err-disabled port's own
    reads, `show interfaces status err-disabled`, `show errdisable recovery` and `show
-   port-security interface <interface>`, among them, as a person runs them; each address in it one of the
+   port-security interface <interface>`, among them, as a person runs them, and for a lost
+   stream the device's route toward each collector its subscriptions name, `show ip route
+   <address>` or `show ipv6 route <address>` (in its VRF when intent names one), read before
+   the first pass; each address in it one of the
    network's and each interface, written as one word, one the device's golden holds; a
    configuration form only under the configuration class, off on every network), run
    through Mercury's own reads engine as Mercury's account (or the read-only account, under

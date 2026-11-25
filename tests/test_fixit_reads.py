@@ -546,3 +546,51 @@ class TestTheScopeReachesOneHop:
         inc = types.SimpleNamespace(device="edge1", id="hi-1", subscriptions=["101"])
         FR.scope_for("Lab", inc, actor="person@example.invalid")
         assert asked[:2] == [("committed", ["edge1", "acc1"]), ("scope", ["edge1", "acc1"])]
+
+
+# ── A lost stream's route read toward its collector (C3892) ────────────────────────────────
+
+class TestTheRouteTowardTheCollector:
+    """C3892 (the operator, 2026-11-16: option 1, "a standard route read toward the collector
+    in every lost-telemetry investigation"): before the first pass, the device's route toward
+    each distinct receiver its subscriptions name, `ip route` for IPv4 and `ipv6 route` for
+    IPv6, in the receiver's VRF when intent names one; each passes the investigation's own read
+    check where the address is the network's."""
+
+    def _reads(self, monkeypatch, streams):
+        import types
+        from modules.ai import fixit_reads as FR
+        from modules.ai import fixit_troubleshoot as T
+        monkeypatch.setattr(FR, "stream_scope", lambda network, incident: {
+            "device": "edge1", "streams": streams, "sources": []})
+        inc = types.SimpleNamespace(device="edge1", id="hi-1", subscriptions=sorted(streams))
+        return T.route_reads("Default", inc)
+
+    def test_one_read_per_receiver_by_its_family_and_vrf(self, monkeypatch):
+        got = self._reads(monkeypatch, {"101": RECEIVER4, "102": RECEIVER4,
+                                        "103": RECEIVER6,
+                                        "104": dict(RECEIVER4, address="192.0.2.20", vrf="Mgmt"),
+                                        "105": {"why": "intent gives it no receiver"}})
+        assert [r["args"]["words"] for r in got] == [
+            "ip route 192.0.2.10", "ipv6 route 2001:db8::10", "ip route vrf Mgmt 192.0.2.20"]
+        assert {r["op"] for r in got} == {"show"} and all(
+            r["args"]["device"] == "edge1" for r in got)
+
+    def test_each_passes_the_investigation_s_read_check(self, monkeypatch, on):
+        from modules.ai import fixit_reads as FR
+        reqs = self._reads(monkeypatch, {"101": RECEIVER4, "103": RECEIVER6})
+        sc = dict(scope(), prefixes=["192.0.2.0/24", "2001:db8::/64"])
+        got = judged([dict(r, why=r["why"][:200]) for r in reqs], sc, family=FR.FAMILY)
+        assert [g["verdict"] for g in got] == ["allowed", "allowed"], got
+
+    def test_a_lost_stream_s_standard_reads_carry_it(self, monkeypatch):
+        import types
+        from modules.ai import fixit_reads as FR
+        from modules.ai import fixit_troubleshoot as T
+        monkeypatch.setattr(T, "problem_condition", lambda found: "telemetry_lost")
+        monkeypatch.setattr(FR, "stream_scope", lambda network, incident: {
+            "device": "edge1", "streams": {"101": RECEIVER4}, "sources": []})
+        inc = types.SimpleNamespace(device="edge1", id="hi-1", subscriptions=["101"])
+        requests, reuse = T.pregather_for("Default", {"incident": {}}, inc)
+        assert [r["args"]["words"] for r in requests] == ["ip route 192.0.2.10"] and reuse == {}
+        assert requests[0]["why"] == T.ROUTE_WHY

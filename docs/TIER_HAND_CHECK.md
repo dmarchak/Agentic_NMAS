@@ -5155,3 +5155,22 @@ tests):
 
 **The result: the canary and every non-equivalent mutant died; mutant 1 is equivalent, its
 reason above.**
+
+## 2026-11-25: a lost stream's route read toward its collector (C3892), by hand
+
+**The change.** What leaves the host: a lost-telemetry investigation's standard reads, run
+before its first pass, gain the device's route toward each distinct receiver its subscriptions
+name in committed intent (`fixit_troubleshoot.route_reads`, from `pregather_for`): `ip route
+<address>` for IPv4, `ipv6 route <address>` for IPv6, `vrf <name>` when intent names one; each
+held by the investigation's own read check, its answer sent to the model as every read's is.
+The operator's option 1, 2026-11-16. Run by `c3892_hand.sh` (scratch),
+tests/test_fixit_reads.py `-k TestTheRouteTowardTheCollector` (3 tests):
+
+| # | Mutant | Result |
+|---|---|---|
+| canary | no route read for a lost stream | **died**: `test_a_lost_stream_s_standard_reads_carry_it` |
+| 1 | an IPv6 receiver read as `ip route` | **died**: two tests (its words, and the check: refused) |
+| 2 | the VRF dropped | **died**: `test_one_read_per_receiver_by_its_family_and_vrf` |
+| 3 | a receiver read once per subscription | **died**: the same |
+
+**The result: the canary and every mutant died.**

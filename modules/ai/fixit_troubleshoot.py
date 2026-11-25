@@ -1969,7 +1969,49 @@ def pregather_for(network: str, found: dict, incident) -> tuple:
                                if (incident.device, f"show {words}") in reuse else "")
         out.append({"op": op, "args": {"device": incident.device, "words": words},
                     "why": why, "hypothesis": hypothesis})
+    if problem_condition(found) == "telemetry_lost":
+        out += route_reads(network, incident)
     return out, reuse
+
+
+#: Why a lost stream's route read is run first (C3892, the operator, 2026-11-16: option 1, "a
+#: standard route read toward the collector in every lost-telemetry investigation").
+ROUTE_WHY = ("Mercury's standard read for a lost stream, run before the first pass: the "
+             "device's own route toward its collector, which the topology may leave out")
+
+
+def route_reads(network: str, incident) -> list:
+    """A lost stream's route reads: for each distinct receiver its subscriptions name in
+    committed intent (`fixit_reads.stream_scope`), the device's route toward it, ``ip route``
+    for an IPv4 receiver and ``ipv6 route`` for an IPv6 one, in the receiver's VRF when intent
+    names one; ``[]`` when intent names no receiver. Each is a `PREGATHER`-shaped request, held
+    by the read check as every request is."""
+    import ipaddress
+
+    from modules.ai import fixit_reads as FR
+
+    try:
+        streams = FR.stream_scope(network, incident)["streams"]
+    except Exception as exc:                          # noqa: BLE001 (none, said)
+        log.info("fixit troubleshoot: %s's receivers could not be read: %s", incident.id, exc)
+        return []
+    out, seen = [], set()
+    for sub in sorted(streams):
+        rec = streams[sub] or {}
+        try:
+            address = ipaddress.ip_address(str(rec.get("address") or ""))
+        except ValueError:
+            continue
+        vrf = str(rec.get("vrf") or "")
+        family = "ipv6" if address.version == 6 else "ip"
+        words = f"{family} route {'vrf ' + vrf + ' ' if vrf else ''}{address}"
+        if words in seen:
+            continue
+        seen.add(words)
+        out.append({"op": "show", "args": {"device": incident.device, "words": words},
+                    "why": ROUTE_WHY,
+                    "hypothesis": f"the device's own path toward its collector {address}"})
+    return out
 
 
 #: Who a read ahead of the plan's preflight reads as, and why: the preflight's own reader
