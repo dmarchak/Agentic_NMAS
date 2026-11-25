@@ -179,3 +179,37 @@ def test_the_stepper_is_adopt_s_declared_steps(lab):  # noqa: F811
     rows = device_actions.job_steps("adopt", "Lab", "r9")
     assert len(rows) == len(adopt.STEPPER) == len(adopt.APPLY_STEPS)
     assert [s[0] for s in adopt.STEPPER] == list(adopt.APPLY_STEPS)
+
+
+class TestInProgressListsAnAdoption:
+    """C3601's adopt: an adoption started and left is listed by In progress with the Devices
+    page as its link, which loads the job's card; its finished row says how it ended, green
+    only when adopted (`adopt.apply`'s ``state``: an unknown state would be drawn red)."""
+
+    def _done(self, lab, monkeypatch, result):  # noqa: F811
+        from modules import in_flight
+        monkeypatch.setattr("modules.nsot.device_ops.in_flight", lambda name, now: [])
+        monkeypatch.setattr("modules.seen_runs.is_seen", lambda viewer, job: False)
+        _seen, _card = _run(lab, monkeypatch, result)
+        who = "test-person@example.invalid"
+        (done,) = [f for f in in_flight.chip([], who)["finished"]
+                   if (f.get("href") or "").startswith("/v2/devices?list=Lab&adopt_job=")]
+        return done
+
+    def test_an_adoption_is_listed_and_its_page_loads_its_card(self, lab, monkeypatch):  # noqa: F811
+        steps = [{"step": s, "ok": True, "detail": ""} for s in adopt.APPLY_STEPS]
+        done = self._done(lab, monkeypatch, {"ok": True, "state": "adopted", "steps": steps,
+                                             "remaining": [], "reason": ""})
+        assert (done["level"], done["words"]) == ("ok", "r9 adopted"), done
+        assert done["href"].endswith("&hostname=r9"), done["href"]
+        page = lab["client"].get(done["href"]).get_data(as_text=True)
+        m = re.search(r'id="adopt-card" hx-get="(/v2/adopt/job/[0-9a-f]+[^"]*)" '
+                      r'hx-trigger="load"', page)
+        assert m, page[page.find("adopt-card") - 200:][:600]
+        card = lab["client"].get(m.group(1).replace("&amp;", "&")).get_data(as_text=True)
+        assert "r9 is adopted" in card
+
+    def test_a_stopped_adoption_is_red_with_its_reason(self, lab, monkeypatch):  # noqa: F811
+        done = self._done(lab, monkeypatch, {"ok": False, "state": "stopped", "steps": [],
+                                             "remaining": [], "reason": "the device moved"})
+        assert (done["level"], done["words"]) == ("danger", "stopped: the device moved"), done

@@ -15,7 +15,7 @@
 </div>
 <div id="ip-panel" hx-get="{{ url_for('operations.in_flight', view='panel') }}" hx-trigger="load, nmas:in_progress from:body, nmas:device_holds from:body, nmas:device_progress from:body" hx-swap="innerHTML"></div>
 <div id="onboard-add"></div>
-<div id="adopt-card"></div>
+<div id="adopt-card"{% if adopt_job %} hx-get="{{ url_for('adopt_v2.job_card', job=adopt_job, list_name=list_name, hostname=adopt_host) }}" hx-trigger="load" hx-swap="outerHTML"{% endif %}></div>
 <form class="dev-filters" hx-get="{{ url_for('v2.devices_table') }}" hx-target="#devices" hx-swap="outerHTML"
       hx-trigger="input changed delay:300ms from:#dev-q, change">
   <label class="sr" for="dev-q">Search by name or address</label>

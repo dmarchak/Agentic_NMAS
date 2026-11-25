@@ -28,7 +28,7 @@ Compared 2026-10-16.
 Templates compared: templates/v2/devices.html, templates/v2/_devices.html, templates/v2/_onboard_add.html, templates/v2/_console_kick.html, templates/v2/_oob_source.html, templates/v2/_in_progress_panel.html
 Compared again 2026-11-13 (C3290, the words Python builds): `_in_progress_panel.html`'s "since" is `_macros.clock`'s, in the viewer's kept zone with its UTC instant on hover, where it drew the "21:03 UTC" modules/in_flight.py wrote (`_clock` now writes the instant). No element moves and no region's verdict moved; compared by the template's diff and the walk's render (tests/test_no_utc_drawn.py), not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times: the words Python builds"). Templates sha256 before: `91cfa028f19a4b550062b3ca43d19fe7e346b98d79c567e82e512e058f943ac9`.
 Compared again 2026-11-18 (the skip-mode debt, docs/FAST_LANE_DEBT.md; 93120b2f): `_devices.html`'s status chip links `r.status.href` when the status names an approved plan's step (its run's home, its incident's card), else the device's page as before, and `_in_progress_panel.html`'s row draws "Open its card" to that home; nothing else in these templates moved. Shot again from this tree (`devices` and `devices-selected` at 1440, 1280 and 390; tests/test_board_shots.py's `test_devices`) and read region by region against this record's verdicts: the Status column reads "Reachable" and "Not reachable" (c4948c2c's word, drawn from the list's module, not these templates), so its row moves to a deviation for the word; every other verdict stands, the columns, filters, the selection bar and the phone layout as before. The redesign, FleetSelect and phone boards are the canvas's, not on disk, so they were not re-shot. Logged (docs/STANDING_APPROVAL_LOG.md, "Reachable, not Answering: the reachability reader's word on every screen"). Templates sha256 before: `a1fd7927fd4f5c5c313b473f252f3f7a93391813af03021feab01a16f1d848e9`.
-Templates sha256: `70a10a10fe16edde9bde6ab0e15352faf568760c5af27fedf5b737741d58e847`
+Templates sha256: `e3eb9b8071ccbc6dce207aa54b5d68da73f15367bfb3b563cf6a78d04a568f8b`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_console_kick.html` and `_in_progress_panel.html`, each
@@ -221,3 +221,9 @@ board.
 | Overdue | red after the time | red, "Not answering · overdue after …"; tested (`tests/test_planned_state.py`) | **same** |
 | A read's hold | not drawn | drawn as before (a capture or show commands is not an operation to wait for) | **same** |
 | Redraw | not drawn | on a hold ending, a window declared, a step at most once in 5 s | **same** |
+
+**Compared again 2026-11-25 (C3601, an adoption In progress lists):** by the template diff, not
+by new shots. In `devices.html`, the Adopt card's placeholder (`#adopt-card`) loads an
+adoption's card when the page is opened from In progress (`?adopt_job=`): running on its
+stepper, or its result, the card Adopt… already draws. Opened any other way the placeholder is
+empty, as before; no region is added, removed or moved. Every verdict stands.

@@ -107,9 +107,15 @@ def confirm():
 
     def work(_job_id):
         with identity.carried(ident):
-            return mask_payload(adopt.apply(list_name, host, **args))
+            out = mask_payload(adopt.apply(list_name, host, **args))
+        # In progress's words for its end (C3601), the card reading the rest as before.
+        return dict(out, words=job_words(host, out))
 
+    # In progress lists it with the Devices page as its link, which reopens its card (C3601).
+    from urllib.parse import quote
     job = capture_job.start(list_name, f"adopting {host}", actor, work, kind="adopt",
+                            page=(f"/v2/devices?list={quote(list_name)}&adopt_job={{job}}"
+                                  f"&hostname={quote(host)}"),
                             announce_keys=invalidation.ANNOUNCERS[ANNOUNCER],
                             announcer=ANNOUNCER)
     return _card(f=f, job=job, running=True, steps=_steps(list_name, host))
@@ -117,6 +123,17 @@ def confirm():
 
 #: Its announcer: what an adoption's end changes is declared once, in `invalidation.ANNOUNCERS`.
 ANNOUNCER = "adopt"
+
+
+def job_words(host: str, out: dict) -> str:
+    """An adoption's end in In progress's words (`in_flight.page_finished_row`): adopted, or
+    its state with the reason the result gives."""
+    state = str(out.get("state") or "")
+    if state == "adopted":
+        return f"{host} adopted"
+    why = str(out.get("reason") or "no reason was recorded")[:120]
+    return {"owner_account_at_risk": f"{host}'s owner account is at risk: {why}",
+            "refused": f"not run: {why}"}.get(state, f"stopped: {why}")
 
 
 def _steps(list_name: str, host: str) -> list:

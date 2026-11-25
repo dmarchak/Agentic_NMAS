@@ -3164,9 +3164,13 @@ def _devices_ctx(req) -> dict:
 @bp.route("/devices", methods=["GET"])
 def devices():
     """Devices: every device of the active list, pending onboardings among
-    them, searchable and filtered; ticking rows raises the selection bar."""
+    them, searchable and filtered; ticking rows raises the selection bar. Opened from In
+    progress on an adoption (``adopt_job``, C3601), its card loads that job's result."""
     from flask import request
-    return _page("v2/devices.html", active_nav="devices", **_devices_ctx(request))
+    return _page("v2/devices.html", active_nav="devices",
+                 adopt_job=(request.args.get("adopt_job") or "").strip()[:64],
+                 adopt_host=(request.args.get("hostname") or "").strip()[:64],
+                 **_devices_ctx(request))
 
 
 @bp.route("/devices/table", methods=["GET"])

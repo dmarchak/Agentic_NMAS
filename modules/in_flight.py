@@ -397,7 +397,10 @@ PAGE_LEVELS = {"done": "ok", "paused": "warn", "stopped": "danger", "refused": "
                # A plan whose steps all passed and one leaves its own approval (plan_engine).
                "partial": "warn",
                # A paused run Go on continued (C4235): its rest is its own job, listed by itself.
-               "continued": "ok"}
+               "continued": "ok",
+               # An adoption's own ends (`adopt.apply`, C3601): adopted, or its owner account at
+               # risk, which a person must act on.
+               "adopted": "ok", "owner_account_at_risk": "danger"}
 
 
 def page_finished_row(job: dict, viewer: str):
