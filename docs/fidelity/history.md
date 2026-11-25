@@ -75,7 +75,10 @@ buttons added in the opened row, the same `tl-links` row its card's buttons use;
 moves and no region's verdict moved; compared by the template's diff and the v2 walk, not by
 new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "C3087: a run's stored reads one press
 from History"). Templates sha256 before: `ec848ff3ae52a38760ae1fba66d118f9a4a61316fd5b5569ae5cdae2f3e9a772`.
-Templates sha256: `19a7ad0f6c6093c97fdd336698e697200603ba799875afdbf2daf1050edbcc03`
+Compared again 2026-11-24 (C2851): the timeline's region also hears `heal_decisions` (a pass's
+self-healing decisions), so a new decision is drawn while the page is open; markup only in its
+trigger, nothing drawn moves. Templates sha256 before: `19a7ad0f6c6093c97fdd336698e697200603ba799875afdbf2daf1050edbcc03`.
+Templates sha256: `f3db73ab062f4b1d18fb74a46de1babe8792de42eb865788b2becde178de6cca`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_timeline.html` and `_history_remote.html`, each place

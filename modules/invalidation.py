@@ -71,6 +71,8 @@ VOCABULARY = {
                  "(modules/attention_store.py, C3166): the list reads the held value again",
     "remote": "the remote: its push state and verification",
     "drift": "the drift checker's state and last run",
+    "heal_decisions": "self-healing's decisions and the marks on them, as History's records "
+                      "draw them (C2851: History heard neither)",
     "approvals": "the approval queue",
     "pending": "pending onboardings",
     "rolled_back": "blocked changes (what a rollback undid) and retry authorisations",
@@ -247,7 +249,7 @@ ANNOUNCERS = {
     "notify": ("notifications",),
     # modules/heal/decide.py (board H, H3): a pass's decisions recorded; a dry-run record
     # rides on its device's drift row (`attention.heal_source`).
-    "heal-decide": ("drift",),
+    "heal-decide": ("drift", "heal_decisions"),
     # modules/heal/auto_diagnose.py (board H, H17): an automatic diagnosis's end, attached to
     # its incident (C2584: a Diagnose… card waiting on its device reads again), and the heal's
     # Needs attention rows, which draw it.

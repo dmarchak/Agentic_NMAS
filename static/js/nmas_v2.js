@@ -91,6 +91,8 @@
               'path_trace',
               // A log line revealed, its record written: History's timeline re-reads (C818).
               'reveals',
+              // A self-healing decision or a mark recorded: History's timelines re-read (C2851).
+              'heal_decisions',
               // An AI call recorded (Phase 8): History's timeline re-reads.
               'ai_calls',
               // A running AI investigation's step (board R5's screen 3): its status line.
@@ -1743,6 +1745,7 @@
   function relayDiscovery() { relay('ztp_discovery'); }
   function relayPathTrace() { relay('path_trace'); }
   function relayReveals() { relay('reveals'); }
+  function relayHealDecisions() { relay('heal_decisions'); }
   function relayAiCalls() { relay('ai_calls'); }
   // Board R5's screen 3: an incident's status line redraws its investigation's live step.
   function relayAiStep() { relay('ai_step'); }
@@ -2043,6 +2046,7 @@
     NMAS.subscribe('ztp_discovery', 'v2Discovery', relayDiscovery);
     NMAS.subscribe('path_trace', 'v2PathTrace', relayPathTrace);
     NMAS.subscribe('reveals', 'v2Reveals', relayReveals);
+    NMAS.subscribe('heal_decisions', 'v2HealDecisions', relayHealDecisions);
     NMAS.subscribe('ai_calls', 'v2AiCalls', relayAiCalls);
     NMAS.subscribe('ai_step', 'v2AiStep', relayAiStep);
     NMAS.subscribe('ai_feedback', 'v2AiFeedback', relayAiFeedback);
