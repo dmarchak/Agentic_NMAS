@@ -892,8 +892,12 @@ def start_catch_up(network: str, ticked, *, actor: str, verified: str, now: floa
             hold = ""
             if state == "started":
                 hold = f"fixit-start-{iid}-{len(out['started']) + 1}"
+                # A start that confirms first holds its reservation through the confirm too
+                # (C3883, `incident.start_bound_s`).
                 kept = reservations.reserve(
-                    hold, worst, judge=lambda _held: None, ttl_s=bound, feature=A.FEATURE,
+                    hold, worst, judge=lambda _held: None,
+                    ttl_s=F.start_bound_s({"failure": {"kind": f["kind"]}}, bound),
+                    feature=A.FEATURE,
                     network=list_slug(network), background=False, day=day, now=at,
                     counts=not press)
                 if not kept["ok"]:

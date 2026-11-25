@@ -961,6 +961,19 @@ def starts(incident: Incident) -> dict:
             "error": rec["error"]}
 
 
+def start_bound_s(line: dict, base_s: float) -> float:
+    """How long a started investigation (its start *line*) stands before it is no longer
+    waited for: *base_s* (the reservation's life), plus, for a start whose failure is
+    confirmed first by Mercury's own read (`heal.act.CONFIRM_KINDS`), that read's longest time
+    (`heal.act.CONFIRM_TAKES_S`, C3883: the hold's wait, the symptom's bound and the reads,
+    about 1145 s), so no second investigation starts, and the card does not drop
+    "investigating", while the confirm runs."""
+    from modules.heal import act
+
+    kind = str(((line or {}).get("failure") or {}).get("kind") or "")
+    return float(base_s) + (act.CONFIRM_TAKES_S if kind in act.CONFIRM_KINDS else 0.0)
+
+
 def claim_start(incident: Incident, key: str, *, trigger: str, state: str,
                 failure: dict = None, job: str = "", words: str = "", which: str = "",
                 by: str = "", verified: str = "", now: float = None,
@@ -1023,7 +1036,8 @@ def claim_start(incident: Incident, key: str, *, trigger: str, state: str,
         if state == "started" and busy_s:
             last = max((n for n, ln in enumerate(lines) if "start" in ln), default=None)
             if (last is not None and lines[last].get("state") == "started"
-                    and at - float(lines[last].get("epoch") or 0) < float(busy_s)
+                    and at - float(lines[last].get("epoch") or 0)
+                    < start_bound_s(lines[last], float(busy_s))
                     and not any("proposal" in ln for ln in lines[last + 1:])):
                 taken.append("busy")
                 return None

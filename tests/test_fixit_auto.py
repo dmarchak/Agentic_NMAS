@@ -292,6 +292,32 @@ class TestOneInvestigationAtATime:
         assert F.claim_start(inc, "act:hd-000000000009", trigger="auto", state="started",
                              busy_s=600, now=NOW + 3)
 
+    def test_a_start_that_confirms_first_stands_through_its_confirm(self, ai):
+        """C3883: an act's failure is confirmed first by Mercury's own read (up to the hold's
+        wait, the symptom's bound and the reads, `act.CONFIRM_TAKES_S`), so its start stands
+        that much longer than the reservation's life: no second start, the card still
+        investigating, and the catch-up's in_flight alike; a decision's start does not."""
+        from modules import incident_page
+        from modules.fixit import auto as A
+        from modules.fixit import section as S
+        from modules.heal import act
+        iid = plant()
+        inc = incident(iid)
+        assert F.start_bound_s({"failure": {"kind": "act"}}, 600) == 600 + act.CONFIRM_TAKES_S
+        assert F.start_bound_s({"failure": {"kind": "decision"}}, 600) == 600
+        assert F.claim_start(inc, "act:hd-000000000009", trigger="auto", state="started",
+                             busy_s=600, now=NOW, failure={"kind": "act"})
+        # Past each base (600 here, the reservation's life on the card), inside the confirm.
+        later = NOW + min(600, S.investigation_bound_s()) + act.CONFIRM_TAKES_S - 5
+        assert F.claim_start(inc, "decision:a", trigger="auto", state="started", busy_s=600,
+                             now=later) is None, "a second start while the confirm runs"
+        assert A.in_flight(inc, later, 600)
+        assert S.investigation_bound_s() < later - NOW
+        x = S.view(NET, incident_page.resolve(NET, iid), now=later)
+        assert x["state"] == "investigating", x["state"]
+        assert F.claim_start(inc, "decision:a", trigger="auto", state="started", busy_s=600,
+                             now=NOW + 600 + act.CONFIRM_TAKES_S + 1), "past both, it may start"
+
     def test_a_press_while_the_automatic_pass_runs_is_refused_with_no_call(self, ai, clock):
         from tests.test_fixit_section_v2 import post
         turn_on(DETECTED - 600)

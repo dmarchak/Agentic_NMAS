@@ -1607,7 +1607,8 @@ CONFIRM_MARK = "confirm"
 #: died, or it raised): about 2.5 times the longest it can take, reasoned, not measured: the
 #: hold's wait (`HOLD_WAIT_S`, 335 s), the symptom's longest bound (`SYMPTOM_SECONDS`' alert,
 #: 750 s), and a minute for the device's reads.
-CONFIRM_BOUND_S = round(2.5 * (HOLD_WAIT_S + max(SYMPTOM_SECONDS.values()) + 60))
+CONFIRM_TAKES_S = HOLD_WAIT_S + max(SYMPTOM_SECONDS.values()) + 60
+CONFIRM_BOUND_S = round(2.5 * CONFIRM_TAKES_S)
 #: An unreadable confirmation is tried again at most this often (the review, finding 10).
 CONFIRM_UNREAD_AGAIN_S = 3600
 #: The tail steps the confirmation can check by a read: the save (startup boots what runs,

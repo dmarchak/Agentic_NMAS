@@ -467,8 +467,10 @@ def view(network: str, found: dict, *, resolved: float = None, ended: str = "",
     if newest is None:
         state = "ready"
     elif newest[2] == "start":
+        from modules.fixit.incident import start_bound_s
+
         state = ("investigating" if newest[3].get("state") == "started"
-                 and now - newest[0] < investigation_bound_s() else
+                 and now - newest[0] < start_bound_s(newest[3], investigation_bound_s()) else
                  "capped" if newest[3].get("state") == "capped" else "ready")
         if newest[3].get("state") == "failed":
             # The investigation's job failed or was refused before anything was sent: drawn in

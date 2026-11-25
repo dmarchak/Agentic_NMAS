@@ -526,7 +526,8 @@ def in_flight(incident, now: float, bound_s: float) -> bool:
         return False
     if any("proposal" in ln for ln in lines[last + 1:]):
         return False
-    return now - float(lines[last].get("epoch") or 0) < bound_s
+    # A start that confirms first stands through its confirm too (C3883).
+    return now - float(lines[last].get("epoch") or 0) < F.start_bound_s(lines[last], bound_s)
 
 
 def manual_start(network: str, incident_id: str, extra=(), record: dict = None) -> dict:
