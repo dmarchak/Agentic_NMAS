@@ -228,7 +228,7 @@ class TestThePlan:
         with pytest.raises(D.Refused) as e:
             self.plan({"device": "r1", "address": address})
         assert str(e.value) == (f"{address} is held by {' and '.join(hosts)} in intent, so which "
-                                "device B is cannot be told")
+                                "device it is cannot be told")
 
     def test_a_link_local_b_reads_nothing(self, world):
         got, f = reach({}, address="fe80::1")
@@ -240,8 +240,9 @@ class TestThePlan:
         assert p["reads"]["r1"] == [{"kind": "reach_ping6_src", "command":
                                      "ping ipv6 2001:db8:1::14 source Loopback0 repeat 5 "
                                      "timeout 2"}]
-        assert p["per_hop"][:2] == ["the IPv6 forwarding path toward B",
-                                    "the IPv6 route toward B and its source"]
+        # C2878: the plan's reads name its end, never the template's "B".
+        assert p["per_hop"][:2] == ["the IPv6 forwarding path toward 2001:db8:1::14",
+                                    "the IPv6 route toward 2001:db8:1::14 and its source"]
 
 
 # ── A run ───────────────────────────────────────────────────────────────────────────────────
@@ -939,3 +940,15 @@ class TestC2829:
         from modules.heal import diagnose_reach as R
 
         assert R.named("", "10.255.1.17") == R.named("r6", "") == "A can't reach B"
+
+
+def test_a_reads_words_name_its_ends_never_the_template_letters():
+    """C2878: the reach runbook's read words said "does A reach B" and "the route toward B"
+    where a person reads them (the plan step, a hop's missing read); `diagnose.read_words`
+    names each end given, and a word merely holding the letters (ARP) is left as it is."""
+    from modules.heal import diagnose as D
+    assert D.read_words("reach_ping", "r1", "192.0.2.14") == "does r1 reach 192.0.2.14"
+    assert D.read_words("route", dest="2001:db8::14") == "the route toward 2001:db8::14 and its " \
+                                                          "source"
+    assert D.read_words("arp", "r1", "r4") == D.READ_WORDS["arp"], "ARP is a word, not A"
+    assert D.read_words("reach_ping") == D.READ_WORDS["reach_ping"], "no ends given: as written"

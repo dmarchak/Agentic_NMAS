@@ -204,7 +204,7 @@ def plan(network: str, target: dict, lines: dict) -> dict:
     one, shared = holders(lines, family)
     if dest in shared:
         raise D.Refused(f"{dest} is held by {' and '.join(shared[dest])} in intent, so which "
-                        "device B is cannot be told")
+                        "device it is cannot be told")
     owner, owner_if = one.get(dest, ("", ""))
     if owner == a:
         raise D.Refused(f"{dest} is {a}'s own address ({_short(owner_if)}), so there is no "
@@ -226,7 +226,7 @@ def plan(network: str, target: dict, lines: dict) -> dict:
             "dest": dest, "family": family, "kinds": k, "dialect": dialect, "owner": owner,
             "owner_interface": owner_if, "src": src, "src_address": src_address, "ends": [],
             "reads": {a: [ping]},
-            "per_hop": [D.READ_WORDS[k[x]] for x in ("cef", "route")]
+            "per_hop": [D.read_words(k[x], a, dest) for x in ("cef", "route")]
             + [D.READ_WORDS["interfaces"], D.READ_WORDS[k["ip"]], D.READ_WORDS[k["nh"]]]
             + ([D.READ_WORDS["acl_counters"]] if family == 4 else []),
             "count": 1, "cap": D.MAX_COMMANDS, "hops_at_cap": HOPS_AT_CAP, "worst_s": worst,
@@ -318,7 +318,8 @@ def _parsed(ans: dict, host: str, cmd: dict, interface: str = "", dialect: str =
     return got["facts"], ref, ""
 
 
-def _step(step: str, host: str, cmds: list, ans: dict, prefix: str) -> dict:
+def _step(step: str, host: str, cmds: list, ans: dict, prefix: str,
+          ends: tuple = ("", "")) -> dict:
     """One batch's step: what was read on *host* and why, each read by its reference."""
     from modules.heal.diagnose_parse import NOT_CAPTURED
     from modules.nsot import reads
@@ -334,7 +335,7 @@ def _step(step: str, host: str, cmds: list, ans: dict, prefix: str) -> dict:
     parts = []
     for c in cmds:
         kind = D.PARSE_KIND.get(c["kind"], c["kind"])
-        parts.append(D.READ_WORDS.get(c["kind"], c["kind"]) + (
+        parts.append(D.read_words(c["kind"], *ends) + (
             " (read, and not yet interpreted)" if kind in NOT_CAPTURED else ""))
     return {"step": step, "device": host, "result": "ok",
             "reads": [D.ref(ans["run"], host, c["command"]) for c in cmds],
@@ -438,7 +439,7 @@ class Hop:
         key = (where, kind, rnd)
         if key not in self.command:
             return (f"{self.host(where) or 'the next hop'}: no read of "
-                    f"{D.READ_WORDS.get(kind, kind)} at hop {self.n}")
+                    f"{D.read_words(kind, dest=self.dest)} at hop {self.n}")
         return f"`{self.command[key]}` on {self.host(where)}: {self.why.get(key) or 'read'}"
 
     def nh_mac(self) -> str:
@@ -559,7 +560,8 @@ def _take_round(h: Hop, out: dict, batch: dict, got, dialects: dict, rnd: int,
         where = "egress" if host == h.device else "ingress"
         ans = None if got is None else got.get(host)
         h.take(where, rnd, cmds, ans, dialects[host])
-        step = _step("hop" if rnd == 1 else "read again", host, cmds, ans, prefix)
+        step = _step("hop" if rnd == 1 else "read again", host, cmds, ans, prefix,
+                     ends=("", h.dest))
         if step["result"] == "ok":
             # A read answered but not interpreted says why, by its command (a device that has
             # no such read, an answer this parser cannot read), never silently absent.
@@ -663,7 +665,7 @@ def _walk(p: dict, out: dict, reader: _Reader, sleep) -> ReachContext:
     ping = p["reads"][a]
     got = reader.read({a: ping}, "reach")
     ans = None if got is None else got.get(a)
-    out["steps"].append(_step("reach", a, ping, ans, ""))
+    out["steps"].append(_step("reach", a, ping, ans, "", ends=(a, dest)))
     if ans is not None:
         facts, ref, why = _parsed(ans, a, ping[0])
         ctx.ping = {"facts": facts, "ref": ref, "why": why}
@@ -726,17 +728,18 @@ def _walk(p: dict, out: dict, reader: _Reader, sleep) -> ReachContext:
         kind = p["kinds"]["traceroute"]
         cmd = [{"kind": kind, "command": D.render(kind, reader.dialect(a), dest=dest)}]
         got = reader.read({a: cmd}, "traceroute")
-        out["steps"].append(_traceroute_step(a, cmd, None if got is None else got.get(a)))
+        out["steps"].append(_traceroute_step(a, cmd, None if got is None else got.get(a),
+                                             dest))
         if got is None:
             _capped(out, "before the traceroute; it was not sent")
     _return(p, out, reader, ctx, owner_of, one, sleep, n)
     return ctx
 
 
-def _traceroute_step(a: str, cmd: list, ans) -> dict:
+def _traceroute_step(a: str, cmd: list, ans, dest: str = "") -> dict:
     """The traceroute's step: its read, and the last address past the managed devices that
     answered (whether that is B is not read from it: a device answers from its ingress)."""
-    step = _step("traceroute", a, cmd, ans, "past the managed devices: ")
+    step = _step("traceroute", a, cmd, ans, "past the managed devices: ", ends=(a, dest))
     if ans is None or step["result"] != "ok":
         return step
     facts, _ref, why = _parsed(ans, a, cmd[0])

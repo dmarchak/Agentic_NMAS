@@ -337,6 +337,18 @@ READ_WORDS = {
 _DIALECT = {"cisco_iosxe": "cisco_iosxe", "cisco_xe": "cisco_iosxe", "cisco_ios": "cisco_ios"}
 
 
+def read_words(kind: str, source: str = "", dest: str = "") -> str:
+    """A read's words (`READ_WORDS`) with the reach runbook's ends named (C2878: a person read
+    "the forwarding path toward B"): "A" said as *source*, "B" as *dest*, each only when given,
+    so a read's words never draw a template's letter where its end is known."""
+    words = READ_WORDS.get(kind, kind)
+    if source:
+        words = re.sub(r"\bA\b", source, words)
+    if dest:
+        words = re.sub(r"\bB\b", dest, words)
+    return words
+
+
 def dialect_of(value: str, host: str = "") -> str:
     """A device's config dialect, keyed by its platform (intent's or the inventory's). An
     unknown platform is refused, naming it, never read as IOS (C452:
