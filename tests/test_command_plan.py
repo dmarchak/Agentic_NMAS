@@ -858,6 +858,20 @@ class TestTheScopedNetZero:
                                    "interfaces": [PORT]}, rec["net_zero"]
         assert f"show running-config interface {PORT}" in lab["sw"].reads
 
+    def test_a_partial_push_on_a_scoped_plan_is_compared_in_its_scope(self, lab):
+        """C3868 (closed as overtaken): a push that stops part-way never reaches the run's own
+        check, and its compare after the rollback still keeps the plan's interface scope, never
+        the whole configuration, because stage 4 read the plan's sections alone
+        (`running_config_sections`, e400a31f's item 5)."""
+        class PartialSectionSwitch(PartialSwitch, SectionSwitch):
+            pass
+        lab["sw"] = PartialSectionSwitch()
+        rec = go(lab)
+        nz = rec.get("net_zero") or {}
+        assert rec["net_zero_scope"] == {"scope": "interfaces", "interfaces": [PORT]}, rec
+        assert nz.get("after_rollback_scope") == "interfaces", nz
+        assert nz.get("after_rollback") == [] and rec["outcome"] == "rolled_back", rec["why"]
+
     def test_a_sticky_line_in_the_section_is_caught_by_the_scoped_compare(self, lab):
         sticky = " switchport port-security mac-address sticky aabb.cc00.8099"
         lab["sw"] = SectionSwitch(sticky=sticky)
