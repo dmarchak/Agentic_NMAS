@@ -1,6 +1,47 @@
 # Handoff: the waiting patches landed; main red only on C4090 (2026-11-24, 10:45 Denver)
 
-## 00000000000000. The afternoon of 2026-11-24 (14:00 to 14:55 Denver): read this first
+## 000000000000000. The evening of 2026-11-24 (15:45 to 17:05 Denver): read this first
+
+- **Landed (each pushed, CI running):** C3157 a run reopened by its record (bd03b81d); C4034
+  the summary's one duration (c3c54925); C4033 the strip's open count (f66333ff); C3489 the halt
+  card's link (4ced67a8); C4032 Fixes' condition words (167650fa); C3505 the analysis's score
+  in words (ca752e6f); C3506 the removal refusals in words, measured on the host first (no
+  stored decision held the probe command; efd41a92, C4248 C); C3550 the kinds toggle's preview
+  (f04946ff); C3093 a held device's proposal card (c2c0cc00); C3716 Persist's bottom line
+  first (2a156cc8); C3464 the AI refusals' amounts through `money.exact_usd`, its tier hand
+  check logged (a6687f9a: the canary and 11 of 21 died, 10 words-only survivors are C4249 C);
+  C4247 the amounts outside the AI modules (d8e21ab6); C3485 History › Export's days in the
+  viewer's zone (47660ae6).
+- **Fixed forward (CI reds I caused):** two draw-only tests (7ff73264), C3506's words in four
+  more tests, a device name in a comment, and a scratch path holding the home folder's name in
+  this file since 24946278 (fe2c0867), Persist's details' keep key (4592f81f). Lessons in the
+  decisions file: the presence, device-name and publication scans go in every aimed set that
+  touches UI or product text; for a change of words, grep every test for each old phrase.
+- **The full suite at 21b5766c** (local, six workers, confined, 17:30 Denver): 1 failed (C4090's
+  loop test alone), 32,100 passed, 425 skipped (the browser tests skip confined; CI runs them).
+  Two earlier local suites found the reds since fixed forward (a3cbe893, 72cfe886, 21b5766c).
+  Main still waits on C4090 alone for its deploy. Since: C3714 (8219d709), C3713 (d7433e78),
+  C3416 (fa18bbfa), C3581 and C3723 closed as measured (77478119, 3f43e9ad).
+- **Since 18:00 Denver:** C2851's decision half (dd27d674: History redraws on a decision; the
+  mark's half waits, measured: its own redraw takes the press's answer, the same root as C2405);
+  C2735, C2762, C4086, C3121, C3494, C3988, C3963 closed as measured or overtaken; C3480 Who is
+  told's answer below its Save (251b870a); C2878 the reach runbook's read words name its ends
+  (d713c298); C3087's card half (7f3fd20e); C4035 narrowed (b5841ec7: the canvas folder its
+  shot needs is not on this laptop). Waiting on design or a browser: C3703 (htmx disables the
+  submitter first), C3482 with C3545 (the "…" modal), C3856 (a signed card's structure),
+  C3002 (the operator's wording), C2696 (BGP captures, C2414).
+- **Since 18:30 Denver:** C3651 (2b6bfcaa), C3982 (d855813a), C2461 (dc1518d1), C2393 a
+  stopped detect pass is a job-health row (b3b866f2); C2371 and C2377 closed as overtaken (the
+  heal and notify are built); three pins fixed forward (f1507630). Full suite at f1507630: only
+  C4090's test. C2796 waits (its fix touches guard 13e's planned spans; review owed); C2490 is
+  a policy choice (email a late can't-fix, or record it not sent); C3884 and C2774 sit on the
+  heal's decide path and NetBox writes. Register: 2,087 open, B 500.
+- **The scan set** for every UI or wording change: `~/mercury-runs/ui_scan_set.txt` (the
+  manual, fidelity, presence, device-name, publication, walk, details-keep and other scans).
+- **Next rows:** C3087 (a read's stored answer linked from History), C3713 and C3714 (the device
+  page's two answers to one question), C4223's design, C4248 and C4249 (C, recorded).
+
+## 00000000000000. The afternoon of 2026-11-24 (14:00 to 14:55 Denver)
 
 - **Work until 02:30 Denver** (the operator, 13:25): never end a turn before 02:30, never stop
   to report, summarise or ask; progress in the day's report; questions in OPERATOR.md with the

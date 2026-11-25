@@ -456,6 +456,59 @@
     for (var i = 0; i < keep.length; i++) {
       if (keep[i] !== pointed && keep[i].isConnected) revisitUp(keep[i].parentNode, region);
     }
+    if (pointed && keep.indexOf(pointed) >= 0) drawOnLeave(pointed, region);
+  }
+
+  /* C4223: the control under the pointer or focused is kept as it was drawn while the person
+     aims at it (C2841) and is not revisited then (above: going down through the opened record
+     it sits in moved Right from where the person aimed). Once the pointer leaves it and it
+     holds no focus, its region is merged again from the server's last answer the page keeps
+     (`drawnFrom`), its path down to the control marked to be gone down again: the control draws
+     what the server drew, with no request, and what the server left alone stays as it is. */
+  function drawOnLeave(el, region) {
+    if (!el || el.nmasLeaveWired || !el.addEventListener) return;
+    el.nmasLeaveWired = true;
+    function left() {
+      el.removeEventListener('pointerleave', left);
+      el.removeEventListener('blur', left);
+      el.nmasLeaveWired = false;
+      root.setTimeout(function () { redrawKept(el, region); }, 0);
+    }
+    el.addEventListener('pointerleave', left);
+    el.addEventListener('blur', left);
+  }
+
+  function redrawKept(el, region) {
+    if (!drawnFrom || !el.isConnected || !region.isConnected || !region.contains(el)) return;
+    if (merging || pointedAt(region) === el) { drawOnLeave(el, region); return; }
+    // Pressed (busy on itself, or a request of the region's in flight): its own answer draws
+    // it, and a merge now would replace the part that answer is aimed at (C2841's Right,
+    // disabled as it asks, which takes its focus). The next merge goes down to it instead.
+    if (el.disabled || region.matches('.htmx-request, [data-nmas-sending]') ||
+        region.querySelector('.htmx-request, [data-nmas-sending]')) {
+      revisitUp(el.parentNode, region);
+      return;
+    }
+    var copy = drawnFrom.get(region);
+    if (!copy || copy.nodeType !== 1) return;
+    var next = copy.cloneNode(true);
+    stripRevisits(next);
+    revisitUp(el.parentNode, region);
+    var t = root.document.createElement('template');
+    Array.prototype.slice.call(next.childNodes).forEach(function (n) { t.content.appendChild(n); });
+    mergeRegion(false, region, t.content);
+  }
+
+  /* PURE over a copy: the markers `revisitUp` left in it taken out, so it is the server's
+     drawing alone. */
+  function stripRevisits(node) {
+    for (var c = node.firstChild; c; ) {
+      var after = c.nextSibling;
+      if (c.nodeType === 8 && c.nodeValue === REVISIT) node.removeChild(c);
+      else if (c.nodeType === 1) stripRevisits(c);
+      c = after;
+    }
+    return node;
   }
 
   /* Each element from *n* up to *region* remembered as differing from the server's drawing,

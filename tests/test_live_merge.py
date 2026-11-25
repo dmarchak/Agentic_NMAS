@@ -478,6 +478,26 @@ class TestAReleasedPartIsDrawnAgain:
                       comp(["v2"] * 3))
         assert got == {"same": True, "rows": ["row 0 v2", "row 1 v2", "row 2 v2"]}, got
 
+    def test_the_control_pointed_at_draws_the_server_s_words_once_it_is_left(self, page):
+        # C4223: the control under the pointer or focused is kept as drawn while it is aimed at
+        # (C2841), so its row read the new words beside its old label; once the person leaves
+        # it, it draws what the server last drew, with no new answer asked for.
+        def rows(w):
+            return ('<section class="card" data-key="card"><h2>rows</h2>' + "".join(
+                f'<div class="r" data-key="r{i}"><span>row {i} {w}</span>'
+                f'<button type="button">Right {w}</button></div>' for i in range(3)) + '</section>')
+        read = ("Array.prototype.map.call(document.querySelectorAll('#merge-box .r'),"
+                " function (r) { return r.textContent; })")
+        held = _merge(page, rows("v1"), rows("v2"),
+                      "box.querySelectorAll('button')[1].focus();"
+                      "window.__check = function () { return " + read + "; }")
+        assert held == ["row 0 v2Right v2", "row 1 v2Right v1", "row 2 v2Right v2"], held
+        page.js("document.querySelectorAll('#merge-box button')[1].blur(); return 1")
+        page.wait_for("return document.querySelectorAll('#merge-box button')[1].textContent"
+                      " === 'Right v2'", 5)
+        got = page.js("return " + read)
+        assert got == ["row 0 v2Right v2", "row 1 v2Right v2", "row 2 v2Right v2"], got
+
 
 # ── Needs attention ─────────────────────────────────────────────────────────────────────────
 
