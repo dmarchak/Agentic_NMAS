@@ -2447,7 +2447,7 @@ def test_monitoring_alerts_explain(tmp_path, monkeypatch):
     monkeypatch.setattr(gateway, "_api_key", lambda: "sk-planted-shot-key-0123456789")
     monkeypatch.setattr("modules.ai.controls._key_set", lambda: True)
     monkeypatch.setattr(calls, "_path", lambda: os.path.join(folder, "ai_calls.jsonl"))
-    monkeypatch.setattr(anthropic_adapter, "send", lambda body, key: anthropic_adapter.Reply(
+    monkeypatch.setattr(anthropic_adapter, "send", lambda body, key, **kw: anthropic_adapter.Reply(
         status=200, body={"content": [{"type": "text", "text": _json.dumps(planted["answer"])}],
                           "stop_reason": "end_turn",
                           "usage": {"input_tokens": 4000, "output_tokens": 200}},
