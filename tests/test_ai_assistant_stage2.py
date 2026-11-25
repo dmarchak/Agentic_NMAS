@@ -404,6 +404,44 @@ class TestTheButton:
         r, _html = post(lab, "How do I reload a device safely?")
         assert r.status_code == 409 and lab["sent"] == [] and calls.read()["rows"] == []
 
+    def test_off_every_assistant_route_refuses_under_the_strict_policy(self, lab):
+        """docs/FAST_LANE_DEBT.md's "The Assistant behind a setting" (a61bb071) owed "every
+        assistant route refused while off (409 under the strict CSP)": each route of the
+        Assistant's blueprint, asked by its own method, answers 409 with the off words and the
+        strict policy, and nothing is asked of the model."""
+        import app as APP
+        from modules import csp
+        from modules import installation_settings as S
+        lab["settings"]["ai_assistant_on"] = False
+        # The population, by the blueprint itself: a route it gains fails here until it is
+        # asked below too.
+        rules = {(r.rule, "POST" if "POST" in r.methods else "GET")
+                 for r in APP.app.url_map.iter_rules() if r.endpoint.startswith("assistant_v2.")}
+        assert rules == {("/v2/assistant/panel", "GET"), ("/v2/assistant/ask", "POST")}, rules
+        client = lab["client"]
+        for r in (client.get("/v2/assistant/panel", headers={"HX-Request": "true"}),
+                  client.post("/v2/assistant/ask", data={"question": "hello"},
+                              headers={"HX-Request": "true"})):
+            body = r.get_data(as_text=True)
+            assert r.status_code == 409, (r.request.path, r.status_code)
+            assert unescape(S.ASSISTANT_OFF_WORDS) in unescape(body), body[:200]
+            assert r.headers.get("Content-Security-Policy") == csp.STRICT_POLICY
+        assert lab["sent"] == [] and calls.read()["rows"] == []
+
+    def test_a_setting_that_cannot_be_read_reads_off(self, monkeypatch):
+        """The same row's "the unreadable setting reading off": only a stored True is on."""
+        from modules import installation_settings as S
+        from modules import settings_schema
+
+        def unreadable(key, default=None):
+            raise RuntimeError("the settings file cannot be read")
+        monkeypatch.setattr(settings_schema, "get_setting", unreadable)
+        assert S.assistant_on() is False
+        monkeypatch.setattr(settings_schema, "get_setting", lambda key, default=None: "true")
+        assert S.assistant_on() is False, "a hand-edited string is not a stored True"
+        monkeypatch.setattr(settings_schema, "get_setting", lambda key, default=None: True)
+        assert S.assistant_on() is True
+
     def test_hosted_ai_off_greys_it_and_its_panel_still_opens(self, lab, monkeypatch):
         monkeypatch.setattr("modules.ai.controls._hosted", lambda: {"allowed": False,
                                                                     "why": "off"})
