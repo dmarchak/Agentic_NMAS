@@ -2528,9 +2528,9 @@ def family(rule: str, device: str) -> str:
     """The group a card is drawn under: its rule, less the device a rule generated per device
     names in its title ("NMAS heartbeat missing: edge1" is one of "NMAS heartbeat missing"), so a
     fleet's heartbeats are one group, never one heading per device. A title that names more after
-    its device ("NMAS telemetry stream lost: r1 subscription 101") is its rule's too (C2187: each
-    of 16 subscriptions drew its own group under Fired), the device and what follows it left
-    out; a device name only ever matched whole (``: r1 `` never reads ``: r10``)."""
+    its device ("NMAS telemetry stream lost: edge1 subscription 101") is its rule's too (C2187:
+    each of 16 subscriptions drew its own group under Fired), the device and what follows it
+    left out; a device name only ever matched whole (``: edge1 `` never reads ``: edge10``)."""
     if not device:
         return rule
     tail = f": {device}"
