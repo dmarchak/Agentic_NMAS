@@ -148,7 +148,15 @@ call is held to the spending limits where it said "capped" (no call has a cap of
 7b0bb884); a hover's words only, no deviation. Compared by the template's diff, not by new
 shots. Templates sha256 before:
 `98de6884feea21df799badc173811b09818462a1f20b10afb6e48c15f7d10c6b`.
-Templates sha256: `cfebd8759fe7fa6086e104988ee8f97f4bb710e1e6db305f082d90062a4c5a39`
+Compared again 2026-11-24 (C3601, an app's deploy reopened from In progress): `_sdn_apps.html`
+draws one empty placeholder above the receipt, only when the tab is opened with `deploy_job`
+(In progress's link to a deploy started and left), that loads the deploy's own card (its
+running steps, then its result) from the route the confirm's card already polls. Nothing is
+drawn at rest; no region's verdict moved. Compared by the template's diff and
+tests/test_sdn_apps_v2.py's `TestInProgressListsADeploy`, not by new shots (owed in the full
+pass, docs/FAST_LANE_DEBT.md). Templates sha256 before:
+`cfebd8759fe7fa6086e104988ee8f97f4bb710e1e6db305f082d90062a4c5a39`.
+Templates sha256: `765bce0909f2b362306abf900b3b95ffea9cdbd07298826e4c7c5023167e7fda`
 
 **Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_sdn_view.html`, `_sdn_log.html`, `_sdn_apps.html`, `_sdn_analyse.html` and `_sdn_snapshots.html`, an override's end, a mitigation's expiry, the loop's log range and each of its lines, a receipt's time and its deploy's, a snapshot's collected time and the kept list's Collected column are `_macros.clock`'s: the viewer's own time, the zone named once on the screen, the UTC instant on hover; Run's choices name each run's start in the viewer's zone (`_macros.clock_option`); the Collected column reads without its "(UTC)". Nothing else moves. Compared by the templates' diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `8cbd5ec11735aca0ed19c68c32b8a296ee0ed4b5845dfcfc264c4344c7a44b01`.
 

@@ -44,7 +44,8 @@ def _ctx(tab: str) -> dict:
             "app": (request.args.get("app") or "").strip(),
             "v": (request.args.get("v") or "").strip(),
             "controller": (request.args.get("controller") or "").strip(),
-            "receipt": (request.args.get("receipt") or "").strip()})
+            "receipt": (request.args.get("receipt") or "").strip(),
+            "deploy_job": (request.args.get("deploy_job") or "").strip()})
     elif tab == "responses":
         from modules import sdn_ops_page
 

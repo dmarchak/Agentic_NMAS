@@ -265,7 +265,9 @@ def apps_view(network: str, args=None) -> dict:
            "draft": draft_write.control(network),
            # Board lab9-sdn B (C2904): DHCP steering at rest, from the export and the store.
            "dhcp": _dhcp_card(network),
-           "controllers": [], "app": None, "receipt": None}
+           "controllers": [], "app": None, "receipt": None,
+           # A deploy opened from In progress (C3601): its job, whose card the tab loads.
+           "deploy_job": str(args.get("deploy_job") or "").strip()[:64]}
     if listed.get("state") != "ok":
         return out
     want = (args.get("controller") or "").strip()

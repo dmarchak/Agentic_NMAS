@@ -642,6 +642,25 @@ def receipt_from(plan: dict, done: dict, *, actor: str, actor_verified: str, con
     }
 
 
+#: A deploy's outcome (its receipt's) as In progress's level (`in_flight.PAGE_LEVELS`): green
+#: only for deployed, amber for a rollback that restored the set, red for the rest.
+JOB_STATES = {"deployed": "done", "rolled back": "partial", "refused": "refused"}
+
+
+def job_outcome(controller_name: str, out: dict) -> dict:
+    """``{"state", "words"}`` for In progress (C3601): the run answers ``ok`` whatever the
+    receipt's outcome, so a rolled-back or failed deploy would be listed green."""
+    from modules.sdn_apps_page import OUTCOME_WORDS
+
+    outcome = str(out.get("outcome") or "unknown")
+    words = f"{controller_name}: {OUTCOME_WORDS.get(outcome, outcome)}"
+    if out.get("reason"):
+        words += f": {str(out['reason'])[:120]}"
+    if out.get("written") is False:
+        words += f"; its receipt did not write: {str(out.get('error') or '')[:80]}"
+    return {"state": JOB_STATES.get(outcome, "stopped"), "words": words}
+
+
 def run(job_id: str, network: str, controller_name: str, chosen: dict, confirmed: str, *,
         then_parts: dict, actor: str, actor_verified: str, src: Sources = None,
         clock=time.monotonic, sleep=time.sleep, now=time.time) -> dict:
@@ -699,8 +718,10 @@ def run(job_id: str, network: str, controller_name: str, chosen: dict, confirmed
     mark("record", "running")
     wrote = deploy_receipts.write(network, receipt)
     mark("record", "done" if wrote["ok"] else "failed", words=wrote["error"])
+    # ``error`` is the receipt's write; ``reason`` the receipt's own (In progress's words).
     return {"ok": True, "receipt_id": wrote["id"], "outcome": receipt.get("outcome"),
-            "written": wrote["ok"], "error": wrote["error"]}
+            "written": wrote["ok"], "error": wrote["error"],
+            "reason": str(receipt.get("error") or "")}
 
 
 def _held(job_id, network, controller_name, chosen, confirmed, *, then_parts, actor,
@@ -770,12 +791,17 @@ def start(network: str, controller_name: str, chosen: dict, confirmed: str, *,
 
     def work(job_id):
         # The job's host reads (the plan made again, holding the controller) are the actor's.
-        return run(job_id, network, controller_name, chosen, confirmed, then_parts=then_parts,
-                   actor=actor, actor_verified=actor_verified,
-                   src=sources().for_actor(actor))
+        out = run(job_id, network, controller_name, chosen, confirmed, then_parts=then_parts,
+                  actor=actor, actor_verified=actor_verified,
+                  src=sources().for_actor(actor))
+        return dict(out, **job_outcome(controller_name, out))
+
+    from urllib.parse import quote
 
     label = f"{controller_name}: {set_text(chosen)}"
+    # In progress lists it with SDN › Apps as its link, which loads its card (C3601).
     job = capture_job.start(network, label, actor, work, kind=KIND, announce_keys=DONE_KEYS,
+                            page=f"/v2/sdn/apps?list={quote(network)}&deploy_job={{job}}",
                             announcer=ANNOUNCER)
     log.info("controller deploy %s on %s of %s started by %s", job, controller_name, network,
              actor)

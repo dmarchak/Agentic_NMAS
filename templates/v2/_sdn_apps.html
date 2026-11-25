@@ -31,6 +31,10 @@
 <div class="notice notice-warn apps-unregistered" role="status">{{ icon('info', 16) }}<p>{{ g.registered_problems | length }} app folder{{ 's' if g.registered_problems | length != 1 }}{% if g.repo.commit %} at <span class="mono">{{ g.repo.commit[:7] }}</span>{% endif %} could not be registered: {{ g.registered_problems | join('; ') }}. <a href="{{ code_repo_url }}">Open the code repository's card</a></p></div>
 {%- endif %}
 
+{%- if g.deploy_job %}
+{#- A deploy opened from In progress (C3601): its running card, then its result. -#}
+<div class="apps-op" id="apps-deploy-job" hx-get="{{ url_for('sdn_v2.apps_run', job=g.deploy_job) }}" hx-trigger="load" hx-swap="innerHTML"></div>
+{%- endif %}
 {%- if g.receipt %}
 {%- set r = g.receipt %}
 {%- if r.missing %}

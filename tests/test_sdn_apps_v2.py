@@ -255,6 +255,40 @@ def test_an_unknown_outcome_offers_the_rollback_as_a_preview_never_runs_it(apps)
     assert deploy_receipts.read(NET)["rows"][0]["outcome"] == "unknown"
 
 
+class TestInProgressListsADeploy:
+    """C3601's last caller: an app's deploy started and left is listed by In progress with
+    SDN › Apps as its link, which loads the job's card; its row is green only for deployed
+    (the run answers ``ok`` whatever its receipt's outcome)."""
+
+    def _done(self, apps, monkeypatch, html):
+        from modules import in_flight
+        monkeypatch.setattr("modules.nsot.device_ops.in_flight", lambda name, now: [])
+        monkeypatch.setattr("modules.seen_runs.is_seen", lambda viewer, job: False)
+        confirm(apps["client"], html)
+        (done,) = [f for f in in_flight.chip([], "test-person@example.invalid")["finished"]
+                   if (f.get("href") or "").startswith(f"/v2/sdn/apps?list={NET}&deploy_job=")]
+        return done
+
+    def test_a_deploy_is_listed_green_and_its_page_loads_its_card(self, apps, monkeypatch):
+        html = preview(apps["client"]).get_data(as_text=True)
+        apps["src"].reads = [ALL_BACK_TWO]
+        done = self._done(apps, monkeypatch, html)
+        assert (done["level"], done["words"]) == ("ok", f"{CTL}: Deployed"), done
+        page = apps["client"].get(done["href"]).get_data(as_text=True)
+        m = re.search(r'id="apps-deploy-job" hx-get="(/v2/sdn/apps/run/[0-9a-f]+[^"]*)" '
+                      r'hx-trigger="load"', page)
+        assert m, page[page.find("apps-deploy-job") - 200:][:600]
+        card = apps["client"].get(m.group(1).replace("&amp;", "&")).get_data(as_text=True)
+        assert "Deployed: ctl runs" in card
+
+    def test_a_refused_deploy_is_red_with_its_reason(self, apps, monkeypatch):
+        html = preview(apps["client"]).get_data(as_text=True)
+        apps["src"].cat = f"{HEADER}\n[Service]\nUser=ryu\n"
+        done = self._done(apps, monkeypatch, html)
+        assert done["level"] == "danger", done
+        assert done["words"].startswith(f"{CTL}: Refused: "), done
+
+
 def test_the_routes_are_declared_everywhere_a_mutating_route_must_be():
     from modules import invalidation, operation_stages, route_gates
     assert route_gates.GATES["sdn_v2.apps_confirm"].kind == "confirm"
