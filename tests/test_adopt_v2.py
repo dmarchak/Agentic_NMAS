@@ -214,9 +214,14 @@ class TestInProgressListsAnAdoption:
                                              "remaining": [], "reason": "the device moved"})
         assert (done["level"], done["words"]) == ("danger", "stopped: the device moved"), done
 
-    def test_an_adopt_job_not_shaped_as_a_job_id_draws_no_card(self, lab):  # noqa: F811
-        """The review of C3601's slices: a crafted ``adopt_job`` (``../../x``) would have
-        loaded another page's HTML into the Adopt card; only a job id's shape is drawn."""
-        page = lab["client"].get("/v2/devices?list=Lab&adopt_job=../../../v2/settings"
-                                 "&hostname=r9").get_data(as_text=True)
-        assert not re.search(r'id="adopt-card" hx-get=', page), page[:0]
+    def test_devices_reads_only_a_job_id_shaped_adopt_job(self, lab, monkeypatch):  # noqa: F811
+        """The review of C3601's slices (C4260): a crafted ``adopt_job`` (``../../x``) would
+        have loaded another page's HTML into the Adopt card; Devices hands its page only a job
+        id's shape."""
+        import routes.v2 as V
+
+        handed = []
+        monkeypatch.setattr(V, "_page", lambda tpl, **ctx: handed.append(ctx) or "")
+        for value in ("../../../v2/settings", "0" * 32):
+            lab["client"].get(f"/v2/devices?list=Lab&adopt_job={value}&hostname=r9")
+        assert [c["adopt_job"] for c in handed] == ["", "0" * 32], handed

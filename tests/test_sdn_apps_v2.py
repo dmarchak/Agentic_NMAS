@@ -289,14 +289,17 @@ class TestInProgressListsADeploy:
         assert done["words"].startswith(f"{CTL}: Refused: "), done
 
 
-def test_a_deploy_job_not_shaped_as_a_job_id_draws_no_card(apps):
-    """The review of C3601's slice: a crafted ``deploy_job`` such as ``../../devices/x`` would
-    have made the tab load another page's HTML into itself; only a job id's shape is drawn."""
-    for bad in ("../../../devices/x", "0" * 31 + "/", "A" * 32, "0" * 33):
-        page = apps["client"].get(f"/v2/sdn/apps?list={NET}&deploy_job={bad}")
-        assert 'id="apps-deploy-job"' not in page.get_data(as_text=True), bad
-    page = apps["client"].get(f"/v2/sdn/apps?list={NET}&deploy_job={'0' * 32}")
-    assert f'/v2/sdn/apps/run/{"0" * 32}' in page.get_data(as_text=True)
+def test_the_apps_tab_reads_only_a_job_id_shaped_deploy_job(apps):
+    """The review of C3601's slice (C4260): a crafted ``deploy_job`` such as
+    ``../../devices/x`` would have made the tab load another page's HTML into itself; the tab's
+    view keeps only a job id's shape (`capture_job.job_id`), the one check every page link
+    reads."""
+    from modules import sdn_apps_page
+
+    for bad in ("../../../devices/x", "0" * 31 + "/", "A" * 32, "0" * 33, "", None):
+        assert sdn_apps_page.apps_view(NET, {"deploy_job": bad})["deploy_job"] == "", bad
+    good = "0123456789abcdef" * 2
+    assert sdn_apps_page.apps_view(NET, {"deploy_job": f" {good} "})["deploy_job"] == good
 
 
 def test_the_routes_are_declared_everywhere_a_mutating_route_must_be():
