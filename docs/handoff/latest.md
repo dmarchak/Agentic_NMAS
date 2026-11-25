@@ -2,13 +2,13 @@
 
 ## 0000000000000000. The night of 2026-11-24 to 25 (17:05 to 02:30 Denver): read this first
 
-- **State.** Main's head is c46eaf6f plus this handoff's commit. CI on every push from
-  cdd4e46c to cf69cc68 is red on C4090's
-  loop test alone: its three loops, `_fixit_section.html` F.more and `_inc_proof.html`
-  P.net_zero.lines and P.reads, wait on records only the operator can make
-  (OPERATOR.md#c4090-records). Nothing was deployed: there has been no fully green CI. The full
-  local suite at c46eaf6f, the same: see the last bullets. CI on 78a0599f (C3884) and c46eaf6f,
-  read at 08:57 UTC: red on C4090's loop test alone, as every run tonight.
+- **State.** Main's head is b6688704 plus this handoff's commit (the last code commit is
+  78a0599f; those after it are docs and the register). CI on every push from cdd4e46c to
+  c46eaf6f, the last read at 08:57 UTC, is red on C4090's loop test alone. Its three loops,
+  `_fixit_section.html` F.more and `_inc_proof.html` P.net_zero.lines and P.reads, wait on
+  records only the operator can make (OPERATOR.md#c4090-records). Nothing was deployed: there
+  has been no fully green CI. The full local suite at c46eaf6f is the same: see the last
+  bullets.
 - **What landed.** Every item, with its sha, is in docs/handoff/reports/2026-11-24.md, under
   Done. Since 23:40 Denver:
   - C3601 closed: every page job is listed by In progress and reopens.
@@ -39,7 +39,8 @@
   - C3977's last part (`record` drawn skipped before it ran) is not reproduced from the
     declared steps: mid-run, the plan engine's and a command plan's `record` draw waiting
     (measured 08:27 UTC, on the row). The fix-it agent's own run record would settle it.
-- **Register:** 2,031 open (A 9, B 452, UNKNOWN 284, C 1,286), counted at 08:37 UTC. Open A
+- **Register:** 2,030 open (A 9, B 452, UNKNOWN 283, C 1,286), counted at 09:00 UTC (C3778
+  closed and C3739 measured at the stop, b6688704). Open A
   and B rows blocking Phase 8: 56, under rule 4's cap of 60 (3 of them tagged Lab 9 or Lab 10:
   blocks), counted 08:27 UTC.
 - **Waiting on the operator (OPERATOR.md):**
