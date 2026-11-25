@@ -282,7 +282,7 @@
       <li class="fixit-plan-item fixit-plan-item-{{ 'ok' if pf.ok else 'refused' }}" data-step="{{ st.n }}" value="{{ st.n }}"{% if pf.code %} data-refused-by="{{ pf.code }}"{% endif %}><span title="{{ st.params }}">{{ st.words | times }}</span>
         {#- A built-in command plan's step (C3757): its How it works page beside it. -#}
         {%- if st.operation == 'errdisable-recover' %}{{ how('errdisable-recover', 'the-run-step-by-step', compact=True, op='the recovery') }}{% endif %}
-        {%- if pf.ok %} <span class="fixit-pre" data-preflight="ok">· preflight passed</span>
+        {%- if pf.ok %} <span class="fixit-pre" data-preflight="ok">· preflight passed</span>{% if pf.risk %} <span class="fixit-pre fixit-pre-risk" data-risk="repeat">· its risk: {{ pf.risk }}</span>{% endif %}
         {%- else %} <span class="fixit-pre fixit-pre-refused" data-preflight="refused">· refused at its preflight: {{ pf.refused or 'no reason was recorded' }}</span>{% endif %}</li>
       {%- endfor %}
     </ol>
@@ -537,6 +537,9 @@
   <p class="simple-step" data-plan-step="{{ st.n }}" title="{{ st.params }}">Step {{ ns.k }}: {{ st.words | times }}</p>
   {{ sent_block(st) }}
   {%- endif %}
+  {#- A step repeating a failed attempt passes, its risk said beside it (C3919: the person
+      decides). -#}
+  {%- if (st.preflight or {}).risk %}<p class="small" data-plan-risk="{{ st.n }}"><strong>Its risk:</strong> {{ st.preflight.risk }}</p>{% endif %}
   {%- endfor %}
   <div class="simple-acts">
     {%- if approve_ok %}

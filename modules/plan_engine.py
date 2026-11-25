@@ -770,8 +770,8 @@ def read_sessions(network: str, steps: list, *, now: float = None) -> dict:
 
 def _catalog_preview(key: str):
     """A catalog step's preview: the operation's own preview held to its incident's scope and
-    the heal guards, and refused when it repeats what already failed in the incident
-    (`fixit.plan.step_preview`, a read)."""
+    the heal guards; a repeat of what already failed in the incident passes, its risk the plan
+    card's (C3919; `fixit.plan.step_preview`, a read)."""
     def preview(network: str, p: dict) -> dict:
         from modules.fixit import plan as FP
         from modules.heal import resubscribe as R
@@ -1142,12 +1142,12 @@ def _intent_edit_preview(network: str, p: dict, *, candidate: dict = None) -> di
             + "; ".join(keeps[:8]) + (f"; and {len(keeps) - 8} more" if len(keeps) > 8 else "")
             + ". A deploy step takes a line off only when its removals name that line's id "
             "(Mode B), with the approving person's reason")
-    repeat, differs = _repeat_check(network, p, "intent-edit")
-    if repeat:
-        return {"ok": False, "refused": repeat, "code": "repeat"}
+    refused, differs, risk = _repeat_check(network, p, "intent-edit")
+    if refused:
+        return {"ok": False, "refused": refused, "code": "refused"}
     if differs:
         not_done.append(differs)
-    return {"ok": True, "base": base, "candidate": {device: new_text}, "device_keeps": keeps,
+    return {"ok": True, "risk": risk, "base": base, "candidate": {device: new_text}, "device_keeps": keeps,
             "hash": _digest({"base": base, "changes": changes, "text": new_text}),
             "drawn": {
                 "title": f"{device}'s intent: {len(changes)} change"
@@ -1288,12 +1288,12 @@ def _deploy_preview(network: str, p: dict, *, candidate: dict = None) -> dict:
         not_done.append(f"a merge-only deploy leaves on {device} {len(residue)} line(s) intent "
                         "does not hold, none removed unless selected by id: "
                         + "; ".join(residue[:5]) + ("; …" if len(residue) > 5 else ""))
-    repeat, differs = _repeat_check(network, p, "intent-deploy", {"program": program})
-    if repeat:
-        return {"ok": False, "refused": repeat, "code": "repeat"}
+    refused, differs, risk = _repeat_check(network, p, "intent-deploy", {"program": program})
+    if refused:
+        return {"ok": False, "refused": refused, "code": "refused"}
     if differs:
         checks.append(differs)
-    return {"ok": True, "flagged": flagged, "ids": ids,
+    return {"ok": True, "risk": risk, "flagged": flagged, "ids": ids,
             "resolved": {"program": program, "capture": capture},
             "hash": _digest({"device": device, "program": program, "capture": capture,
                              "remove": ids, "flagged": flagged}),
@@ -1380,13 +1380,14 @@ def _deploy_attempt(p: dict, resolved: dict) -> dict:
 
 
 def _repeat_check(network: str, p: dict, key: str, resolved: dict = None) -> tuple:
-    """``(refusal, differs)`` for a step of an incident's fix: the catalog's repeat rule
+    """``(refusal, differs, risk)`` for a step of an incident's fix: the catalog's repeat rule
     (`fixit.plan.admitted_repeat`, `fixit.incident.repeat_of`) on the values the step kind
     compares an attempt by (`StepKind.attempt_of`): an attempt that ran with the same values
-    and failed refuses it, naming the attempt; one that ran with other values names what
-    differs. ``("", "")`` outside an incident's fix."""
+    and failed is its *risk*, naming the attempt (C3919: a person decides, never refused); one
+    that ran with other values names what differs. ``("", "", "")`` outside an incident's
+    fix; a *refusal* only when the incident cannot be read."""
     if not p.get("incident"):
-        return "", ""
+        return "", "", ""
     from modules.fixit import plan as FP
 
     return FP.admitted_repeat(network, p, key, STEP_KINDS[key].attempt_of(p, resolved or {}))

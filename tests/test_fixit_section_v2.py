@@ -391,22 +391,21 @@ class TestTheNextAction:
     def test_a_proposal_is_its_plan_with_modify_and_deny(self, web, tmp_path):
         """Premise corrected (R2): a proposal is a plan of steps with Approve, Modify… and
         Deny… (`plan.preflight`), where it was one operation opened in its card from Go to the
-        proposed fix; this one repeats attempt 1, so it is refused at its preflight and draws
-        no Approve and no primary."""
+        proposed fix; this one repeats attempt 1, which since C3919 (the operator, 2026-11-17:
+        "the person decides") passes with its risk said, so Approve is its one primary."""
         iid = plant()
         proposed(web, iid, tmp_path)
         html = drawn_page(web, iid)
         sec = section_of(html)
         assert 'data-fix="approve"' in bluf_of(sec)
         # Premise corrected (board R5, becced07: the plan waiting on Approve is its own card
-        # under the incident, Modify and Deny on it; fb8be7e8, the operator, 2026-11-16: a
-        # refused plan's primary button is Ask the AI again).
+        # under the incident, Modify and Deny on it).
         card = plan_of(sec)
         assert f"fixit-modify-{iid}" in card or f"fixit-deny-{iid}" in card
-        assert "Approve isn't offered: a step was refused at its preflight" in card
-        assert "/fixit/approve" not in sec
-        assert [w for _a, w in primaries_of(outside_modals(sec))] == [
-            "Ask the AI again Asking the AI…"]
+        assert "Approve isn't offered" not in card and 'data-plan-risk="1"' in card
+        assert "/fixit/approve" in sec
+        primaries = [a for a, _w in primaries_of(outside_modals(sec))]
+        assert len(primaries) == 1 and "/fixit/approve" in primaries[0], primaries
         assert outside_modals(html).count("btn-primary") <= 1, "the page draws one primary"
 
 
@@ -501,31 +500,35 @@ class TestWhatItFound:
 
 class TestTheRepeatsHash:
     """The GUI review's AI3 (C3455): the repeat's words hold no parameter hash. Premise
-    corrected (the operator's R2, 2026-11-14: "Never offer, as the next action, anything that
-    already failed on this incident"): a plan repeating a failed attempt is refused at its
-    preflight, naming the attempt, where it was flagged and offered; Approve is not drawn. The
-    plan's shape (`plan.preflight`) carries no parameter hash, so The record's "Proposed fix's
-    parameter hash" line is not drawn for it."""
+    corrected twice: the operator's R2 (2026-11-14) refused a plan repeating a failed attempt
+    at its preflight; C3919 (the operator, 2026-11-17: "remove plan.py:41's same-incident
+    repeat refusal; the person decides") passes it, its risk naming the attempt drawn on the
+    step, and Approve is offered. The words a person reads still name no parameter hash."""
 
-    def test_the_repeat_is_refused_naming_its_attempt_and_no_hash(self, web, tmp_path):
+    def test_the_repeat_passes_with_its_risk_naming_its_attempt_and_no_hash(self, web,
+                                                                            tmp_path):
         iid = plant()
         proposed(web, iid, tmp_path)
         line = F.read(incident(iid))["lines"][-1]
         hashed = F.params_hash(line["operation"], line["params"])
         html = drawn_page(web, iid)
         sec = section_of(html)
-        step = re.search(r'<li class="fixit-plan-item fixit-plan-item-refused" data-step="1".*?</li>',
+        step = re.search(r'<li class="fixit-plan-item fixit-plan-item-ok" data-step="1".*?</li>',
                          sec, re.S)
         assert step, sec[:2000]
         said = " ".join(re.sub(r"<[^>]+>", " ", step.group(0)).split())
-        assert "already failed on this incident as attempt 1" in said, said
+        assert "preflight passed · its risk: it already failed on this incident as attempt 1" \
+            in said and said.endswith("running it again is your decision"), said
+        card = plan_of(sec)
+        risk = re.search(r'<p class="small" data-plan-risk="1">(.*?)</p>', card, re.S)
+        assert risk and "attempt 1" in risk.group(1), card[:2000]
         assert hashed not in sec and "parameter hash" not in sec
-        assert "/fixit/approve" not in sec, "a repeat is never approvable"
+        assert "/fixit/approve" in sec, "a person decides: Approve is offered"
 
-    def test_the_warning_names_no_hash_and_the_record_does(self, web, tmp_path):
+    def test_the_risk_names_no_hash_and_the_record_does(self, web, tmp_path):
         """The old guarantee kept (C3455's AI3): the words a person reads name no hash; the
-        incident's record keeps what was refused, by hash: the refused plan's own (as Approve
-        would have bound it) and the repeating step's parameter hash, the same as attempt 1's."""
+        incident's record keeps the repeating step's parameter hash, the same as attempt 1's,
+        beside the plan's own hash that Approve binds."""
         from modules.fixit import plan as FP
         iid = plant()
         proposed(web, iid, tmp_path)
@@ -533,19 +536,22 @@ class TestTheRepeatsHash:
         hashed = F.params_hash(line["operation"], line["params"])
         assert line["params_hash"] == hashed, "the stored record keeps the parameter hash"
         plan = FP.preflight(incident(iid), line)
-        assert plan["hash"] == "" and not plan["approvable"]
-        assert len(plan["refused_hash"]) == 16
+        assert plan["approvable"] and len(plan["hash"]) == 16, plan
         html = drawn_page(web, iid)
         sec = section_of(html)
-        for h in (hashed, plan["refused_hash"]):
-            assert h not in sec, h
-        assert "hash" not in " ".join(re.sub(r"<[^>]+>", " ", outside_modals(sec)).split())
+        assert hashed not in sec, hashed
+        # An approvable plan draws what its hash binds, one level down (C3725), so the words
+        # name the plan's hash there; never the repeat's parameter hash.
+        assert "parameter hash" not in " ".join(
+            re.sub(r"<[^>]+>", " ", outside_modals(sec)).split())
         record = html.split('class="card tl-record-d', 1)[1].split("</details>", 1)[0]
-        m = re.search(r"<dt>The refused plan</dt><dd>(.*?)</dd>", record, re.S)
+        assert "<dt>The refused plan</dt>" not in record
+        m = re.search(r"<dt>The plan's repeats</dt><dd>(.*?)</dd>", record.replace("&#39;", "'"),
+                      re.S)
         assert m, record[-800:]
         said = " ".join(re.sub(r"<[^>]+>", "", m.group(1)).split()).replace("&#39;", "'")
-        assert said == (f"{plan['refused_hash']} · proposal {line['proposal']} · step 1's "
-                        f"parameter hash {hashed}, the same as attempt 1's"), said
+        assert said == (f"proposal {line['proposal']} · step 1's parameter hash {hashed}, the "
+                        "same as attempt 1's"), said
 
 
 # ── Cancel and Retry are gone (the operator's R2, 2026-11-14) ──────────────────────────────

@@ -13,8 +13,10 @@ not pass stopping it, nothing retried.
 asked what it would do if it ran now, by the check every proposal passes (`validate.check`:
 the catalog's schema, the incident's scope, the device managed, the planned work, holds and
 windows of guard 3, committed intent through the operation's own preview), and **a step that
-repeats what already failed in this incident is refused** (the operator, R2: "Never offer, as
-the next action, anything that already failed on this incident"). A refused step is drawn
+repeats what already failed in this incident passes, its risk drawn on it** (C3919, the
+operator, 2026-11-17: "remove plan.py:41's same-incident repeat refusal; the person decides";
+it was refused under R2's "Never offer, as the next action, anything that already failed on
+this incident", which still holds for the one next action the BLUF draws). A refused step is drawn
 refused with why, and the plan is then not approvable: a refusal is shown in the proposal,
 never discovered after approval. The per-incident and day caps hold the AI's calls, never a
 plan's run, which spends nothing.
@@ -37,9 +39,11 @@ log = logging.getLogger(__name__)
 AS_CATALOG = {"subs": "subscriptions", "sub": "subscription",
               # G7 (C3712): Recover an err-disabled interface's, by the same names.
               "interface": "interface", "cause": "cause"}
-#: Why a repeat is refused, the attempt it repeats named.
-REPEAT_WORDS = ("it already failed on this incident as attempt {attempt} ({words}), so it is "
-                "not offered again; it stays in Attempts and under Other actions")
+#: A repeat's risk, the attempt it repeats named (C3919, the operator, 2026-11-17: "remove
+#: plan.py:41's same-incident repeat refusal; the person decides"): drawn on its step, never a
+#: refusal; only a person's Approve starts a plan (`plan_engine.start` from fixit_v2.approve).
+REPEAT_WORDS = ("it already failed on this incident as attempt {attempt} ({words}): running "
+                "it again is your decision")
 
 
 def as_catalog(operation: str, params: dict, device: str) -> dict:
@@ -108,25 +112,26 @@ def plan_params(incident, line: dict) -> dict:
 
 def _check_one(incident, operation: str, params: dict, *, resolved=None, now=None,
                sources=None, planned=None) -> dict:
-    """One step's preflight: ``{"ok", "hash", "drawn", "refused", "code", "repeat"}``."""
+    """One step's preflight: ``{"ok", "hash", "drawn", "refused", "code", "repeat", "risk"}``;
+    *risk* the words of a repeat of a failed attempt (`REPEAT_WORDS`), passed, never refused."""
     from modules.fixit import validate as V
 
     got = V.check(incident, operation, params, resolved=resolved, now=now, sources=sources,
                   planned=planned)
     if not got["ok"]:
         return {"ok": False, "hash": "", "drawn": {}, "refused": got["refused"],
-                "code": got["code"], "repeat": {}}
+                "code": got["code"], "repeat": {}, "risk": ""}
     rep = got.get("repeat") or {}
+    risk = ""
     if rep.get("kind") == "repeat":
         from modules.fixit.section import outcome_words
 
-        return {"ok": False, "hash": got["hash"], "drawn": got["preview"], "code": "repeat",
-                "refused": REPEAT_WORDS.format(
-                    attempt=rep.get("attempt"),
-                    words=outcome_words(rep.get("outcome") or "", rep.get("words") or "")
-                    or "it did not pass"), "repeat": rep}
+        risk = REPEAT_WORDS.format(
+            attempt=rep.get("attempt"),
+            words=outcome_words(rep.get("outcome") or "", rep.get("words") or "")
+            or "it did not pass")
     return {"ok": True, "hash": got["hash"], "drawn": got["preview"], "refused": "",
-            "code": "", "repeat": rep}
+            "code": "", "repeat": rep, "risk": risk}
 
 
 def _admitted_one(incident, operation: str, params: dict, candidate: dict) -> dict:
@@ -148,30 +153,33 @@ def _admitted_one(incident, operation: str, params: dict, candidate: dict) -> di
             "drawn": redact_payload(got.get("drawn") or {}),
             "refused": got.get("refused") or "", "code": got.get("code") or (
                 "" if got.get("ok") else "refused"),
-            "repeat": {}, "resolved": dict(got.get("resolved") or {})}
+            "repeat": {}, "risk": (got.get("risk") or "") if got.get("ok") else "",
+            "resolved": dict(got.get("resolved") or {})}
 
 
 def admitted_repeat(network: str, p: dict, operation: str, compared: dict) -> tuple:
-    """``(refusal, differs)``: the catalog's repeat rule (`incident.repeat_of`) for a step of a
-    kind the fix admits beside the catalog, on the values its kind compares an attempt by
-    (*compared*): an attempt of this incident that ran *operation* with the same values and
-    failed refuses it (`REPEAT_WORDS`, naming the attempt); one that ran it with other values
-    is named with each value that differs; ``("", "")`` when none ran it. A read."""
+    """``(refusal, differs, risk)``: the catalog's repeat rule (`incident.repeat_of`) for a
+    step of a kind the fix admits beside the catalog, on the values its kind compares an
+    attempt by (*compared*): an attempt of this incident that ran *operation* with the same
+    values and failed is the step's *risk* (`REPEAT_WORDS`, C3919: never a refusal, a person
+    decides); one that ran it with other values is named in *differs* with each value that
+    differs; ``("", "", "")`` when none ran it; a *refusal* only when the incident cannot be
+    read. A read."""
     from modules.fixit import incident as F
     from modules.fixit.section import outcome_words
 
     incident, why = _incident_for(network, p.get("incident") or "")
     if incident is None:
-        return why, ""
+        return why, "", ""
     got = F.repeat_of(incident, operation, compared)
     if got["kind"] == "repeat":
-        return REPEAT_WORDS.format(attempt=got["attempt"], words=outcome_words(
-            got["outcome"], got["words"]) or "it did not pass"), ""
+        return "", "", REPEAT_WORDS.format(attempt=got["attempt"], words=outcome_words(
+            got["outcome"], got["words"]) or "it did not pass")
     if got["kind"] == "variation":
         return "", (f"attempt {got['attempt']} ran it and did not pass; this one differs in "
                     + "; ".join(f"{c['name']} (was {str(c['before'])[:60] or 'none'}, now "
-                                f"{str(c['after'])[:60] or 'none'})" for c in got["changed"]))
-    return "", ""
+                                f"{str(c['after'])[:60] or 'none'})" for c in got["changed"])), ""
+    return "", "", ""
 
 
 def _incident_for(network: str, incident_id: str):
@@ -390,12 +398,13 @@ def preflight(incident, line: dict, *, resolved: float = None, now: float = None
                                 or PE.words_of(s["operation"])),
                       "params": params_words(attempt), "hash": got["hash"],
                       "preflight": {"ok": got["ok"], "refused": got["refused"],
-                                    "code": got["code"]},
-                      # A step refused as a repeat: the parameter hash it was compared by and
-                      # the attempt it matched, for The record (never the section's words).
+                                    "code": got["code"], "risk": got.get("risk") or ""},
+                      # A step repeating a failed attempt: the parameter hash it was compared
+                      # by and the attempt it matched, for The record (never the section's
+                      # words; the section draws its risk).
                       "repeat": ({"attempt": rep.get("attempt"),
                                   "params_hash": rep.get("params_hash") or ""}
-                                 if got["code"] == "repeat" else {}),
+                                 if rep.get("kind") == "repeat" else {}),
                       # What the step's own preview resolved (a deploy's program and capture),
                       # bound by the plan's hash as the engine's run binds it.
                       "resolved": dict(got.get("resolved") or {}),

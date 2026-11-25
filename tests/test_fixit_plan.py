@@ -48,7 +48,7 @@ class TestPreflight:
         got = FP.preflight(incident(iid), line)
         assert got["approvable"] and len(got["hash"]) == 16
         (step,) = got["steps"]
-        assert step["preflight"] == {"ok": True, "refused": "", "code": ""} and len(step["hash"]) == 16
+        assert step["preflight"] == {"ok": True, "refused": "", "code": "", "risk": ""} and len(step["hash"]) == 16
         assert step["words"] == "Re-subscribe r2's telemetry (101, 102)"
         # The same plan in another order, or another step, is another hash.
         other = FP.preflight(incident(iid), proposed(iid, [
@@ -82,18 +82,24 @@ class TestPreflight:
 
 
 class TestNeverOfferAFailedAction:
-    def test_a_step_that_already_failed_here_is_refused_and_is_in_other_actions(self, web):
+    def test_a_step_that_already_failed_here_passes_with_its_risk_for_a_person(self, web):
+        """C3919 (the operator, 2026-11-17: "remove plan.py:41's same-incident repeat refusal;
+        the person decides"): the repeat passes its preflight, its risk naming the attempt, and
+        the plan is approvable; the attempt stays in Other actions."""
         iid = plant()
         attempt(web)                                   # attempt 1: 101 and 102, failed
         line = proposed(iid, ONE)
         got = FP.preflight(incident(iid), line)
-        assert not got["approvable"]
-        assert "already failed on this incident as attempt 1" in got["why_refused"]
+        assert got["approvable"], got["why_refused"]
+        step = got["steps"][0]
+        assert step["preflight"]["ok"] and step["preflight"]["code"] == ""
+        assert step["preflight"]["risk"].startswith(
+            "it already failed on this incident as attempt 1 ("), step["preflight"]
+        assert step["preflight"]["risk"].endswith("running it again is your decision")
+        assert step["repeat"]["attempt"] == 1 and step["repeat"]["params_hash"]
         x = view(iid)
         assert [a["attempt"] for a in x["other_actions"]] == [1]
-        assert x["bluf"]["fix"]["kind"] != "button" or "Re-subscribe" not in \
-            x["bluf"]["fix"]["label"]
-        assert x["actions"]["approve"]["offered"] is False
+        assert x["actions"]["approve"]["offered"] is True
 
     def test_a_variation_of_a_failed_one_is_offered(self, web):
         iid = plant()

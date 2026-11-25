@@ -317,7 +317,10 @@
     {#- A plan refused at its preflight: what was refused, by hash (the section's words name
         none): the plan's hash as Approve would have bound it, and a repeating step's
         parameter hash with the attempt it is the same as. -#}
-    {%- if fxp.steps is defined and not fxp.hash and (fxp.refused_hash or fxp.steps | selectattr('repeat') | list) %}<dt>The refused plan</dt><dd>{% if fxp.refused_hash %}<span class="mono">{{ fxp.refused_hash }}</span> · {% endif %}proposal {{ fxp.id }}{% for st in fxp.steps %}{% if st.repeat %} · step {{ st.n }}'s parameter hash <span class="mono">{{ st.repeat.params_hash }}</span>, the same as attempt {{ st.repeat.attempt }}'s{% endif %}{% endfor %}</dd>{% endif %}</dl>
+    {%- if fxp.steps is defined and not fxp.hash and (fxp.refused_hash or fxp.steps | selectattr('repeat') | list) %}<dt>The refused plan</dt><dd>{% if fxp.refused_hash %}<span class="mono">{{ fxp.refused_hash }}</span> · {% endif %}proposal {{ fxp.id }}{% for st in fxp.steps %}{% if st.repeat %} · step {{ st.n }}'s parameter hash <span class="mono">{{ st.repeat.params_hash }}</span>, the same as attempt {{ st.repeat.attempt }}'s{% endif %}{% endfor %}</dd>{% endif %}
+    {#- A plan that passed with a step repeating a failed attempt (C3919): the same line, for
+        the record of what a person approved. -#}
+    {%- if fxp.steps is defined and fxp.hash and fxp.steps | selectattr('repeat') | list %}<dt>The plan's repeats</dt><dd>proposal {{ fxp.id }}{% for st in fxp.steps %}{% if st.repeat %} · step {{ st.n }}'s parameter hash <span class="mono">{{ st.repeat.params_hash }}</span>, the same as attempt {{ st.repeat.attempt }}'s{% endif %}{% endfor %}</dd>{% endif %}</dl>
 </details>
 {%- endset %}
 {#- The incident's card (`modules/fixit/section.py`), drawn with no AI call; its posts draw it

@@ -171,7 +171,8 @@ class TestACommandPlansOwnNames:
 
 
 class TestTheRepeat:
-    def test_a_deploy_that_failed_is_refused_again_unless_its_program_differs(self, lab):
+    def test_a_deploy_that_failed_passes_again_with_its_risk_unless_its_program_differs(self,
+                                                                                          lab):
         lab["seams"]["verify"] = False
         rec = run_line(line_of(EDIT, DEPLOY))
         assert rec["outcome"] == "stopped", rec
@@ -180,12 +181,13 @@ class TestTheRepeat:
         got = whole["attempts"]
         assert [(a["operation"], a["passed"]) for a in got] == [
             ("intent-edit", True), ("intent-deploy", False)], got
-        # The same deploy proposed again: the same program, so refused naming the attempt.
+        # The same deploy proposed again: the same program, so it passes with its risk naming
+        # the attempt (C3919, the operator, 2026-11-17: "the person decides").
         again = FP.preflight(incident(), line_of(DEPLOY))
-        assert not again["approvable"]
-        assert again["steps"][0]["preflight"]["code"] == "repeat"
-        assert "it already failed on this incident as attempt 2" in \
-            again["steps"][0]["preflight"]["refused"]
+        assert again["approvable"], again["why_refused"]
+        pf = again["steps"][0]["preflight"]
+        assert pf["ok"] and pf["code"] == "", pf
+        assert pf["risk"].startswith("it already failed on this incident as attempt 2 ("), pf
         # Intent moved since: another program, so it is offered, naming what differs.
         from modules.nsot import intent_edit
         opened = intent_edit.open_doc("Lab", "r2")
@@ -194,12 +196,13 @@ class TestTheRepeat:
             opened["base"], "someone")["ok"]
         other = FP.preflight(incident(), line_of(DEPLOY))
         assert other["approvable"], other["why_refused"]
+        assert other["steps"][0]["preflight"]["risk"] == "", "a variation is no repeat"
         checks = E.preview("Lab", E.INCIDENT_FIX, FP.plan_params(
             incident(), line_of(DEPLOY)))["steps"][0]["drawn"]["checks"]
         assert any(c.startswith("attempt 2 ran it and did not pass; this one differs in "
                                 "program (was ") for c in checks), checks
 
-    def test_an_intent_change_that_failed_is_refused_again(self, lab, monkeypatch):
+    def test_an_intent_change_that_failed_passes_again_with_its_risk(self, lab, monkeypatch):
         from modules.nsot import intent_edit
         monkeypatch.setattr(intent_edit, "commit", lambda *a, **kw: {
             "ok": False, "error": "the repository refused it (a test's own words)"})
@@ -207,11 +210,14 @@ class TestTheRepeat:
         assert rec["outcome"] == "stopped", rec
         again = FP.preflight(incident(), line_of(("intent-edit", {"device": "r2",
                                                                   "changes": [RENAME]})))
-        assert again["steps"][0]["preflight"]["code"] == "repeat", again["steps"][0]
+        pf = again["steps"][0]["preflight"]
+        assert again["approvable"] and pf["ok"], again["steps"][0]
+        assert pf["risk"].startswith("it already failed on this incident as attempt 1 ("), pf
         # Another change is no repeat.
         other = FP.preflight(incident(), line_of(("intent-edit", {"device": "r2",
                                                                   "changes": [V6]})))
         assert other["approvable"], other["why_refused"]
+        assert other["steps"][0]["preflight"]["risk"] == ""
 
     def test_a_plan_stopped_at_its_deploy_never_closes_the_incident(self, lab, monkeypatch):
         """The correctness review's G7-D1 (2026-11-18; C3812, 003f3292): a plan whose deploy

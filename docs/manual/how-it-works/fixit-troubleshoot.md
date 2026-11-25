@@ -7,8 +7,9 @@ collapsed, every fix tried in the incident with what each cost in AI. When Mercu
 fails, the AI investigates by itself where its background feature is on ([Starting by
 itself](#automatic)); otherwise **Start AI troubleshooting** is the next action. The AI
 proposes a plan; you **Approve** it by its hash, **Modify…** it or **Deny…** it. Nothing runs
-until a person approves it, and nothing that already failed in the incident is offered as its
-next action (the operator's rule of 2026-11-14).
+until a person approves it. A plan step that repeats what already failed in the incident is
+drawn with its risk, and running it again is your decision ([A repeated
+proposal](#a-repeat)).
 
 ![AI troubleshooting on an incident's page: an attempt is a catalogue operation's run on the incident's device, read from the operation's own record; a failed attempt is said by the card's status line, and nothing more runs until the AI is started, by itself where its background feature is on for the network, or by a person's Start AI troubleshooting. The per-incident cap is asked again first; one AI investigation (at most two calls, its answer checked against what was sent) proposes a plan of catalogue operations, each step preflighted against the incident, the heal guards and committed intent, a step that repeats a failed attempt refused. The plan runs only when a person approves it by its hash; Modify asks for a revised plan and Deny records why not, and neither runs anything. Hand over keeps a write-up and sends its link to the teams chosen. Nothing in the card reaches the device but the plan a person approved.](diagrams/fixit-troubleshoot.svg)
 
@@ -119,9 +120,9 @@ otherwise, and each takes these steps, which its code keeps:
 
 1. `preflight`: before the plan is drawn, each step is checked by code against the catalogue's
    schema, what the incident names (its device and its lost subscriptions), the heal guards (a
-   planned window, the device held by another run) and committed intent, and a step that
-   repeats an attempt that failed here is refused. A refused step is drawn refused with why,
-   and the plan then has no Approve.
+   planned window, the device held by another run) and committed intent. A refused step is
+   drawn refused with why, and the plan then has no Approve. A step that repeats an attempt
+   that failed here passes, its risk drawn beside it.
 2. `approve`: **Approve** sends the plan's hash; the plan is preflighted again and refused,
    naming both hashes, when it moved. Then Mercury runs each step in order through its own
    operation (its preview again, its apply re-checking its own hash, its verify, its record),
@@ -238,14 +239,16 @@ Nothing runs. A proposed plan is drawn with its steps and **Approve**, **Modify�
 **Deny…**; it runs only when you approve it by its hash. If it fails, the card says so, and the
 AI is asked again only by a press, or once by itself for the new failure.
 
-## A repeated proposal is refused {#a-repeat}
+## A repeated proposal says its risk {#a-repeat}
 
 A plan's steps are compared with every attempt in the incident that did not pass. A step of the
-same operation with the same parameters is refused at its preflight, naming the attempt it
-repeats and what that attempt said, so the plan has no Approve: nothing that already failed in
-the incident is offered as its next action. The failed operation stays under **Attempts** and
-**Other actions**, with its record. The same operation with other parameters is a variation,
-and is offered.
+same operation with the same parameters passes its preflight with its risk drawn beside it:
+"Its risk: it already failed on this incident as attempt N (what that attempt said): running
+it again is your decision". The plan keeps **Approve**, because a person decides whether to
+run it again. The incident's record keeps the step's parameter hash, the same as the
+attempt's, under **The plan's repeats**. The failed operation stays under **Attempts** and
+**Other actions**, with its record. The same operation with other parameters is a variation:
+its preview names each value that differs.
 
 ## The run's record {#the-run}
 

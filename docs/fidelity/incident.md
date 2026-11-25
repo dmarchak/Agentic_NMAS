@@ -182,7 +182,7 @@ Compared again 2026-11-24 (C4071): `_fixit_section.html`'s comment says the R5 b
 owed (it named tests/r5_budget.py, which was never written); a comment only, nothing drawn
 changes, no deviation. Templates sha256 before:
 `535b035d54df9bbe38164c7b71b93831f4d237440347af78da08e1398625e1d4`.
-Templates sha256: `bed50c392644175587ab1a8ebbe6adf5b9893c8c56e042b8849169689c7d5e90`
+Templates sha256: `f1af136880b8e19abb2b71e3517d3861882941402587b393487ae90d1198bd03`
 Templates sha256 before the saved plans card said a right's holders unset (2026-11-15, Gate 1b's review, item 7; the row "Rights not set" below): `770515ac382839dde54d1ae789920a7578375acf87fe6fb9d221961273361976`
 Templates sha256 before C3725's session moved from a press to the proposal's record (2026-11-15, the operator; the session row below): `90974cd13f0f0f2aece5e005c3cc5e3c2c21726aa22192e6535bce1ca4953909`
 Templates sha256 before the verify-speed gate's page fixes (2026-11-14, C3725, C3727, C3728, C3729, below): `b8969275f9560c0d423e154d881391989736eb6548a35bb27ab4020fa5542a6c`
@@ -326,3 +326,18 @@ the problem's evidence, Evidence, What Mercury has done's outcome and The record
 | A right the viewer lacks (S2) | said beside its control, the control disabled | the refusal's own words beside it, the button disabled (Promote's and Approve's on their hover) | **same** |
 | The answer (S3) | in place, above the card; "Nothing to save yet" when no run passed | the same; each button busy on itself until it answers | **same** |
 | Rights not set (Gate 1b's review, item 7) | not drawn | one faint line at the card's head naming each right whose holders `access_rights` does not set: every verified person holds it until then | **deviation** (log: Board saved-plans S built, 3) |
+
+**Compared again 2026-11-25 (C3919, the operator, 2026-11-17: "remove plan.py:41's
+same-incident repeat refusal; the person decides"): a repeated step's risk.** By the template
+diff, not by new shots. In `_fixit_section.html`, a plan step that repeats a failed attempt is
+drawn passed, where it was drawn refused: on the plan card, under the step, "Its risk: it
+already failed on this incident as attempt N (…): running it again is your decision", and in
+Details' step list "· preflight passed · its risk: …". The plan keeps Approve as its one
+primary. In `incident.html`, The record gains "The plan's repeats" (each repeating step's
+parameter hash, the same as its attempt's) for an approvable plan, the line "The refused
+plan" draws for a refused one. No other region moves.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| A repeated step (C3919) | board R5's plan card: each step, its preflight, Approve, Modify…, Deny… | the step drawn passed with its risk under it, Approve offered | **same** (the plan card's regions; the refusal R2 drew is withdrawn by the operator's C3919) |
+| The record's repeats (C3919) | not drawn | "The plan's repeats" beside the plan's hash, for an approvable plan | **same** (The record's plan hash row above, one more line of it) |
