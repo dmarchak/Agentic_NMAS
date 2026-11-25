@@ -472,12 +472,17 @@ def test_who_is_told_names_a_team_and_its_events_and_refuses_a_stale_card(networ
     r, tab = _post(networks, BASE.format(n="Default") + "/notify",
                    {"team": team, "events": ["cant_fix", "halted"], "loaded": loaded})
     assert r.status_code == 200 and "Saved:" in tab and "1 address, 0 webhooks" in tab
+    # C3480: the answer is drawn after the form, so Save does not move when it appears.
+    told = tab[tab.index('id="heal-told"'):]
+    assert told.index("Saved:") > told.index('<span class="op-idle">Save</span>') > 0
     assert heal_notify.teams_for("Default", "held") == [team]
     assert heal_notify.teams_for("Default", "healed") == []
     assert heal_notify.teams_for("Branch", "cant_fix") == []          # its own, never inherited
     r, tab = _post(networks, BASE.format(n="Default") + "/notify",
                    {"team": "", "events": [], "loaded": loaded})       # drawn before the save
     assert r.status_code == 409 and "another person changed Who is told" in tab
+    told = tab[tab.index('id="heal-told"'):]
+    assert told.index("Not saved:") > told.index('<span class="op-idle">Save</span>') > 0
     r, tab = _post(networks, BASE.format(n="Default") + "/notify",
                    {"team": "0123456789ab", "events": [],
                     "loaded": _hidden(tab, "loaded")})

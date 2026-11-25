@@ -23,7 +23,13 @@ Compared by the template diff, not by new shots (owed in the full pass, docs/FAS
 Templates sha256 before: `455516ff4556a71207f2141145b95be9c0b61e72d638d086397ab4d2a9830949`.
 Compared again 2026-11-24 (the week plan's Stage 5, every setting's description): `_heal.html` draws one line, what the setting does in plain words from `settings_schema.DESCRIPTIONS` through `_macros.setting_desc`, under the Mode (and Auto's expiry while Auto is in force), Set and Network stage rows, under Fix kinds' lead (the two kind lists), under each hard stop's label (each setting it shows), under Who is told's Team and Sent for, and above the stop everywhere control. Nothing else moves and no region's verdict changed. Artboard A draws no such line: a deviation, logged once (docs/STANDING_APPROVAL_LOG.md, "Settings: every setting's description"). Compared by the template's diff and tests/test_settings_descriptions.py's render, not by new shots. Templates sha256 before: `7f997a162e2d2d4adcfed10dfb15a40244deb368c0927541b1763511e3d3f1e5`.
 Compared again 2026-11-24 (C2820's survey, item 27): Fix kinds' tier chips say who fixes the kind in words ("Mercury by itself", "A person approves", "No configuration fix", "A person only"), the tier's number on hover, under a column headed "Who fixes it" where it said "Tier"; the security row (Tier 2, always proposed) says "A person approves", where it drew "4 never"; the lead and the change's note name no "Tier 1" or "Tier 2". The same cells: no element moves. Artboard A draws numbered Tier chips: a deviation, logged once (docs/STANDING_APPROVAL_LOG.md, "C2820 item 27: who fixes each kind, in words"). Compared by the template's diff and tests/test_heal_tab_v2.py's render, not by new shots (owed in the full pass, docs/FAST_LANE_DEBT.md). Templates sha256 before: `92d9fcd96fb6824e8c9b1de9fb737f6ef90739c83480416529f5799c09d6eb3a`.
-Templates sha256: `cd74ba464f9a862c832e9138a6c6d65f36facf1a11489b7afa98fc2b3b2d5003`
+Compared again 2026-11-24 (C3480, "no control moves when its result appears"): Who is told's
+Save answer, saved or refused, is drawn after its form, where it was drawn above it, so Save
+and the fields no longer move 50.8 px down when the answer appears (C3468's measurement). The
+answer moves below its form within the same card; logged once (docs/STANDING_APPROVAL_LOG.md,
+"C3480: Who is told's answer below its Save"); compared by the template's diff and
+tests/test_heal_tab_v2.py, not by new shots. Templates sha256 before: `cd74ba464f9a862c832e9138a6c6d65f36facf1a11489b7afa98fc2b3b2d5003`.
+Templates sha256: `0d4433cc04c4705694cc8cc0a7612e257c16d25c29abcad9f60e904fcb8652f3`
 
 **Compared again 2026-11-12 for C3196 (the BGP session clear listed twice):** by the template's
 diff against the Fix kinds region, not from new shots. The table and the change card draw a

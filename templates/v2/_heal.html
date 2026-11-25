@@ -129,12 +129,16 @@
 
   <section class="card set-card heal-card" id="heal-told" aria-labelledby="h-heal-told">
     <div class="card-head"><h2 id="h-heal-told">Who is told</h2></div>
+    {#- C3480: Save's answer (saved or refused) is drawn after the form, never above it, so
+        Save and its fields stay where they were pressed. -#}
+    {%- set told_answer %}
     {%- if told_refused %}
     <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not saved:</strong> {{ told_refused }}.</p></div>
     {%- endif %}
     {%- if told_saved %}
     <div class="notice notice-{{ 'muted' if told_saved.recorded or told_saved.nothing else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p>{% if told_saved.nothing %}<strong>Nothing changed:</strong> Who is told already held what was sent.{% else %}<strong>Saved:</strong> {{ told_saved.team_name or 'no team' }} is told about {{ net }}'s self-healing, for {{ told_saved.events | length }} event(s), recorded {{ stamp(told_saved.at) }}.{% if not told_saved.recorded %} <strong>Saved, and its record could not be written.</strong>{% endif %}{% endif %}</p></div>
     {%- endif %}
+    {%- endset %}
     {%- if h.told.state != 'ok' %}
     <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ h.told.error }}: nobody is told while it cannot be read.</p></div>
     {%- endif %}
@@ -162,6 +166,7 @@
       </dl>
       <div class="set-foot"><span class="op-act"><button type="submit" class="btn btn-small" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('settings', 'self-healing', compact=True, op='saving who is told') }}</span></div>
     </form>
+    {{- told_answer }}
   </section>
 
   <div class="heal-kill" id="heal-kill">
