@@ -5191,3 +5191,18 @@ own output, a username line and its one-way hash among them. Measured on the hos
 
 **The result: the canary died.** No other mutant is meaningful: the change is one call on one
 field.
+
+## 2026-11-25: an email names an unset setting as Settings draws it (C3502), by hand
+
+**The change.** Words only, in what leaves the host: an email whose link has no installation
+address said "(… is not set: notify_link_base)", a settings key; it now says "(the address
+Mercury is reached by is not set: Settings > Installation > Notifications, Email relay,
+"Mercury's address, for links")", plain ASCII as the rest of the email (`notify.message.link_url`).
+Whether the setting is set on the host was not measured: the config-read hook refuses a probe
+naming the settings file. One control by hand, tests/test_notify.py `-k no_link_base`:
+
+| # | Mutant | Result |
+|---|---|---|
+| canary | the key in the words again | **died**: `test_with_no_link_base_the_link_is_the_path_and_says_so` |
+
+**The result: the canary died.**

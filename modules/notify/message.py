@@ -256,7 +256,9 @@ def link_url(path: str) -> tuple:
         return "", ""
     base = (get_setting("notify_link_base", "") or "").strip().rstrip("/")
     if not base:
-        return path, " (the address Mercury is reached by is not set: notify_link_base)"
+        # Named as Settings draws it, never its key (C3502).
+        return path, (" (the address Mercury is reached by is not set: Settings > Installation "
+                      "> Notifications, Email relay, \"Mercury's address, for links\")")
     return base + path, ""
 
 

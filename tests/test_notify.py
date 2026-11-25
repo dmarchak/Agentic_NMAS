@@ -228,12 +228,16 @@ class TestTheRelay:
         assert order == sorted(order)
 
     def test_with_no_link_base_the_link_is_the_path_and_says_so(self, env):
+        """Premise corrected (C3502): the setting is named as Settings draws it, never by its
+        key, since the words reach a person in an email."""
         _relay(env)
         team, _ = _team_with_email()
         delivery.deliver_event(_event(), [team])
         body = _mail(env.smtp[0].sent[0]).get_content()
         assert "Open in Mercury: /v2/history?kind=notifications (the address Mercury is " \
-               "reached by is not set: notify_link_base)" in body
+               "reached by is not set: Settings > Installation > Notifications, Email relay, " \
+               "\"Mercury's address, for links\")" in body
+        assert "notify_link_base" not in body
 
 
 class TestAnEventCarriesOnlyItsFields:
