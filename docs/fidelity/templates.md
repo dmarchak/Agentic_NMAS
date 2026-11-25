@@ -28,7 +28,7 @@ Shots: the operator's captures above; the boards `TemplatesApprove` and `C566Tem
 Compared 2026-10-17. The Coverage tab (`_template_coverage.html`) was not opened in either
 walk and is not compared here (row "Coverage tab").
 Templates compared: templates/v2/templates.html, templates/v2/_templates_lib.html, templates/v2/_templates_table.html, templates/v2/_template_op.html, templates/v2/_template_result.html, templates/v2/_template_edit.html, templates/v2/_template_check.html, templates/v2/_template_bindings.html
-Templates sha256: `35367aa379283c21df1e5eadd8b5e8608070c5257bfc794414b53240be5f2ea4`
+Templates sha256: `fa311b66d6ec0ab7c314c7b84405fc660ff49bcced44a16b19e4777467cd0256`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_templates_table.html`, `_template_op.html`,
@@ -40,6 +40,16 @@ confirm's "You are confirming as <name>." names the person the same way. No regi
 removed or moved, and no other word changes. Where the board draws an identity the built
 screen draws the name, a deviation logged once for every screen (log: Display names: a person
 is drawn by display name on every screen). Every other verdict stands.
+
+**Compared again 2026-11-25 (C3827, an acknowledgement now modelled):** by the template's diff
+against the regions below, not from new shots. In `_template_result.html`, a device's result
+gains, beside "acknowledged, no longer in the capture", its own badge "N acknowledged, now
+modelled" and its own part after the lost ones: "Acknowledged in <device>'s intent, and now
+modelled (its capture still holds it, and the parser reads it), so its acknowledgement can go:",
+its lines, and the same "Untick it on <device>'s Intent tab". It draws only for a line the
+capture still holds that the parser now models, where those lines were drawn as lost. Board B
+draws each device's failing lines in its comparison; this is one more kind of them, in the same
+shape, so the Approve… (board B) verdict stands, and every other verdict stands.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

@@ -388,6 +388,11 @@ def validate_template(repo: str, rel_path: str, devices: list, template_root: st
         intent = committed_acknowledgement(repo, name)
         gap = acknowledgement_gap({**parsed, "unmodeled_ack": intent["ack"]})
         acknowledged = gap["complete"]
+        # A stale acknowledgement the capture still holds is a line the parser now models
+        # (C3827: an `archive` block and its `path`, modelled since H22), not one the device
+        # lost.
+        held = {l.strip() for l in (entry["running_config"] or "").splitlines() if l.strip()}
+        modelled = [l for l in gap["stale"] if l.strip() in held]
         details = report["details"]
         results.append({
             "device": name,
@@ -399,7 +404,8 @@ def validate_template(repo: str, rel_path: str, devices: list, template_root: st
             "unmodeled_acknowledged": acknowledged,
             "unacknowledged": gap["unacknowledged"],
             "acknowledged": sorted(set(unmodeled_lines(parsed)) - set(gap["unacknowledged"])),
-            "stale_acknowledgements": gap["stale"],
+            "stale_acknowledgements": [l for l in gap["stale"] if l not in modelled],
+            "modelled_acknowledgements": modelled,
             "intent": {k: intent[k] for k in ("state", "commit", "error")},
             "missing_lines": [{"section": m["section"], "line": m["line"]}
                               for m in details["missing"]],
@@ -498,13 +504,18 @@ def _summary(result: dict) -> str:
     if not result.get("unmodeled_acknowledged", True):
         un = result.get("unacknowledged") or []
         stale = result.get("stale_acknowledgements") or []
+        modelled = result.get("modelled_acknowledgements") or []
         if un:
             parts.append(f"{len(un)} unmodelled line(s) not acknowledged in its committed "
                          "intent: " + "; ".join(un))
         if stale:
             parts.append(f"{len(stale)} acknowledged line(s) the capture no longer has: "
                          + "; ".join(stale))
-        if not un and not stale:
+        if modelled:
+            parts.append(f"{len(modelled)} acknowledged line(s) now modelled, so their "
+                         "acknowledgement can go (untick them in its intent): "
+                         + "; ".join(modelled))
+        if not un and not stale and not modelled:
             parts.append(f"{result.get('unmodeled', 0)} unmodelled line(s) not acknowledged")
     return "; ".join(parts) or "does not round-trip"
 

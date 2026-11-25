@@ -190,7 +190,7 @@ def acknowledgement_is_complete(host_vars: dict) -> bool:
     A secret reference's digest is not part of the content (`ack_form`, C2109). A SET, as
     the gap below and the intent editor's acknowledgement (one entry a line) read it: a line
     the device holds on two ports is acknowledged once (C3828: the lists compared with their
-    counts refused s2 naming no line, and the editor could not write a line twice).
+    counts refused a switch naming no line, and the editor could not write a line twice).
     """
     unmodeled = unmodeled_lines(host_vars)
     if not unmodeled:

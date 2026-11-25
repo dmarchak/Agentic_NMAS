@@ -363,6 +363,27 @@ class TestApprovalReadsTheCommittedAcknowledgement:
         assert r["ok"] is False and r["stale_acknowledgements"] == ["no-such line"]
         assert "no longer has: no-such line" in approval._summary(r)
 
+    def test_an_acknowledged_line_now_modelled_is_said_so_not_lost(self, repo):
+        """C3827: a line the capture still holds that the parser now models (s1's `archive`
+        since H22) is a stale acknowledgement the capture did not lose: said as modelled,
+        drawn apart from the lost ones, with the same Untick."""
+        lines = self._validate(repo)["unacknowledged"]
+        _commit_intent(repo, "s1", _ack_doc("s1", lines + ["hostname s1", "no-such line"]))
+        r = self._validate(repo)
+        assert r["ok"] is False
+        assert (r["modelled_acknowledgements"], r["stale_acknowledgements"]) == (
+            ["hostname s1"], ["no-such line"]), r
+        words = approval._summary(r)
+        assert "now modelled, so their acknowledgement can go" in words and \
+            "hostname s1" in words.split("now modelled")[1], words
+        assert "no longer has: no-such line" in words
+        import app as A
+        with A.app.test_request_context("/"):
+            from flask import render_template_string
+            html = render_template_string('{% from "v2/_template_result.html" import '
+                                          'tpl_device_result %}{{ tpl_device_result(r) }}', r=r)
+        assert "1 acknowledged, now modelled" in html and "and now modelled" in html, html
+
     def test_an_unreadable_committed_intent_is_said(self, repo):
         _commit_intent(repo, "s1", "hostname: [s1\n")
         r = self._validate(repo)
