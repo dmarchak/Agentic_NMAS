@@ -208,6 +208,10 @@ _RADIUS_HOST_KEY = (r"(?i)\b((?:radius-server[ \t]+host|server-private)[ \t]+\S+
 _TACACS_HOST_KEY = (r"(?i)\b(tacacs-server[ \t]+host[ \t]+\S+"
                     r"(?:[ \t]+(?!key(?!\S))\S+)*[ \t]+key[ \t]+")
 
+#: A credential's type before its value: IOS's number (`0`, `5`, `7`, `8`, `9`) or a named
+#: hash (EOS's `sha512`, C2528), each optional; a word that is no such type is the value.
+_HASH_TYPE = r"(?:(?:\d+|sha512|sha256|md5)\s+)?"
+
 #: Each entry captures (prefix, secret, suffix); only the middle is replaced.
 _POSITIONAL = (
     # C2085 (2026-10-28): the TACACS+ and RADIUS keys whose command ends with the key, read to
@@ -313,13 +317,25 @@ _POSITIONAL = (
     # live password would have reached the log in clear. Caught by a test that
     # generates a password and asserts the redactor can mask it, before any
     # device was touched.
+    # C2528 (2026-11-25): Arista EOS's `username <u> [privilege N] [role <r>] secret
+    # [0|5|sha512] <hash>` and `enable secret [0|5|sha512] <hash>`, whose `role` option and
+    # named hash type the IOS rule did not read, so the line passed whole.
     ("user_password", re.compile(
         r"(?i)\b(username\s+\S+"
-        r"(?:\s+(?:privilege\s+\d+|algorithm-type\s+\S+))*"
-        r"\s+(?:password|secret)\s+(?:\d+\s+)?)" + _VALUE + r"()")),
+        r"(?:\s+(?:privilege\s+\d+|algorithm-type\s+\S+|role\s+\S+))*"
+        r"\s+(?:password|secret)\s+" + _HASH_TYPE + r")" + _VALUE + r"()")),
     ("enable_secret", re.compile(
-        r"(?i)^(\s*enable\s+(?:password|secret)\s+(?:\d+\s+)?)" + _VALUE + r"()",
+        r"(?i)^(\s*enable\s+(?:password|secret)\s+" + _HASH_TYPE + r")" + _VALUE + r"()",
         re.M)),
+    # C2528: Aruba AOS-CX's `user <u> group <g> password ciphertext <blob>` and HPE ProCurve's
+    # `password {manager|operator} [user-name <u>] {sha1|plaintext} "<hash>"`, a local
+    # account's credential each, under the same label.
+    ("user_password", re.compile(
+        r"(?i)\b(user\s+\S+(?:\s+group\s+\S+)?\s+password\s+(?:ciphertext|plaintext)\s+)"
+        + _VALUE + r"()")),
+    ("user_password", re.compile(
+        r"(?i)\b(password\s+(?:manager|operator)(?:\s+user-name\s+\S+)?"
+        r"\s+(?:sha1|sha256|plaintext)\s+)" + _VALUE + r"()")),
     ("key_string", re.compile(
         r"(?i)\b(key-string\s+(?:\d+\s+)?)" + _VALUE + r"()")),
     # `pre-shared-key`, in every documented form (C2074, 2026-10-28;

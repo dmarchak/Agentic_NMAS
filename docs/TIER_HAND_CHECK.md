@@ -5220,3 +5220,23 @@ Two controls by hand, each in an `nmas-control` worktree:
 | 2 | the sheet's mask and the gateway's egress mask both removed | **died**: the planted key in the bytes sent |
 
 **The result: the bytes sent are masked by two layers, each held by its own test.**
+
+## 2026-11-25: the other platforms' local-account credential lines masked by position (C2528), by hand
+
+**The change.** Masking, in `modules/redact.py`'s positional rules: Arista EOS's `username <u>
+[privilege N] [role <r>] secret [0|5|sha512] <hash>` and `enable secret sha512 <hash>` (the IOS
+rule read no `role` option and no named hash type, so the line passed whole), and two new rules
+under the same `user_password` label: Aruba AOS-CX's `user <u> group <g> password ciphertext
+<blob>` and HPE ProCurve's `password {manager|operator} [user-name <u>] {sha1|plaintext}
+"<hash>"`. The existing IOS shapes are unchanged (tests/test_redact_ios_shapes.py, the parsers
+and the round trip: 1,639 passed). Four controls by hand, each alone in one `nmas-control`
+worktree, tests/test_redact_ios_shapes.py `-k another_platform`:
+
+| # | Mutant | Result |
+|---|---|---|
+| canary | EOS's `role` option dropped from `user_password` | **died**: both EOS `username` lines |
+| 1 | the named hash types dropped (`_HASH_TYPE` digits only) | **died**: both `username` lines and `enable secret sha512` |
+| 2 | AOS-CX's `password ciphertext` rule matching nothing | **died**: the `user … password ciphertext` line |
+| 3 | ProCurve's `password manager` rule matching nothing | **died**: both `password manager` and `password operator` |
+
+**The result: the canary and every mutant died.**

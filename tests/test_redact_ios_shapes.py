@@ -2012,3 +2012,24 @@ class TestC2086AndC2097AndTheFleetsCaptures:
                    if redact.redact_positional(line) != _without_c2086_c2097(line)]
         assert changed == [at]
         assert secret not in redact.redact_positional(lines[at])
+
+
+#: C2528: the local-account credential lines of EOS, AOS-CX and ProCurve, as their running
+#: configurations print them (the discovery sitting's shapes, 2026-11-05), each value invented.
+_OTHER_PLATFORM_SECRET = "Zq0s9kQ1abcdEFGHijklMNOPqrst0123456789xyzXYZ"
+
+
+@pytest.mark.parametrize("line", [
+    f"username admin role network-admin secret sha512 $6${_OTHER_PLATFORM_SECRET}",
+    f"username ops privilege 15 role network-operator secret sha512 $6${_OTHER_PLATFORM_SECRET}",
+    f"enable secret sha512 $6${_OTHER_PLATFORM_SECRET}",
+    f"user admin group administrators password ciphertext AQB{_OTHER_PLATFORM_SECRET}==",
+    f'password manager user-name "admin" sha1 "{_OTHER_PLATFORM_SECRET}"',
+    f'password operator sha1 "{_OTHER_PLATFORM_SECRET}"',
+])
+def test_another_platform_s_local_account_credential_is_masked_by_position(line):
+    """C2528: positional masking alone (no known value) reads EOS's `role` option and its
+    `sha512` hash type, AOS-CX's `password ciphertext` and ProCurve's `password manager … sha1`,
+    so none of these lines leaves with its credential."""
+    out = redact.redact_text(line, {})
+    assert _OTHER_PLATFORM_SECRET not in out and "<redacted:" in out, out
