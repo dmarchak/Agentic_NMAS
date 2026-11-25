@@ -52,9 +52,9 @@ The rollouts' and template pushes' canary (`nsot.fleet_change`, `nsot.read_accou
 new change to many devices) is theirs, unchanged: a heal batch puts each device back to its own
 approved state, so no device's result says anything about another's.
 
-Guards and settings are otherwise unchanged: guard 6 still holds every configuration departure
-outside the approved batch (an event problem it never holds, `decide._g6`, C3819), and a later
-departure is judged as before.
+Guards and settings are otherwise unchanged. Since C3909 (the operator, 2026-11-17) guard 6
+holds nothing (`decide._g6` is None), so no batch card is drawn; the switch-on (`SWITCH`) runs
+these steps for the problems already open, and a later departure is judged as before.
 """
 
 import hashlib
@@ -72,7 +72,7 @@ DONE_KEYS = ("drift", "goldens", "remote", "baselines", "device_state", "rolled_
 #: The press's control and the words its row leads with.
 BUTTON = "Turn on self-healing and fix all"
 #: The job's steps, in order, for its card and the manual's How it works page.
-STEPS = (("auto", "Turn on self-healing in Auto for the network's default duration"),
+STEPS = (("auto", "Turn on self-healing in Auto until someone turns it off"),
          ("approve", "Approve the previewed batch by its hash"),
          ("fix", "Fix every device at once (restores and saved scripts), each held, checked, "
                  "verified and rolled back on its own; a failure stops no other"),
@@ -423,7 +423,8 @@ def default_until(network: str, now: float) -> str:
 
 def turn_on_auto(network: str, *, actor: str, verified: str, person: bool, reason: str,
                  now: float = None, retry_skip=()) -> dict:
-    """Self-healing in Auto for *network* for its default duration, through THE policy write
+    """Self-healing in Auto for *network* until someone turns it off (the operator, 2026-11-16;
+    `default_hours` is the strip's other reads', not this write's), through THE policy write
     (planned, then applied with that plan's own fingerprint as a verified person with
     *reason*): ``{"ok", "nothing", "until", "words"}``. Already in Auto: nothing written, said.
     A refused plan raises `policy.PolicyRefused`, naming the gate. *retry_skip* (C3823): the

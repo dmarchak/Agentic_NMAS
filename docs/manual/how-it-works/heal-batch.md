@@ -12,7 +12,7 @@ Since 2026-11-17 guard 6 holds nothing (the operator: "remove guard 4 and guard 
 entirely"), so the batch's card is no longer drawn; the same steps, below, are what turning the
 control strip's **Self-healing** switch on runs for the problems already open.
 
-![Turn on self-healing and fix all: guard 6 held several devices that departed at once, and each hold kept what its fix would send; Needs attention's card says how many devices have faults and how many Mercury can fix, with each program, before you press; you press once, as a verified person who may change self-healing, bound to the card's hash; the AI starts on each incident with no fix, as your press under every cap; a job turns on Auto for the network's default duration and records the approval, then fixes one device first through the heal, held and verified, and only then the rest at once, each held and verified, starting none after a failure; guard 10 still counts every heal; the outcome is recorded and the strip shows each step.](diagrams/heal-batch.svg)
+![Turning the control strip's Self-healing switch on fixes the problems already open: each open problem Mercury can fix keeps what its fix would send; the line beside the switch says how many it also fixes before you press; you turn it on once, as a verified person who may change self-healing, bound to that line's hash; it starts no AI, which only the Automatic AI switch starts; a job turns on Auto until someone turns it off and records the approval, then fixes every device at once, each held, checked, verified and rolled back on its own, a failure stopping no other; the outcome is recorded and the strip shows each step.](diagrams/heal-batch.svg)
 
 Who may: a verified person allowed to change self-healing settings. Anyone else sees the card
 and the strip with the state, the controls disabled, and why.
@@ -40,15 +40,16 @@ dialog:
   Incidents page's strip) as it happens, so a long fix never
   holds the page or the tunnel's request open:
 
-1. `auto`: self-healing is turned on in Auto for the network for its default duration (Auto
-   lasts, 1 hour unless the network says 8), through the self-healing policy's own write: Auto
-   on any network, its expiry at most 7 days away. The change is
+1. `auto`: self-healing is turned on in Auto for the network until someone turns it off,
+   through the self-healing policy's own write: Auto on any network (an expiry, at most 7 days
+   away, is set only in Settings › Self-healing). The change is
    recorded in the network's settings record with your name and the reason, and History shows
    it. Already in Auto, nothing is written.
 2. `approve`: the batch is approved by its hash and recorded in the network's self-healing
-   record: who, when, the hash, each device and its program's hash. Guard 6 is resolved for
-   this batch only, and its grace period is dropped; every other guard still applies, and
-   guard 10 (the most heals a network has in an hour) still counts every heal of the batch.
+   record: who, when, the hash, each device and its program's hash. Every guard that still
+   holds applies to each device (a planned window, a device another operation holds, the
+   tier); guard 6 holds nothing since 2026-11-17, and the network's rate (guard 10) since
+   2026-11-16.
 3. `fix`: every device at once, each on its own, with no device first (the operator,
    2026-11-16: a self-healing batch "runs every device at once: each held, preconditions
    checked, verified and rolled back on its own; no canary device first"). Each restore's

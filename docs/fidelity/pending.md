@@ -33,7 +33,12 @@ regions.
 Compared 2026-10-18.
 Templates compared: templates/v2/pending.html, templates/v2/_pending_progress.html, templates/v2/_onboard_pending.html, templates/v2/_pending_gone.html, templates/v2/_console_kick.html, templates/v2/_oob_outcome.html
 Compared again 2026-11-18 (the skip-mode debt, docs/FAST_LANE_DEBT.md; c4948c2c, "Answering" is "Reachable" everywhere): `_pending_progress.html`'s probe notice reads "Reachable: ready to Verify." and "Not reachable yet.", and `_oob_outcome.html`'s chip (drawn here for a console run) "onboarded, reachable" and "copied, not reachable yet", where each said answering; nothing else moved. Shot again from this tree (`pending-ztp` at 1440, 1280 and 390, `pending-static` and `pending-verify` at 1440 and 390, `pending-help`, `pending-verified` and `pending-abandon` at 1440; tests/test_board_shots.py's `test_pending_page`) and read region by region against this record's verdicts: the Where it has got to row's Built moves (the words) and stays a deviation, naming its second log line; every other verdict stands. The OnboardPanel and ZtpPlan boards are the canvas's, not on disk, so they were not re-shot. Logged once (docs/STANDING_APPROVAL_LOG.md, "Reachable, not Answering: the reachability reader's word on every screen"). Templates sha256 before: `e2e67eb94bb1688e97a57cf6b2f8768d2357641e1107076e5723c00f49db70ca`.
-Templates sha256: `f88d16a18057d290e31b792551efea2dce67dc7e53b6446b3c366148da832376`
+Compared again 2026-11-24 (C3969): `_pending_progress.html`'s Next line for a device a
+console run onboards quotes that run's own words, "reachable: ready to Verify" (it had said
+"answering", words the run never draws); words only, the same cell, no deviation. Compared by
+the template's diff and tests/test_onboard_board_m.py, not by new shots. Templates sha256
+before: `f88d16a18057d290e31b792551efea2dce67dc7e53b6446b3c366148da832376`.
+Templates sha256: `598fd516852b6015429626a1758702432f8616d6104a6ccbc57a464c8de94337`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_pending_progress.html` and `_console_kick.html`, each

@@ -67,7 +67,10 @@ class TestTheFiveSteps:
         text = _text(client.get("/v2/device/bp1").get_data(as_text=True))
         assert ("Waiting for it: its console run types its first-boot lines on its console, "
                 "copies its bootstrap config and waits for it to answer") in text, text
-        assert "Next When its console run (Console, below) says it is answering, Verify" in text
+        # Premise corrected (C3969): the console run says "reachable: ready to Verify"
+        # (templates/v2/_oob_outcome.html), never "answering"; the Next line quotes it.
+        assert ('Next When its console run (Console, below) says "reachable: ready to Verify", '
+                "Verify") in text, text
         for words in ("boot it with its bootstrap config", "Boot it with its bootstrap config",
                       "board serial"):
             assert words not in text, words

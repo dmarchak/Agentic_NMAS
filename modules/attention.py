@@ -8147,6 +8147,22 @@ HEAL_HELD_ACTIONS = {
         "/v2/device/{host}?tab=history", False),
 }
 
+#: C3969: guard 4 holds only a device Mercury does not change since C3909 (`decide._g4`: an
+#: observe-only device or a host, its operands `management` and `role`); its row opens the
+#: device, whose page says it is observe-only or a host and offers nothing that changes it.
+HEAL_HELD_OFF_ACTION = ("Open {host}, which Mercury only watches", "/v2/device/{host}")
+
+
+def _held_off(g: dict) -> str:
+    """PURE: ``host`` or ``observe`` when guard 4's hold *g* is `decide._g4`'s, a device
+    Mercury does not change (its operands carry ``management``); "" for the hold it retired
+    (C3909: a golden that departs from intent, whose records keep their words)."""
+    from modules.inventory import management as M
+    ops = g.get("operands") or {}
+    if g.get("guard") != 4 or "management" not in ops:
+        return ""
+    return "host" if M.is_host({"role": ops.get("role")}) else "observe"
+
 
 def _held_said(g: dict, d: dict, host: str) -> tuple:
     """``(title, cause)`` of a held row in a person's words (C2820's survey, item 4; the
@@ -8156,6 +8172,17 @@ def _held_said(g: dict, d: dict, host: str) -> tuple:
     in the row's record (``guard``, ``guard_name``), under its Details."""
     ops, n = g.get("operands") or {}, g.get("guard")
     words = g.get("words") or "a guard held it"
+    off = _held_off(g)
+    if off == "host":
+        return (f"Self-healing does not change {host}: it is a host, not a network device",
+                f"{host}'s role in NetBox makes it a Linux host Mercury manages services on, "
+                "not a network device, so self-healing sends it nothing; Mercury still reads "
+                "it")
+    if off:
+        return (f"Self-healing does not change {host}: NetBox marks it observe-only",
+                f"NetBox's config context marks {host} observe-only, so Mercury reads it, "
+                "captures it and reports what changed on it, and changes nothing. Self-healing "
+                f"fixes {host} once it is marked manage in NetBox")
     if n == 4:
         return (f"Self-healing is paused on {host}: its saved configuration differs from its "
                 "intent",
@@ -8245,6 +8272,8 @@ def _heal_held_rows(lst: str, rows: list) -> list:
             fleet.append(d)
             continue
         label, href, _one = HEAL_HELD_ACTIONS[g["guard"]]
+        if _held_off(g):
+            label, href = HEAL_HELD_OFF_ACTION
         ops = dict(g.get("operands") or {})
         # C3581: guard 4's departing lines are drawn on the row, each with its side and its
         # ways out (`heal_departure`), so not again under Details for the record.

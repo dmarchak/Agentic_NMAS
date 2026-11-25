@@ -3,8 +3,8 @@
 {#- The control strip (C3748; board G2, ~/Documents/nmas-reports/boards/g2-control-strip.html,
     self-signed under the Phase 7 mode, docs/STANDING_APPROVAL_LOG.md), at the top of
     Troubleshoot › Incidents, for the page's network (`modules/control_strip.view`,
-    routes/control_v2; C3789). Left to right: Self-healing (on: Auto until HH:MM, for the network's
-    default duration; off: Dry run), "AI troubleshooting: Automatic" (Gate 2, board G2 part 3
+    routes/control_v2; C3789). Left to right: Self-healing (on: Auto until someone turns it off,
+    or until HH:MM for an expiry set in Settings; off: Dry run), "AI troubleshooting: Automatic" (Gate 2, board G2 part 3
     as amended: on, with one line first naming the open incidents it also starts on; off, back
     to Manual), each with its gear to the full setting; under them the answer of a press (a
     refusal of Automatic links the limits card), and the network's Turn on self-healing and
@@ -66,7 +66,7 @@
     what it posted. -#}
 <section class="ctl-strip card" id="{{ s.anchor }}" aria-label="Self-healing and AI troubleshooting on {{ s.network }}" data-network="{{ s.network }}" data-card="control-strip" hx-disinherit="*" hx-get="{{ url_for('control_v2.strip', list=s.network) }}" hx-trigger="nmas:drift from:body, nmas:settings from:body, nmas:device_progress from:body" hx-swap="outerHTML">
   <div class="ctl-row">
-    {#- Self-healing: on is Auto for the default duration, off is Dry run; new problems only. -#}
+    {#- Self-healing: on is Auto until someone turns it off, off is Dry run; new problems only. -#}
     <form class="ctl-item" id="ctl-heal" method="post" action="{{ url_for('control_v2.heal', list_name=s.network) }}" hx-post="{{ url_for('control_v2.heal', list_name=s.network) }}" hx-target="#control-strip" hx-swap="outerHTML" data-ctl="heal" data-state="{{ h.mode }}">
       <input type="hidden" name="on" value="{{ '0' if h.on else '1' }}">
       {#- C3823: turning it on is the approval of the open problems its line names, bound to

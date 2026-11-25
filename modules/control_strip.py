@@ -3,9 +3,9 @@ Troubleshoot › Incidents, for the page's network (C3789: on Incidents alone, t
 2026-11-15). Needs attention, where G6's batch card is pressed, draws its run part alone
 (`run_view`): the press's answer and the batch's run, no toggle.
 
-- **Self-healing**: on is Auto for the network, for its default duration
-  (`heal_auto_default_hours`, C3749; 1 hour by default), labelled "Auto until HH:MM"; off is
-  Dry run. One press, no dialog, through the policy's own write (`policy.apply_planned`: every
+- **Self-healing**: on is Auto for the network until someone turns it off (the operator,
+  2026-11-16; `batch.turn_on_auto`), labelled "On", or "On until HH:MM" for an Auto set in
+  Settings with an expiry; off is Dry run. One press, no dialog, through the policy's own write (`policy.apply_planned`: every
   gate its plan holds, recorded with who and why in the network's settings record, which
   History draws as the person's change). C3823 (the operator's design, 2026-11-16: "switching
   Self-healing On IS the approval for what's already open"): while it is not On and open
@@ -385,7 +385,7 @@ def run_view(network: str, **answer) -> dict:
 
 def set_heal(network: str, on: bool, *, actor: str, verified: str, person: bool,
              page: str = "Troubleshoot › Incidents", now: float = None) -> dict:
-    """The Self-healing toggle: on, Auto for the default duration; off, Dry run. Through the
+    """The Self-healing toggle: on, Auto until someone turns it off; off, Dry run. Through the
     policy's own write (`policy.apply_planned`), the person's reason the toggle's own words:
     ``{"ok", "nothing", "words"}``. Raises `policy.PolicyRefused` naming the gate."""
     from modules.heal import batch, policy

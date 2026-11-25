@@ -30,7 +30,7 @@
     {%- elif runs_error %}
     <div><dt>Last run</dt><dd>its record could not be read: {{ runs_error }}</dd></div>
     {%- endif %}
-    <div><dt>Next</dt><dd>{% if oob_way %}When its console run (Console, below) says it is answering, Verify{% else %}Boot it with its bootstrap config, then Verify{% endif %}: reaching it is the verification, and only then is it rotated, captured and added to the inventory.</dd></div>
+    <div><dt>Next</dt><dd>{% if oob_way %}When its console run (Console, below) says "reachable: ready to Verify", Verify{% else %}Boot it with its bootstrap config, then Verify{% endif %}: reaching it is the verification, and only then is it rotated, captured and added to the inventory.</dd></div>
   </dl>
 </section>
 <section class="card ob-where" aria-labelledby="ob-steps-h">

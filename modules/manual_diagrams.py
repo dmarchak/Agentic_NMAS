@@ -2616,32 +2616,31 @@ def read_account_probe():
 
 def heal_batch():
     return svg(540, (
-        "Turn on self-healing and fix all: guard 6 held several devices that departed at once, "
-        "and each hold kept what its fix would send; Needs attention's card says how many "
-        "devices have faults and how many Mercury can fix, with each program, before you "
-        "press; you press once, as a verified person who may change self-healing, bound to "
-        "the card's hash; the AI starts on each incident with no fix, as your press under "
-        "every cap; a job turns on Auto for the network's default duration and records the "
-        "approval, then fixes one device first through the heal, held and verified, and only "
-        "then the rest at once, each held and verified, starting none after a failure; guard "
-        "10 still counts every heal; the outcome is recorded and the strip shows each step."), [
+        "Turning the control strip's Self-healing switch on fixes the problems already open: "
+        "each open problem Mercury can fix keeps what its fix would send; the line beside the "
+        "switch says how many it also fixes before you press; you turn it on once, as a "
+        "verified person who may change self-healing, bound to that line's hash; it starts no "
+        "AI, which only the Automatic AI switch starts; a job turns on Auto until someone "
+        "turns it off and records the approval, then fixes every device at once, each held, "
+        "checked, verified and rolled back on its own, a failure stopping no other; the "
+        "outcome is recorded and the strip shows each step."), [
         lanes(20, 534),
-        doc("box", 14, 40, 186, 36, "Guard 6's hold", "each fix kept, nothing sent"),
+        doc("box", 14, 40, 186, 36, "Problems already open", "each fix kept, nothing sent"),
         num(14, 40, 1),
-        doc("box", 14, 96, 186, 36, "The batch card", "N have faults, M fixable"),
+        doc("box", 14, 96, 186, 36, "The switch's line", "also fixes N open problems"),
         num(14, 96, 2),
-        person(14, 148, 186, 30, "You press, by its hash"), num(14, 148, 3),
-        t(14, 196, "The AI starts on each with no fix", "sm"),
+        person(14, 148, 186, 30, "You turn it on, by its hash"), num(14, 148, 3),
+        t(14, 196, "No AI: its own switch starts it", "sm"),
         band(214, 170, "The batch · a job, as the policy you turned on"),
         device(262, 290, 118, 130, "Each device", "its fix", top=True),
         *rows([
-            (254, None, 4, "Auto on, approval kept", "the default duration"),
-            (304, "read", 5, "One device first", "held, verified"),
-            (354, None, 6, "Then the rest at once", "none after a failure"),
+            (254, None, 4, "Auto on, approval kept", "until turned off"),
+            (304, "read", 5, "Every device at once", "held, verified"),
+            (354, None, 6, "Each on its own", "a failure stops no other"),
         ]),
         store(14, 420, 186, 40, "The batch's record", "who, the hash, each device"),
         num(14, 420, 7),
-        t(14, 482, "Guard 10 still counts every heal.", "sm"),
+        t(14, 482, "No device waits on another's result.", "sm"),
         t(14, 500, "Rollback: each device's own, the", "sm"),
         t(14, 513, "heal's pipeline undoing what landed.", "sm"),
     ])

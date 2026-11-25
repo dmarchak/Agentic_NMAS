@@ -277,6 +277,27 @@ class TestHeld:
         assert ("heal", "held") in ROW_KINDS and r["acknowledge"] is True
         assert r["clears"]["when"] == CLEARS[("heal", "held")][1]
 
+    @pytest.mark.parametrize("management,role,what,label", [
+        ("observe", "router", "Self-healing does not change edge-b: NetBox marks it "
+         "observe-only", "Open edge-b, which Mercury only watches"),
+        ("", "host", "Self-healing does not change edge-b: it is a host, not a network device",
+         "Open edge-b, which Mercury only watches")])
+    def test_guard_4_s_hold_today_says_mercury_does_not_change_the_device(
+            self, lab, management, role, what, label):
+        """C3969: since C3909 guard 4 holds only a device Mercury does not change, an
+        observe-only device or a host (`decide._g4`'s operands, `management` and `role`); its
+        row said "its saved configuration differs from its intent" and offered to adopt the
+        change into intent, the retired hold's words and action. A recorded hold of the
+        retired kind keeps its words (the test above)."""
+        _held(4, operands={"management": management, "role": role})
+        (r,) = _rows("held")
+        assert r["what"] == what, r["what"]
+        assert "differs from its intent" not in r["what"] + r["cause"]
+        assert "intent" not in r["action"]["label"] + r["action"]["href"]
+        assert (r["action"]["label"], r["action"]["href"]) == (label, "/v2/device/edge-b")
+        assert ("observe-only" in r["cause"]) == (management == "observe"), r["cause"]
+        assert ("Linux host" in r["cause"]) == (role == "host"), r["cause"]
+
     def test_a_rate_hold_says_how_often_and_who_changed_it(self, lab):
         # Guard 9's operands and the decision's person as the installation recorded them
         # (tests/fixtures/heal_records/held_decisions.jsonl's guard 9 record).

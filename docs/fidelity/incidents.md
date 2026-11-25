@@ -110,7 +110,12 @@ page, its strip or its fleet view moves; every verdict above stands. Compared by
 diff, not by new shots. Templates sha256 before:
 `ad1623beabe78426a9b62742731020cecad0e1ba928682bfc5d39275fda962d7`.
 
-Templates sha256: `560f2e016be7ea1c4245b0cb5a36db2df6725daa2db474f47761304b6c199ef8`
+Compared again 2026-11-24 (C3969): `_control_strip.html`'s two comments say the Self-healing
+switch turns Auto on until someone turns it off (it had said "for the default duration");
+comments only, nothing drawn changes, no deviation. Compared by the template's diff, not by
+new shots. Templates sha256 before:
+`560f2e016be7ea1c4245b0cb5a36db2df6725daa2db474f47761304b6c199ef8`.
+Templates sha256: `825fd90a945d27a478b1c5d6578e4e4aecf552e5f484799c867e7c7d1d720e0b`
 
 Compared again 2026-11-14 04:2x UTC (the operator's notes on board T, 2026-11-14; provisional,
 operator review pending): "1. Remove the "N open" chip from Incidents in the sidebar. Needs
