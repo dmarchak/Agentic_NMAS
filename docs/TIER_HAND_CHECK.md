@@ -5174,3 +5174,20 @@ tests/test_fixit_reads.py `-k TestTheRouteTowardTheCollector` (3 tests):
 | 3 | a receiver read once per subscription | **died**: the same |
 
 **The result: the canary and every mutant died.**
+
+## 2026-11-25: the startup check's record masked at rest (C2826), by hand
+
+**The change.** What stores secret values: the hourly startup check's record
+(`data/startup_check.json`, `startup_check.run_check`) writes each device's detail through
+`redact.redact_text` before it is kept. A detail names each username line's form
+(`onboard._credential_form`, since f94c41e9), but an exception's words can carry the device's
+own output, a username line and its one-way hash among them. Measured on the host first
+(counts and forms only, ~06:00 UTC): the record's 12 devices hold no username line now, each
+"could not ask: NetmikoTimeoutException" (C4255). One control by hand, tests/test_c53_device_stage.py:
+
+| # | Mutant | Result |
+|---|---|---|
+| canary | the detail stored as the check said it | **died**: `test_no_credential_value_is_kept_at_rest_whatever_said_it` |
+
+**The result: the canary died.** No other mutant is meaningful: the change is one call on one
+field.

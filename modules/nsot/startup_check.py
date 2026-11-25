@@ -77,6 +77,8 @@ def run_check(*, inventory=None, check=None, write=True, clock=time.time) -> dic
                     for d in (read_results() or {}).get("devices") or []} if write else {}
     except Exception:                                   # noqa: BLE001
         previous = {}
+    from modules.redact import redact_text
+
     devices = []
     for (list_name, row), got in zip(rows, results):
         if isinstance(got, Failed):
@@ -85,8 +87,11 @@ def run_check(*, inventory=None, check=None, write=True, clock=time.time) -> dic
         before = previous.get((list_name, row.get("hostname", "?"))) or {}
         since = before.get("since") if before.get("state") == state and before.get("since") \
             else at
+        # Masked at rest (C2826): a detail names each line's form, but an exception's words can
+        # carry the device's own output, username lines and their hashes among them.
         devices.append({"list": list_name, "device": row.get("hostname", "?"),
-                        "state": state, "detail": got.get("detail", ""), "since": since})
+                        "state": state, "detail": redact_text(str(got.get("detail", ""))),
+                        "since": since})
     counts = {}
     for d in devices:
         counts[d["state"]] = counts.get(d["state"], 0) + 1

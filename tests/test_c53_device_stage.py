@@ -240,6 +240,20 @@ class TestTheJob:
         assert startup_check.read_results()["devices"] == out["devices"]
         assert oct(os.stat(startup_check._path()).st_mode & 0o777) == "0o600"
 
+    def test_no_credential_value_is_kept_at_rest_whatever_said_it(self):
+        """C2826: the record keeps whether each device's startup carries its accounts, never a
+        credential value: a detail is masked before it is written, so an exception's words
+        holding the device's own output (a username line and its one-way hash, as a read
+        timeout can carry it) are kept masked."""
+        leaked = (f"could not ask: ReadTimeout: output so far: {RUN}\n"
+                  "username lab password 7 0822455D0A16")
+        startup_check.run_check(inventory=INV, check=lambda row: {
+            "state": "unknown", "detail": leaked}, clock=lambda: 1000.0)
+        with open(startup_check._path(), encoding="utf-8") as fh:
+            kept = fh.read()
+        assert "SaltedHashValue" not in kept and "0822455D0A16" not in kept, kept
+        assert "username admin privilege 15 secret 9 <redacted" in kept
+
     def test_a_check_that_raised_is_unknown(self):
         def boom(row):
             raise OSError("timed out")
