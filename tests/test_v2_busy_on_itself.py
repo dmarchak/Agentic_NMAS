@@ -393,3 +393,64 @@ class TestNetBoxImportInABrowser:
         b.wait_for("var x = document.querySelector('#t-import');"
                    "return x && !x.disabled && !x.hasAttribute('aria-busy')", 15)
         assert b.js(SHOWN % "op-idle") and not b.js(SHOWN % "op-busy")
+
+
+# ------------------------------------------------ a form that disables its own buttons
+
+#: A form whose own hx-disabled-elt is "find button" (as SDN's analyse and apps forms carry),
+#: its submitter declaring its busy words: the page's own CSS and scripts, nothing else.
+FIND_BUTTON_PAGE = """<!doctype html><html><head>
+<link rel="stylesheet" href="/static/css/nmas-v2.css">
+<script defer src="/static/js/vendor/htmx.org/htmx.min.js"></script>
+<script defer src="/static/js/nmas_v2.js"></script></head><body>
+<form hx-post="/v2/c3703-probe/ask" hx-target="#out" hx-swap="innerHTML" hx-disabled-elt="find button">
+<button class="btn" type="submit" id="t-ask" hx-disabled-elt="this"><span class="op-idle">Ask</span><span class="op-busy">Asking…</span></button>
+</form><div id="out"></div></body></html>"""
+
+
+class TestAFormThatDisablesItsButtons:
+    """C3703: htmx disables a "find button" form's buttons before the page's own hold runs,
+    which took a disabled button as one already held, so its busy words never drew. Pressed in
+    a real browser with its answer held: disabled, busy words in place, then free again."""
+
+    def test_its_submitter_shows_its_busy_words_while_asked(self):
+        browser = _browser_or_skip()
+        from flask import Flask
+
+        app = Flask("c3703_probe", static_folder=os.path.join(ROOT, "static"))
+        gate, asked = threading.Event(), threading.Event()
+
+        @app.get("/v2/c3703-probe")
+        def page():
+            return FIND_BUTTON_PAGE
+
+        @app.post("/v2/c3703-probe/ask")
+        def ask():
+            asked.set()
+            assert gate.wait(30), "the test never let it answer"
+            return "answered"
+
+        shown = ("var s = document.querySelector('#t-ask .%s');"
+                 " return !!(s && s.offsetParent !== null)")
+        with browser.Served(app) as srv, browser.Browser() as b:
+            try:
+                b.go(srv.url("/v2/c3703-probe"))
+                b.wait_for("return !!window.htmx && !!(document.querySelector('form')"
+                           "['htmx-internal-data'])", 15)
+                assert b.js(shown % "op-idle") and not b.js(shown % "op-busy")
+                b.click("#t-ask")
+                assert asked.wait(10), "the click sent nothing"
+                b.wait_for("var x = document.querySelector('#t-ask');"
+                           " return x.disabled && x.getAttribute('aria-busy') === 'true'", 5)
+                assert b.js(shown % "op-busy") and not b.js(shown % "op-idle"), \
+                    b.js("return document.querySelector('#t-ask').outerHTML")
+                gate.set()
+                b.wait_for("return document.getElementById('out').textContent === 'answered'",
+                           10)
+                b.wait_for("var x = document.querySelector('#t-ask');"
+                           " return !x.disabled && !x.hasAttribute('aria-busy')"
+                           " && !x.classList.contains('htmx-request')", 5)
+                assert b.js(shown % "op-idle") and not b.js(shown % "op-busy")
+            finally:
+                gate.set()
+                b.go("about:blank")

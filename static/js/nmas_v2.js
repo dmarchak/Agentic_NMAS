@@ -2325,11 +2325,16 @@
   function holdSubmitter(e) {
     var d = (e && e.detail) || {};
     var b = submitterOf(d.elt, (d.requestConfig || {}).triggeringEvent);
-    if (!b || b.disabled) return;
+    if (!b) return;
+    for (var i = 0; i < heldSubmitters.length; i++) if (heldSubmitters[i].el === b) return;
+    // A form's own hx-disabled-elt ("find button") has disabled it already, before this
+    // listener runs (C3703): it is still the submitter, so it still shows its busy words, and
+    // htmx, which disabled it, enables it again.
+    var own = !b.disabled;
     b.disabled = true;
     b.classList.add('htmx-request');
     b.setAttribute('aria-busy', 'true');
-    heldSubmitters.push({xhr: d.xhr, el: b});
+    heldSubmitters.push({xhr: d.xhr, el: b, own: own});
   }
   function releaseSubmitter(e) {
     var xhr = e && e.detail && e.detail.xhr, keep = [];
@@ -2342,7 +2347,7 @@
       // Its own answer, or one whose answer came while its form was off the page (htmx then
       // fires afterRequest where this listener may not hear it).
       if (h.xhr === xhr || !h.xhr || h.xhr.readyState === 4) {
-        h.el.disabled = false;
+        if (h.own) h.el.disabled = false;
         h.el.classList.remove('htmx-request');
         h.el.removeAttribute('aria-busy');
       } else {
