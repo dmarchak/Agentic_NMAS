@@ -261,6 +261,9 @@ opened, the states to act on first:
 - **no read-only account**: none of the device's profiles carries one. Set one first.
 - **intent says it, not deployed yet**: its intent names the account and its golden does not
   hold it: the rollout deploys it.
+- **its lines in intent, not deployed yet**: both hold the account at its level, and its intent
+  holds the account's privilege lines (as **Update the read-only account's lines** commits
+  them) that its golden does not, named in the row: the rollout deploys them.
 - **not yet**: neither its intent nor its golden holds it.
 - **on the device, not in intent**: its golden holds it at the account's level, its intent does
   not name it.

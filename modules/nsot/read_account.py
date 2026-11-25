@@ -63,17 +63,21 @@ WAVE = 4
 WAVE_MAX = 50
 
 #: Each device's state, in the order the card leads with them: the states to act on first.
-STATES = ("would_change", "no_account", "pending", "not_yet", "device_only", "holds")
+STATES = ("would_change", "no_account", "pending", "lines_pending", "not_yet", "device_only",
+          "holds")
 STATE_WORDS = {
     "would_change": "can't be added",
     "no_account": "no read-only account",
     "pending": "intent says it, not deployed yet",
+    # C3604: the account at its level on the device, its privilege lines committed in the
+    # account's form and not yet deployed (after Update the read-only account's lines).
+    "lines_pending": "its lines in intent, not deployed yet",
     "not_yet": "not yet",
     "device_only": "on the device, not in intent",
     "holds": "hold it",
 }
 STATE_KIND = {"would_change": "danger", "no_account": "warn", "pending": "info",
-              "not_yet": "muted", "device_only": "warn", "holds": "ok"}
+              "lines_pending": "info", "not_yet": "muted", "device_only": "warn", "holds": "ok"}
 #: The states an Add may take: the rest hold it already or are refused by name.
 ADDABLE = ("pending", "not_yet", "device_only")
 #: A probe record's results, as the card words them.
@@ -133,8 +137,16 @@ def resolved_profile(row: dict, accounts: dict) -> str:
     return next((p for p in chain if (accounts.get(p) or {}).get("password_set")), "")
 
 
+def golden_privilege(text: str) -> list:
+    """The ``privilege`` lines *text* (a golden) holds, each stripped, sorted: what the
+    coverage compares the account's rendered lines with (C3604). No credential is in them."""
+    return sorted({l.strip() for l in (text or "").splitlines()
+                   if l.strip().startswith("privilege ")})
+
+
 def judge(row: dict, network: str, intent_doc, golden: dict, accounts: dict,
-          probe: dict = None, target: int = None, ping: bool = None) -> dict:
+          probe: dict = None, target: int = None, ping: bool = None,
+          golden_lines=None) -> dict:
     """One device's coverage row: ``{"network", "device", "platform", "dialect", "profile",
     "account", "intent", "holds", "state", "why", "probe", "other_form"}``. *golden* is
     `golden_accounts` of its committed golden, or None when none is recorded; *accounts*
@@ -171,6 +183,16 @@ def judge(row: dict, network: str, intent_doc, golden: dict, accounts: dict,
             f"{target}: an account is added, never changed, so a deploy would refuse it "
             "(CredentialWouldChange)"))
     if held and intent and intent["level"] == target:
+        # C3604: its privilege lines judged too, when the golden's are known (*golden_lines*,
+        # `golden_privilege`): intent holding the account's set (no other form left) while
+        # the golden lacks some of it is its own state, deployed next, never "hold it".
+        unsent = (_unsent_lines(intent_doc, dialect, target, ping, golden_lines)
+                  if not update else [])
+        if unsent:
+            return dict(out, state="lines_pending", why=(
+                f"its committed intent holds {account}'s privilege lines, and its golden lacks "
+                f"{len(unsent)} of them ({'; '.join(unsent[:3])}"
+                f"{'; …' if len(unsent) > 3 else ''}): deploy it"))
         return dict(out, state="holds", why="")
     if held:
         return dict(out, state="device_only", why=(
@@ -184,6 +206,27 @@ def judge(row: dict, network: str, intent_doc, golden: dict, accounts: dict,
                ", and its golden does not hold it: deploy it")))
     return dict(out, state="not_yet", why=("" if golden is not None
                                            else "no golden is recorded yet"))
+
+
+def _unsent_lines(intent_doc, dialect: str, target: int, ping, golden_lines) -> list:
+    """The account's rendered privilege lines (`privilege_exec.read_account_lines`) that
+    *intent_doc* renders (its ``privilege_exec`` entries) and *golden_lines* lacks, in render
+    order: committed, not yet deployed. ``[]`` when the golden's lines are not known (None)
+    or the set cannot be rendered for *dialect*."""
+    from modules.nsot import privilege_exec
+
+    if golden_lines is None or not isinstance(intent_doc, dict):
+        return []
+    have = set(golden_lines)
+    try:
+        said = {privilege_exec.render_line(e).strip()
+                for e in intent_doc.get("privilege_exec") or [] if isinstance(e, dict)}
+        lines = [privilege_exec.render_line(l["entry"]).strip() for l in
+                 privilege_exec.read_account_lines(dialect, target, ping_traceroute=ping)]
+    except (ValueError, KeyError) as exc:
+        log.info("read account coverage: %s's lines are not rendered: %s", dialect, exc)
+        return []
+    return [l for l in lines if l and l in said and l not in have]
 
 
 def _golden_blobs(repo: str) -> dict:
@@ -204,8 +247,11 @@ def _golden_blobs(repo: str) -> dict:
     return found
 
 
-def read_network(network: str, accounts: dict, known: dict = None) -> dict:
-    """*network*'s coverage: ``{"rows", "goldens": {blob: {username: level}}, "error"}``. Its
+def read_network(network: str, accounts: dict, known: dict = None,
+                 known_lines: dict = None) -> dict:
+    """*network*'s coverage: ``{"rows", "goldens": {blob: {username: level}}, "privilege":
+    {blob: [line]}, "error"}``; *known_lines* the previous cycle's ``privilege`` (C3604: a
+    value kept before it holds none, so each golden's text is read once more). Its
     devices as the AI's reads load them (`credential_profiles_page._read_rows`), its committed
     intent in two git calls (`neighbours.committed_intents`), and each committed golden read
     through `repo.committed_golden_for` only when its blob is not one *known* (the previous
@@ -224,29 +270,31 @@ def read_network(network: str, accounts: dict, known: dict = None) -> dict:
     blobs = _golden_blobs(repo)
     ping = _ping_choice()
     known, kept = dict(known or {}), {}
+    known_lines, kept_lines = dict(known_lines or {}), {}
     out = []
     for row in rows:
         host = row.get("hostname") or ""
         if not host:
             continue
         ident, entry = manifest.find_by_name(repo, host)
-        golden = None
+        golden = lines = None
         if entry and entry.get("golden"):
             rel = os.path.relpath(manifest.golden_path_for(repo, entry), repo).replace(os.sep, "/")
             blob = blobs.get(rel)
-            if blob and blob in known:
-                golden = known[blob]
+            if blob and blob in known and blob in known_lines:
+                golden, lines = known[blob], known_lines[blob]
             elif blob:
                 text = committed_golden_for(repo, entry).get("text")
                 golden = golden_accounts(text) if text is not None else None
+                lines = golden_privilege(text) if text is not None else None
                 if golden is not None:
-                    known[blob] = golden
+                    known[blob], known_lines[blob] = golden, lines
             if blob and golden is not None:
-                kept[blob] = golden
+                kept[blob], kept_lines[blob] = golden, lines
         probe = RAO.newest(network, host, identity=ident or "")
         out.append(judge(row, network, intents.get(host), golden, accounts, probe,
-                         ping=ping))
-    return {"rows": out, "goldens": kept, "error": ""}
+                         ping=ping, golden_lines=lines))
+    return {"rows": out, "goldens": kept, "privilege": kept_lines, "error": ""}
 
 
 def read_coverage(previous: dict = None) -> dict:
@@ -261,10 +309,12 @@ def read_coverage(previous: dict = None) -> dict:
 
     accounts = credentials.read_accounts()
     prev = (previous or {}).get("goldens") or {}
-    devices, networks, goldens = [], {}, {}
+    prev_lines = (previous or {}).get("privilege") or {}
+    devices, networks, goldens, privilege = [], {}, {}, {}
     for name in sorted(listref._registry()):
         try:
-            got = read_network(name, accounts, listref.keyed(prev, name, {}))
+            got = read_network(name, accounts, listref.keyed(prev, name, {}),
+                               listref.keyed(prev_lines, name, {}))
         except Exception as exc:                      # noqa: BLE001 (said per network)
             log.warning("read account coverage: %s was not read: %s", name, exc)
             networks[listref.network_id(name)] = {"name": name,
@@ -273,7 +323,9 @@ def read_coverage(previous: dict = None) -> dict:
         networks[listref.network_id(name)] = {"name": name, "error": ""}
         devices += got["rows"]
         goldens[listref.network_id(name)] = got["goldens"]
-    return {"devices": devices, "networks": networks, "level": level(), "goldens": goldens}
+        privilege[listref.network_id(name)] = got.get("privilege") or {}
+    return {"devices": devices, "networks": networks, "level": level(), "goldens": goldens,
+            "privilege": privilege}
 
 
 def reads_as_unready(value: dict) -> list:

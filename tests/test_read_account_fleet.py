@@ -87,6 +87,45 @@ class TestJudge:
         assert got["state"] == "holds" and got["holds"] == {"level": 3}
         assert got["intent"] == {"profile": "default", "level": 3}
 
+    #: The account's set on IOS-XE (`privilege_exec.read_account_lines`, at 3): the telemetry
+    #: line with `all`, then the restore of `show` at 1.
+    SET = [{"level": 3, "command": "show telemetry ietf subscription", "all": True},
+           {"level": 1, "command": "show", "all": False}]
+
+    def test_its_lines_committed_and_not_deployed_are_their_own_state(self):
+        """C3604: after Update commits the `all` line to intent, a golden still holding the
+        plain line is "its lines in intent, not deployed yet", never "hold it", naming the
+        line it lacks."""
+        intent = dict(self._intent(3), privilege_exec=list(self.SET))
+        golden_lines = ["privilege exec level 1 show",
+                        "privilege exec level 3 show telemetry ietf subscription"]
+        got = RA.judge(ROW, "Lab", intent, {RO: 3}, ACCOUNTS, None, target=3, ping=False,
+                       golden_lines=golden_lines)
+        assert got["state"] == "lines_pending", got
+        assert "privilege exec all level 3 show telemetry ietf subscription" in got["why"]
+        assert got["why"].endswith("deploy it") and "lacks 1 of them" in got["why"]
+        assert RA.STATE_WORDS["lines_pending"] == "its lines in intent, not deployed yet"
+        assert "lines_pending" not in RA.ADDABLE
+
+    def test_deployed_lines_hold_it_and_unknown_ones_change_nothing(self):
+        intent = dict(self._intent(3), privilege_exec=list(self.SET))
+        deployed = ["privilege exec all level 3 show telemetry ietf subscription",
+                    "privilege exec level 1 show"]
+        for lines in (deployed, None):
+            got = RA.judge(ROW, "Lab", intent, {RO: 3}, ACCOUNTS, None, target=3, ping=False,
+                           golden_lines=lines)
+            assert got["state"] == "holds", (lines, got)
+
+    def test_lines_intent_does_not_say_are_not_pending(self):
+        got = RA.judge(ROW, "Lab", self._intent(3), {RO: 3}, ACCOUNTS, None, target=3,
+                       ping=False, golden_lines=[])
+        assert got["state"] == "holds", got
+
+    def test_the_golden_s_privilege_lines_are_read_alone(self):
+        text = ("hostname r2\nprivilege exec level 1 show\n"
+                f"username {RO} privilege 3 secret 9 $9$NotRealSalt$abcdefghijklmnop\n")
+        assert RA.golden_privilege(text) == ["privilege exec level 1 show"]
+
     def test_on_the_device_not_in_intent(self):
         assert self._j(golden={RO: 3})["state"] == "device_only"
 
