@@ -168,6 +168,33 @@ def _backup_local(now: float):
         return None
 
 
+#: The lab's declaration of the devices no probe runs on (the product names none): one home for
+#: every measured probe (C2461; `nmas-revert-probe` and `nmas-removal-probe` ask this one).
+NEVER_PROBE = os.path.join(ROOT, "lab", "never-probe.json")
+
+
+def never_probe(device: str, path: str = None) -> str:
+    """Why *device* may not be probed (the lab's never-probe declaration, CLAUDE.md's standing
+    facts), or "". An absent or unreadable declaration refuses: a guard that cannot
+    ask refuses."""
+    path = path or NEVER_PROBE
+    rel = os.path.relpath(path, ROOT)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            declared = json.load(fh).get("devices") or {}
+    except FileNotFoundError:
+        return (f"REFUSED: the lab's never-probe declaration {rel} is absent, so whether "
+                f"{device} may be probed cannot be read (an empty {{\"devices\": {{}}}} declares "
+                "none)")
+    except (OSError, ValueError, AttributeError) as exc:
+        return f"REFUSED: the never-probe declaration {rel} could not be read ({exc})"
+    if device in declared:
+        return (f"REFUSED: --device {device} is declared never-probe in {rel} "
+                f"({declared[device]}); the probe compared it with the declared devices "
+                f"({', '.join(sorted(declared))})")
+    return ""
+
+
 def in_backup_window(now: float = None) -> bool:
     """Inside the window, or the zone unreadable (a guard that cannot ask refuses)."""
     t = _backup_local(time.time() if now is None else now)
@@ -334,6 +361,9 @@ def refusal(args, now: float = None) -> str:
     if args.apply:
         if not (args.list_name and args.device and args.actor):
             return "REFUSED: --apply needs --list, --device and --actor (who is accountable)"
+        why = never_probe(args.device)
+        if why:
+            return why
         if in_backup_window(now):
             return ("REFUSED: it is inside the hypervisor's nightly backup window, "
                     f"{backup_window_words(now)}; a measurement taken now measures the backup. "

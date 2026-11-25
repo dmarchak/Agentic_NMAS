@@ -121,6 +121,16 @@ class TestTheScriptItself:
                              timeout=60, cwd=ROOT)
         assert out.returncode == 1 and "--actor" in out.stdout
 
+    def test_a_device_the_lab_declares_never_probe_is_refused_before_anything_connects(self):
+        """C2461: s3 (lab/never-probe.json) is refused by the one never-probe check every
+        probe asks, before the list is read or a session opens."""
+        out = subprocess.run([sys.executable, SCRIPT, "--apply", "--list", "Lab",
+                              "--device", "s3", "--actor", "op@example.invalid"],
+                             capture_output=True, text=True, timeout=60, cwd=ROOT)
+        assert out.returncode == 1, out.stdout + out.stderr
+        assert "REFUSED: --device s3 is declared never-probe in lab/never-probe.json" in \
+            out.stdout, out.stdout
+
     def test_it_never_saves(self):
         src = open(SCRIPT, encoding="utf-8").read()
         body = src[src.index("def main"):]

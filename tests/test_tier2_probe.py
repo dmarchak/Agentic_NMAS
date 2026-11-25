@@ -96,6 +96,16 @@ class TestReading:
 
 
 class TestRefusedBeforeTouching:
+    def test_a_device_the_lab_declares_never_probe_is_refused(self, tmp_path):
+        """C2461: --apply on s3 (lab/never-probe.json) is refused by the never-probe check,
+        this probe's and the one the revert and removal probes ask; an absent declaration
+        refuses too (a guard that cannot ask refuses)."""
+        why = P.refusal(_args(apply=True, device="s3"), now=_utc(12, 0))
+        assert why.startswith("REFUSED: --device s3 is declared never-probe in "
+                              "lab/never-probe.json"), why
+        assert P.refusal(_args(apply=True), now=_utc(12, 0)) == "", "r2 is not declared"
+        assert "is absent" in P.never_probe("r2", str(tmp_path / "never-probe.json"))
+
     @pytest.mark.parametrize("h, m, inside", [(8, 29, False), (8, 30, True), (9, 29, True),
                                               (9, 30, False)])
     def test_the_backup_window(self, h, m, inside):

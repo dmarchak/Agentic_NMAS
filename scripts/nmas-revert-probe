@@ -109,8 +109,6 @@ PATHS = ("revert", "confirm")
 #: Unmeasured: a port slower than this is read again on the next session.
 PORT_POLL_S = 1
 PORT_WAIT_S = 30
-#: The lab's declaration of the devices no probe runs on (the product names none).
-NEVER_PROBE = os.path.join(ROOT, "lab", "never-probe.json")
 #: The bounce's own `shutdown`, authorised with its reason, in the hash as the preview carries it.
 AUTH_REASON = ("the revert-timer trial's port bounce (C2424, C2425): shut and unshut in one "
                "batch inside the device's revert timer, never saved")
@@ -148,23 +146,10 @@ def program_hash(lines: list) -> str:
 
 # ---------------------------------------------------------------------------- refusals
 
-def never_probe(device: str, path: str = None) -> str:
-    path = path or NEVER_PROBE
-    rel = os.path.relpath(path, ROOT)
-    try:
-        with open(path, encoding="utf-8") as fh:
-            declared = json.load(fh).get("devices") or {}
-    except FileNotFoundError:
-        return (f"REFUSED: the lab's never-probe declaration {rel} is absent, so whether "
-                f"{device} may be probed cannot be read (an empty {{\"devices\": {{}}}} declares "
-                "none)")
-    except (OSError, ValueError, AttributeError) as exc:
-        return f"REFUSED: the never-probe declaration {rel} could not be read ({exc})"
-    if device in declared:
-        return (f"REFUSED: --device {device} is declared never-probe in {rel} "
-                f"({declared[device]}); the probe compared it with the declared devices "
-                f"({', '.join(sorted(declared))})")
-    return ""
+#: The lab's never-probe declaration and its check, one home for every probe (C2461):
+#: `nmas-tier2-probe`'s, which this probe, `nmas-removal-probe` and that one ask alike.
+NEVER_PROBE = _T2.NEVER_PROBE
+never_probe = _T2.never_probe
 
 
 def window_refusal(now: float, seconds: float) -> str:

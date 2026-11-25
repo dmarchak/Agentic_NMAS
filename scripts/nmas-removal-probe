@@ -556,6 +556,18 @@ def classify(with_scratch: str, after: str, unit: dict, error: str = "") -> dict
     return {"result": "exact", "detail": ""}
 
 
+def _tier2():
+    """`nmas-tier2-probe`, loaded from its file: the never-probe check's one home (C2461)."""
+    import importlib.util
+    from importlib.machinery import SourceFileLoader
+    path = os.path.join(ROOT, "scripts", "nmas-tier2-probe")
+    loader = SourceFileLoader("nmas_tier2_probe", path)
+    spec = importlib.util.spec_from_file_location(loader.name, path, loader=loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -597,6 +609,12 @@ def main() -> int:
 
     if not (args.list_name and args.device and args.actor):
         print("REFUSED: --apply needs --list, --device and --actor (who is accountable)")
+        return 1
+    # C2461: a device the lab declares never-probe is refused before anything
+    # connects, by the one check every probe asks (`nmas-tier2-probe`'s `never_probe`).
+    why = _tier2().never_probe(args.device)
+    if why:
+        print(why)
         return 1
     from modules.commands import run_device_command
     from modules.connection import open_ssh, stored_connection_params
