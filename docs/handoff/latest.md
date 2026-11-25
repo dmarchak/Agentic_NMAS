@@ -7,8 +7,8 @@
   loop test alone: its three loops, `_fixit_section.html` F.more and `_inc_proof.html`
   P.net_zero.lines and P.reads, wait on records only the operator can make
   (OPERATOR.md#c4090-records). Nothing was deployed: there has been no fully green CI. The full
-  local suite at c46eaf6f, the same: see the last bullets. CI on 78a0599f (C3884) and c46eaf6f
-  was still running at the stop.
+  local suite at c46eaf6f, the same: see the last bullets. CI on 78a0599f (C3884) and c46eaf6f,
+  read at 08:57 UTC: red on C4090's loop test alone, as every run tonight.
 - **What landed.** Every item, with its sha, is in docs/handoff/reports/2026-11-24.md, under
   Done. Since 23:40 Denver:
   - C3601 closed: every page job is listed by In progress and reopens.
