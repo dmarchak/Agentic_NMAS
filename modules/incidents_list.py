@@ -270,6 +270,10 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
             "status": "" if resolved else (
                 fx.get("working") or fx.get("held")
                 or (fx.get("status") if st["state"] == "needs_person" else "")
+                # C3977: an AI start that failed is the incident's newest news, whatever its
+                # state, never "Mercury is reading it, before it decides" over it.
+                or (fx.get("status") if str(fx.get("status") or "").startswith(
+                    "Couldn't troubleshoot:") else "")
                 or grace_words(inc, st["why"])
                 or status_words(st["state"], st.get("reason") or WAITS.get(st["why"], ""))),
             "since": tl["detected"]["at"] or (inc or {}).get("opened_at")

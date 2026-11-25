@@ -167,6 +167,26 @@ class TestTheRows:
         assert row["by"] == "Mercury" and row["ttr"] and row["ended"], row
         assert [(t["key"], t["n"]) for t in p["tabs"]] == [("open", 3), ("closed", 1)]
 
+    def test_a_failed_ai_start_leads_a_watching_row_never_reading_it(self, planted,
+                                                                    monkeypatch):
+        """C3977: after an AI start failed, the watching incident's row says the failure
+        (its troubleshooting section's own status), never "Mercury is reading it, before it
+        decides" with no AI outcome."""
+        p = L.page(NET, "open")
+        (watching,) = [r for g in p["groups"] if g["key"] == "watching" for r in g["rows"]]
+        assert "reading it, before it decides" in watching["status"], watching["status"]
+        failed = "Couldn't troubleshoot: the provider refused the request"
+        real = L._fixit_of
+        # A failed start is kept in the incident's troubleshooting record (its `failed` start
+        # line, `troubleshoot_job.record_failure`), so the incident is listed as having one.
+        monkeypatch.setattr(L, "_fixit_ids", lambda network: {watching["id"]})
+        monkeypatch.setattr(L, "_fixit_of", lambda network, found: dict(
+            real(network, found), status=failed) if found["id"] == watching["id"]
+            else real(network, found))
+        (row,) = [r for g in L.page(NET, "open")["groups"] if g["key"] == "watching"
+                  for r in g["rows"]]
+        assert row["status"] == failed, row["status"]
+
     def test_search_and_the_device_filter_narrow_it(self, planted):
         """The filters narrow each tab (premise corrected, C4084: the failed capture is on Open,
         needing a person)."""
