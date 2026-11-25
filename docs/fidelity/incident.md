@@ -178,7 +178,11 @@ region's verdict moves. Compared by the templates' diff and tests/test_saved_pla
 render, not by new shots (owed in the full pass, docs/FAST_LANE_DEBT.md). Templates sha256
 before: `138c42a817d7663a935de95fea42b16ca5b0fd0076e143f8c4a13eaa934943d9`.
 
-Templates sha256: `535b035d54df9bbe38164c7b71b93831f4d237440347af78da08e1398625e1d4`
+Compared again 2026-11-24 (C4071): `_fixit_section.html`'s comment says the R5 budgets' test is
+owed (it named tests/r5_budget.py, which was never written); a comment only, nothing drawn
+changes, no deviation. Templates sha256 before:
+`535b035d54df9bbe38164c7b71b93831f4d237440347af78da08e1398625e1d4`.
+Templates sha256: `bed50c392644175587ab1a8ebbe6adf5b9893c8c56e042b8849169689c7d5e90`
 Templates sha256 before the saved plans card said a right's holders unset (2026-11-15, Gate 1b's review, item 7; the row "Rights not set" below): `770515ac382839dde54d1ae789920a7578375acf87fe6fb9d221961273361976`
 Templates sha256 before C3725's session moved from a press to the proposal's record (2026-11-15, the operator; the session row below): `90974cd13f0f0f2aece5e005c3cc5e3c2c21726aa22192e6535bce1ca4953909`
 Templates sha256 before the verify-speed gate's page fixes (2026-11-14, C3725, C3727, C3728, C3729, below): `b8969275f9560c0d423e154d881391989736eb6548a35bb27ab4020fa5542a6c`

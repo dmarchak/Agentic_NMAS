@@ -144,7 +144,8 @@
     {%- for r in group recursive %}
     {%- set nets = r.networks or {} %}
     {#- R5 (board R5, approved 2026-11-15): a row is a card whose own line is its one Details
-        control ("a row's own line is its Details control"; tests/r5_budget.py). -#}
+        control ("a row's own line is its Details control"; its budget test is owed,
+        docs/FAST_LANE_DEBT.md's R5 row, C4071). -#}
     <details class="att att-{{ r.level }}" data-attention-row="{{ r.id }}" data-keep="att-{{ r.id }}" data-card="{{ r.id }}" data-card-details>
       <summary class="att-line">
         {#- C3792: an item folded under an incident as its evidence keeps its own level (an

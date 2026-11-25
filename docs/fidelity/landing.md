@@ -286,7 +286,11 @@ switch turns Auto on until someone turns it off (it had said "for the default du
 comments only, nothing drawn changes, no deviation. Compared by the template's diff, not by
 new shots. Templates sha256 before:
 `ef6b7f12e66821af9f95777452f298fc18dbed2d0267531e1e40e0f5ae7642f7`.
-Templates sha256: `3ac878bbe035cd0214e4df7a845e9f6fbfb615c6c16425439833c7c6ad841b5f`
+Compared again 2026-11-24 (C4071): `_attention.html`'s comment says the R5 row budget's test is
+owed (it named tests/r5_budget.py, which was never written); a comment only, nothing drawn
+changes, no deviation. Templates sha256 before:
+`3ac878bbe035cd0214e4df7a845e9f6fbfb615c6c16425439833c7c6ad841b5f`.
+Templates sha256: `a0447e73e88f8e72c0d24b06f9abfa6b3a1a0736591647e60c807cff052e9d9d`
 (before the combined gate's reviews, 2026-11-15, above: `95963b5612ee0d494c7192eb31a8ade9c34068395adb2cb9bdede8db69638a35`)
 (before the port problem's fold, 2026-11-15, above: `a894c8009f442e454c18b53caaaa6a23a7ad9a59f9a045a201afd44e2459c8c6`)
 (before the lost stream's Start, 2026-11-14, below: `df04b28a2f32a3505d0451f14d5f4dbad62cc0643c8e194e95a2522806aba5bd`)
