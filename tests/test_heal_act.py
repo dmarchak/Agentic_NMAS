@@ -1324,3 +1324,31 @@ class TestTheConfirmationTakesNoNetworkLock:
                     pass
             got = src.read_at_golden("r2", {"hostname": "r2", "ip": "192.0.2.12"})
         assert got["state"] == "clean", got
+
+
+class TestConfirmFirstsCopyKeepsItsWait:
+    """C3882 (the second review of C3870, finding 1): confirm-first's not-fixed path writes a
+    newer copy of the act's row; a heal refused by a guard that waits (planned work, a busy
+    hold) must stay no failure in that copy too, or R1 starts the AI on a guard working as
+    designed (`act.refusal_waits`, `fixit.auto.failures`)."""
+
+    def _row(self, steps):
+        return {"outcome": "refused", "words": "refused", "sent": False, "records": {},
+                "steps": steps, "by": "auto"}
+
+    def test_a_waiting_refusal_stays_waiting_in_the_copy(self):
+        from modules.heal import act
+        last = self._row([{"step": "stops", "result": "refused", "words": "planned work",
+                           "waits": True}])
+        assert act.refusal_waits(last)
+        copy = act.confirm_copy(last, "failed", "no proof it is fixed", 1_700_000_000)
+        assert act.refusal_waits(copy), copy
+        assert copy["steps"][-1]["step"] == act.CONFIRM_STEP
+        assert copy["steps"][-1]["words"] == "no proof it is fixed"
+
+    def test_a_refusal_that_does_not_wait_is_still_a_failure_in_the_copy(self):
+        from modules.heal import act
+        last = self._row([{"step": "guards", "result": "refused", "words": "a guard refused"}])
+        copy = act.confirm_copy(last, "failed", "no proof it is fixed", 1_700_000_000)
+        assert not act.refusal_waits(copy)
+        assert [s["step"] for s in copy["steps"]] == [act.CONFIRM_STEP]

@@ -1534,6 +1534,20 @@ def tail_failed_step(tail: dict) -> str:
 #: kill switch, the mode, the stage, the policy moved, a halt, planned work), the device held
 #: past the wait's bound, the program moved since the decision, the device changed during the
 #: heal. Its incident stands and is retried by the policy; R1 does not count it.
+def confirm_copy(last: dict, result: str, said: str, at: float) -> dict:
+    """The ``act`` row confirm-first's not-fixed path writes (`confirm_before_ai`): *last*'s
+    outcome, words, send and records, its confirm step (*result*, *said*), and *last*'s own
+    refused steps of a guard that waits (C3882): the copy is newer than *last*, so without them
+    a heal refused by planned work or a busy hold read as an R1 failure again and could start
+    the AI (`refusal_waits`, `fixit.auto.failures`)."""
+    waiting = [dict(s) for s in (last or {}).get("steps") or []
+               if isinstance(s, dict) and s.get("result") == "refused" and s.get("waits")]
+    return {"outcome": last.get("outcome") or "", "words": last.get("words") or "",
+            "sent": bool(last.get("sent")), "records": dict(last.get("records") or {}),
+            "steps": waiting + [{"step": CONFIRM_STEP, "result": result, "words": said,
+                                 "at": _iso(at)}]}
+
+
 def refusal_waits(row: dict) -> bool:
     """Whether an ``act`` step-log row refused only by a guard that waits (`refuse`'s
     *waits*), so it is no failure R1 starts on (`fixit.auto.failures`)."""
@@ -1948,16 +1962,12 @@ def confirm_before_ai(network: str, key: str, *, sources=None, on: str = "") -> 
             f"{sym['words']}: no proof it is fixed")
     if last:
         try:
-            steplog.record_act(network, d, {
-                "outcome": last.get("outcome") or "", "words": last.get("words") or "",
-                "sent": bool(last.get("sent")), "records": dict(last.get("records") or {}),
-                "steps": [{"step": CONFIRM_STEP, "result": (
-                    "unreadable" if read["state"] == "unread"
-                    or (read["state"] == "pass" and s["state"] == "unreadable")
-                    else "failed"),
-                    "words": said, "at": _iso(time.time())}]},
-                by=last.get("by") or CONFIRM_BY, policy_by=last.get("policy_by") or "",
-                now=time.time())
+            result = ("unreadable" if read["state"] == "unread"
+                      or (read["state"] == "pass" and s["state"] == "unreadable")
+                      else "failed")
+            steplog.record_act(network, d, confirm_copy(last, result, said, time.time()),
+                               by=last.get("by") or CONFIRM_BY,
+                               policy_by=last.get("policy_by") or "", now=time.time())
         except Exception as exc:                      # noqa: BLE001 (said: logged)
             log.error("heal: %s's confirmation of %s is not in the step log: %s", network,
                       decision_id, exc)
