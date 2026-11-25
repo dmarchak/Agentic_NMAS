@@ -381,6 +381,9 @@ which tier it is in and where to go instead, and **Run** stays off; a `send log`
 unfiltered) says what it costs. **Run** reads the device now, busy on itself until the answer
 arrives, which appears in place: masked as a golden is, with how long it took, and who and
 when on hover. An answer longer than the network's cap is kept to the cap and says it was cut.
+A discovery device (one Mercury has no driver for and only reads) is asked only what its own
+discovery capture list holds, each command whole, never Tier 1's reads ([how a read is
+checked](show-commands#the-steps)).
 
 The device is held while it is read, so a read and another operation never touch it at once:
 a device another operation holds is not read (the card says who holds it; run it again once

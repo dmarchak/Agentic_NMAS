@@ -16,6 +16,12 @@ else is refused before any device is asked, naming its tier and where to go inst
    outside Tier 1 refuses the whole run, naming the command, its tier and where to go instead.
    `show tech-support` is refused across more than one device (ask it of one, on its page).
    A run takes at most 10 commands; more refuses it. Read: nothing. Sent: nothing. Recorded: the refusal, as a run that asked no device.
+   **A discovery device** (one Mercury has no driver for and only reads: Arista EOS, HP
+   ProCurve or ArubaOS-Switch, Aruba, HP Comware, Open vSwitch or a Linux host) is asked only
+   what its own discovery capture list holds, each command whole, never Tier 1's reads; a
+   command on another family's list (Comware's `display`, say) passes the check only for a
+   device of that family, and a run naming one for devices of another family is refused,
+   naming the family and the devices' drivers.
 2. `hold`: each device is held while it is read, as an operation holds it. A device another
    operation holds is skipped, naming who holds it and since when; it is never queued. While
    a read holds a device, a deploy to it is refused, naming the read and its person.
