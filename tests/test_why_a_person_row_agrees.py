@@ -35,10 +35,16 @@ def test_a_lost_stream_nothing_tried_says_the_same_reason_on_its_row(web):  # no
     assert row == page
 
 
-def test_a_refused_plan_is_never_ready_for_approval_on_its_row(web, tmp_path):  # noqa: F811
+def test_a_refused_plan_is_never_ready_for_approval_on_its_row(web, tmp_path, monkeypatch):  # noqa: F811
+    """Premise corrected (C3919, b7343a7a: a step repeating a failed attempt passes with its
+    risk, so the planted repeat no longer refuses the plan): the step's preflight stands in
+    with a refusal, which the row and the page both read."""
+    from modules.fixit import plan as FP
     iid = plant()
     proposed(web, iid, tmp_path)
+    monkeypatch.setattr(FP, "_check_one", lambda *a, **k: {
+        "ok": False, "hash": "", "drawn": {}, "refused": "a planted refusal", "code": "refused",
+        "repeat": {}, "risk": ""})
     row, page = both(iid)
     assert page.startswith("Mercury refuses its fix as it stands"), page
-    # "plan is ready", not "ready": the page's refusal says "it already failed".
     assert "plan is ready" not in row and row == page, row
