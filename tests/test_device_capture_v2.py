@@ -119,6 +119,31 @@ class TestTheMenu:
         assert 'id="device-op"' in body and 'hx-post="/v2/device/r2/capture/start?list=Lab"' in body
 
 
+class TestInProgressListsACapture:
+    def test_a_capture_left_is_listed_and_its_device_page_reopens_the_preview(self, lab):
+        """C3601: a capture preview the device's page started held the device only while it
+        read, so once the person left the page its preview was reachable by its job id alone.
+        The job is now that page's card (`device=`, `card="capture"`): In progress lists it,
+        and the device's page draws its preview, reopened, until the person has opened it."""
+        import re as _re
+        from modules.nsot import capture_job
+        c = lab["client"]
+        reading = c.post("/v2/device/r2/capture/start", data={"list": "Lab", "back": "history"})
+        assert reading.status_code == 200
+        job = _re.search(r"/capture/job/([0-9a-f]+)", reading.get_data(as_text=True)).group(1)
+        assert capture_job.wait(job, 60)
+        listed = [r for r in capture_job.card_jobs() if r["job"] == job]
+        assert listed and listed[0]["device"] == "r2" and listed[0]["card"] == "capture", \
+            capture_job.card_jobs()
+        page = c.get("/v2/device/r2?list=Lab").get_data(as_text=True)
+        assert '<h2 id="op-title">Capture r2 as its golden</h2>' in page, page[:600]
+        assert "while you were elsewhere" in page, "the card says it was reopened"
+        assert "<h3>The difference</h3>" in page, "the preview itself, not a reading card"
+        # Opened once, it is no longer the page's news: the page draws its tab as usual.
+        again = c.get("/v2/device/r2?list=Lab").get_data(as_text=True)
+        assert '<h2 id="op-title">Capture r2 as its golden</h2>' not in again
+
+
 class TestThePreview:
     def test_it_draws_every_part_the_mockup_drew(self, lab):
         lab["running"]["r2"] = _broken(lab["captured"])

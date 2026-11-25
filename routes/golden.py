@@ -358,7 +358,12 @@ def start_capture_preview(list_name: str, inventory: list, devices: list, *, fle
         return mask_payload({"list": list_name, "fleet": fleet, "preview": preview,
                              "nothing": ""})
 
-    return capture_job.start(list_name, f"{list_name}: {len(devices)} device(s)", actor, work)
+    # C3601: one device's capture, its page's (`device_v2.capture_start`), is that page's card
+    # (`device=`, `card=`), so In progress lists it and the device's page reopens its preview
+    # until each person has opened it, once the read has released the device.
+    one = (devices[0].get("hostname", "") if not fleet and len(devices) == 1 else "")
+    return capture_job.start(list_name, f"{list_name}: {len(devices)} device(s)", actor, work,
+                             device=one, card="capture" if one else "")
 
 
 def acknowledged_reasons(given: dict) -> tuple:

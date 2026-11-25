@@ -1092,7 +1092,8 @@ def restore_job_card(ref, host: str, job_id: str, got, moment: str = "") -> dict
 
 #: The cards a device's page reopens for its job (C537 (3)): each built as its own job route
 #: builds it, so the reopened card is the card.
-REOPENS = ("rotate", "deploy", "restore", "reload", "diagnose", "heal_run", "resubscribe")
+REOPENS = ("rotate", "deploy", "restore", "reload", "diagnose", "heal_run", "resubscribe",
+           "capture")
 
 
 def job_card(ref, host: str, card: str, job_id: str) -> dict:
@@ -1118,6 +1119,17 @@ def job_card(ref, host: str, card: str, job_id: str) -> dict:
     if card == "resubscribe":
         from modules.heal import run_card
         return run_card.resubscribe_job_card(ref.name, host, job_id)
+    if card == "capture":
+        # C3601: a capture preview the device's page started, reopened there: its read, its
+        # preview, or why there is none, with who may confirm decided NOW, as its own job
+        # route decides it (`device_v2.capture_job_card`).
+        from flask import request
+
+        from modules import identity
+        from modules.preview_confirm import confirm_part
+        return capture_card(ref, host, job_id, capture_job.get(job_id),
+                            viewer=dict(confirm_part(request, "approve"),
+                                        actor=identity.identify(request).actor or ""))
     raise ValueError(f"no card reopens a {card!r} job (REOPENS: {', '.join(REOPENS)})")
 
 
