@@ -86,3 +86,36 @@ class TestTheReadAhead:
     def test_a_kind_no_plan_fixes_reads_nothing_ahead(self, monkeypatch):
         found = self.found(monkeypatch, "no_plan_fixes_this")
         assert FT.read_ahead_for(found, types.SimpleNamespace(device="s1"), []) == []
+
+
+class TestTheReadAheadIsTheAIs:
+    """C4060: the read ahead is one of the investigation's reads, so it honours "AI device
+    reads sign in as": read as the AI's kind for the investigation's actor under Mercury's
+    account, and not read at all under the read-only account (a preflight takes only Mercury's
+    account's answers, so it reads live). The engine is a stand-in: no device."""
+
+    def engine(self, monkeypatch, reads_as):
+        from modules.nsot import reads
+
+        calls = []
+        monkeypatch.setattr(reads, "ai_reads_as", lambda: reads_as)
+        monkeypatch.setattr(reads, "run", lambda network, hosts, commands, actor, **kw: (
+            calls.append(dict(kw, network=network, hosts=hosts, commands=commands,
+                              actor=actor)) or {"id": "run-1"}))
+        return calls
+
+    def test_under_mercury_s_account_it_reads_as_the_ai_for_its_actor(self, monkeypatch):
+        calls = self.engine(monkeypatch, "mercury")
+        inc = types.SimpleNamespace(device="s1", id="inc-1")
+        got = FT.read_ahead("Lab", inc, ["show interfaces status err-disabled"], pool="p1",
+                            actor="person@example.invalid")
+        assert got == "run-1"
+        assert [(c["by"], c["actor"], c["pool"], c["hosts"]) for c in calls] == [
+            ("ai_analysis", "person@example.invalid", "p1", ["s1"])], calls
+
+    def test_under_the_read_only_account_nothing_is_read_ahead(self, monkeypatch):
+        calls = self.engine(monkeypatch, "read_only")
+        inc = types.SimpleNamespace(device="s1", id="inc-1")
+        assert FT.read_ahead("Lab", inc, ["show interfaces status err-disabled"],
+                             actor="person@example.invalid") == ""
+        assert calls == [], "the read-only account's answers would never be taken"

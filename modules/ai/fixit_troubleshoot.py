@@ -2017,19 +2017,30 @@ def read_ahead_for(found: dict, incident, requests) -> list:
     return out
 
 
-def read_ahead(network: str, incident, commands: list, *, pool: str = "") -> str:
-    """*commands* on the incident's device through THE reads engine, as the preflight reads
-    them (`AHEAD_ACTOR`): the run's id, or ``""`` when nothing was read (refused, said in the
-    log: the preflight then reads live, as before). Bounded by the engine's own session
-    bounds. *pool* is the investigation's key for the engine's one session per device and
-    account (`reads.SessionPool`, C3974), when it has one."""
+def read_ahead(network: str, incident, commands: list, *, pool: str = "",
+               actor: str = "") -> str:
+    """*commands* on the incident's device through THE reads engine, as one of the AI
+    investigation's reads (kind `router_reads.KIND`, for *actor*, the investigation's): the
+    run's id, or ``""`` when nothing was read (refused, said in the log: the preflight then
+    reads live, as before). Under "AI device reads sign in as" the read-only account
+    (`reads.signs_in_as`, C4060) nothing is read ahead: the investigation signs in as nothing
+    wider, and a preflight takes only Mercury's account's answers (`Reused`), so it reads live.
+    Bounded by the engine's own session bounds. *pool* is the investigation's key for the
+    engine's one session per device and account (`reads.SessionPool`, C3974), when it has
+    one."""
+    from modules.ai.router_reads import KIND
     from modules.nsot import reads
 
     if not commands or not incident.device:
         return ""
+    if reads.signs_in_as(KIND) != "mercury":
+        log.info("fixit troubleshoot: %s's plan reads were not read ahead: the AI's device "
+                 "reads sign in as the read-only account, whose answers a preflight never "
+                 "takes; the preflight reads live", incident.id)
+        return ""
     try:
-        rec = reads.run(network, [incident.device], list(commands), AHEAD_ACTOR,
-                        purpose=AHEAD_PURPOSE, **({"pool": pool} if pool else {}))
+        rec = reads.run(network, [incident.device], list(commands), actor or AHEAD_ACTOR,
+                        by=KIND, purpose=AHEAD_PURPOSE, **({"pool": pool} if pool else {}))
     except Exception as exc:                                  # noqa: BLE001 (read live later)
         log.info("fixit troubleshoot: %s's plan reads were not read ahead: %s", incident.id, exc)
         return ""
@@ -2306,7 +2317,7 @@ def troubleshoot(network: str, found: dict, incident, *, actor: str, actor_verif
             # of reads, so they never hold the device against the loop's own (one operation
             # per device, refused by name).
             behind = (_behind(lambda: read_ahead(network, incident, ahead,
-                                                 pool=pool))
+                                                 pool=pool, actor=actor))
                       if memo["calls"] == 1 and ahead else None)
             # Kept until joined, so the `finally` below joins it when the call or the loop
             # raises, before the sessions are closed.
