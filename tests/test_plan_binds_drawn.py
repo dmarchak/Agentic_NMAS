@@ -360,7 +360,7 @@ class TestTheIncidentsPlan:
         for said in (job["error"], words_of(after)):
             assert f"you approved {fields['hash']}" in said, said[:1200]
             assert f"the plan previewed now is {'f' * 16}" in said, said[:1200]
-            assert "Nothing ran" in said, said[:1200]
+            assert "did not start, and nothing ran: " in said, said[:1200]
         assert engine_runs == [] and jobs_of(kept_jobs, PE.JOB_KIND) == [], "nothing ran"
 
     def test_the_approve_press_is_timed_at_the_level_the_service_keeps(  # noqa: F811
@@ -404,7 +404,7 @@ class TestTheIncidentsPlan:
         for said in (job["error"], words_of(after)):
             assert f"the plan read the session from {remote}" in said, said[:1200]
             assert "the collector holds the one from 192.0.2.7:57002 now" in said, said[:1200]
-            assert "Nothing ran" in said, said[:1200]
+            assert "did not start, and nothing ran: " in said, said[:1200]
         # Read at the proposal and by Approve's job: refused there, before the engine's preview.
         assert len(seam.calls) == 2, seam.calls
         assert engine_runs == [] and jobs_of(kept_jobs, PE.JOB_KIND) == [], "nothing ran"
@@ -438,9 +438,11 @@ class TestTheIncidentsPlan:
         (job,) = jobs_of(kept_jobs, APPROVE_JOB)
         assert job["state"] == "failed", job
         _r, after = FX.page(web, iid)
-        assert "Nothing ran" in job["error"], job["error"]
+        assert "and nothing ran" in job["error"], job["error"]
         for said in (job["error"], words_of(after)):
-            assert "the approved plan did not start: step 1 is refused by its own preview: " \
+            # C3986: "nothing ran" leads, where the card's cut never reaches it.
+            assert "the approved plan did not start, and nothing ran: step 1 is refused by " \
+                "its own preview: " \
                 "the collector's session moved since the plan was approved" in said, said[:1200]
             assert f"the approval bound the session from {remote}" in said, said[:1200]
             assert f"the collector holds one from {moved} now" in said, said[:1200]
@@ -507,3 +509,18 @@ class TestTheIncidentsPlan:
         plan = FP.preflight(FX.incident(iid), proposed(iid))
         (row,) = [w for label, w in plan["bound"] if label == "Its planted value"]
         assert "S3cretRO" not in row and row.startswith("snmp-server community"), row
+
+
+def test_a_failure_longer_than_the_card_keeps_is_marked_cut(monkeypatch):
+    """C3986: the card keeps a failure's first `WORDS_CHARS`; a longer one (an exception's
+    text, the engine's naming both hashes) is marked "…", never cut silently."""
+    from modules import troubleshoot_job as TJ
+    from modules.fixit import incident as F
+
+    kept = {}
+    monkeypatch.setattr(F, "claim_start", lambda inc, key, **kw: kept.update(kw))
+    TJ.record_failure(object(), "approve:r1", "the approved plan did not start, and nothing "
+                      "ran: " + "x" * 900, trigger="person")
+    words = kept["words"]
+    assert len(words) == TJ.WORDS_CHARS and words.endswith("…"), (len(words), words[-5:])
+    assert words.startswith("the approved plan did not start, and nothing ran: ")

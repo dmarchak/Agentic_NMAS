@@ -336,7 +336,12 @@ def _start_approved(network: str, inc, params: dict, bound: str, plan: dict, run
     def refused(why: str):
         # Kept after its approval, so the card says it, never a run that never was.
         from modules import troubleshoot_job
-        words = f"the approved plan did not start: {why}"
+        # What ran first (C3986): the card keeps a failure's first `WORDS_CHARS`, and a
+        # refusal (an exception's text, or the engine's naming both hashes) has no bound, so
+        # "nothing ran" leads, where no cut reaches it. Every refusal here is before the run
+        # starts: the session check, `PE.start`'s preview and hash compare, or an exception.
+        why = str(why).strip().removesuffix(". Nothing ran").removesuffix(" Nothing ran")
+        words = f"the approved plan did not start, and nothing ran: {why}"
         troubleshoot_job.record_failure(inc, f"approve:{run_id}", words, trigger="person",
                                         by=who["actor"], verified=who["actor_verified"])
         raise RuntimeError(words)                     # the job's failed state says it

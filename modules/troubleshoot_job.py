@@ -281,11 +281,13 @@ def record_failure(incident, key: str, words: str, *, trigger: str, by: str = ""
     """Keep an investigation's failure as its start's ``failed`` line (``<key>:failed``), so the
     card draws "Couldn't troubleshoot: <why>" in place, in every worker. Logged, never raised: a
     record that cannot be written leaves the job's own failure under In progress."""
+    from modules.cut import cut
     from modules.fixit import incident as F
 
     try:
+        # Marked when cut (C3986), never silent; the job's own failure keeps the whole.
         F.claim_start(incident, f"{key}:failed", trigger=trigger, state="failed",
-                      words=str(words or "it gave no reason")[:WORDS_CHARS], by=by,
+                      words=cut(words or "it gave no reason", WORDS_CHARS), by=by,
                       verified=verified)
     except (F.Refused, OSError, ValueError) as exc:
         log.error("fixit job: %s's failure was not kept: %s", incident.id, exc)
@@ -313,7 +315,8 @@ def outcome(got: dict) -> dict:
     """A finished investigation's job (`capture_job.get`'s) as In progress's finished row says
     it: ``{"level", "badge", "line", "full"}``: its level and badge word (`OUTCOMES`), ONE line
     (its reason's first clause, at most `REASON_WORDS` words, then "Details on the card", which
-    holds the whole, kept in the incident's record by `record_failure`), and the full words
+    holds its first `WORDS_CHARS`, marked "…" when cut, kept in the incident's record by
+    `record_failure`; the job's own failure keeps the whole), and the full words
     for the row's hover. A read of the job only."""
     from modules import run_stepper
 
