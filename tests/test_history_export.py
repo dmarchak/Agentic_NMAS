@@ -814,6 +814,11 @@ def page(lab, tmp_path, monkeypatch):  # noqa: F811
     # The networks' own records (SDN, the record of evaluation runs) in the test's folder too.
     monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path / "lists"))
     os.makedirs(tmp_path / "ledger")
+    # C3485: the page reads its days in the viewer's zone; the test person keeps UTC, so the
+    # tests' "today" (UTC) is the page's whatever the host's zone and the hour.
+    from modules import time_zones
+    from tests.conftest import TEST_PERSON
+    time_zones.set_zone(TEST_PERSON, "UTC", by=TEST_PERSON, actor_verified="access")
     calls.record({"id": calls.new_id(), "feature": "explain", "actor": PERSON,
                   "model": "claude-sonnet-5-5", "prompt": "explain.v4", "cost_usd": 0.01,
                   "trigger": {"kind": "person", "by": PERSON}, "verdict": "ok",

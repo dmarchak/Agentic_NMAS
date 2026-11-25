@@ -1413,7 +1413,8 @@ class TestB5Export:
         assert k.me.post("/v2/sdn/analyse/ask", data={
             "list": self.NET, "snapshot": snap["id"]}).status_code == 200
         (call,) = [x for x in _analysis_calls("sdn_analyse") if x.get("verdict") == "ok"]
-        today = time.strftime("%Y-%m-%d", time.gmtime())
+        # C3485: the export's days are the viewer's zone's, here the host's own (no zone kept).
+        today = time.strftime("%Y-%m-%d", time.localtime())
         q = f"network={self.NET}&start={today}&end={today}"
         page = f"/v2/history?tab=export&{q}"
         mine, theirs = k.me.get(page), k.nobody.get(page)
