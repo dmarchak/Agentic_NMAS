@@ -119,3 +119,25 @@ def test_download_of_a_run_not_in_the_log_names_it(client):
     assert r.status_code == 404 and r.mimetype == "text/plain"
     assert "no run sdn-loop-default-19700101T000000Z is in Default's loop log, which holds " \
            "1 run(s)" in r.get_data(as_text=True)
+
+
+def test_a_pass_that_read_no_declared_owners_says_so_in_its_log(networks, monkeypatch):  # noqa: F811
+    """C4127: the detect pass's answer names when the unauthorised-flow rule read no declared
+    external owners (`detect.observe`'s ``owners_note``), and the loop writes it to the pass's
+    log, where SDN › Responses draws it; a pass with none to say writes no such line."""
+    from modules.sdn import closed_loop as CL
+    from tests.test_sdn_modes_loop import NET, collected, observed
+    monkeypatch.setattr(CL, "respond_to_threat", lambda *a, **k: {})
+    said = ("no declared external flow owners were read: Lab has no committed NSOT export, so "
+            "every flow outside Mercury's records is judged, a declared owner's too")
+
+    def with_note(network, got):
+        return dict(observed(detections=[])(network, got), owners_note=said)
+    out = LP.run_pass(NET, collect=collected, observe=with_note, now=lambda: T0,
+                      driver=lambda n, c: {"ok": False, "error": "unused"})
+    assert out["ok"], out
+    assert [x["words"] for x in out["lines"] if x["step"] == "detect" and said in x["words"]], \
+        out["lines"]
+    out = LP.run_pass(NET, collect=collected, observe=observed(detections=[]),
+                      now=lambda: T0 + 10, driver=lambda n, c: {"ok": False, "error": "unused"})
+    assert not [x for x in out["lines"] if "declared external flow owners" in x["words"]]

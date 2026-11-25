@@ -386,6 +386,36 @@ class TestEachDetectionIsAnAlert:
         observe(T0 + 10)
         assert len(history()) == 2
 
+    @pytest.mark.parametrize("read,said", [
+        ({"state": "none", "owners": [], "refused": [], "error": "",
+          "source": "Default has no committed NSOT export"},
+         "no declared external flow owners were read: Default has no committed NSOT export"),
+        ({"state": "unreadable", "owners": [], "refused": [], "source": "",
+          "error": "Default's committed NSOT export cannot be used: its hash does not verify"},
+         "no declared external flow owners were read (Default's committed NSOT export cannot "
+         "be used"),
+        ({"state": "none", "owners": [], "refused": [], "error": "",
+          "source": "Default's devices are not NetBox's"}, ""),
+        ({"state": "ok", "owners": [], "refused": [], "error": "",
+          "source": "the committed NSOT export 0123456789ab"}, "")],
+        ids=["no-export", "unreadable", "not-netbox", "read"])
+    def test_a_pass_with_no_owners_read_says_so(self, monkeypatch, read, said):
+        """C4127: the unauthorised-flow rule reads the declared owners from the committed
+        export only, so on a NetBox network with none committed (or one that does not verify)
+        every declared flow is judged as any other, while the write guard, reading NetBox now,
+        refuses to remove them; the pass says no owners were read and why. A network whose
+        devices are not NetBox's declares none, and one read declares what it holds: no
+        note."""
+        from modules import protected
+        monkeypatch.setattr(protected, "external_for_network", lambda network: dict(read))
+        out = observe(T0)
+        notes = [n for n in out["notes"] if "declared external flow owners were read" in n]
+        if said:
+            assert len(notes) == 1 and notes[0].startswith(said), out["notes"]
+            assert "every flow outside Mercury's records is judged" in notes[0]
+        else:
+            assert notes == [], out["notes"]
+
     def test_no_sdn_state_leaves_the_tab_as_before(self):
         tab = EP.tab()
         assert all(s["store"] != "sdn" for s in tab["sources"])

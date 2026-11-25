@@ -1630,6 +1630,24 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
     # entry refused is noted, and the flows it would have covered are judged as before.
     from modules import protected
     external = protected.external_for_network(network)
+    owners_note = ""
+    if external["state"] == "none" and "no committed NSOT export" in external["source"]:
+        # C4127: detection reads the owners from the committed export only (a 30 s reader never
+        # asks NetBox), so with none committed every declared flow is judged as any other; it
+        # says so, as the write guard (which reads NetBox now) would refuse to remove them.
+        owners_note = (
+            f"no declared external flow owners were read: {external['source']}, so every flow "
+            "outside Mercury's records is judged, a declared owner's too; commit the export "
+            "(SDN › Apps, Export it from NetBox) for their flows to count as theirs")
+    elif external["state"] == "unreadable":
+        owners_note = (
+            f"no declared external flow owners were read ({external['error']}), so every flow "
+            "outside Mercury's records is judged, a declared owner's too")
+    if owners_note:
+        # Its own key as well, so the loop's log draws it each pass (`loop.step`), apart from
+        # the per-port notes.
+        out["notes"].append(owners_note)
+        out["owners_note"] = owners_note
     if external["refused"]:
         out["notes"].append(
             f"{len(external['refused'])} declared external flow owner(s) refused, so the flows "

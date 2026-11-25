@@ -1723,6 +1723,9 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
             line("detect", f"nothing judged: {seen.get('error')}")
             out["error"] = seen.get("error") or ""
             return out
+        if seen.get("owners_note"):
+            # C4127: the unauthorised-flow rule read no declared owners, and why.
+            line("detect", seen["owners_note"])
         fired = [d for d in seen.get("detections") or [] if d["key"] in set(seen["fired"])]
         # High packet rate (board S-HR, C2238) is watched, never classified or proposed
         # (`_watch_pass`, after the responses): kept apart from here on.

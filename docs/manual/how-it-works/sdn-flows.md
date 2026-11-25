@@ -394,7 +394,10 @@ NetBox, and Mercury treats its flows as that owner's:
   for every switch).
 - **Then:** **Export from NetBox** on SDN › Apps and commit it. SDN › Flows and the closed loop
   read the committed export; a change made through the switch's own preview reads NetBox now
-  when nothing is committed.
+  when nothing is committed. With no export committed (or one that does not verify), the
+  closed loop reads no declared owner, so their flows are judged as any other's: each pass
+  says so in its log on SDN › Responses ("no declared external flow owners were read …"),
+  until the export is committed.
 
 **What it changes:** such a flow is drawn **external: <owner>** on SDN › Flows, with its
 declaration under it and no **Remove…**. The unauthorised-flow rule does not report it. No
