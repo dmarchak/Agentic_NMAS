@@ -136,8 +136,12 @@ def _pair(link: dict) -> frozenset:
 #: One app's /health in the post-check's shape (`health_entry`): answered (healthy or not), no
 #: answer, or unreadable; the driver's own states (`ControllerDriver.app_health`), one owner.
 ANSWERED, NO_ANSWER, UNREADABLE = HEALTH_ANSWERED, HEALTH_NO_ANSWER, HEALTH_UNREADABLE
-#: The longest an app's own words for why it is not healthy are kept in a result.
+#: The longest ONE of an app's own problems is kept in a result, each bounded on its own
+#: (C3928: the joined words were cut at 500, so switch_quirks's second switch's refusal, past
+#: it, was lost from the receipt the operator read on the Lab 9 hardware).
 PROBLEMS_LIMIT = 500
+#: The most of an app's problems one answer keeps; the rest are counted, never dropped silently.
+PROBLEMS_KEPT = 20
 
 
 def health_entry(answer) -> dict:
@@ -158,11 +162,12 @@ def health_entry(answer) -> dict:
     body = got["answer"]
     if body["ok"]:
         return dict(base, ok=True, state=ANSWERED, error="")
-    problems = body.get("problems")
-    words = "; ".join(str(p) for p in problems) if isinstance(problems, list) else ""
-    return dict(base, ok=False, state=ANSWERED,
-                error=(words or "its /health answered ok false, naming no problem")[
-                    :PROBLEMS_LIMIT])
+    problems = body.get("problems") if isinstance(body.get("problems"), list) else []
+    kept = [str(p)[:PROBLEMS_LIMIT] for p in problems[:PROBLEMS_KEPT]]
+    more = len(problems) - len(kept)
+    words = "; ".join(kept) + (f"; and {more} more" if more > 0 else "")
+    return dict(base, ok=False, state=ANSWERED, problems=kept,
+                error=words or "its /health answered ok false, naming no problem")
 
 
 def evaluate(expected: dict, observed: dict) -> dict:
@@ -197,6 +202,9 @@ def evaluate(expected: dict, observed: dict) -> dict:
         state = got.get("state") or ANSWERED
         states[app] = {"state": state, "ok": bool(got.get("ok")) and state == ANSWERED,
                        "elapsed_s": got.get("elapsed_s")}
+        if got.get("problems"):
+            # C3928: each of the app's own problems, whole to its bound, in the receipt.
+            states[app]["problems"] = list(got["problems"])
         if state in (NO_ANSWER, UNREADABLE):
             unreadable.append(f"{app}'s /health ({state}: {got.get('error') or state})")
         elif state != ANSWERED:

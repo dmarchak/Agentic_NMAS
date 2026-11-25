@@ -98,6 +98,32 @@ def test_an_answer_whose_ok_is_false_is_answered_with_the_apps_problems():
     assert entry["error"] == WAITING["problems"][0]
 
 
+def test_each_problem_is_kept_whole_and_the_receipt_keeps_them():
+    """C3928 (the operator's Lab 9 hardware session, 2026-11-17): the joined problems were cut
+    at 500 characters, so a second switch's refusal past it was lost from the receipt
+    ("switch 56295116374350528 refused: type)"). Each problem is kept whole to its own bound,
+    a long list counted past its cap, and the post-check's health keeps them for the
+    receipt."""
+    first = "switch 56295116374350528 refused: " + "type " * 90          # 484 characters
+    second = "switch 1 refused: the HP's flow table has no room for the app's table-miss"
+    got = ryu(Session(answer({"ok": False, "problems": [first, second]}))).app_health(PREFIX)
+    entry = post_check.health_entry(got)
+    assert entry.get("problems") == [first, second], entry
+    assert entry["error"] == f"{first}; {second}" and second in entry["error"]
+    huge = ["p%d " % i + "x" * 600 for i in range(post_check.PROBLEMS_KEPT + 3)]
+    entry = post_check.health_entry({"state": base.HEALTH_ANSWERED, "path": "/a/health",
+                                     "answer": {"ok": False, "problems": huge}})
+    assert len(entry.get("problems") or []) == post_check.PROBLEMS_KEPT
+    assert all(len(p) == post_check.PROBLEMS_LIMIT for p in entry["problems"])
+    assert entry["error"].endswith("; and 3 more")
+    result = post_check.evaluate(
+        {"apps": ["switch_quirks"]},
+        {"switches": {"ok": True, "switches": []}, "links": {"ok": True, "links": []},
+         "health": {"switch_quirks": post_check.health_entry(got)}})
+    assert result["ok"] is False and second in result["unhealthy"][0]
+    assert result["health"]["switch_quirks"].get("problems") == [first, second]
+
+
 @pytest.mark.parametrize("given, said", [
     ([requests.exceptions.Timeout("read timed out")],
      "no answer within 5 s from /fabric_forwarding/health (the /health read's bound: 5 s (a "
