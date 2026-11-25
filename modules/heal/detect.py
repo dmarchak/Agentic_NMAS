@@ -52,12 +52,13 @@ import time
 
 log = logging.getLogger(__name__)
 
-#: How often the runner passes: a quarter of the lab's 120 s grace period, so a second read is
-#: made within 30 s of its due time.
+#: How often the runner passes: an incident's read is made within 30 s of its trigger (set
+#: when the lab's grace period was 120 s; there is none since round 2, the operator,
+#: 2026-11-17, so one read settles an incident).
 PASS_SECONDS = 30
-#: The reads one pass of one network makes; the rest wait for the next pass, said. Past
-#: `heal_max_devices_drifting` (3 by default) the decision escalates anyway (guard 6), so ten
-#: bound a storm's reads, not what is found.
+#: The reads one pass of one network makes; the rest wait for the next pass, said. Ten bound
+#: a storm's reads, not what is found (guard 6, which escalated past
+#: `heal_max_devices_drifting`, holds nothing since C3909).
 READS_PER_PASS = 10
 #: The pass's steps, in order, for the manual's How it works page (H10).
 STEPS = (("mode", "Read the network's mode"),

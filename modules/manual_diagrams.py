@@ -1658,8 +1658,9 @@ def errdisable_recover():
         "port err-disabled by the cause now, no errdisable recovery for the cause, the cause "
         "cleared), else nothing is sent; then interface, shutdown and no shutdown, never "
         "saved; verify reads the port every 3 seconds until connected, up to 30, and no new "
-        "err-disable 10 seconds later, then the running configuration must equal the one "
-        "before, line for line; anything else is rolled back by the pipeline; the receipt and "
+        "err-disable 10 seconds later, then the port's configuration must equal the one "
+        "before, line for line (the whole running configuration where the check cannot be "
+        "scoped to the port); anything else is rolled back by the pipeline; the receipt and "
         "the run are recorded and the engineer told the offending MAC, the port, the time and "
         "the cause."), [
         lanes(20, 554),
@@ -1673,7 +1674,7 @@ def errdisable_recover():
             (212, "read", 4, "Preconditions", "err-disabled; cleared"),
             (248, "send", 5, "shutdown, no shutdown", "config mode, one port"),
             (284, "read", 6, "Connected within 30 s", "read every 3 s"),
-            (320, "clock", 7, "Net zero", "after equals before"),
+            (320, "clock", 7, "Net zero", "the port's lines, unchanged"),
             (356, None, 8, "Roll back if not", "the pipeline's rollback"),
         ]),
         t(36, 396, "Not cleared: the port stays down,", "sm"),
@@ -1781,9 +1782,10 @@ def heal():
     return svg(600, (
         "Self-healing, one incident: a trigger (a log line, an alert, an adjacency, a drift "
         "record) opens an incident on a device; the detect pass reads the device, the same read "
-        "as Check drift now, until the grace period settles it; the decision finds the approved "
-        "state, the golden that matched intent, checks the guards in order and compares the "
-        "device with it, classing each unit and its tier: in dry run it records what it would "
+        "as Check drift now, and one read settles it, with no grace period; the decision finds "
+        "the approved state, the golden where it matches intent, else committed intent, checks "
+        "the guards in order and compares the device with it, classing each unit and its "
+        "tier: in dry run it records what it would "
         "have done for a person to mark right or wrong; in Auto a Tier 1 fix is applied as the "
         "policy, holding the device, through the deploy's nine stages, verified and rolled back "
         "on failure; a Tier 2 fix waits for a person; anything else is can't fix. Every step is "
@@ -1792,12 +1794,12 @@ def heal():
         lanes(20, 594),
         doc("box", 14, 40, 186, 36, "A trigger", "a log line, an alert, a drift"),
         num(14, 40, 1),
-        clock(186, 104), t(14, 108, "the grace period: read, then read again", "sm"),
+        clock(186, 104), t(14, 108, "one read settles it: no grace period", "sm"),
         band(122, 120, "Detect · the device read, nothing sent"),
         device(262, 150, 118, 330, "The device", "what it runs", top=True),
-        *rows([(166, "read", 2, "Read again until settled", "Check drift now's read")]),
+        *rows([(166, "read", 2, "Read once, settled", "Check drift now's read")]),
         band(250, 112, "Decide · the guards in order"),
-        doc("golden", 14, 278, 186, 36, "The approved state", "the golden that matched intent"),
+        doc("golden", 14, 278, 186, 36, "The approved state", "golden at intent, else intent"),
         num(14, 278, 3),
         t(14, 336, "each unit classed, its tier; the program", "sm"),
         t(14, 349, "and its hash; a guard that applies stops it", "sm"),

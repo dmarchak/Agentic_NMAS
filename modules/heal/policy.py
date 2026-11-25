@@ -79,7 +79,8 @@ TIER2_KINDS = ("process_reset", "qos_policy", "secret_added_back", "session_clea
 SECURITY_KINDS = ("security_acl", "security_control")
 #: C2839's per-network question, "may Mercury revert a one-sided security change that broke an
 #: adjacency?" (default no): yes makes such a change `security_revert`, Tier 1, still allowed
-#: AUTO only by name in `heal_kinds_auto` (N8, one kind at a time).
+#: AUTO only by name in `heal_kinds_auto` (a change may allow any number of kinds since round
+#: 2, the operator, 2026-11-17; the module's docstring, AUTO's limits).
 SECURITY_REVERT_KEY = "heal_security_revert_adjacency"
 KIND_WORDS = {
     "missing_line": "a missing line", "changed_line": "a changed line, single-valued",

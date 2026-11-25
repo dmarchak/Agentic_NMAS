@@ -7,7 +7,7 @@ restores intent: it never adds anything intent does not hold. Each network's pol
 on its **Self-healing** tab ([Self-healing](settings#self-healing)), and **Turn off** stops a
 network's healing at once.
 
-![Self-healing, one incident: a trigger (a log line, an alert, an adjacency, a drift record) opens an incident on a device; the detect pass reads the device, the same read as Check drift now, until the grace period settles it; the decision finds the approved state, the golden that matched intent, checks the guards in order and compares the device with it, classing each unit and its tier: in dry run it records what it would have done for a person to mark right or wrong; in Auto a Tier 1 fix is applied as the policy, holding the device, through the deploy's nine stages, verified and rolled back on failure; a Tier 2 fix waits for a person; anything else is can't fix. Every step is recorded in the step log and History, a healed device's golden committed and read again, and the network's team is told.](diagrams/heal.svg)
+![Self-healing, one incident: a trigger (a log line, an alert, an adjacency, a drift record) opens an incident on a device; the detect pass reads the device, the same read as Check drift now, and one read settles it, with no grace period; the decision finds the approved state, the golden where it matches intent, else committed intent, checks the guards in order and compares the device with it, classing each unit and its tier: in dry run it records what it would have done for a person to mark right or wrong; in Auto a Tier 1 fix is applied as the policy, holding the device, through the deploy's nine stages, verified and rolled back on failure; a Tier 2 fix waits for a person; anything else is can't fix. Every step is recorded in the step log and History, a healed device's golden committed and read again, and the network's team is told.](diagrams/heal.svg)
 
 ## Detect {#detect}
 
@@ -246,7 +246,7 @@ the card draws the run as ONE run on one stepper of five stages, from what was s
 
 | Stage | Its steps | What it says |
 |---|---|---|
-| **Detected** | the incident opening on its first trigger, and the grace period waited out | what was seen ("edge1's configuration changed outside Mercury") |
+| **Detected** | the incident opening on its first trigger, and the device's read that settled it (no grace period) | what was seen ("edge1's configuration changed outside Mercury") |
 | **Decided** | the decision's eight steps, done by the detection job, each with its time | the decision ("Heal: remove …") |
 | **Fixing** | the act's steps up to and including Apply; the deploy's stages inside Apply | "Applying 3 lines to edge1…", then "Applied 3 lines to edge1" |
 | **Checking** | Check intent, Read symptom, Save startup, Check golden | "Waiting for edge1's symptom to clear · up to 750 s: 120 s left", then "edge1 at intent; its symptom gone"; a heal that put the heartbeat applet back, "Waiting for edge1's heartbeat · up to 1050 s: 120 s left", then "edge1 at intent; its heartbeat back" |
@@ -263,8 +263,8 @@ says how long: the symptom's read waits "up to 150 s" for an adjacency (up to 75
 alert, up to 1050 s for a 300 s heartbeat), and its stage counts it down from the time the step began and the length the run
 declared; when the time is up it says so and waits for the run's next step. The card moves by
 itself at each step, over the live connection; nothing asks on a timer. The card starts when
-the heal's job does: the grace period is drawn done under Detected once it has passed, and is
-not drawn live while it runs.
+the heal's job does: the read that settled the incident is drawn done under Detected (there is
+no grace period to wait out), and is not drawn live while it runs.
 
 **Where a run's outcome is read.** When it ends, the chip keeps it under **Finished, not opened
 yet** for every person until each has opened it (nobody started it, so it is everybody's to

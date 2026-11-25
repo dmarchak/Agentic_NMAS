@@ -112,6 +112,22 @@ class TestOneRunFromItsDetection:
             assert f"({'done'})" in block, f"{key}: its state, for a reader"
 
 
+
+
+def test_detected_says_the_read_settled_it_never_a_grace_waited_out():
+    """C4029: there is no grace period since round 2 (the operator, 2026-11-17: "no grace for
+    anyone"; one read settles an incident), but Detected's second step read "Wait out grace" /
+    "Wait out the grace period, reading the device again". The phase the card draws, from an
+    incident's own record (`run_card._detected_phase`)."""
+    from modules.heal import run_card
+    inc = {"opened_at": "2026-11-24T10:00:00Z", "triggers": [{"words": "edge-b changed"}],
+           "settled": {"at": "2026-11-24T10:00:20Z", "words": "settled"}}
+    got = run_card._detected_phase({}, inc, now=0)
+    said = repr(got)
+    assert "Settled on read" in said and "one read settles it" in said, said
+    assert "Wait out" not in said, said
+
+
 class TestMercurysOwn:
     """C3161: Mercury's own, never a person's, and no email anywhere on it."""
 

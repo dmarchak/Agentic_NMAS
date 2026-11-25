@@ -164,10 +164,13 @@ def _drawn(steps: list) -> list:
 # ── The heal's five stages (the operator, 2026-11-12) ───────────────────────────────────────
 
 #: What was seen before the decision, from the incident's own record: it opened on a trigger,
-#: then its grace period was waited out (the detect loop's, which is no job: C3124).
+#: then the device's read settled it (the detect loop's, which is no job: C3124). There is no
+#: grace period since round 2 (the operator, 2026-11-17: "no grace for anyone"; `grace.judge`
+#: settles on the first read), so the step says the read settled it (C4029); its key stays
+#: ``grace``, the record's.
 DETECT_STEPS = (("opened", "An incident opened: what was seen on the device"),
-                ("grace", "Wait out the grace period, reading the device again"))
-DETECT_LABELS = {"opened": "Open incident", "grace": "Wait out grace"}
+                ("grace", "Settled by the device's read: one read settles it, no grace period"))
+DETECT_LABELS = {"opened": "Open incident", "grace": "Settled on read"}
 #: The act's step keys under each of its stages: an act's, an approved proposal's, a bounce's
 #: and a clear's own (`heal_tables`). A step none names joins the stage of the step before it.
 FIXING = ("take", "stops", "read", "plan", "authorise", "hash", "hold", "pre-read", "route",
@@ -274,7 +277,7 @@ def job_by(job: dict) -> str:
 
 def _detected_phase(decision: dict, incident: dict = None, now: float = None) -> dict:
     """What was seen before the decision, as the first phase (``x-``), from the incident's own
-    record: when it opened and on what, then the grace period from then until it settled.
+    record: when it opened and on what, then the read that settled it.
     With no incident held (*incident* empty), the decision's own triggers, done, with no time:
     nothing is invented."""
     from modules import display_names, run_stepper
