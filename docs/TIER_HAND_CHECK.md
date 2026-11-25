@@ -5240,3 +5240,18 @@ worktree, tests/test_redact_ios_shapes.py `-k another_platform`:
 | 3 | ProCurve's `password manager` rule matching nothing | **died**: both `password manager` and `password operator` |
 
 **The result: the canary and every mutant died.**
+
+## 2026-11-25: Gate 2's limits guard held by a test again (C3977), by hand
+
+**The change.** A test only: `background.turn_on`'s limits check (the network's acknowledged
+spending limits, read by the caller and checked under the settings lock in the same hold as
+the write) had no test reaching it since the control strip's switch stopped calling the
+catch-up line. tests/test_ai_background.py
+`test_limits_that_changed_since_they_were_read_are_refused_naming_both` now calls it with
+limits the record does not hold. One control by hand, in an `nmas-control` worktree:
+
+| # | Mutant | Result |
+|---|---|---|
+| canary | the limits check switched off (`if limits is not None:` made `if False:`) | **died**: `DID NOT RAISE Refused` |
+
+**The result: the canary died.**

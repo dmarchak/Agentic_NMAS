@@ -138,6 +138,23 @@ def test_turning_on_writes_and_records_who_when_and_the_estimate_shown(bg):
     assert rec["estimate"]["digest"] == est["digest"] and rec["day_cap_usd"] == 0.5
 
 
+def test_limits_that_changed_since_they_were_read_are_refused_naming_both(bg):
+    """C3977 (the fix-it agent's item: the limits-moved guard no longer reached by its test,
+    since the strip's switch stopped calling the line): Gate 2's limits, read by the caller
+    and checked under the settings lock in the same hold as the write, refuse when the record
+    holds no acknowledgement of them, or another one, naming the digests, and nothing is
+    written or recorded."""
+    est = B.estimate("Lab", "fake_loop")
+    with pytest.raises(B.Refused) as got:
+        B.turn_on("Lab", "fake_loop", day_cap_usd=0.5, month_cap_usd=10, shown=est["digest"],
+                  actor=ADMIN, verified="access",
+                  limits=("a" * 64, lambda record: "b" * 64))
+    assert str(got.value).startswith(
+        f"the limits changed since they were read (read {'a' * 12}, now {'b' * 12}, "
+        "acknowledged none)"), got.value
+    assert B.switches() == {} and _record(bg) == []
+
+
 def test_an_estimate_that_moved_since_it_was_shown_is_refused_naming_both(bg):
     est = B.estimate("Lab", "fake_loop")
     B.FEATURES["fake_loop"]["frequency"] = lambda n: {"per_day": 40.0, "basis": "more"}
