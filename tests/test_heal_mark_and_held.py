@@ -67,16 +67,28 @@ def _rows(kind):
     return [r for r in attention.heal_source(now=T0 + 60)["rows"] if r["kind"] == kind]
 
 
-def _timeline(event):
-    """The History row as _timeline.html's `timeline_rows` draws it, for one event."""
+def _timeline(event, viewer=None):
+    """The History row as _timeline.html's `timeline_rows` draws it, for one event; drawn to
+    *viewer* (a verified person's actor) where one is named, else to the request's own."""
+    import dataclasses
     from flask import render_template_string
     import app as A
-    with A.app.test_request_context("/v2/history"):
-        e = dict(event, id="tl-1", devices_words="edge-b", who_short="", pending=False)
-        return render_template_string(
-            '{% from "v2/_timeline.html" import timeline_rows with context %}'
-            "{{ timeline_rows(h) }}", h={"events": [e], "errors": [], "unreached": [],
-                                         "limit": 50})
+    from modules import identity
+    with pytest.MonkeyPatch.context() as mp:
+        if viewer is not None:
+            who = dataclasses.replace(identity.Identity(), actor=viewer, kind="person",
+                                      verified=True, peer_trusted=True)
+            mp.setattr(identity, "viewer", lambda request=None: who)
+        with A.app.test_request_context("/v2/history"):
+            e = dict(event, id="tl-1", devices_words="edge-b", who_short="", pending=False)
+            return render_template_string(
+                '{% from "v2/_timeline.html" import timeline_rows with context %}'
+                "{{ timeline_rows(h) }}", h={"events": [e], "errors": [], "unreached": [],
+                                             "limit": 50})
+
+
+#: A viewer who is not the person who marked: the mark is drawn by their display name.
+SOMEONE_ELSE = "someone-else@example.com"
 
 
 # ── Right / Wrong ────────────────────────────────────────────────────────────────────────────
@@ -134,10 +146,24 @@ class TestRightWrong:
         assert DS.dry_run_counts("Default")["added_line"]["right"] == 1
         assert _rows("would_heal") == [], "the record's item leaves"
         assert _event()["heal_mark"]["mark"]["right"] is True
-        # Board E2a: who marked it, by display name (the part before the "@").
-        drawn = _timeline(_event())
+        # Board E2a: who marked it, by display name (the part before the "@"), to anyone but
+        # its author (premise corrected, C2851: drawn to its author it says "you").
+        drawn = _timeline(_event(), viewer=SOMEONE_ELSE)
         assert f"Marked right by {TEST_PERSON.split('@')[0]} at <time" in drawn
         assert TEST_PERSON not in drawn
+
+    def test_the_viewer_s_own_mark_is_drawn_by_you_however_it_is_drawn(self, app_client):
+        """C2851's mark half: the press's answer said "by you" and History's own redraw of the
+        same mark "by" the person's name, so the redraw a mark announces took the press's
+        words in the pressing tab. The record drawn to its author says "you" (`is_viewer`);
+        drawn to anyone else, it names them."""
+        from tests.conftest import TEST_PERSON
+        d = dry_run()
+        assert app_client.post(_mark_url(d), data={"right": "yes"}, headers=HX).status_code == 200
+        assert "Marked right by you at <time" in _timeline(_event(), viewer=TEST_PERSON)
+        drawn = _timeline(_event(), viewer=SOMEONE_ELSE)
+        assert f"Marked right by {TEST_PERSON.split('@')[0]} at <time" in drawn
+        assert "by you" not in drawn
 
     def test_wrong_needs_why_and_keeps_what_was_typed(self, app_client):
         d = dry_run()
@@ -203,7 +229,7 @@ class TestRightWrong:
         from modules.operation_stages import HISTORY
         from modules.route_gates import GATES
         assert GATES["heal_proposal_v2.mark"].kind == "configure"
-        assert DECLARED["heal_proposal_v2.mark"] == ("drift",)
+        assert DECLARED["heal_proposal_v2.mark"] == ("drift", "heal_decisions")
         assert HISTORY["heal_proposal_v2.mark"].startswith("n/a: a mark is kept")
 
 

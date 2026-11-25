@@ -196,6 +196,26 @@ def viewer_zone():
     return g.nmas_time_zone
 
 
+@bp.app_template_global("is_viewer")
+def is_viewer(actor) -> bool:
+    """Whether *actor* (a record's recorded person) is this request's viewer, a verified
+    person (`identity.viewer`): a record drawn to its own author says "you", however it is
+    drawn (C2851: a mark's own answer said "by you" and History's redraw of it "by" their
+    name, so the redraw took the answer's words). It draws; it authorises nothing."""
+    from flask import has_request_context
+
+    if not actor or not has_request_context():
+        return False
+    from modules import identity
+
+    try:
+        ident = identity.viewer()
+    except Exception as exc:                            # noqa: BLE001 (a page still draws)
+        log.warning("v2: the viewer could not be read (%s)", type(exc).__name__)
+        return False
+    return bool(ident.is_identified and ident.kind == "person" and ident.actor == actor)
+
+
 @bp.app_template_global("viewer_zone_name")
 def viewer_zone_name() -> str:
     """The name of the zone this request's viewer reads times in (`viewer_zone`), for a field

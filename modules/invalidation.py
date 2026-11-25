@@ -448,8 +448,10 @@ DECLARED = {
     # Lift the halt (C2471): the halted row (`attention.heal_source`, riding on drift) leaves.
     "heal_proposal_v2.lift": ("drift",),
     # Right / Wrong (C2399): the dry-run record's row (`attention.heal_source`, riding on
-    # drift) leaves; the History row it was pressed on draws the mark in place.
-    "heal_proposal_v2.mark": ("drift",),
+    # drift) leaves; the History row it was pressed on draws the mark in place, and every
+    # History open elsewhere draws it (C2851, `heal_decisions`); the pressing tab's redraw
+    # says "by you" as its answer did (`is_viewer`, routes/v2.py).
+    "heal_proposal_v2.mark": ("drift", "heal_decisions"),
     # The incident page's AI troubleshooting section (routes/fixit_v2.py): each post draws the
     # section again in place, and an incident's page open elsewhere (its live region rides on
     # drift) reads the incident's record again; a hand-over's send moves the notifications log.

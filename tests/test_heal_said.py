@@ -392,12 +392,13 @@ class TestTheDryRunRecord:
 
     def test_c2809_a_mark_drawn_again_is_drawn_on_its_control(self, app_client):
         from modules import history_sources as HS
-        from tests.test_heal_mark_and_held import _ctx, _timeline
+        from tests.test_heal_mark_and_held import SOMEONE_ELSE, _ctx, _timeline
         d = _dry_run()
         assert app_client.post(f"/v2/network/Default/heal/decision/{d['id']}/mark",
                                data={"right": "yes"}, headers=HX).status_code == 200
         (e,) = HS.heal(_ctx())["events"]
-        card = _timeline(e).split(f'id="heal-mark-{d["id"]}"')[1].split("</div>\n</div>")[0]
+        # Drawn to another person (premise corrected, C2851: to its author it says "you").
+        card = _timeline(e, viewer=SOMEONE_ELSE).split(f'id="heal-mark-{d["id"]}"')[1].split("</div>\n</div>")[0]
         right = re.search(r'<button type="button"[^>]*"right": "yes"[^>]*>', card).group(0)
         assert 'aria-pressed="true"' in right
         wrong = re.search(r'<summary class="btn btn-small btn-outline"[^>]*>', card).group(0)

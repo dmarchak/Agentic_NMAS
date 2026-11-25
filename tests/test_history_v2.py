@@ -389,12 +389,13 @@ def test_a_self_healing_decision_redraws_history():
     """C2851 (its decision half): a decision announced only `drift`, which neither of History's
     timelines hears, so a new decision (a held one included) was not drawn until another key
     fired. A pass's decisions now announce `heal_decisions`, and both timelines (History's page
-    and a device's History tab) hear it. A mark does not announce it yet: its own redraw would
-    take the pressing tab's answer (tests/test_live_marks.py, measured 2026-11-24)."""
+    and a device's History tab) hear it. Its mark half: a mark announces it too, so a mark made
+    in another tab is drawn; its own tab's redraw keeps the press's words, the record drawn to
+    its author saying "by you" however it is drawn (`is_viewer`; tests/test_live_marks.py)."""
     import re
     from modules import invalidation as I
     assert "heal_decisions" in I.ANNOUNCERS["heal-decide"]
-    assert "heal_decisions" not in I.DECLARED["heal_proposal_v2.mark"]
+    assert "heal_decisions" in I.DECLARED["heal_proposal_v2.mark"]
     for path in ("templates/v2/_history_timeline.html", "templates/v2/_history.html"):
         text = open(path, encoding="utf-8").read()
         heard = re.findall(r"nmas:(\w+) from:body", re.search(r'hx-trigger="([^"]*)"',
