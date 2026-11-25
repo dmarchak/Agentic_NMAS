@@ -503,7 +503,7 @@ def junit_env_skips(folder: str) -> list:
 
 def act_argv(event: str, workflow: str, event_file: str, checkout: str, platform: str,
              artifacts: str, cache: str, actions: str, seccomp: str = "",
-             bind: str = "") -> list:
+             bind: str = "", empty: str = "") -> list:
     """act's command line: the workflow file at the commit, the event, the runner image pinned
     by digest and never pulled, the actions from their cache once fetched, act's own artifact
     and cache servers in the run's folders bound to *bind* (Docker's bridge gateway), the jobs
@@ -516,7 +516,15 @@ def act_argv(event: str, workflow: str, event_file: str, checkout: str, platform
             "-P", platform, "--pull=false", "--action-offline-mode",
             "--action-cache-path", actions, "--artifact-server-path", artifacts,
             "--cache-server-path", cache, "--network", NETWORK, "--json", "--verbose", "--rm",
-            "--concurrent-jobs", str(CONCURRENT_JOBS)]
+            "--concurrent-jobs", str(CONCURRENT_JOBS),
+            # C2518: no job container is given the host's Docker socket (act's default mounts
+            # it, a way to root on the host).
+            "--container-daemon-socket", "-"]
+    if empty:
+        # C2518: act's settings come from the runner alone, never from the commit it runs:
+        # each file it would read from the checkout (.env, .secrets, .vars) named as an empty
+        # one (and act started in an empty folder, so no `.actrc` there is read either).
+        argv += ["--env-file", empty, "--secret-file", empty, "--var-file", empty]
     if bind:
         argv += ["--artifact-server-addr", bind, "--cache-server-addr", bind]
     if opts:
@@ -741,14 +749,20 @@ def run_commit(store: str, sha: str, before: str, origin_slug: str, platform: st
         with open(event_file, "w", encoding="utf-8") as fh:
             json.dump(push_event(sha, before, origin_slug), fh)
         artifacts = os.path.join(rundir, "artifacts")
+        # C2518: act starts in a folder of its own, empty, so it reads no `.actrc` the commit
+        # carries, and every settings file it is given is an empty one the runner made.
+        quiet = os.path.join(work, "act-cwd")
+        os.makedirs(quiet, exist_ok=True)
+        empty = os.path.join(work, "empty")
+        open(empty, "w", encoding="utf-8").close()
         argv = act_argv("push", workflow_file, event_file, clone, platform, artifacts,
                         os.path.join(store, "cache"), os.path.join(store, "actions"),
-                        seccomp=seccomp, bind=bind)
+                        seccomp=seccomp, bind=bind, empty=empty)
         log = os.path.join(rundir, "act.jsonl")
         with open(log, "w", encoding="utf-8") as fh:
             try:
                 proc = run(argv, stdout=fh, stderr=subprocess.STDOUT, text=True,
-                           timeout=RUN_BOUND_MIN * 60, cwd=clone)
+                           timeout=RUN_BOUND_MIN * 60, cwd=quiet)
                 code = proc.returncode
             except subprocess.TimeoutExpired:
                 code = None

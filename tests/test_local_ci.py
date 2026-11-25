@@ -588,6 +588,34 @@ class TestARun:
         assert argv[argv.index("--artifact-server-addr") + 1] == BRIDGE_GW
         assert argv[argv.index("--cache-server-addr") + 1] == BRIDGE_GW
 
+    def test_act_gets_no_docker_socket_and_reads_no_setting_from_the_commit(self, LC, world):
+        """C2518 layer 1 (the operator's words, 2026-11-25: "no Docker socket, empty env, secret
+        and var files, started in an empty folder"): a job container is given no host Docker
+        socket (act's default mounts it, a way to root on the host), act's env, secret and var
+        files are one empty file the runner made, and act starts in an empty folder of its own,
+        so no `.actrc` or `.env` the commit carries is read."""
+        calls, seen = [], {}
+        fake = _fake_act([("Run actions/checkout@v4", "success", 1), ("Tests", "success", 1)],
+                         calls)
+
+        def run(argv, **kw):
+            if argv and argv[0] == "/usr/local/bin/act":
+                cwd = kw.get("cwd") or ""
+                seen.update(cwd=cwd, listed=sorted(os.listdir(cwd)) if os.path.isdir(cwd) else None)
+                files = [argv[argv.index(f) + 1] for f in ("--env-file", "--secret-file",
+                                                           "--var-file")]
+                seen["files"] = [(f, os.path.getsize(f)) for f in files]
+            return fake(argv, **kw)
+        rec = LC.run_commit(world["store"], world["sha"], "", "owner/repo", PLATFORM, run=run)
+        assert rec["state"] == "passed", rec
+        argv = calls[0]
+        assert argv[argv.index("--container-daemon-socket") + 1] == "-", argv
+        (one,) = {f for f, _size in seen["files"]}
+        assert [size for _f, size in seen["files"]] == [0, 0, 0], seen
+        assert seen["listed"] == [], f"act starts in an empty folder: {seen}"
+        assert not seen["cwd"].startswith(os.path.join(world["store"], "runs")), seen
+        assert one != seen["cwd"]
+
     def test_a_bridge_that_cannot_be_read_is_an_error_never_a_run(self, LC, world):
         calls = []
 
