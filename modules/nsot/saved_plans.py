@@ -1640,12 +1640,37 @@ def offer(network: str, incident_id: str, *, actor: str, actor_verified: str,
         return dict(out, why=str(exc))
     match = {"condition": prob.condition, **{k: str(getattr(prob, k) or "")
                                              for k in OPTIONAL_MATCH if getattr(prob, k, "")}}
+    fills = default_fills(t, prob, rec.get("params") or {})
     out.update(state="ready", run=run_id, plan=rec.get("title") or t.title, match=match,
-               fills=default_fills(t, prob, rec.get("params") or {}),
+               fills=fills, drawn=drawn_digest(run_id, match, fills),
                preview=match_preview(network, match), saved=saved_from(network, run_id),
                name=default_name(prob, rec.get("title") or t.title),
                dismissed=put_off(inc), runs_on=runs_on(network, match, incident_id))
     return out
+
+
+def drawn_digest(run_id: str, match: dict, fills: dict) -> str:
+    """What the card's Save is bound to (C4057): the verified run it saves, the problem's
+    match and the fills, as drawn. A Save posted with another is refused, naming both, so a run
+    verified between the draw and the press is never the one saved. PURE."""
+    import hashlib
+    import json
+
+    body = json.dumps({"run": run_id, "match": match, "fills": fills}, sort_keys=True,
+                      default=str)
+    return hashlib.sha256(body.encode()).hexdigest()[:16]
+
+
+def drawn_refusal(offered: dict, posted: str) -> str:
+    """"" when *posted* is the offer's own `drawn_digest`, else the refusal naming both and
+    what the card would draw now (C4057)."""
+    now = offered.get("drawn") or ""
+    if posted and posted == now:
+        return ""
+    what = ", ".join(f"{k} {v}" for k, v in (offered.get("match") or {}).items())
+    return (f"the fix this card drew moved since it was drawn (drawn {posted or 'none'}, now "
+            f"{now}: {offered.get('plan') or 'its verified run'}, its match {what}); read the "
+            "card again and save what it draws; nothing was saved")
 
 
 #: The most devices Save's line names; the rest are counted ("and 3 more").

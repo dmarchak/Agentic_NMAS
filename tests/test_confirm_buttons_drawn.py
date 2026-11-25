@@ -2677,10 +2677,11 @@ class TestSavedPlansCards(_Cards):
     def _saved_dry_run(self, request):
         """The card after its own Save, in Dry run (Customize's choice: a plain Save is
         Automatic, with no Promote, 6b91dc45), pressed as the card's form sends it."""
-        c = request.getfixturevalue("card")
+        c, html = self._get(request)
         r = c["client"].post(f"/v2/saved-plans/{self._spv.INC}/save-script?list=Lab",
                              data={"name": "BPDU guard recovery", "keep_cause": "1",
-                                   "dry_run": "1"}, headers={"HX-Request": "true"})
+                                   "dry_run": "1", "drawn": self._spv.drawn_of(html)},
+                             headers={"HX-Request": "true"})
         assert r.status_code == 200, "floor: the save in Dry run is kept"
         return c
 

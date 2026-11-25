@@ -50,7 +50,7 @@
   <p class="small" role="status" data-saved="action">{{ icon('tick', 14) }} Saved: <a data-fix-page="{{ SV.action.key }}" href="{{ url_for('fixes_v2.fix', key=SV.action.key, list=c.list) }}">{{ SV.action.name }}</a>, in the catalog</p>
 {%- else %}
   <form id="saved-action-{{ c.incident }}" class="small simple-form" data-save="action">
-    <input type="hidden" name="list" value="{{ c.list }}">
+    <input type="hidden" name="list" value="{{ c.list }}"><input type="hidden" name="drawn" value="{{ c.drawn }}">
     <fieldset><legend>Also save it as a reusable action (for every network)</legend>
       <label class="heal-field" for="action-name-{{ c.incident }}">Name<input id="action-name-{{ c.incident }}" name="name" type="text" autocomplete="off" placeholder="Bounce interface"></label>
       <label class="heal-field" for="action-words-{{ c.incident }}">What it does<input id="action-words-{{ c.incident }}" name="words" type="text" autocomplete="off"></label>
@@ -82,7 +82,7 @@
   {%- endif %}
     <p class="small"><strong>{{ c.plan }} ran and passed its own verify.</strong> Save, above, saves it with these choices, its parameters left open. {{ how('plans', compact=True, op='a saved plan') }}</p>
     <form id="saved-script-{{ c.incident }}" class="small simple-form" data-save="script" hx-get="{{ url_for('saved_plans_v2.runs_on', incident=c.incident, list=c.list) }}" hx-trigger="change" hx-target="#runs-on-{{ c.incident }}" hx-swap="outerHTML">
-      <input type="hidden" name="list" value="{{ c.list }}">
+      <input type="hidden" name="list" value="{{ c.list }}"><input type="hidden" name="drawn" value="{{ c.drawn }}">
       <fieldset><legend>It runs on a problem that matches (never an alert's name)</legend>
         <ul class="tl-record">
           <li data-match="condition">condition: {{ c.match.condition }} (always)</li>

@@ -112,7 +112,9 @@ from the same selection the retry below makes. **Customize…** holds the same f
 with **Dry run** as a choice; untick a field of the match, or tick Dry run, and that line is
 redrawn at once for what Save will then send. **Not now** puts the offer off for this incident, saving nothing,
 and the card then says so in one line with **Save this fix…**, which shows the offer again.
-Every saved fix is listed on [Fixes](fixes).
+Save saves what the card drew: if another fix verified on the incident, or its problem's match
+moved, between the card being drawn and your press, nothing is saved, and the card says what
+moved, both sides named, to read again. Every saved fix is listed on [Fixes](fixes).
 
 **When a script fires.** After each self-healing decision that Mercury's own code cannot fix
 (a can't-fix), and again before the AI starts by itself on an incident, every saved script of

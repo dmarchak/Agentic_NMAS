@@ -54,6 +54,8 @@ def _draw(network: str, incident: str, code: int = 200, *, show: bool = False, *
     # offer's: a save reads them again).
     c = {k: got[k] for k in ("state", "why", "plan", "match", "optional", "fills", "rights",
                              "scripts", "unset", "saved", "name", "dismissed", "runs_on")}
+    # What a Save is bound to (C4057): the run, match and fills as drawn, never their values.
+    c["drawn"] = got.get("drawn") or ""
     c.update(preview={"matched": len((got.get("preview") or {}).get("matched") or []),
                       "read": (got.get("preview") or {}).get("read") or 0},
              list=network, incident=incident, shapes=command_policy.provisional(network),
@@ -136,6 +138,9 @@ def save_script(incident):
     o = S.offer(network, incident, **_who())
     if o["state"] != "ready":
         return _draw(network, incident, 409, level="danger", words=f"Not saved: {o['why']}")
+    moved = S.drawn_refusal(o, (form.get("drawn") or "").strip())
+    if moved:
+        return _draw(network, incident, 409, level="danger", words=f"Not saved: {moved}")
     match = S.kept_match(o["match"], lambda k: form.get(f"keep_{k}") == "1")
     try:
         e = S.save_script(network, run_id=o["run"], name=(form.get("name") or "").strip(),
@@ -168,6 +173,9 @@ def save_action(incident):
     o = S.offer(network, incident, **_who())
     if o["state"] != "ready":
         return _draw(network, incident, 409, level="danger", words=f"Not saved: {o['why']}")
+    moved = S.drawn_refusal(o, (form.get("drawn") or "").strip())
+    if moved:
+        return _draw(network, incident, 409, level="danger", words=f"Not saved: {moved}")
     try:
         e = S.save_action(network, run_id=o["run"], name=(form.get("name") or "").strip(),
                           words=(form.get("words") or "").strip(), incident=incident,

@@ -57,7 +57,15 @@ def _get(card):
     return card["client"].get(f"/v2/saved-plans/{INC}/card?list={NET}")
 
 
+def drawn_of(html):
+    """The card's `drawn` field, as its forms send it (C4057)."""
+    m = re.search(r'name="drawn" value="([0-9a-f]*)"', html)
+    return m.group(1) if m else ""
+
+
 def _post(card, what, **data):
+    # As the card's form sends it: bound to the card it drew (C4057), unless the test says.
+    data.setdefault("drawn", drawn_of(_get(card).get_data(as_text=True)))
     return card["client"].post(f"/v2/saved-plans/{INC}/{what}?list={NET}", data=data,
                                headers={"HX-Request": "true"})
 
@@ -90,7 +98,8 @@ class TestTheCard:
         # the ticks kept and the fills the card named.
         url = re.search(r'hx-post="([^"]*save-script[^"]*)"', html).group(1)
         r = card["client"].post(url.replace("&amp;", "&"), headers={"HX-Request": "true"},
-                                data={"name": "BPDU guard recovery", "keep_cause": "1"})
+                                data={"name": "BPDU guard recovery", "keep_cause": "1",
+                                      "drawn": drawn_of(html)})
         assert r.status_code == 200
         e = S.scripts(NET)["fix-bpdu-guard-recovery"]                     # 3a659d6b's key
         assert e["match"] == {"condition": "err_disabled", "cause": "BPDU guard"}
@@ -176,6 +185,23 @@ class TestTheCard:
 
 
 class TestSaving:
+    def test_a_save_is_bound_to_the_card_it_drew(self, card, monkeypatch):
+        """C4057: the form carries what the card drew (`drawn`); a Save pressed after the
+        match moved is refused naming both, and nothing is saved, by either Save."""
+        import dataclasses
+
+        drawn = drawn_of(_get(card).get_data(as_text=True))
+        assert len(drawn) == 16, "floor: the card carries what it drew"
+        moved = dataclasses.replace(BPDU, cause="loopback")
+        monkeypatch.setattr(P, "classify", lambda found: moved)
+        for what, extra in (("save-script", {}), ("save-action", {"words": "x"})):
+            r = _post(card, what, name="BPDU guard recovery", drawn=drawn, **extra)
+            html = _html(r)
+            assert r.status_code == 409, (what, r.status_code)
+            assert f"moved since it was drawn (drawn {drawn}, now " in html, html[:600]
+            assert "cause loopback" in html, html[:600]
+        assert S.scripts(NET) == {} and S.actions(NET) == {}
+
     def test_saved_as_a_script_in_dry_run_then_promoted(self, card):
         """Customize's Dry run (6b91dc45: a plain Save is Automatic): saved, it is board R5's
         one line, "Saved: <name>, Dry run.", with Promote… opening the promote in place."""

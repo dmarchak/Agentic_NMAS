@@ -4596,8 +4596,10 @@ def _saved_plans(client, _lab, _mp):
         # ``fix-``, 3a659d6b).
         body = client.get(f"{base}/card?list=Lab", headers=hx).get_data(as_text=True)
         assert "Save this fix so Mercury handles it automatically?" in body, body[:400]
+        drawn = re.search(r'name="drawn" value="([0-9a-f]*)"', body)
         r = client.post(f"{base}/save-script?list=Lab", headers=hx,
-                        data={"name": "BPDU guard recovery", "keep_cause": "1", "dry_run": "1"})
+                        data={"name": "BPDU guard recovery", "keep_cause": "1", "dry_run": "1",
+                              "drawn": drawn.group(1) if drawn else ""})
         assert "BPDU guard recovery</a>, Dry run." in r.get_data(as_text=True), r.status_code
         r = client.post(f"{base}/promote?list=Lab", headers=hx,
                         data={"key": "fix-bpdu-guard-recovery"})

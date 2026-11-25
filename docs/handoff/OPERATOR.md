@@ -8,6 +8,15 @@ and the next session unblocks the item and moves the entry to Answered.
 
 ## Open
 
+### c4075-smoke
+
+- **Asked (2026-11-25):** your ruling 8 has the deploy's smoke pass `--expect-local-account-off`,
+  but `nmas-deploy` runs its smoke only on a fast-lane deploy, and the fast lane is retired. A
+  `--wait` deploy runs no smoke of its own. **Options:** (a) `--wait` runs the smoke with the
+  flag and reverts on red, as the fast lane did; (b) keep the hand-run check after a deploy.
+  **Recommendation:** (a). It needs your words, because it changes how every deploy ends.
+  File: C4075's row, docs/OPEN_FINDINGS.md.
+
 ### claude-md-0230
 
 - **Asked:** CLAUDE.md is yours (the `claude-no-claude-md-edits` hook refuses the agent's edits), so
