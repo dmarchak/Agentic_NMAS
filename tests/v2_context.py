@@ -3322,8 +3322,19 @@ def _plans(client, _lab, mp):
                                               r.get_data(as_text=True))
     rec = {"state": "running", "title": "Describe the link"}
     mp.setattr(plan_engine, "record_of", lambda *a: dict(rec))
-    r = client.get("/v2/plans/preview", query_string={"run": "run-1", "job": "j-1"})
-    assert "Running the plan" in r.get_data(as_text=True)
+    # The job as `capture_job.start` registers it before it answers (C3651): running here. For
+    # these two requests alone: the walk's later providers run real jobs.
+    from modules.nsot import capture_job
+    real_get = capture_job.get
+    capture_job.get = lambda job: {"state": "running"} if job == "j-1" else real_get(job)
+    try:
+        r = client.get("/v2/plans/preview", query_string={"run": "run-1", "job": "j-1"})
+        assert "Running the plan" in r.get_data(as_text=True)
+        # C3651: a job this server does not know is said, never drawn running for ever.
+        r = client.get("/v2/plans/preview", query_string={"run": "run-1", "job": "j-gone"})
+        assert "Not known to be running:" in r.get_data(as_text=True)
+    finally:
+        capture_job.get = real_get
     rec.update(state="failed", outcome="stopped", why="step 2 did not pass", actor="a.person",
                at="2026-11-14T08:00:00Z", reason="a reason kept", hash="cd" * 8,
                plan_steps=[{"n": 1, "words": "one", "state": "done", "words_said": "ok"},

@@ -49,4 +49,10 @@ tests/v2_context.py's `_plans` draw, not by new shots. Templates sha256 before:
 
 Compared again 2026-11-18 (the skip-mode debt, docs/FAST_LANE_DEBT.md; 93120b2f, "a plan's run is drawn on its incident's card, plain and numbered", and the operator's decision 7 of 2026-11-18): first shots of this page (the debt pass's `debt-plan-preview` and `debt-plan-result` at 1280 and 390, on the heal's lab with tests/v2_context.py's `_plans` preview of two steps planted and a run stopped at step 2 kept as its record), read region by region against this record's verdicts and the board's words. Moved: the page head and lead (the plan's title and its devices), Running and The steps' ends (the incident card's stepper, `_inc_step.html`, where they were on `run_stepper`), and one region added, What each step does; the preview's regions, Refused, Not run, A job with no record, The outcome and The record line stand. The board is words (`board_plan_card.md`), not an artboard, so there is no board shot. In progress reopens a run that is an incident's on its incident's card, not here (`plan_engine.run_page`). Logged (docs/STANDING_APPROVAL_LOG.md, "A plan's own page is titled by its plan and names its devices" and "A plan's run on the incident card's stepper"). Templates sha256 before: `3aab0145aed845b7a87f7c843ac13dd0fc79663749eebfce10463be4ec72af1a`.
 
-Templates sha256: `d63bddda8507cfe12625a33cfcf12557d3ceae7ba507df48bd3b1ff4f05ca0ff`
+Compared again 2026-11-24 (C3651): a run whose record says running and whose job this server
+does not know (never started here, expired, or a restart mid-run) draws "Not known to be
+running: its job … is not known to Mercury now …" in the running state's place, its redraw
+stopped, beside the existing "ended without a record" notice; no element moves; compared by
+the template's diff and tests/test_plan_engine.py, not by new shots; logged once
+(docs/STANDING_APPROVAL_LOG.md, "C3651: a plan whose job is not known"). Templates sha256 before: `d63bddda8507cfe12625a33cfcf12557d3ceae7ba507df48bd3b1ff4f05ca0ff`.
+Templates sha256: `db48627a1b7ac635d498166de8abd21af87aa3352f9bebe1fcfbfd57e796d317`

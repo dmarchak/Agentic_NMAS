@@ -19,13 +19,17 @@
   {%- endfor %}
 </details>{% endif %}
 {%- endmacro -%}
-<div class="heal-prop plan-card" id="plan-card"{% if c.state == 'running' and not c.job_failed %} aria-busy="true" hx-get="{{ url_for('plans_v2.preview', list=c.list, plan=c.plan, params=c.params_json, run=c.run, job=c.job) }}" hx-trigger="nmas:privileged from:body, nmas:device_progress from:body" hx-swap="outerHTML"{% endif %}{% if c.state != 'preview' or c.error %} data-holds-live="review"{% endif %}>
+<div class="heal-prop plan-card" id="plan-card"{% if c.state == 'running' and not c.job_failed and not c.job_unknown %} aria-busy="true" hx-get="{{ url_for('plans_v2.preview', list=c.list, plan=c.plan, params=c.params_json, run=c.run, job=c.job) }}" hx-trigger="nmas:privileged from:body, nmas:device_progress from:body" hx-swap="outerHTML"{% endif %}{% if c.state != 'preview' or c.error %} data-holds-live="review"{% endif %}>
 {%- if c.error %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not run:</strong> {{ c.error }}</p></div>
 {%- endif %}
 {%- if c.state == 'running' %}
   {%- if c.job_failed %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>The plan's job ended without a record:</strong> {{ c.job_failed }}. Read each step's own record on History before anything else.</p></div>
+  {%- elif c.job_unknown %}
+  {#- C3651: the record says running and this server does not know its job: never drawn
+      running for ever. -#}
+  <div class="notice notice-warn set-result" role="status">{{ icon('warn', 16) }}<p><strong>Not known to be running:</strong> {{ c.job_unknown }}. Read each step's own record on History before anything else.</p></div>
   {%- else %}
   <p><strong>Running the plan{% if c.record.title %}: {{ c.record.title }}{% endif %}{% if c.devices %}, on {{ c.devices | join(', ') }}{% endif %}.</strong> Each step runs through its own operation, in order; the first that does not pass stops the plan.</p>
   {%- endif %}

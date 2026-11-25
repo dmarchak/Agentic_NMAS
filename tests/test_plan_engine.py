@@ -522,6 +522,8 @@ class TestTheRunOnTheOneStepper:
         monkeypatch.setattr("modules.nsot.capture_job.start",
                             lambda lst, label, actor, work, **kw: started.append((work, kw))
                             or "j-1")
+        # The job as `capture_job.start` registers it before answering (C3651): running.
+        monkeypatch.setattr("modules.nsot.capture_job.get", lambda job: {"state": "running"})
         kind = E.STEP_KINDS["dhcp-reservation"]
 
         def apply(*a, **k):
@@ -594,6 +596,25 @@ class TestTheCard:
             going = plans_v2.card("Default", {"run": "run-y", "job": "j-y"})
         assert failed["state"] == "running" and "the store broke" in failed["job_failed"]
         assert going["state"] == "running" and going["job_failed"] == ""
+        assert going["job_unknown"] == ""
+
+    def test_a_job_this_server_does_not_know_is_said_never_running_for_ever(self, kea,
+                                                                           monkeypatch):
+        """C3651: a run whose record says running (or has none) and whose job this server does
+        not know (never started here, expired, the server restarted mid-run) is said as not
+        known to be running, and its card stops asking for itself."""
+        import app as A
+        from flask import render_template
+        from routes import plans_v2
+        monkeypatch.setattr("modules.nsot.capture_job.get", lambda job: None)
+        with A.app.test_request_context():
+            c = plans_v2.card("Default", {"run": "run-z", "job": "j-gone"})
+            html = render_template("v2/_plan_card.html", c=c)
+        assert c["state"] == "running" and c["job_failed"] == ""
+        assert c["job_unknown"].startswith("its job j-gone is not known to Mercury now")
+        assert "Not known to be running:" in html and "Running the plan" not in html
+        assert 'aria-busy="true"' not in html and "hx-trigger" not in html.split(
+            'id="plan-card"', 1)[1].split(">", 1)[0], "no redraw asked of a run not known"
 
     def test_a_refusal_is_drawn_through_the_mask(self, kea, monkeypatch):
         """A step's own refusal may quote what its operation read: the card draws it through

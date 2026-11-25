@@ -116,16 +116,23 @@ def card(network: str, args, **answer) -> dict:
             # title, its devices and each step's exact actions (`_run_view`).
             c.update(_run_view(network, rec, c["job"]) if rec and rec.get("plan_steps")
                      else {"steps": [], "devices": [], "actions": []})
-            c["job_failed"] = ""
+            c["job_failed"], c["job_unknown"] = "", ""
             if c["job"]:
                 # The job's own state while the record says running (or there is none yet): a
                 # job that ended without its record's end (it raised before writing it) is said,
-                # never drawn running for ever.
+                # never drawn running for ever; and so is a job this server does not know
+                # (C3651: never started here, expired, or the server restarted mid-run), its
+                # redraw stopped.
                 from modules.nsot import capture_job
-                job = capture_job.get(c["job"]) or {}
+                got = capture_job.get(c["job"])
+                job = got or {}
                 if job.get("state") in ("failed", "done"):
                     c["job_failed"] = redact_text(job.get("error") or job.get("reason") or
                                        f"its job {c['job']} ended, and no record was written")
+                elif got is None:
+                    c["job_unknown"] = (f"its job {c['job']} is not known to Mercury now: it may "
+                                        "have ended in a restart, so whether its steps ran is "
+                                        "not known here")
         else:
             c.update(_run_view(network, rec, ""))
             c.update(state="result", record=_kept(rec),
