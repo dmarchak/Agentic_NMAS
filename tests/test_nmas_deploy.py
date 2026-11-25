@@ -191,8 +191,24 @@ def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh
                     restart_unit=(units or (None, None))[0] or (lambda u: pytest.fail(u)),
                     unit_of=(units or (None, None))[1] or (lambda u: {"MainPID": 0, "start": "",
                                                                       "load": "not-found"}),
-                    store=store, smoke=smoke)
+                    store=store, smoke=smoke if smoke is not None else _green_smoke)
     return code, restarted, calls
+
+
+#: The smoke check a deploy runs after a `--wait` deploy (C4075), green, and what it was asked:
+#: the real check (`scripts/nmas-post-deploy-check`) reads a running app this harness has not.
+SMOKED = []
+
+
+def _green_smoke(repo, target, local_account_off=False):
+    SMOKED.append({"target": target, "local_account_off": local_account_off})
+    return True, "SMOKE OK"
+
+
+def _record(world):
+    """The deploy record's rows (data/deploy_audit.jsonl), as the fast lane's tests read them."""
+    with open(os.path.join(world.host, "data", "deploy_audit.jsonl"), encoding="utf-8") as fh:
+        return [json.loads(line) for line in fh if line.strip()]
 
 
 def _run_entry(sha, conclusion="success", status="completed"):
@@ -308,6 +324,32 @@ class TestTheGate:
         assert out.count("waiting ") == 2, out
         assert "typically 13.5 to 19.5 min" in out and "of at most 2900 s" in out
         assert "waited " in out and "CI passed" in out
+
+    def test_a_wait_deploy_runs_the_smoke_check_expecting_the_local_account_off(
+            self, world, capsys):
+        """C4075 (the operator, 2026-11-25: "a --wait deploy runs the smoke check with
+        --expect-local-account-off and reverts the deploy if it's red"): green, it deploys
+        and the check was asked of the release now running, with the flag."""
+        sha = world.advance({"app.py": "v = 2\n"})
+        SMOKED.clear()
+        code, restarted, _calls = _run(world, {sha: _run_entry(sha)}, wait=True)
+        assert code == 0 and _head(world) == sha and restarted, capsys.readouterr()
+        assert SMOKED == [{"target": sha, "local_account_off": True}], SMOKED
+        assert _record(world)[-1]["smoke"]["ok"] is True
+
+    def test_a_wait_deploy_whose_smoke_is_red_is_reverted(self, world, capsys):
+        """C4075: a red smoke after a `--wait` deploy puts the previous release back, as the
+        fast lane's did, and says so."""
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, restarted, _calls = _run(
+            world, {sha: _run_entry(sha)}, wait=True,
+            smoke=lambda repo, target, local_account_off=False: (
+                False, "SMOKE FAILED: local account: on (setting on)"))
+        err = capsys.readouterr().err
+        assert code == 5 and _head(world) == world.base, err
+        assert len(restarted) == 2, "restarted on the new release, then on the one put back"
+        assert "the smoke check was RED, so it was reverted" in err, err
+        assert _record(world)[-1]["reverted"]["to"] == world.base
 
     def test_wait_stops_at_the_bound_and_says_so(self, world, capsys):
         sha = world.advance({"app.py": "v = 2\n"})

@@ -1414,14 +1414,16 @@ def previous_deployed(repo, head):
     return ""
 
 
-def run_smoke(repo, target):
+def run_smoke(repo, target, local_account_off=False):
     """``(ok, words)``: the checkout's smoke check (`scripts/nmas-post-deploy-check`) on the
     running *target*, in this interpreter, bounded by `SMOKE_BOUND_S`; ok only on its exit 0
-    and its ``SMOKE OK`` line."""
+    and its ``SMOKE OK`` line. *local_account_off* passes `--expect-local-account-off` (a
+    `--wait` deploy's, C4075: the operator, 2026-11-25)."""
     try:
         out = subprocess.run([sys.executable, os.path.join(repo, "scripts",
                                                            "nmas-post-deploy-check"),
-                              target, "--checkout", repo],
+                              target, "--checkout", repo]
+                             + (["--expect-local-account-off"] if local_account_off else []),
                              capture_output=True, text=True, timeout=SMOKE_BOUND_S)
     except subprocess.TimeoutExpired:
         return False, f"the smoke check did not finish within {SMOKE_BOUND_S} s"
@@ -2031,10 +2033,15 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
                      else "")
                   + (f"; kept {', '.join(os.path.basename(d) for d in held)} (a running process "
                      "has it loaded)" if held else "") + ".")
-    if fast and head != target:
+    waited = bool(getattr(args, "wait", False))
+    if (fast or waited) and head != target:
         # "Never on a red smoke" (the operator's fast lane, 2026-11-15): the smoke check runs on
-        # the release now running, and a red one puts the previous release back at once.
-        smoked, said = (smoke or run_smoke)(repo, target)
+        # the release now running, and a red one puts the previous release back at once. A
+        # `--wait` deploy runs it too, with `--expect-local-account-off` (C4075, the operator,
+        # 2026-11-25: "a --wait deploy runs the smoke check with --expect-local-account-off and
+        # reverts the deploy if it's red").
+        smoked, said = ((smoke or run_smoke)(repo, target, local_account_off=True) if waited
+                        else (smoke or run_smoke)(repo, target))
         row["smoke"] = {"ok": smoked, "words": said[-400:]}
         print(said)
         if not smoked:
