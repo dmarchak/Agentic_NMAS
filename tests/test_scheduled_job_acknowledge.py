@@ -136,8 +136,14 @@ class TestAcknowledgingAFailedRun:
         assert rec["until"] in {_iso(before), _iso(after)}
         when = rec["until"]          # the instant, drawn in the viewer's zone (C3290)
         said = f"Acknowledged by {SHOWN} until the next scheduled run ({when}): {WHY}"
-        assert got.get_json()["words"] == (f"Recorded: {said}. If that run has not succeeded "
-                                           "by then, the row comes back by itself.")
+        # C3416: the answer's note is drawn by script as text, so the route says its instant in
+        # the viewer's zone (`routes.v2.times_text`), never the recorded ISO.
+        import app as A
+        from routes import v2
+        with A.app.test_request_context("/attention/acknowledge"):
+            words = v2.times_text(f"Recorded: {said}. If that run has not succeeded by then, "
+                                  "the row comes back by itself.")
+        assert got.get_json()["words"] == words and when not in words, got.get_json()["words"]
         a = _attention()
         assert ROW not in [x["id"] for x in a["rows"] + a["mercury"]]
         (k,) = [x for x in a["acknowledged"] if x["id"] == ROW]

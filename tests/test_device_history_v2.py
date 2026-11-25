@@ -137,9 +137,10 @@ class TestTheTab:
         # + rotation and device_state (C359): a persist and a rotation re-read History; +
         # inventory: a device marked drained or cleared (modules/drained.py); + reveals: a
         # log line of the device revealed (C818); + fault_drills: a fault drill declared on
-        # the device is a History row (C3142).
-        assert keys == ["goldens", "deploy_job", "restarts", "fault_drills", "acknowledgements",
-                        "rotation", "device_state", "inventory", "reveals"]
+        # the device is a History row (C3142); + heal_decisions: a pass's self-healing
+        # decisions are History rows (C2851).
+        assert keys == ["goldens", "heal_decisions", "deploy_job", "restarts", "fault_drills",
+                        "acknowledgements", "rotation", "device_state", "inventory", "reveals"]
 
 
 HEAD = re.compile(r'<div class="hist-head"[^>]*>(.*?)</div>', re.S)

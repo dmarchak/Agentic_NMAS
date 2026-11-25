@@ -839,7 +839,9 @@ class TestTheShippedScripts:
         # reads its job when the probe ends).
         # +1 2026-11-15: ai_step (R5, becced07: an AI investigation's live step, which the
         # Incidents list and an incident's stepper read again).
-        assert len(keys) == 59
+        # +1 2026-11-24: heal_decisions (C2851: History's timelines read again when a pass's
+        # self-healing decisions are recorded).
+        assert len(keys) == 60
         # Diagnose…'s card while its run runs (H16) is the one that listens for `diagnosis`;
         # it reads its job's network and kind, which the shared stand-in above does not carry.
         monkeypatch.setattr(capture_job, "get", lambda job: {
