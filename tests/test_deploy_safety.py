@@ -884,6 +884,25 @@ class TestRollbackIsExemptFromTheDangerousGate:
             "interface GigabitEthernet0/1\n description x\n")
         assert undo == ["interface GigabitEthernet0/1", " no shutdown", "exit"]
 
+    def test_a_bounce_s_undo_leaves_the_port_as_the_before_config_held_it(self):
+        """C4041: a bounce pushes ``shutdown`` then ``no shutdown``; on an err-disabled port the
+        before-config holds neither line, and the undo must end the port up (one ``no
+        shutdown``), never shut; with ``shutdown`` held, the undo restores it."""
+        from modules.nsot.deploy import landed_between, rollback_commands
+        bounce = ["interface GigabitEthernet1/0/5", " shutdown", " no shutdown"]
+        pre = "interface GigabitEthernet1/0/5\n description edge\n"
+        up = ["interface GigabitEthernet1/0/5", " no shutdown", "exit"]
+        assert rollback_commands(bounce, pre) == up, "the capture unread"
+        # The pipeline's own input, the failure-state capture's lines (`landed_between`):
+        # both lines ran (the port up, nothing new) undoes nothing; stopped after the shutdown
+        # (the port shut) undoes it. Never a trailing ` shutdown`.
+        assert rollback_commands(bounce, pre, landed=landed_between(pre, pre)) == []
+        shut = pre + " shutdown\n"
+        assert rollback_commands(bounce, pre, landed=landed_between(pre, shut)) == up
+        assert rollback_commands(
+            bounce, "interface GigabitEthernet1/0/5\n description edge\n shutdown\n") == [
+            "interface GigabitEthernet1/0/5", " shutdown", "exit"]
+
     def test_the_rollback_path_never_calls_the_ci_gate(self):
         import inspect
         from modules.pipeline import _stage_rollback
