@@ -289,6 +289,23 @@ class TestUnmodeledAcknowledgement:
         assert gap["complete"] is False
         assert gap["stale"] == ["b"]
 
+    def test_a_line_held_on_two_ports_is_acknowledged_once(self):
+        """C3828: the acknowledgement is a set, as the gap and the intent editor read it; s2
+        held `spanning-tree portfast edge` on two ports, acknowledged once, and the check
+        refused it while the gap named nothing."""
+        from modules.nsot import intent_edit
+        import yaml
+
+        hv = {"unmodeled": [],
+              "interfaces": [{"name": "Gi0/1", "unmodeled": ["spanning-tree portfast edge"]},
+                             {"name": "Gi0/2", "unmodeled": ["spanning-tree portfast edge"]}]}
+        written = yaml.safe_load(intent_edit.acknowledge(
+            "hostname: s2\n", RA.unmodeled_lines(hv)))["unmodeled_ack"]
+        assert written == {"lines": ["spanning-tree portfast edge"]}, "the editor writes it once"
+        gap = RA.acknowledgement_gap(dict(hv, unmodeled_ack=written))
+        assert gap == {"unacknowledged": [], "stale": [], "complete": True}, gap
+        assert RA.acknowledgement_is_complete(dict(hv, unmodeled_ack=written)) is True
+
     def test_no_unmodelled_needs_no_acknowledgement(self, clean):
         assert RA.acknowledgement_is_complete(clean.host_vars) is True
 

@@ -187,13 +187,16 @@ def acknowledgement_is_complete(host_vars: dict) -> bool:
     Exact equality, not a superset: a newly appearing unmodelled line makes the
     sets differ and the block returns. Acknowledgement is content-bound and
     committed to git, so it is reviewable rather than click-through dismissible.
-    A secret reference's digest is not part of the content (`ack_form`, C2109).
+    A secret reference's digest is not part of the content (`ack_form`, C2109). A SET, as
+    the gap below and the intent editor's acknowledgement (one entry a line) read it: a line
+    the device holds on two ports is acknowledged once (C3828: the lists compared with their
+    counts refused s2 naming no line, and the editor could not write a line twice).
     """
     unmodeled = unmodeled_lines(host_vars)
     if not unmodeled:
         return True
-    return (sorted(ack_form(l) for l in acknowledged_lines(host_vars))
-            == sorted(ack_form(l) for l in unmodeled))
+    return ({ack_form(l) for l in acknowledged_lines(host_vars)}
+            == {ack_form(l) for l in unmodeled})
 
 
 def acknowledgement_gap(host_vars: dict) -> dict:
