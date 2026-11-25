@@ -555,6 +555,18 @@ JOBS = {
         "modules.heal.decide.program", "program_hash in modules.heal.act._apply_decision",
         "modules.pipeline._stage_verify", "modules.pipeline.roll_back_after",
         "modules.heal.steplog.record_act"),
+    # C3829: the control strip's Self-healing switch turned on (`control_v2.heal`, gated
+    # configure, so outside STAGES' confirm and approve population) runs the batch as a job
+    # (`heal.batch.run`): the preview is the line beside the switch, its batch and hash
+    # (`batch.preview`); the press carries that hash and is refused when it moved, unless it is
+    # the switch-on's own "the problems open at the press" (`batch.press`); each restore is THE
+    # heal act, verified and rolled back by the pipeline, each saved script by its own run; the
+    # batch's approval and outcome are its rows in the network's heal decisions
+    # (`batch._record_row`).
+    "heal_batch": Stages(
+        "modules.heal.batch.preview", "hash in modules.heal.batch.press",
+        "modules.pipeline._stage_verify", "modules.pipeline.roll_back_after",
+        "modules.heal.batch._record_row"),
 }
 
 

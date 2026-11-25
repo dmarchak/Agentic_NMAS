@@ -116,8 +116,10 @@ def job_problems(jobs):
 
 
 def test_the_heal_a_job_with_no_route_declares_its_five_stages():
-    """Board H, section 11: the automatic heal has no route, so it is held here, by name."""
-    assert set(S.JOBS) >= {"heal_to_intent"}
+    """Board H, section 11: the automatic heal has no route, so it is held here, by name; and
+    the Self-healing switch's batch (C3829), which changes devices from a configure-gated
+    route, outside the confirm and approve population."""
+    assert set(S.JOBS) >= {"heal_to_intent", "heal_batch"}
     assert job_problems(S.JOBS) == []
 
 
