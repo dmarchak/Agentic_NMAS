@@ -1658,7 +1658,8 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
     # The final SDN lab's laptop kit (the operator, 2026-11-05: "nmas-deploy refuses to run from
     # this installation"): its worktree carries LAB_KIT_MARKER, and nothing is ever deployed
     # from it, whichever checkout it would deploy (lab/sdn-laptop/kit init writes the marker).
-    for where in (os.path.dirname(os.path.dirname(os.path.abspath(__file__))), args.repo):
+    # The checkout is the one a symlinked install (~/bin/nmas-deploy) names (C4076).
+    for where in (os.path.dirname(os.path.dirname(os.path.realpath(__file__))), args.repo):
         if os.path.exists(os.path.join(where, LAB_KIT_MARKER)):
             print(f"nmas-deploy: refused: {os.path.join(where, LAB_KIT_MARKER)} marks the final "
                   "SDN lab's laptop kit, a separate installation nothing is deployed from; "

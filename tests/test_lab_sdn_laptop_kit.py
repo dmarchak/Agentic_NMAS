@@ -1081,6 +1081,33 @@ class TestNmasDeployRefusesTheKit:
         assert code == nd.LOCAL_REFUSED and calls == []
         assert "laptop kit" in capsys.readouterr().err
 
+    def test_run_through_a_symlink_it_reads_the_linked_checkout(self, tmp_path, capsys):
+        """C4076: the documented install is a symlink (`~/bin/nmas-deploy`); the marker is
+        looked for in the checkout the link names, not beside the link."""
+        import shutil
+        kit = tmp_path / "kit"
+        (kit / "scripts").mkdir(parents=True)
+        shutil.copy(os.path.join(ROOT, "scripts", "nmas-deploy"), kit / "scripts" / "nmas-deploy")
+        bin_ = tmp_path / "home" / "bin"
+        bin_.mkdir(parents=True)
+        (bin_ / "nmas-deploy").symlink_to(kit / "scripts" / "nmas-deploy")
+        loader = importlib.machinery.SourceFileLoader("nmas_deploy_linked",
+                                                      str(bin_ / "nmas-deploy"))
+        nd = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+        loader.exec_module(nd)
+        (kit / nd.LAB_KIT_MARKER).write_text("the kit\n")
+        clean = tmp_path / "clean"
+        clean.mkdir()
+        calls = []
+        try:
+            code = nd.main(["--repo", str(clean)], get=lambda *a, **k: calls.append(a),
+                           run=lambda *a, **k: calls.append(a))
+        except RuntimeError as exc:     # past the refusal, it reads the clean folder's git
+            code = f"went past the refusal: {exc}"
+        err = capsys.readouterr().err
+        assert code == nd.LOCAL_REFUSED and calls == [], (code, err)
+        assert str(kit / nd.LAB_KIT_MARKER) in err, err
+
     def test_the_kit_writes_the_marker_nmas_deploy_reads(self):
         nd = _load("nmas_deploy", "scripts/nmas-deploy")
         src = open(os.path.join(ROOT, "lab", "sdn-laptop", "kit"), encoding="utf-8").read()
