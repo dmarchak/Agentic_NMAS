@@ -9449,15 +9449,18 @@ def band_words(ack: dict, judged: dict) -> str:
     and the value it is judged against, when and by whom it was read."""
     from modules.alert_bands import words
 
-    at = (ack.get("at") or "")[11:16]
-    band = (f"Acknowledged by {ack.get('by')}{' at ' + at + ' UTC' if at else ''} within a "
+    # The instants as recorded, ISO UTC (C3416, C3290's rule: Python writes the instant into its
+    # words and the screen draws it in the viewer's zone): the row through the `times` filter,
+    # the acknowledgement's answer through `routes.v2.times_text` before its script draws it.
+    at = ack.get("at") or ""
+    band = (f"Acknowledged by {ack.get('by')}{' at ' + at if at else ''} within a "
             f"band of {words(judged['band'])}, the band that governs")
     if judged["value"] is None:
         return f"{band}; its value now could not be read ({judged.get('why')})"
-    when = (judged.get("value_at") or "")[11:16]
+    when = judged.get("value_at") or ""
     side = "at or under it" if judged["in_band"] else "above it"
     return (f"{band}; its value is {judged['value']:.3g}"
-            + (f" (read by {judged['value_from']} at {when} UTC)" if when else "")
+            + (f" (read by {judged['value_from']} at {when})" if when else "")
             + f", {side}")
 
 

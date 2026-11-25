@@ -127,10 +127,13 @@ class TestAcknowledgingWithinTheBand:
         value["bands"] = G.band_readings(value, prom=_Prom(now=5.0))   # the reader's next run
         (r,), gone, _p = A._without_acknowledged(_rows(value))
         assert gone == []
-        assert re.search(r"Acknowledged by operator@example\.invalid at \d\d:\d\d UTC within a "
+        # C3416: the instants as recorded (ISO UTC), which the row's `times` filter draws in
+        # the viewer's zone; never "HH:MM UTC" written by Python.
+        iso = r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"
+        assert re.search(rf"Acknowledged by operator@example\.invalid at {iso} within a "
                          r"band of 3\.7 \(its 7-day 95th percentile when acknowledged\), the "
-                         r"band that governs; its value is 5 \(read by the reader at \d\d:\d\d "
-                         r"UTC\), above it, so it is shown", r["cause"]), r["cause"]
+                         rf"band that governs; its value is 5 \(read by the reader at {iso}"
+                         r"\), above it, so it is shown", r["cause"]), r["cause"]
 
 
     def test_a_firing_that_began_after_it_is_shown_naming_both_times(self, store, inventory,
@@ -183,6 +186,19 @@ class TestTheStuckAcknowledgeC533:
         assert out["ok"] is True and out["hides_now"] is False
         assert "Recorded." in out["words"] and "3.72" in out["words"] and "4.44" in out["words"]
         assert "above it" in out["words"] and "the band that governs" in out["words"]
+
+    def test_its_note_says_its_times_in_the_viewers_zone(self, monkeypatch):
+        """C3416: the note a script draws as text says each instant in the viewer's zone,
+        naming it (no hover in plain text), never the recorded ISO or "HH:MM UTC"."""
+        from zoneinfo import ZoneInfo
+        import app as appmod
+        from routes import v2
+        monkeypatch.setattr(v2, "viewer_zone", lambda: ZoneInfo("America/Denver"))
+        with appmod.app.test_request_context("/attention/acknowledge"):
+            said = v2.times_text("Recorded. Acknowledged by a at 2026-11-14T18:03:07Z within "
+                                 "a band of 3.7")
+        assert "11:03" in said and "MST" in said, said
+        assert "2026-11-14T18:03:07Z" not in said and "UTC" not in said, said
 
     def test_one_that_hides_its_row_says_nothing_more(self, store, inventory, monkeypatch):
         out, _r = self._ack(monkeypatch, _firing(), _Prom(p95=3.7, now=0.8))

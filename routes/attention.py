@@ -33,6 +33,10 @@ def acknowledge():
               verified=identity.actor_verification(actor),
               disposition=str(data.get("disposition") or ""),
               hours=str(data.get("hours") or ""))
+    # The note's instants in the viewer's zone (C3416): the script draws it as text.
+    if got.get("words"):
+        from routes.v2 import times_text
+        got = dict(got, words=times_text(got["words"]))
     # The row's words quote its source (a device's reason, an authorised line): masked.
     return jsonify(mask_payload(got)), (200 if got["ok"] else 409)
 

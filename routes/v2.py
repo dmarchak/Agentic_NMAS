@@ -261,6 +261,30 @@ INSTANT_IN_WORDS = re.compile(r"(?<![\w:.+-])\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?
                               r"(?:Z|[+-]\d\d:\d\d)(?!\w|:\d)")
 
 
+def times_text(text: str) -> str:
+    """Words a builder wrote, each instant in them as plain words in the viewer's zone
+    (`clock_words`; the time of day when it is today there, else the date and time), for an
+    answer a script draws as text (C3416: an acknowledgement's note, drawn by `x-text`, cannot
+    reach the server's clock). The screen's own words go through `times`, which also keeps
+    the UTC on hover; a script's plain text has no hover, so each instant names its zone."""
+    from datetime import datetime
+
+    raw = str(text or "")
+    tz = viewer_zone()
+
+    def said(m):
+        at = instant(m.group(0))
+        if at is None:
+            return m.group(0)
+        d = datetime.fromtimestamp(at, tz) if tz is not None else datetime.fromtimestamp(
+            at).astimezone()
+        now = datetime.now(tz) if tz is not None else datetime.now().astimezone()
+        got = clock_words(m.group(0), "" if d.date() == now.date() else "date", named=True)
+        return got["words"] if got else m.group(0)
+
+    return INSTANT_IN_WORDS.sub(said, raw)
+
+
 @bp.app_template_filter("times")
 def times(text, clock_mode=None):
     """Words a builder wrote, each instant in them drawn by `_macros.clock` (C3290; the operator,
