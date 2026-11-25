@@ -1442,10 +1442,14 @@ def run(network: str, key: str, values: dict, *, actor: str, actor_verified: str
     if rec["config_change"]:
         try:
             sent = [s for _raw, s in command_policy.shapes(t.commands)]
+            # A person's approved run measures its provisional shapes too, keeping the press
+            # (C3902); an Automatic run (*authority*) ran only approved ones.
+            approval = ({"by": actor, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                         "hash": p["hash"], "run": rec["id"]} if authority is None else None)
             rec["measured_shapes"] = command_policy.record_measurement(
                 network, p["dialect"], sent, device=device, run=rec["id"], outcome=outcome,
                 answer=str(((ctx.push_results or {}).get(ctx.device_ips[0]) or {})
-                           .get("output") or ""))
+                           .get("output") or ""), approval=approval)
         except Exception as exc:                      # noqa: BLE001 (said in the record)
             rec["measured_shapes_error"] = f"{type(exc).__name__}: {exc}"
     return _finish(network, rec, outcome, words, t)

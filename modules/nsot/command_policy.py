@@ -297,11 +297,22 @@ def measurement(network: str, dialect: str, shape: str) -> dict:
     return dict(rec.get("measured") or {})
 
 
+#: How many people's plan approvals a provisional shape keeps, newest last.
+PLAN_APPROVALS_KEPT = 20
+
+
 def record_measurement(network: str, dialect: str, sent_shapes, *, device: str, run: str,
-                       outcome: str, answer: str) -> list:
+                       outcome: str, answer: str, approval: dict = None) -> list:
     """Each of *sent_shapes* on *dialect* with no measurement yet gets this run's: the device,
     the run, when, the outcome and the device's answer (masked, cut). Returns the shapes
-    measured now. A launch shape's record names its source (`G7_SOURCE`)."""
+    measured now. A launch shape's record names its source (`G7_SOURCE`).
+
+    A PROVISIONAL shape is measured only by a run a person approved with its exact lines
+    shown (*approval*: ``{"by", "at", "hash", "run"}``, C3902, the operator, 2026-11-17: "a
+    person approving a plan with its exact commands shown also approves its provisional
+    shapes (one press; the run measures them)"), and keeps that approval among its
+    ``plan_approvals``; it stays provisional, so a saved fix runs it Automatic only once an
+    admin approves the shape (`check` lets only an approved state run)."""
     from modules.redact import redact_text
 
     at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -317,7 +328,14 @@ def record_measurement(network: str, dialect: str, sent_shapes, *, device: str, 
                 rec = doc["shapes"][k] = {"dialect": dialect, "shape": shape,
                                           "state": "measured_list",
                                           "source": MEASURED[dialect][shape]}
-            if rec is None or rec.get("measured") or rec.get("state") == "provisional":
+            if rec is None:
+                continue
+            if rec.get("state") == "provisional":
+                if not approval:
+                    continue
+                rec["plan_approvals"] = (list(rec.get("plan_approvals") or [])
+                                         + [dict(approval)])[-PLAN_APPROVALS_KEPT:]
+            if rec.get("measured"):
                 continue
             rec["measured"] = dict(measured)
             now.append(shape)

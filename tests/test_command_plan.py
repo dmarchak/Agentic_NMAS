@@ -354,6 +354,43 @@ class TestThePolicy:
         m = POL.measurement(NET, "cisco_ios", "interface {interface} > shutdown")
         assert (m["run"], m["device"], m["outcome"]) == ("r1", "s1", "done")
 
+    def test_a_person_s_run_hands_its_press_to_the_measurement(self, lab, monkeypatch):
+        """C3902's wiring: a person's approved run passes its press (who, the plan's hash, the
+        run) to the shapes' measurement, so a provisional shape it sent keeps it."""
+        handed = []
+        real = POL.record_measurement
+
+        def kept(*a, **kw):
+            handed.append(kw.get("approval"))
+            return real(*a, **kw)
+        monkeypatch.setattr(POL, "record_measurement", kept)
+        rec = go(lab)
+        assert rec["outcome"] == "done", rec["why"]
+        (press,) = handed
+        assert (press["by"], press["hash"], press["run"]) == (ACTOR, rec["hash"], rec["id"])
+        assert press["at"].endswith("Z")
+
+    def test_a_person_s_approved_run_measures_a_provisional_shape_and_keeps_its_press(self, lab):
+        """C3902 (the operator, 2026-11-17: "a person approving a plan with its exact commands
+        shown also approves its provisional shapes (one press; the run measures them)"): a
+        provisional shape a person's approved run sent is measured and keeps that approval
+        (who, when, the plan's hash, the run); it stays provisional, so an Automatic run still
+        needs an admin's approval of the shape; a run nobody approved measures nothing."""
+        shape = "interface {interface} > description x"
+        lines = ["interface {interface}", " description x"]
+        POL.propose(NET, "cisco_ios", shape, by="the AI (call c-1)", why="a test")
+        assert POL.record_measurement(NET, "cisco_ios", [shape], device="s1", run="r0",
+                                      outcome="done", answer="ok") == []
+        assert not POL.measurement(NET, "cisco_ios", shape)
+        press = {"by": ACTOR, "at": "2026-11-25T06:00:00Z", "hash": "a1b2c3d4", "run": "r1"}
+        assert POL.record_measurement(NET, "cisco_ios", [shape], device="s1", run="r1",
+                                      outcome="done", answer="ok", approval=press) == [shape]
+        assert POL.measurement(NET, "cisco_ios", shape)["run"] == "r1"
+        rec = POL.read_store(NET)["shapes"][POL.key_of("cisco_ios", shape)]
+        assert rec["state"] == "provisional" and rec["plan_approvals"] == [press], rec
+        got = POL.check("cisco_ios", lines, ("interface",), network=NET)
+        assert not got["ok"] and got["provisional"] == [shape], "Automatic still needs an admin"
+
 
 # ── The parameters against Mercury's model ──────────────────────────────────────────────────
 
