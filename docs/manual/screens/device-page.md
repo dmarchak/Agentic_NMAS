@@ -71,7 +71,8 @@ intent state (the state the Devices list shows for it, from its last measurement
 changed since measured" when its intent, the profile or the template library has moved since),
 whether it is answering, the monitoring profile it inherits, and its checks: **Since last
 capture** (the drift check's), **Intent** (whether its golden matches its intent now), **Reboot-safe** (whether the hourly
-startup check found its startup config carrying its credential), **Credential** (how long since
+startup check found its startup config carrying its credential, or, when a Persist or save read
+startup back after that check's run, what that read-back found, naming both and their times), **Credential** (how long since
 Mercury last rotated it, or "never rotated by Mercury", and when its profile's rotation policy
 next makes it due; see [on a schedule](rotate#scheduled)) and **Alerts**. For a network that
 takes Default's monitoring profile, the profile line does not yet name Default's (a known

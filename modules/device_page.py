@@ -18,6 +18,7 @@ FLEET). The Monitoring tab's dashboards come from the grafana-dashboards
 reader; only its panel queries are asked of Grafana while the page is open.
 """
 
+import datetime
 import logging
 import re
 import time
@@ -522,18 +523,58 @@ def checks(ref, dev: dict) -> list:
         out.append({"name": "Reboot-safe", "state": "unknown", "text": "the hourly startup check has no row for it"})
     else:
         st = srow.get("state")
-        out.append({"name": "Reboot-safe",
-                    "state": {"persisted": "ok", "not_persisted": "danger"}.get(st, "unknown"),
-                    "at": _iso(res.get("at")),
-                    "text": ("its startup config carries its credential" if st == "persisted"
-                             else (srow.get("detail") or st or "unknown") if st == "not_persisted"
-                             else "the hourly check could not read it ("
-                                  + startup_check.brief(srow.get("detail") or st or "unknown")
-                                  + "); it reads it again at the next run")})
+        row = {"name": "Reboot-safe",
+               "state": {"persisted": "ok", "not_persisted": "danger"}.get(st, "unknown"),
+               "at": _iso(res.get("at")),
+               "text": ("its startup config carries its credential" if st == "persisted"
+                        else (srow.get("detail") or st or "unknown") if st == "not_persisted"
+                        else "the hourly check could not read it ("
+                             + startup_check.brief(srow.get("detail") or st or "unknown")
+                             + "); it reads it again at the next run")}
+        out.append(_newer_save(ref, host, row, res.get("at")) or row)
 
     out.append(credential_check(ref.name, dev))
     out.append(alerts_check(host, ip, ref.name))
     return out
+
+
+def _epoch_of(at):
+    """An epoch, or an ISO UTC stamp, as an epoch; None when it is neither."""
+    if isinstance(at, (int, float)):
+        return float(at)
+    try:
+        return datetime.datetime.fromisoformat(str(at).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def _newer_save(ref, host: str, hourly: dict, hourly_at):
+    """The Reboot-safe row from a Persist's (or a save's) own read-back of startup when it is
+    newer than the hourly check's run (C3713: a device's card kept the hourly check's "does not
+    carry" after a Persist read startup back clean), naming both and their times; None
+    when no read-back is newer or it could not verify (the hourly check's answer stands)."""
+    from modules.list_settings import same_network
+    from modules.nsot import credential_rotation as cr
+
+    try:
+        saves = [r for r in cr.rotation_records_as_known()
+                 if r.get("device") == host and r.get("state") in (cr.SAVE_PERSISTED,
+                                                                   cr.SAVE_NOT_PERSISTED)
+                 and (not r.get("list") or same_network(r["list"], ref.name))]
+    except OSError as exc:
+        log.warning("device page: %s's saves could not be read: %s", host, exc)
+        return None
+    newest = max(saves, key=lambda r: _epoch_of(r.get("at")) or 0.0, default=None)
+    then, now = _epoch_of(hourly_at), _epoch_of((newest or {}).get("at"))
+    if newest is None or now is None or (then is not None and now <= then):
+        return None
+    kept = newest["state"] == cr.SAVE_PERSISTED
+    return {"name": "Reboot-safe", "state": "ok" if kept else "danger", "at": _iso(now),
+            "text": (("its startup config carries its credential" if kept else
+                      "its startup config does NOT carry a running credential line")
+                     + f", read back by its save at {_iso(now)}, after the hourly check's run"
+                     + (f" at {hourly['at']}" if hourly.get("at") else "")
+                     + f" (which said: {hourly['text']})")}
 
 
 def credential_check(list_name: str, dev: dict) -> dict:

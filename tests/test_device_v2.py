@@ -363,6 +363,31 @@ class TestOverview:
         assert "the hourly check could not read it" in text
         assert "it reads it again at the next run" in text
         assert "Things you might try" not in text
+    def test_a_save_read_back_after_the_hourly_check_answers_reboot_safe(self, monkeypatch):
+        """C3713: a Persist that read startup back clean after the hourly check's run answers
+        the Reboot-safe row, naming both and their times; an older save, an unverified one or
+        another network's leaves the hourly check's answer."""
+        import types
+        from modules import device_page as DP
+        from modules.nsot import credential_rotation as cr
+        saves = [{"device": "r3", "state": cr.SAVE_PERSISTED, "at": "2026-11-14T12:00:00Z",
+                  "list": "Lab"},
+                 {"device": "r3", "state": cr.SAVE_UNVERIFIED, "at": "2026-11-14T13:00:00Z"},
+                 {"device": "r3", "state": cr.SAVE_NOT_PERSISTED, "at": "2026-11-14T14:00:00Z",
+                  "list": "Another"}]
+        monkeypatch.setattr(cr, "rotation_records_as_known", lambda: saves)
+        ref = types.SimpleNamespace(name="Lab")
+        hourly = {"name": "Reboot-safe", "state": "danger", "at": "2026-11-14T11:06:00Z",
+                  "text": "startup does not carry mercury-ro"}
+        got = DP._newer_save(ref, "r3", hourly, "2026-11-14T11:06:00Z")
+        assert got["state"] == "ok" and got["at"] == "2026-11-14T12:00:00Z", got
+        assert got["text"] == (
+            "its startup config carries its credential, read back by its save at "
+            "2026-11-14T12:00:00Z, after the hourly check's run at 2026-11-14T11:06:00Z "
+            "(which said: startup does not carry mercury-ro)")
+        assert DP._newer_save(ref, "r3", hourly, "2026-11-14T12:30:00Z") is None, "older"
+        assert DP._newer_save(ref, "r1", hourly, "2026-11-14T11:06:00Z") is None
+
     def test_a_firing_alert_is_danger_and_a_stored_freshness_value_is_not_drawn(self, lab):
         _store("freshness", {"lists": {"Lab": {"devices": [{"device": "r3", "verdict": "unapproved"}]}}})
         _store("grafana-alerts", {"instances": [
