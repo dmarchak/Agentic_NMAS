@@ -985,6 +985,21 @@ class TestTheCards:
         assert 'id="ai-bg"' in html and 'id="card-netbox"' not in html, "the AI tab, not another"
         assert "AI and workflow" not in html
 
+    def test_the_assistant_card_s_save_turns_it_on_and_off(self, networks):
+        """docs/FAST_LANE_DEBT.md's "The Assistant behind a setting" (a61bb071) owed "the card's
+        save": the Assistant card's Save, pressed as its page sends it, stores the switch and
+        every page then draws the Assistant as the store says (`installation_settings
+        .assistant_on`); off again, it is refused."""
+        from modules import installation_settings as I
+        from modules.settings_schema import get_setting
+        assert I.assistant_on() is False, "off by default"
+        r, _html = _card_save(networks, "assistant", {"ai_assistant_on": "on"})
+        assert r.status_code == 200, _html[:300]
+        assert get_setting("ai_assistant_on") is True and I.assistant_on() is True
+        r, _html = _card_save(networks, "assistant", {})
+        assert r.status_code == 200 and get_setting("ai_assistant_on") is False
+        assert networks["client"].get("/v2/assistant/panel").status_code == 409
+
     def test_settings_place_names_the_v2_card(self):
         from modules import installation_settings as I
         assert I.settings_place("netbox", "NetBox") == (
