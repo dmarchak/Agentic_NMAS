@@ -136,6 +136,31 @@ closes).
   person must act on that only a second list shows. [Every open incident that needs a person
   (`incident_page.status`'s *needs*) has a Needs attention item: tests/test_incidents_on_needs_attention.py]
 
+## Rules added 2026-11-24 (the week plan's Stage 5 item)
+
+- **A live update never destroys what a person is looking at or doing** (the week plan of
+  2026-11-23: "Auto-refresh never destroys what a person is looking at"; the audit,
+  design/review/REFRESH_AUDIT.md, and its causes C4226 to C4230 and C4223). A region redrawn on
+  an announcement is merged into what is on the page (`mergeInto` in static/js/nmas_v2.js),
+  never replaced, and the merge keeps: text typed and not sent; a tick, a radio or an option a
+  person changed (C4229); an open entry, by its `data-keep` key; the focus; the control under
+  the pointer, where it is, until the pointer leaves it, when it draws the server's last words
+  with no request (C2841, C4223); a press's answer until it is seen (C4228); the reader's
+  place, a new row that would land above the window held behind "N new, show them"; a chart's
+  zoom when its poll brings nothing new. A person's own press that swaps a whole region keeps
+  the work in the region's other cards and draws its own unit whole from its answer (C4226). A
+  part kept while it was worked in is drawn from the server's answer once it is released
+  (C4230). A new `<details>` in a live region carries `data-keep`; a new component carrying a
+  person's state is merged in place, never started again while it holds their work. Cost: a
+  page script that remembers each region's last answer, and a real-browser test per kept kind.
+  Prevents: a redraw nobody asked for clearing a tick, closing an entry, moving a row under the
+  pointer, or removing the answer a person just asked for. [the merge and each kept kind:
+  tests/test_live_merge.py; C2841's Right pressed as a later decision lands:
+  tests/test_live_marks.py; every live `<details>` keyed: tests/test_live_details_keep.py; a
+  press's answer through its region's redraw: tests/test_live_merge.py
+  (`TestAPressAnswerIsKeptUntilSeen`, `TestAPressInOneCardKeepsAnother`); inner scrolling
+  panels and a modal's own state outside the merge: not mechanised]
+
 ## Proposed by the GUI review of the recorded screens (2026-11-13)
 
 The review of the screens the course lab's video records (Needs attention, the incident page,
