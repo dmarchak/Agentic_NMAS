@@ -166,8 +166,8 @@ DEFAULTS: dict = {
     # Settings › AI turns on, per network, after its estimate (CLAUDE.md, "AI cost safety";
     # `background.FEATURES`). Manual reproduces every release before it: nothing calls the
     # model for an incident without a person. The per-incident cap is the operator's figure
-    # ($1.00): what the incident's AI calls cost so far plus the next attempt's worst case,
-    # against it; a positive amount, never "no cap". An admin's to change; Mercury never raises
+    # ($1.00): what the incident's AI calls cost so far plus what the next attempt's least
+    # call costs (no worst case, the operator, 2026-11-16), against it; a positive amount, never "no cap". An admin's to change; Mercury never raises
     # it. Neither is drawn yet (the incident page's AI troubleshooting section draws them).
     "ai_troubleshoot_mode":     "manual",
     "ai_cap_usd_per_incident":  1.00,

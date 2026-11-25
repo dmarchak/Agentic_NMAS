@@ -5255,3 +5255,18 @@ limits the record does not hold. One control by hand, in an `nmas-control` workt
 | canary | the limits check switched off (`if limits is not None:` made `if False:`) | **died**: `DID NOT RAISE Refused` |
 
 **The result: the canary died.**
+
+## 2026-11-25: the per-incident cap's refusals name the next call's cost (C3977), by hand
+
+**The change.** Words only, in the AI cost tier: `fixit.policy.cap_state`'s two error
+refusals said "the next attempt's worst case", though every caller passes the least one call
+costs (`fixit_troubleshoot.start_usd`, the operator, 2026-11-16: "no worst case"), which its
+over-cap refusal already named; both now say "the $X the next attempt's least call costs", and
+the module's and the settings schema's comments say the same. What is compared and refused is
+unchanged. One control by hand, tests/test_fixit_cap.py in an `nmas-control` worktree:
+
+| # | Mutant | Result |
+|---|---|---|
+| canary | one refusal's old "worst case" words put back | **died**: 6 tests (the stored-cap refusals) |
+
+**The result: the canary died.**

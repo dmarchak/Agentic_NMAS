@@ -189,15 +189,16 @@ class TestTheCapRefuses:
         assert (got["state"], got["cap"]) == ("refused", None)
         assert got["words"] == (
             f"Retry isn't available: the per-incident AI cap holds {raw!r}, and it is a "
-            "positive amount of US dollars: this cap has no \"no cap\", so the next attempt's "
-            "worst case of $0.01 cannot be compared with it")
+            "positive amount of US dollars: this cap has no \"no cap\", so the $0.01 the next "
+            "attempt's least call costs cannot be compared with it")
 
     @pytest.mark.parametrize("worst", [0, -0.25, None, "0.25", True, float("nan")])
     def test_a_worst_case_that_is_no_positive_amount_refuses(self, lab, worst):  # noqa: F811
         got = P.cap_state(inc(), worst)
         assert got["state"] == "refused" and got["worst"] is None
         assert got["words"].startswith(
-            f"Retry isn't available: the next attempt's worst case was given as {worst!r}")
+            "Retry isn't available: what the next attempt's least call costs was given as "
+            f"{worst!r}")
 
     def test_an_unreadable_record_of_calls_refuses_never_reads_as_nothing_spent(self, lab):  # noqa
         import os
@@ -211,8 +212,9 @@ class TestTheCapRefuses:
                                        "cost is not known (the record of AI calls could not "
                                        "be read (IsADirectoryError: ")
         # Premise corrected (C3873, 7d54cf24): the cap named with its source and where.
-        assert got["words"].endswith("so spent plus the next attempt's worst case of $0.01 "
-                                     f"cannot be compared with the cap of $1.00, {WHERE}")
+        # C3977: the next call's cost by its own name, every caller's `start_usd`.
+        assert got["words"].endswith("so spent plus the $0.01 the next attempt's least call "
+                                     f"costs cannot be compared with the cap of $1.00, {WHERE}")
 
     def test_a_call_the_record_does_not_hold_refuses(self, lab):  # noqa: F811
         a_call(CALL_A, 0.05)

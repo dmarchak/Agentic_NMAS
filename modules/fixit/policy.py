@@ -24,9 +24,10 @@ read is said and allows nothing (`ai_refusal`).
 **The cap** (the incident's network's own per-incident limit, C3769, else the installation's
 `ai_cap_usd_per_incident`, the operator's $1.00; `cap_usd`, `cap_state`, `cap_refusal`): what
 the incident's AI calls cost so far (`incident.cost_so_far`, summed from the record of AI calls
-by the ids the incident's proposals name, each time) plus the next attempt's worst case, against
+by the ids the incident's proposals name, each time) plus what the next attempt's least call
+costs (`fixit_troubleshoot.start_usd`; no worst case, the operator, 2026-11-16), against
 the cap, as the gateway's day cap compares a call (`gateway.day_cap`, `controls.cap_state`).
-Over it is refused, the words naming the spent amount, the worst case, their sum and the cap.
+Over it is refused, the words naming the spent amount, that call's cost, their sum and the cap.
 At it exactly is allowed: a cap is reached, not passed. **No "no cap"** (the fix-it plan's
 decision 1): a cap that is not a positive amount (a hand-edited null, zero, text) refuses, and
 so does a cost that cannot be read or is partial: a sum not known is never compared as if it
@@ -50,7 +51,7 @@ DEFAULT_MODE = "manual"
 MODE_WORDS = {"manual": "Manual", "off": "Off"}
 #: The operator's figure (2026-11-12): $1.00 an incident.
 DEFAULT_CAP_USD = 1.00
-#: How finely spent and worst case are compared: a millionth of a dollar, so a float's
+#: How finely spent and the next call's cost are compared: a millionth of a dollar, so a float's
 #: rounding never moves a sum that equals the cap past it.
 PRECISION = 6
 
@@ -224,9 +225,10 @@ def cap_overrides() -> list:
 
 
 def cap_state(incident, worst_usd) -> dict:
-    """The comparison the cap makes for *incident*'s next attempt, whose worst case is
-    *worst_usd* (US dollars, a positive amount: the next call's per-call cap from its pin,
-    times its calls): ``{"state": "allowed"|"refused", "spent", "worst", "total", "cap",
+    """The comparison the cap makes for *incident*'s next attempt, whose least call costs
+    *worst_usd* (US dollars, a positive amount: `fixit_troubleshoot.start_usd`, every caller's,
+    the operator, 2026-11-16: "no worst case", the gateway sizing each call against the caps;
+    C3977): ``{"state": "allowed"|"refused", "spent", "worst", "total", "cap",
     "words"}``, *spent* None when it is not known. Reads the settings and the incident's
     records; asks nothing else."""
     from modules.fixit import incident as F
@@ -235,17 +237,17 @@ def cap_state(incident, worst_usd) -> dict:
            "words": ""}
     if (isinstance(worst_usd, bool) or not isinstance(worst_usd, (int, float))
             or not math.isfinite(worst_usd) or worst_usd <= 0):
-        out["words"] = (f"Retry isn't available: the next attempt's worst case was given as "
-                        f"{worst_usd!r}, and it is a positive amount of US dollars, so it "
-                        "cannot be compared with this incident's cap")
+        out["words"] = (f"Retry isn't available: what the next attempt's least call costs "
+                        f"was given as {worst_usd!r}, and it is a positive amount of US "
+                        "dollars, so it cannot be compared with this incident's cap")
         return out
     worst = float(worst_usd)
     out["worst"] = worst
     # The incident's own network's limit (C3769), else the installation's.
     cap = cap_usd(getattr(incident, "network", None))
     if cap["state"] != "ok":
-        out["words"] = (f"Retry isn't available: {cap['error']}, so the next attempt's worst "
-                        f"case of {money(worst)} cannot be compared with it")
+        out["words"] = (f"Retry isn't available: {cap['error']}, so the {money(worst)} the "
+                        "next attempt's least call costs cannot be compared with it")
         return out
     out["cap"] = cap["usd"]
     # C3873: the cap named with its source and where it is changed.
@@ -254,8 +256,8 @@ def cap_state(incident, worst_usd) -> dict:
     cost = F.cost_so_far(incident)
     if cost["state"] != "ok":
         out["words"] = (f"Retry isn't available: what this incident's AI calls cost is not "
-                        f"known ({cost['error']}), so spent plus the next attempt's worst case "
-                        f"of {money(worst)} cannot be compared with the cap of {said}")
+                        f"known ({cost['error']}), so spent plus the {money(worst)} the next "
+                        f"attempt's least call costs cannot be compared with the cap of {said}")
         return out
     spent = float(cost["usd"])
     total = round(spent + worst, PRECISION)
@@ -271,8 +273,8 @@ def cap_state(incident, worst_usd) -> dict:
 
 
 def cap_refusal(incident, worst_usd) -> str:
-    """Why *incident*'s next attempt, whose worst case is *worst_usd*, is refused by the
-    per-incident cap, naming spent, the worst case, their sum and the cap; or ``""``
+    """Why *incident*'s next attempt, whose least call costs *worst_usd*, is refused by the
+    per-incident cap, naming spent, that call's cost, their sum and the cap; or ``""``
     (`cap_state`). A refusal is logged; the caller records it with the press it refused."""
     got = cap_state(incident, worst_usd)
     if got["state"] == "allowed":
