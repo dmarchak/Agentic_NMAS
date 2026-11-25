@@ -130,9 +130,14 @@ class TestRunWithNoOpenIncident:
                 b.wait_for("return !!window.htmx && !!document.querySelector("
                            "'button[hx-get*=\"/run\"][data-op=\"plans\"]')")
                 b.click('button[hx-get*="/run"][data-op="plans"]')
+                # Settled and bound: CI #2210 pressed the swapped-in link before htmx had
+                # processed it, and the press did nothing for 10 s.
                 b.wait_for("var c = document.getElementById('fix-run');"
+                           " var p = c && c.querySelector('button[data-op=\"fix-run-port\"]');"
                            " return c && c.getAttribute('data-run-state') === 'none'"
-                           " && !document.querySelector('.htmx-request')")
+                           " && !!(p && p['htmx-internal-data'])"
+                           " && !document.querySelector('.htmx-swapping, .htmx-settling,"
+                           " .htmx-request')")
                 got = b.js("var c = document.getElementById('fix-run');"
                            " return {text: c.innerText, dev: !!c.querySelector('#fix-run-dev'),"
                            " run: !!c.querySelector('button.btn-primary')}")

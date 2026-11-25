@@ -157,8 +157,13 @@ class TestThePreviewIsAJob:
         # The in-flight panel lists it while it runs (C99's standing rule).
         panel = lab["client"].get("/operations/in_flight").get_json()
         assert panel["ok"], panel
-        rows = [x for x in panel["running"] if x["operation"] == "capture preview"]
-        assert rows and rows[0]["device"] == "Lab: 1 device(s)", panel["running"]
+        # Premise corrected (C3601, ba6efafa): one device's capture is that device's page's
+        # card, so the panel lists it by the device and its card, the page that reopens it.
+        rows = [x for x in panel["running"] if x["operation"] == "capture"]
+        assert rows and (rows[0]["device"], rows[0]["card"]) == ("r2", "capture"), \
+            panel["running"]
+        assert rows[0]["text"] == "r2 is being captured by test-person: reading 1 device(s) " \
+                                  "at once", rows[0]
         gate.set()
         assert capture_job.wait(d["job"], 30)
         done = capture_core.result(d['job'])
