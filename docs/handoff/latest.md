@@ -26,12 +26,17 @@
     - Gate 2's limits guard given back its test, shown red with the guard off (4d623a2e);
     - the cap's refusals name the next call's cost, not a worst case, with a canary
       (c8feebef);
-    - a failed AI start leads its incident's Incidents row (e1d65f16).
+    - a failed AI start leads its incident's Incidents row (e1d65f16);
+    - In progress names a run's declared step mid-apply (8ea80209). The same commit fixed a
+      red I caused: tests/test_job_stepper.py's scan depended on the folder's order, and
+      94443c71 made it fail in this checkout's order.
   - C2611 narrowed (abaf4b45).
-  - C3977's stepper part (`record` drawn skipped before it ran) looks covered by C3988's rule
-    (a step after the one the run is on draws as waiting). Not measured, so it stays on the
-    row: a plan run mid-apply, read on its stepper, settles it.
-- **Register:** 2,031 open (A 9, B 453, UNKNOWN 284, C 1,285), counted at 07:57 UTC.
+  - C3977's last part (`record` drawn skipped before it ran) is not reproduced from the
+    declared steps: mid-run, the plan engine's and a command plan's `record` draw waiting
+    (measured 08:27 UTC, on the row). The fix-it agent's own run record would settle it.
+- **Register:** 2,031 open (A 9, B 453, UNKNOWN 284, C 1,285), counted at 07:57 UTC. Open A
+  and B rows blocking Phase 8: 56, under rule 4's cap of 60 (3 of them tagged Lab 9 or Lab 10:
+  blocks), counted 08:27 UTC.
 - **Waiting on the operator (OPERATOR.md):**
   - c4090-records and c4090-confirms: the last red.
   - c4075-smoke (new): should `--wait` deploys run the smoke check with the local-account
