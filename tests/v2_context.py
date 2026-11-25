@@ -5760,6 +5760,17 @@ def _fixit_section(client, _lab, _mp):
                                                     state="proposed"))
         refused = client.get(page).get_data(as_text=True)
         assert "The refused plan" in refused and "d" * 16 in refused, refused[:400]
+        # C3919: a step repeating a failed attempt passes with its risk (the person decides);
+        # the record keeps the repeat's parameter hash under The plan's repeats.
+        repeating = dict(planted_plan, steps=[dict(
+            planted_plan["steps"][0],
+            preflight={"ok": True, "refused": "",
+                       "risk": "it already failed on this incident as attempt 1"},
+            repeat={"attempt": 1, "params_hash": "e" * 16})])
+        mp.setattr(FS, "view", lambda *a, **k: dict(real_view(*a, **k), proposal=repeating,
+                                                    state="proposed"))
+        again_risk = client.get(page).get_data(as_text=True)
+        assert "The plan's repeats" in again_risk and "e" * 16 in again_risk, again_risk[:400]
         mp.setattr(FS, "view", real_view)
         # A hand-over to a team whose relay refuses: kept, Send again offered; then its page.
         r = client.post(f"/v2/incident/{iid}/fixit/handover?list=Lab", headers=hx,
