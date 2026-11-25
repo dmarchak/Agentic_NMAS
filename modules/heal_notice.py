@@ -156,6 +156,10 @@ ACTION_EVENTS = {
               "unverified": "cant_fix", "rejected": "cant_fix", "refused": "cant_fix"},
     "dampening": {"rolled_back": "cant_fix", "unverified": "cant_fix", "failed": "halted",
                   "refused": "cant_fix"},
+    # C2443: a heal to intent's own act (its kind a fix kind, no action family): told only as
+    # its success, when automatic, under "every automatic heal"; its other ends stand on its
+    # incident, whose can't-fix is told by `run` (`due`).
+    "heal": {},
 }
 #: An action end's notice's steps, in order (`run_actions`), for the manual's How it works page.
 ACTION_STEPS = (("due", "Find each action that ended in the last 10 minutes and is to be told: "
@@ -165,7 +169,8 @@ ACTION_STEPS = (("due", "Find each action that ended in the last 10 minutes and 
                          "its item's own words, on its incident's thread"))
 #: The outcomes that are each family's success: no Needs attention row, and told only when
 #: automatic.
-ACTION_DONE = {"bounce": "bounced", "clear": "cleared", "dampening": "dampened"}
+ACTION_DONE = {"bounce": "bounced", "clear": "cleared", "dampening": "dampened",
+               "heal": "healed"}
 #: The Who is told choice an event is sent under when it is not its own (`heal_notify.CHOICES`'
 #: events, as each network saved them): an automatic action that worked is "every automatic
 #: heal"'s, so a team that chose it is told without saving its choices again.
@@ -179,7 +184,7 @@ def action_todo(kind: str, outcome: str, host: str, *, interface: str = "", peer
     carries: one sentence, so the row and the message never say different things."""
     from modules.heal import steplog
 
-    fam = steplog.ACTION_FAMILY.get(kind or "", "")
+    fam = steplog.ACTION_FAMILY.get(kind or "", "") or "heal"
     if outcome == ACTION_DONE.get(fam):
         return f"nothing: read the steps on {host}'s History if you want them"
     if fam == "bounce":
@@ -219,9 +224,11 @@ def actions_due(network: str, now: float = None) -> list:
     decided = {r.get("decision"): r for r in got["rows"] if r.get("row") == "decision"}
     out = []
     for r in got["rows"]:
-        fam = steplog.ACTION_FAMILY.get(r.get("kind") or "", "")
-        if r.get("row") != "act" or not fam or not r.get("decision") or not r.get("incident"):
+        if r.get("row") != "act" or not r.get("decision") or not r.get("incident"):
             continue
+        # A heal to intent's act is the "heal" family (C2443): only its success is told here
+        # (`ACTION_EVENTS["heal"]` maps no other end).
+        fam = steplog.ACTION_FAMILY.get(r.get("kind") or "", "") or "heal"
         if r["decision"] in told or now - float(r.get("epoch") or 0) > NEW_WITHIN_S:
             continue
         d = decided.get(r["decision"]) or {}

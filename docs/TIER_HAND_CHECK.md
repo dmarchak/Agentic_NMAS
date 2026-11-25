@@ -5042,3 +5042,31 @@ changes only an amount in a sentence a person reads after the decision is made (
 a record's detail), which no test asserts; the decisions themselves are unchanged and their tests
 pass. They are registered, not worked (the mutation rule: only a verdict survivor is chased):
 C4249, the tests that would assert those sentences' amounts.
+
+## 2026-11-24: a heal to intent's automatic success told off the host (C2443), by hand
+
+**The change.** Data off the host: `modules/heal_notice.py` tells a heal to intent's own act
+(its kind a fix kind, no action family) as the "heal" family of the action ends: its success,
+when automatic (its decision's outcome `heal`), is told as an action's is, under "every
+automatic heal" (`actions_due`, `ACTION_EVENTS["heal"]`, `ACTION_DONE["heal"]`), What to do
+"nothing" (`action_todo`); its other ends are not told here, since they stand on its incident,
+whose can't-fix the can't-fix runner tells. The message is the action ends' own
+(`action_facts`): the decision's program withheld from its words and from every step's, as
+before.
+
+**The method.** Each mutant applied alone in a throwaway worktree (`scripts/nmas-control`, one
+per run, the script `c2443_hand.sh` in the session's scratch folder), its text checked present,
+then tests/test_heal_action_records.py's notices (`-k 'heal_to_intent or each_end_is_told or
+persons_approved'`, 8 tests) run.
+
+| # | Mutant | Result |
+|---|---|---|
+| canary | the decision's words sent without `EP.withhold` | **died**: `test_an_automatic_heal_to_intent_that_healed_is_told_and_its_other_ends_are_not` (its configuration line in the message) |
+| 1 | a heal act given no family in `actions_due` | **died**: the same (a heal act is no action end) |
+| 2 | a heal's success named otherwise (`ACTION_DONE["heal"]`) | **died**: the same (nothing told) |
+| 3 | `action_todo` giving a heal no family | **died**: the same (What to do not "nothing") |
+| 4 | a heal's rolled-back end told as a can't-fix (`ACTION_EVENTS["heal"]`) | **died**: the same (told twice over: here and as its incident's can't-fix) |
+
+**The result: the canary and every mutant died.** A first build kept a filter in `actions_due`
+skipping a heal's other ends; its mutant survived, equivalent to the empty map, so the filter
+was taken out and the map is the one place that says which ends are told.

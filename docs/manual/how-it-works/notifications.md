@@ -87,8 +87,10 @@ reads the analysis or the notice: they are for a person.
 
 Self-healing's actions (a port bounce, an OSPF adjacency reset, a BGP session clear and an
 approved dampening change; [Self-healing](heal#actions)) each end in their own job, often minutes
-after the can't-fix that led to them was told. Each end is told once, on that incident's thread,
-so it arrives under the first message:
+after the can't-fix that led to them was told. A heal to intent that put a device back by itself
+(automatic, healed and verified) is told the same way, under **every automatic heal**; any other
+end of a heal to intent stands on its incident, whose can't-fix is told. Each end is told once,
+on that incident's thread, so it arrives under the first message:
 
 1. `due`: the notifier finds each action that ended in the last 10 minutes and is to be told:
    every end a person must look at, and an end that worked only when it was automatic (an

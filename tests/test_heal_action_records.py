@@ -313,6 +313,35 @@ class TestTheNotices:
         assert not [w for w in whats if "shutdown" in w], whats
         assert any("withheld" in w for w in whats), whats
 
+    def test_an_automatic_heal_to_intent_that_healed_is_told_and_its_other_ends_are_not(
+            self, networks):
+        """C2443's remainder: a heal to intent's own act (its kind a fix kind, no action family)
+        was never told, so a team that chose "every automatic heal" heard nothing of one. Its
+        success, when automatic, is told as an action's is, under that choice, What to do
+        "nothing"; a person's approved one is theirs, and its other ends stand on its incident
+        (a can't-fix is told by the can't-fix runner), so none of them is told here."""
+        from modules.notify import message
+        heal = dict(bounce_decision(did="hd-7", incident="hi-7", kind="missing_line"),
+                    action={}, program=["logging host 192.0.2.10"],
+                    words="heal now: put back logging host 192.0.2.10 on r3")
+        write(heal, act_result("healed"))
+        write(dict(heal, id="hd-8", incident="hi-8", outcome="propose"), act_result("healed"))
+        write(dict(heal, id="hd-9", incident="hi-9"), act_result("rolled_back"))
+        write(dict(heal, id="hd-10", incident="hi-10"), act_result("refused", sent=False))
+        due = N().actions_due(NET, now=T0 + 30)
+        assert [(d["act"]["decision"], d["event"], d["family"]) for d in due] == [
+            ("hd-7", "action", "heal")], due
+        events = []
+        got = N().run(NET, now=T0 + 30, action_starter=inline(events),
+                      starter=lambda *a, **k: None)
+        assert got["told"] == ["hd-7"]
+        (ev,) = events
+        assert ev["event"] == "action" and ev["incident"] == "hi-7"
+        assert ev["todo"].startswith("nothing: read the steps on r3's History")
+        # Its configuration line stays on the host, as an action's and a can't-fix's do.
+        assert "logging host" not in ev["detected"] and "withheld" in ev["detected"], ev
+        message.check_event(ev)
+
     def test_a_persons_approved_success_and_the_past_are_not_told(self, networks):
         write(clear_decision(outcome="propose"), act_result("cleared"))
         write(bounce_decision(did="hd-5", incident="hi-5"), act_result("failed"),
