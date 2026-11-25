@@ -306,7 +306,14 @@ def test_a_joined_press_gets_exactly_what_the_press_it_joined_got(world, app, ou
     else:
         assert first["cost_usd"] > 0
     assert first["recorded"] is True
-    assert again == dict(first, joined=first["call_id"])
+    # C4250: each call's ``laps`` are its own measured times (`gateway.ask` adds them on every
+    # path, a join's too), so they are no part of what the press got: compared, they failed
+    # whenever the first call took 0.05 s or more (CI #2190, send_s 0.1 against the join's 0.0).
+    # Everything else is the press's own, exactly.
+    def bare(r):
+        return {k: v for k, v in r.items() if k != "laps"}
+    assert bare(again) == dict(bare(first), joined=first["call_id"])
+    assert set(again["laps"]) == set(first["laps"]) == {"prepare_s", "count_s", "send_s"}
 
 
 def test_a_key_of_another_shape_is_no_key(world, app):
