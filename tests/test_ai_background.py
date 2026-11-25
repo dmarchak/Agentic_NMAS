@@ -547,3 +547,12 @@ def test_the_month_caps_refusal_names_this_month(bg):
     assert ("it stops until the month ends or an admin raises the cap in Settings › AI"
             in got["detail"]), got["detail"]
     assert calls.read()["rows"][0]["cap_kind"] == "month"
+
+
+def test_the_turn_on_steps_name_no_tick_the_screen_does_not_draw():
+    """C4253: Automatic starts on the open incidents its line counts, read-only, so no step of
+    turning it on says incidents are ticked or left unticked."""
+    from modules.ai.settings_view import TURN_ON_STEPS
+
+    said = [w for _, w in TURN_ON_STEPS if "tick" in w.replace("acceptance ticked", "")]
+    assert said == [], said

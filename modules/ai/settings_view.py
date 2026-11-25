@@ -39,8 +39,8 @@ TURN_ON_STEPS = (("estimate", "the estimate is shown, labelled, with its digest"
                  ("compare", "the estimate measured again and compared with the one shown"),
                  ("write", "the switch written with who, when, the estimate and the caps"),
                  ("record", "the decision recorded in the installation's settings record, "
-                            "with the open incidents ticked and left unticked"),
-                 ("catch_up", "for automatic AI troubleshooting, each ticked open incident "
+                            "with the open incidents it starts on"),
+                 ("catch_up", "for automatic AI troubleshooting, each open incident listed "
                               "started once, as its own job, within the caps"))
 
 

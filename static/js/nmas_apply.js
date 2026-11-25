@@ -553,48 +553,6 @@
         get detail() { return coverageWords(this.names, this.missing).detail; }
       };
     });
-    /* Turn on… for automatic AI troubleshooting (C3732): each open incident ticked by default,
-       the line above them the ticked count and the sum of their estimates (`data-usd`), redrawn
-       as a tick changes; and how many fit under each cap (C3745), redrawn as a tick or a cap
-       typed in the form changes (the form's own input events). The form sends the ticked ids
-       itself (`start`); nothing is posted here. */
-    root.Alpine.data('catchUpSelect', function () {
-      function num(v) { return v === 'none' ? null : parseFloat(v); }
-      return {
-        n: 0, total: 0, fit: '', room: '',
-        init: function () {
-          var self = this, form = this.$root.closest('form');
-          if (form) form.addEventListener('input', function () { self.recount(); });
-          this.recount();
-        },
-        recount: function () {
-          var all = this.$root.querySelectorAll('input[name=start]'), n = 0, total = 0, oks = [];
-          for (var i = 0; i < all.length; i++) {
-            if (!all[i].checked) continue;
-            n += 1;
-            total += parseFloat(all[i].getAttribute('data-usd')) || 0;
-            oks.push(all[i].getAttribute('data-cap-ok') === '1');
-          }
-          this.n = n;
-          this.total = total;
-          var el = this.$root, form = el.closest('form');
-          var typed = function (name) {
-            var f = form && form.querySelector('input[name=' + name + ']');
-            return f ? f.value : '';
-          };
-          var worst = parseFloat(el.getAttribute('data-least'));
-          var rooms = [['day', num(el.getAttribute('data-day-room'))],
-                       ['feature_day', typedRoom(typed('day_cap_usd'),
-                                                 num(el.getAttribute('data-feature-day-spent')))],
-                       ['feature_month', typedRoom(typed('month_cap_usd'),
-                                                   num(el.getAttribute('data-feature-month-spent')))]];
-          var fit = catchUpFit(oks, worst, rooms);
-          this.fit = catchUpFitWords(fit, n);
-          this.room = catchUpRoomWords(fit, rooms, worst);
-        },
-        get summary() { return catchUpWords(this.n, this.total); }
-      };
-    });
     root.Alpine.data('ipslaPost', function () {
       return {
         busy: false, error: '',

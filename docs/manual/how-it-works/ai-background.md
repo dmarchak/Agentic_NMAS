@@ -51,20 +51,19 @@ nothing to measure).
    Sent: nothing. Recorded: who, how that was established, when, the network, the feature, the
    estimate shown and the caps. **History** draws it under the kind **Installation
    settings**. If the record could not be written the section says so; the switch is on
-   either way. For automatic AI troubleshooting the record also holds the open incidents
-   listed at Turn on…, which you ticked and which you left unticked, and the estimate shown
-   for each.
+   either way. For automatic AI troubleshooting the record also holds the open incidents it
+   starts on and the estimate shown for each.
 6. `catch_up`: for **Start AI troubleshooting automatically when Mercury's fix fails** only,
-   each open incident you ticked is listed again (one resolved or started since is skipped,
-   said) and taken once under its failure's own key, so the automatic start never takes it
+   each open incident the switch's line counted is listed again (one resolved or started
+   since is skipped, said) and taken once under its failure's own key, so the automatic start never takes it
    again; then, within the AI troubleshooting mode, hosted AI, its incident's AI cap, this
    feature's day and month caps (the ones you just typed) and the day cap, every start counted
    against each cap before any starts, its investigation starts as its own
    job under **In progress**, its calls in your name. Read: the step log, the incidents and
    each incident's troubleshooting record. Sent: nothing here; each job sends its
-   investigation. Recorded: a start line in each ticked incident, "started at turn-on", or the
-   cap that would be passed, which its card names. The section's answer lists what started,
-   what a cap stopped, and how many you left unticked
+   investigation. Recorded: a start line in each incident started, "started at turn-on", or
+   the cap that would be passed, which its card names. The switch's answer says what started
+   and what a cap stopped
    ([Starting by itself](fixit-troubleshoot#automatic)).
 
 **An approval lasts 14 days.** On the fifteenth day the switch reads as off everywhere: the

@@ -33,16 +33,17 @@ hold and its guard, so where the fix needs a person's approval it says so as its
 card offers **Hand over…**. A guard that only waits (planned work, a person working, the grace)
 and a dry run's decision that would heal start nothing.
 
-Turning it on catches up on your choice. **Turn on…** first lists every open incident it would
-have started on had it been on when the fix failed, each ticked, with its estimate: "Starts on
-these N open incidents, about $X", following your ticks ([Settings › AI](settings-ai#background-features)).
-Turning it on records which you ticked and which you left unticked, and starts each ticked one
-once, as its own job, in your name, within every cap (its incident's, this feature's day and
-month caps as typed, and the day cap); the later ones past a cap are refused before anything
-starts, and each card says which. Its card says "The AI is investigating
-(started at turn-on by" your name, then how long ago. A failure taken this way never starts again by itself.
-An incident you left unticked, or whose fix failed while it was off, shows **Start AI
-troubleshooting** as its next action, a person's press that runs the same investigation once.
+Turning it on catches up. While it is off, the switch says how many open incidents it would
+have started on had it been on when their fix failed: "Also starts on N open incidents, about
+$X". The list itself, each incident with its estimate, is on
+[Settings › AI](settings-ai#background-features), for audit; nothing there is ticked or turned
+on. Turning it on records the incidents it starts on, and starts each once, as its own job, in
+your name, within every cap (its incident's, this feature's day and month caps, and the day
+cap); the later ones past a cap are refused before anything starts, and each card says which.
+Its card says "The AI is investigating (started at turn-on by" your name, then how long ago. A
+failure taken this way never starts again by itself. An incident whose fix failed while it was
+off and that was not started then shows **Start AI troubleshooting** as its next action, a
+person's press that runs the same investigation once.
 
 ## Approve, Modify and Deny {#approve}
 
