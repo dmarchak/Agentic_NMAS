@@ -322,6 +322,22 @@ def alert(**kw):
     return out
 
 
+class TestAnAlertsTime:
+    """C4070: an alert's time is read with its zone: `Z`, an offset (a Grafana writing local
+    time, `-07:00`) or none (UTC, as before), with any fraction of a second; the host's Grafana
+    writes `Z` (measured 2026-11-25: 27 `active_at` and 25 `starts_at` values, every one)."""
+
+    @pytest.mark.parametrize("iso", [
+        "2026-11-25T05:00:00Z", "2026-11-25T05:00:00.123456789Z", "2026-11-25T05:00:00",
+        "2026-11-24T22:00:00-07:00", "2026-11-25T12:30:00+07:30", "2026-11-25T05:00:00+0000"])
+    def test_each_form_is_the_same_instant(self, iso):
+        assert T._epoch(iso) == 1795582800.0, (iso, T._epoch(iso))
+
+    @pytest.mark.parametrize("bad", ["", None, "yesterday", "2026-11-25 05:00:00Z"])
+    def test_no_such_time_is_nothing(self, bad):
+        assert T._epoch(bad) == 0.0
+
+
 class TestAlerts:
     def test_any_firing_alert_on_a_managed_device_checks_it(self, world):
         got = T.from_alerts("grafana-alerts", {"instances": [alert()]}, now=T0)

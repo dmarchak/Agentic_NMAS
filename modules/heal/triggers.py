@@ -72,11 +72,26 @@ def _iso(epoch: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
 
 
+#: An ISO time as Grafana and Alertmanager write it: seconds, any fraction (nanoseconds
+#: included), then ``Z``, an offset, or nothing (read as UTC).
+_ISO = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|([+-])(\d\d):?(\d\d))?$")
+
+
 def _epoch(iso) -> float:
-    try:
-        return float(calendar.timegm(time.strptime(str(iso)[:19] + "Z", "%Y-%m-%dT%H:%M:%SZ")))
-    except (TypeError, ValueError):
+    """*iso*'s epoch seconds, its zone honoured (C4070: an offset such as ``-07:00`` was dropped
+    and read as UTC; measured 2026-11-25, the host's Grafana writes ``Z``, but another may
+    not); 0.0 when it is no such time."""
+    m = _ISO.match(str(iso or "").strip())
+    if not m:
         return 0.0
+    try:
+        at = float(calendar.timegm(time.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S")))
+    except ValueError:
+        return 0.0
+    if m.group(3):
+        offset = (int(m.group(4)) * 3600 + int(m.group(5)) * 60) * (1 if m.group(3) == "+" else -1)
+        at -= offset
+    return at
 
 
 def _key(*parts) -> str:
