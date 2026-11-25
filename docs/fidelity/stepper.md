@@ -100,7 +100,15 @@ byte as they were; nothing the macro lays out moved, so no region's verdict chan
 the diff and tests/test_run_progress.py (`TestAHealLive`), not a new shot.
 Templates sha256 before: `5963585698efd022a2c1b16561f510750d1fece881e74abbd551fdd64aebff08`.
 Compared again 2026-11-24 (C3087, its card half): a read under a step that the read engine kept draws "its answer" after its line, opening the stored, masked answer on its run page, where the card that draws the stepper names its network (the heal run card, the re-subscribe card); words added at a line's end, nothing moves; compared by the template's diff and the v2 walk, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md, "C3087: a run card's reads open their answers"). Templates sha256 before: `39c23955013a41004d99bb4e2fabd1ce7a25810d29a44d6630ffc13744ca7e82`.
-Templates sha256: `76c0bdf9ddcc61abea5fbe95bd276b224902d94ea2944a41bd69f2904f533602`
+Compared again 2026-11-25 (C3977, In progress's line for a run): `run_stepper.current_words`,
+the one line In progress draws for a running run, names the run's newest DECLARED step and its
+place ("Apply · step 6 of 12") where a step the run did not declare (a deploy's own inner
+stage inside a plan's apply) came last, where it named that inner stage with no place. The
+stepper the cards draw (`from_record`, `_run_stepper.html`, `nmas_stepper.js`) is byte for byte
+as it was; no region's verdict moved. Read from the diff and tests/test_run_outcomes.py
+(`test_an_undeclared_inner_step_never_takes_the_run_s_place`), not a new shot. Templates sha256
+before: `76c0bdf9ddcc61abea5fbe95bd276b224902d94ea2944a41bd69f2904f533602`.
+Templates sha256: `4381a77f82f70ee5da705649b846a9a09b347cb4b59f78f8618b94447d5541c4`
 
 **Hashed again 2026-11-11 after the operator's test of the first slice on the host** ("2. Say
 the failure once. The red summary box and 'Failed at' carry it; the steps list shows each

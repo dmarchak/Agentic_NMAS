@@ -570,9 +570,12 @@ def current_words(declared, steps, labels: dict = None) -> str:
     steps = [s for s in steps or [] if isinstance(s, dict)]
     if not steps:
         return "started; no step recorded yet"
-    last = steps[-1]
     keys = [d[0] for d in declared]
     words = {d[0]: d[1] for d in declared}
+    # C3977: a step the run did not declare (a deploy's own inner stage, recorded inside a
+    # plan's apply) is not the run's place: its newest declared step is ("Apply · step 6 of
+    # 12"), the inner stage's words left to the card one level down.
+    last = next((s for s in reversed(steps) if s.get("step") in keys), steps[-1])
     key = last.get("step")
     state = result_state(last.get("result"))
     said = (labels or {}).get(key) or words.get(key) or str(key or "a step")

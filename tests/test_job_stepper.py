@@ -228,13 +228,17 @@ class TestTheStepper:
 
 def _job_cards() -> dict:
     """{op: template text} for every card waiting on a job-card route: the device page's
-    `device_v2.<op>_job_card`, or an operation blueprint's own `<op>_v2.job_card` (Adopt's)."""
+    `device_v2.<op>_job_card`, or an operation blueprint's own `<op>_v2.job_card` (Adopt's).
+    Premise corrected (C3601's adopt slice, 94443c71): a page that only loads the card (the
+    Devices page's Adopt placeholder) names the route too, so every template naming it is
+    kept, in a sorted order, the card's own among them; one kept by `os.listdir`'s order alone
+    was the page or the card by the folder's order."""
     out = {}
-    for name in os.listdir(TEMPLATES):
+    for name in sorted(os.listdir(TEMPLATES)):
         text = open(os.path.join(TEMPLATES, name), encoding="utf-8").read()
         for dev, own in re.findall(r"url_for\('(?:device_v2\.(\w+)_job_card|(\w+)_v2\.job_card)'",
                                    text):
-            out[dev or own] = text
+            out[dev or own] = out.get(dev or own, "") + text
     return out
 
 

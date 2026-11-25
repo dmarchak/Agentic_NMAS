@@ -168,6 +168,17 @@ class TestTheStepsTaken:
         assert RS.current_words(DECLARED, [step("plan", "ok"), step("wait", "running")]) == (
             "Wait · step 3 of 6")
 
+    def test_an_undeclared_inner_step_never_takes_the_run_s_place(self):
+        """C3977: mid-apply, a deploy's own inner stage recorded after the run's declared step
+        (here `stage_4`) leaves In progress saying the declared step and its place, never the
+        inner stage with none."""
+        from modules import run_stepper as RS
+        got = RS.current_words(DECLARED, [step("plan", "ok"), step("wait", "running"),
+                                          step("stage_4", "running")])
+        assert got == "Wait · step 3 of 6", got
+        # A run that has recorded only undeclared steps says the newest, as before.
+        assert RS.current_words(DECLARED, [step("stage_4", "running")]) == "stage_4"
+
 
 # ── A re-subscribe ──────────────────────────────────────────────────────────────────────────
 
