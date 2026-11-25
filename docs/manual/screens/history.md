@@ -114,7 +114,9 @@ Open a line for the full record underneath. It shows:
   ran nothing (a dry run, a proposal, a can't-fix) is no run, and has no card. The operations
   whose card is drawn only while their job is kept (a deploy, a reload, a credential rotation,
   a Tier 2 command and the rest) have no **Open the card** yet: their rows hold the record
-  alone;
+  alone. A step that read the device through the read engine (a verify's reads, a Tier 2
+  command's before-read) also offers **Open the <step> step's last read**, which opens that
+  read's stored, masked answer on its run page, one press from the record;
 - for a **self-healing** row, a line its decision ended (would have put it back, a proposal,
   can't fix) leads with its incident's own title, in plain words ("edge-b: static route added
   outside Mercury"), the configuration line in its detail; and **Open the incident** opens its

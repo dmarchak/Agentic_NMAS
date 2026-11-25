@@ -492,6 +492,10 @@ NOT_AN_OPERATION = {
     ("_timeline.html", "Open the card"): ("opens the run's card on its device's page, drawn "
                                           "from the run's own record, a read; no device is "
                                           "touched"),
+    # C3087: an operation's row opens each step's newest stored read, the reads engine's run.
+    ("_timeline.html", "Open the step's last read"): ("opens the read engine's run page of the "
+                                                      "step's newest stored read, its masked "
+                                                      "answer, a read; no device is touched"),
     # The GUI review's item 2 (C3450): the incident page's one primary button under What to
     # do, the incident's Needs attention item's own action. An action with a card of its own
     # (Review the fix…, Re-subscribe…) is a summary that opens it, with its how() link; these
