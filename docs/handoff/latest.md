@@ -21,6 +21,9 @@
     C4106 to B, C4048 to C.
   - C3852: a pooled read needs the same named account (a defence: not reachable through
     today's callers, reviewed) (dbeaed3f).
+  - C3884: a heal that could not be confirmed still needs proof after a re-decision. It has
+    its own flag, `unconfirmed`, and one test, `incidents.needs_proof`, read by the seven
+    proof readers. Reviewed; its commit is the night's last code commit.
   - C3977 narrowed:
     - its cap case already held;
     - Gate 2's limits guard given back its test, shown red with the guard off (4d623a2e);
@@ -34,7 +37,7 @@
   - C3977's last part (`record` drawn skipped before it ran) is not reproduced from the
     declared steps: mid-run, the plan engine's and a command plan's `record` draw waiting
     (measured 08:27 UTC, on the row). The fix-it agent's own run record would settle it.
-- **Register:** 2,031 open (A 9, B 453, UNKNOWN 284, C 1,285), counted at 07:57 UTC. Open A
+- **Register:** 2,031 open (A 9, B 452, UNKNOWN 284, C 1,286), counted at 08:37 UTC. Open A
   and B rows blocking Phase 8: 56, under rule 4's cap of 60 (3 of them tagged Lab 9 or Lab 10:
   blocks), counted 08:27 UTC.
 - **Waiting on the operator (OPERATOR.md):**
@@ -54,10 +57,8 @@
 - **Next session:** C4090's records first (the operator's 13:15 order). Then CI's 10 shards,
   then Stage 5's direction-independent items, each deployed on a fully green CI.
 - **Rows read tonight and left, each for a reason:**
-  - C3884: an act's flag kept across a re-decision. Eight modules read that flag
-    (incident_page, heal_notice, and heal's decide, retry, detect, triggers, act and
-    incidents), so the change needs a review across them all. Its neighbours' tests are in
-    tests/test_heal_standing.py and tests/test_heal_off_keeps_incidents.py.
+  - C3884 was built at the end, not left: see What landed. Its review's three low items are
+    C4263 (C).
   - C3911: a moved switch-on line's batch words and guard 8's grace. C3909 keeps "the
     problems open at the press" by design, so the change is to recording and grace, inside
     the batch.

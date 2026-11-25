@@ -1939,7 +1939,8 @@ def confirm_before_ai(network: str, key: str, *, sources=None, on: str = "") -> 
             f"{inc['id']} closed before the AI was asked: "
             f"{inc.get('closed_why') or 'no why was recorded'}")}
     standing = inc.get("standing") or {}
-    if inc.get("state") != "standing" or not standing.get("act"):
+    from modules.heal.incidents import needs_proof
+    if inc.get("state") != "standing" or not needs_proof(standing):
         return {"state": "not_standing", "words": (
             f"{inc['id']} is {inc.get('state')}, not standing on its act, so it was not "
             "confirmed before the AI was asked")}
@@ -2019,7 +2020,8 @@ def _closed_unproven(inc: dict, now: float = None) -> str:
 def _standing_wanted(inc: dict, now: float = None) -> bool:
     """Whether a standing act incident waits for its confirmation (`request_confirm`)."""
     now = time.time() if now is None else float(now)
-    return (inc.get("state") == "standing" and bool((inc.get("standing") or {}).get("act"))
+    from modules.heal.incidents import needs_proof
+    return (inc.get("state") == "standing" and needs_proof(inc.get("standing"))
             and confirm_due(inc.get("confirm_wanted"), now, wanted=True))
 
 

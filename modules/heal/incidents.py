@@ -735,7 +735,7 @@ def stand(network: str, incident_id: str, decision: dict = None, *, settled: dic
             raise Refused(f"{incident_id} is {inc.get('state')}, not claimed, so it does not "
                           "stand")
         if decision is None:
-            if not inc.get("standing") and (inc.get("stood") or {}).get("act"):
+            if not inc.get("standing") and needs_proof(inc.get("stood")):
                 # The review's finding 5: an act's standing a re-decision would have closed
                 # (halted, nothing) is put back on that act, never closed with no proof.
                 inc["standing"], inc["stood"] = inc["stood"], None
@@ -746,6 +746,10 @@ def stand(network: str, incident_id: str, decision: dict = None, *, settled: dic
         how = ((settled if settled is not None else inc.get("settled")) or {})
         dep = (decision.get("departure") or (how.get("operands") or {}).get("departure")
                or "")
+        # C3884: a decision's standing that replaces one whose heal could not be confirmed (an
+        # act's, or one that replaced it) keeps that fact (``unconfirmed``), so its close still
+        # asks for proof (`needs_proof`); ``act`` stays the outcome's kind (`act.OUTCOMES`).
+        carried = not act and needs_proof(inc.get("standing") or inc.get("stood"))
         inc.update(state="standing", claimed=None, updated_at=_iso(now), stood=None,
                    standing={"decision": decision.get("id") or "",
                              "outcome": decision.get("outcome") or "",
@@ -760,10 +764,20 @@ def stand(network: str, incident_id: str, decision: dict = None, *, settled: dic
                              "on": on or ("symptom" if how.get("how") in ("at_golden",
                                                                           "confirmed")
                                           else "departure"),
-                             **({"act": True} if act else {})})
+                             **({"act": True} if act else {}),
+                             **({"unconfirmed": True} if carried else {})})
         return inc
 
     return _mutate(network, change)
+
+
+def needs_proof(standing) -> bool:
+    """Whether *standing* (an incident's ``standing`` or ``stood`` record) is one whose heal
+    could not be confirmed, so it ends only with proof, Mercury's confirmation read (the
+    review's findings 2 and 5): an act's (``act``) or a decision's that replaced one
+    (``unconfirmed``, C3884). The one test of it. PURE."""
+    s = standing if isinstance(standing, dict) else {}
+    return bool(s.get("act") or s.get("unconfirmed"))
 
 
 def reopen(network: str, incident_id: str, decision_id: str, words: str, now: float = None,
@@ -1045,7 +1059,7 @@ def want_confirm(network: str, incident_id: str, why: str, now: float = None, *,
 
     def declines(inc):
         rec = inc.get("confirm_wanted") or {}
-        if inc.get("state") != "standing" or not (inc.get("standing") or {}).get("act"):
+        if inc.get("state") != "standing" or not needs_proof(inc.get("standing")):
             return True
         same = rec.get("decision") in (None, "", (inc.get("standing") or {}).get("decision"))
         return bool(same and (rec.get("state") in ("wanted", "reading")

@@ -366,7 +366,8 @@ def run(network: str, trigger: str, *, instance: str, script: str = "", how: str
                 # An act's standing is kept as ``stood`` (the review, finding 5): a re-decision
                 # that would close it puts it back on that act (`decide._act`).
                 inc.update(state="ready" if inc.get("settled") else "watching",
-                           standing=None, stood=s if s.get("act") else None, claimed=None,
+                           standing=None, stood=s if incidents.needs_proof(s) else None,
+                           claimed=None,
                            retry_pending=rec["id"],
                            updated_at=_iso(now),
                            unsettled={"at": _iso(now), "why": f"tried again: {words}",

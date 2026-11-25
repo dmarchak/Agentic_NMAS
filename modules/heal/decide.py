@@ -811,14 +811,14 @@ def _act(network: str, incident: dict, d: dict, now: float) -> None:
         # nothing. One taken from its standing (the switch-on batch's restore, an act's
         # standing sent back by the retry) goes back on it; a ready one goes back to watching,
         # saying it waits for self-healing, and is read again once self-healing is on.
-        if incident.get("standing") or (incident.get("stood") or {}).get("act"):
+        if incident.get("standing") or incidents.needs_proof(incident.get("stood")):
             incidents.stand(network, incident["id"], None, now=now)
         else:
             incidents.defer(network, incident["id"], now,
                             f"waits for self-healing: {d['words']}"[:300], now)
         return
-    if (incident.get("stood") or {}).get("act"):
-        # The review's findings 2 and 5: an incident a heal could not confirm ends only with
+    if incidents.needs_proof(incident.get("stood")):
+        # The review's findings 2 and 5 (and C3884: one a decision's standing replaced): an incident a heal could not confirm ends only with
         # proof. A re-decision that would close it (halted, nothing to heal) puts it back on
         # its act; nothing to heal asks for Mercury's confirmation read (`act.request_confirm`),
         # which alone closes it, with that read as its proof.

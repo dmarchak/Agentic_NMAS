@@ -511,7 +511,8 @@ def _standing(network, incidents_now, out, mode, now, by, symptom=None) -> None:
         trig = decide.judged_triggers(inc)
         if _fixed(network, inc, trig, out, now, by):
             continue
-        act_standing = bool((inc.get("standing") or {}).get("act"))
+        from modules.heal.incidents import needs_proof
+        act_standing = needs_proof(inc.get("standing"))   # C3884: an act's, or its heir
         port = None if act_standing else _port_clear(network, inc, out, now, by)
         if port is not None:
             continue                              # judged on its device read

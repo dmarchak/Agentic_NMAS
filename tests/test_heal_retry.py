@@ -84,6 +84,27 @@ class TestSwitchedOn:
 
 
 class TestWhoIsSentBack:
+    def test_an_act_s_standing_decided_again_as_a_cant_fix_still_needs_proof(self, world):
+        """C3884 (the second review, finding 5): an incident standing on an act a heal could
+        not confirm, sent back by the retry and decided again as a can't-fix, stands on that
+        can't-fix still needing Mercury's confirmation read before it closes, never ending
+        "Closed, not confirmed" with no proof; its ``act`` stays the outcome's kind."""
+        inc = settle(GOLDEN, device="edge-b")
+        d = DS.record(NET, {"incident": inc["id"], "device": "edge-b", "outcome": "heal",
+                            "mode": "auto", "kind": "added_line", "tier": 1,
+                            "words": "edge-b: would remove an added line"}, T0 - 5)
+        # As the act stands it (`act.outcome_on_incident`): its own outcome, marked ``act``.
+        I.stand(NET, inc["id"], {"id": d["id"], "outcome": "rolled_back",
+                                 "words": "rolled back: the verify failed"}, now=T0 - 5,
+                act=True)
+        got = retry.run(NET, "switched_on", instance="on-1", now=T0, decide_now=False)
+        assert got["retried"] == [inc["id"]], got
+        stand_again(inc["id"], T0 + 1)
+        s = record_of(inc["id"])["standing"]
+        assert s["outcome"] == "cant_fix" and not s.get("act"), s
+        assert I.want_confirm(NET, inc["id"], "its symptom read gone", now=T0 + 2), (
+            "a close of it asks for Mercury's confirmation read")
+
     def test_a_standing_cant_fix_is_sent_back_and_its_retry_recorded(self, world):
         iid = standing()
         got = retry.run(NET, "switched_on", instance="on-1", now=T0, decide_now=False)

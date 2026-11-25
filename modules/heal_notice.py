@@ -1596,7 +1596,8 @@ def _cleared(network: str, incident_id: str, d: dict, *, wait=None, symptom=None
         if state != "gone":
             return {}
         now, minutes = clock(), int(quiet_s // 60)
-        if (again.get("standing") or {}).get("act"):
+        from modules.heal.incidents import needs_proof
+        if needs_proof(again.get("standing")):
             # The review's finding 2: an incident a heal could not confirm ends only with
             # proof: its symptom read gone asks for Mercury's confirmation read instead, and the
             # notice goes as before.

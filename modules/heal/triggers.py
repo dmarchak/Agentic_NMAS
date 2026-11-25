@@ -861,7 +861,8 @@ def clean_ended(network: str, result: dict, now: float) -> list:
             if not inc or not at or at <= float(s.get("epoch") or 0) \
                     or not incidents.ends_at_golden(s):
                 continue
-            if s.get("act"):
+            from modules.heal.incidents import needs_proof
+            if needs_proof(s):
                 # The review's finding 2: an incident a heal could not confirm ends only with
                 # proof: the drift run's read asks for Mercury's confirmation read instead.
                 from modules.heal import act
