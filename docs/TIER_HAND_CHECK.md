@@ -5111,3 +5111,27 @@ so the irreversible tier's. Run by `c3652_hand.sh` (scratch), each mutant alone 
 | 5 | the bracket kept (`<` for `&lt;`) | **died**: both forged cases |
 
 **The result: the canary and every mutant died.**
+
+## 2026-11-25: a cap-sized thinking call leaves room for one start (C3898), by hand
+
+**The change.** The gateway's spend sizing (the AI cost rules). A thinking call whose
+max_tokens its tightest cap decides (`judge` in `_capped_send`) used to hold that cap's whole
+remaining, so the next start was refused although both calls' typical costs fit. It now asks
+`cap_sized_tokens`: the remaining less `start_room()`, the largest MEASURED typical cost per
+call among the AI tasks (an unmeasured task's worst case is left out). That room is left only
+when what stays still pays this call's own typical answer; otherwise the call holds the whole
+remaining, as before. The sizing's words say "less $X left for another start". The room is
+read once per call, outside the reservations' lock. Run by `c3898_hand.sh` (scratch, mutants
+1 to 4 on tests/test_ai_gateway_parts.py) and one control by hand (mutant 5 on
+tests/test_ai_truncated_answers.py with the parts tests):
+
+| # | Mutant | Result |
+|---|---|---|
+| canary | no room is ever left | **died**: `test_the_room_is_left_when_this_call_still_fits_its_typical` |
+| 1 | the room not subtracted | **died**: two of `TestLeaveRoomForOneStart` |
+| 2 | the room kept even when it starves this call | **died**: `test_the_whole_remaining_when_the_room_would_starve_this_call` |
+| 3 | an unmeasured worst case counted in the room | **died**: `test_the_room_is_the_largest_measured_typical_cost` |
+| 4 | the smallest typical cost, not the largest | **died**: the same |
+| 5 | the judge handing no room (0.0) | **died**: `test_a_retry_sized_by_its_cap_leaves_room_for_one_start` |
+
+**The result: the canary and every mutant died.**

@@ -160,7 +160,10 @@ read, and what it cost is recorded as the stream reported it (else estimated, ne
 call that thinks before it answers cannot be counted as it streams, so it is sized before it is
 sent instead: to 2.5 times its task's largest complete answer measured, and to what the tightest
 cap can pay, and held at that; one stopped at that size is asked once more, at what the
-remaining can pay. An answer that broke off, or whose stream went silent past its bound, is
+remaining can pay. Sized by a cap, a call leaves one typical start's cost unheld (the largest
+measured typical cost of any AI task) whenever what stays still pays its own typical answer,
+so another start fits beside it; its sizing says "less $X left for another start". An answer
+that broke off, or whose stream went silent past its bound, is
 never read either.
 
 **Calls at once never pass the cap together.** Each call's hold is reserved against the cap,

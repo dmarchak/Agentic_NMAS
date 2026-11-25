@@ -82,3 +82,27 @@ def test_the_builder_is_redrawn_as_the_form_carried_it_with_the_reason(site, mon
     assert "rate(ifHCInOctets" in html, "the builder was not drawn as the form carried it"
     assert "topk(5, rate(ifInErrors" not in html, "the cut answer was applied"
     assert not any(p == "api/v1/query_range" for p, _ in site.asked)
+
+
+def test_a_retry_sized_by_its_cap_leaves_room_for_one_start(world, monkeypatch):
+    """C3898 (the operator, 2026-11-17: "leave room for one start"): the retry, sized by what
+    the day cap's remaining can pay, holds that remaining less one typical start's cost
+    (`gateway.start_room`), said in its sizing's words, so another start still fits."""
+    from modules import settings_schema
+    from modules.ai import gateway
+
+    real = settings_schema.get_setting
+    monkeypatch.setattr(settings_schema, "get_setting", lambda k, d=None: (
+        0.30 if k == "ai_cap_usd_per_day" else real(k, d)))
+    monkeypatch.setattr(gateway, "start_room", lambda: 0.05)
+    with pressed_by("operator@example.com"):
+        nl_query.metrics("Lab", "input errors per interface, the top 5",
+                         actor="operator@example.com",
+                         trigger=triggers.person("operator@example.com"),
+                         send=_cut(world, json.dumps(_choices())),
+                         client=world.prom, now=NOW, today="2026-10-25")
+    retry = calls.read()["rows"][0]
+    sized = retry["sized"]
+    assert sized["retry"] is True and sized["kind"] == "cap", sized
+    assert "less $0.05 left for another start" in sized["by"], sized["by"]
+    assert sized["hold_usd"] <= 0.30 - 0.05 + 1e-6, sized

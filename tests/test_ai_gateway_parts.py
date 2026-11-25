@@ -164,3 +164,36 @@ def test_another_provider_is_refused_naming_it():
     with pytest.raises(ValueError) as got:
         schemas.schema_for(Ping, "local")
     assert str(got.value) == "no schema rule for the provider 'local'"
+
+
+class TestLeaveRoomForOneStart:
+    """C3898 (the operator, 2026-11-17: "record 'leave room for one start' as the intended
+    fix"): a thinking call sized by its tightest cap leaves one typical call's cost unheld
+    whenever what is left still pays its own typical answer, so the next start fits; the
+    review's case, a $1.50 day cap with $1.42 left, a restore's call typical at $0.31 and the
+    next start's at $0.28."""
+
+    RATE = 10 / 1_000_000                    # $10 a million output tokens
+
+    def test_the_room_is_left_when_this_call_still_fits_its_typical(self):
+        tokens, roomed = gateway.cap_sized_tokens(1.42, 0.02, self.RATE, 31_000, 0.28)
+        assert roomed is True and tokens == int((1.42 - 0.02 - 0.28) / self.RATE)
+        held = 0.02 + tokens * self.RATE
+        assert 1.42 - held >= 0.28 - 1e-9, "the next start's typical cost still fits"
+
+    def test_the_whole_remaining_when_the_room_would_starve_this_call(self):
+        tokens, roomed = gateway.cap_sized_tokens(0.40, 0.02, self.RATE, 31_000, 0.28)
+        assert roomed is False and tokens == int((0.40 - 0.02) / self.RATE)
+
+    def test_no_room_measured_is_the_whole_remaining(self):
+        assert gateway.cap_sized_tokens(1.42, 0.02, self.RATE, 31_000, 0.0) == (
+            int((1.42 - 0.02) / self.RATE), False)
+
+    def test_the_room_is_the_largest_measured_typical_cost(self, monkeypatch):
+        from modules.ai import background
+        costs = {"a": {"measured": True, "usd_per_call": 0.12},
+                 "b": {"measured": True, "usd_per_call": 0.28},
+                 "c": {"measured": False, "usd_per_call": 9.0}}     # a worst case, not typical
+        monkeypatch.setattr(gateway.profiles, "TASKS", {k: {} for k in costs})
+        monkeypatch.setattr(background, "measured_cost", lambda name: costs[name])
+        assert gateway.start_room() == 0.28

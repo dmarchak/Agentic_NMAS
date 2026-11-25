@@ -1052,6 +1052,38 @@ LIVE_EVERY_S = 15.0
 LIVE_SLACK_TOKENS = 200
 
 
+def start_room() -> float:
+    """What a thinking call sized by a cap leaves unheld for another start (C3898, the
+    operator, 2026-11-17: "record 'leave room for one start' as the intended fix"): the
+    largest MEASURED typical cost per call among the AI tasks (`background.measured_cost`), 0
+    when none is measured (an unmeasured task's stand-in is its worst case, no typical one)."""
+    most = 0.0
+    for name in profiles.TASKS:
+        try:
+            got = background.measured_cost(name)
+        except Exception as exc:                          # noqa: BLE001 (that task left out)
+            log.info("gateway: %s's typical cost could not be read: %s", name, exc)
+            continue
+        if got.get("measured"):
+            most = max(most, float(got.get("usd_per_call") or 0.0))
+    return most
+
+
+def cap_sized_tokens(remaining: float, prompt_usd: float, rate: float, typical_tokens: int,
+                     room: float) -> tuple:
+    """``(tokens, roomed)``: the output tokens a thinking call sized by its tightest cap may
+    ask for. *room* (`start_room`) is left unheld whenever what remains after it still pays
+    this call's own typical answer (*typical_tokens*), so the next start fits too (*roomed*
+    True); otherwise the whole *remaining*, as before (C3898). Each answer that stops at its
+    max_tokens is said "budget ran out mid-answer", naming the cap."""
+    whole = int((remaining - prompt_usd) / rate)
+    if room > 0:
+        kept = int((remaining - prompt_usd - room) / rate)
+        if kept >= typical_tokens:
+            return kept, True
+    return whole, False
+
+
 def asked_tokens(model: str, prompt_tokens: int, bound: dict = None, *,
                  visible: bool = False) -> tuple:
     """THE max_tokens a request asks before any cap, ``(tokens, kind, by)``: the model's
@@ -1179,6 +1211,9 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
     thinking = row.get("thinking") != "off"
     bound = (background.output_bound(feature) if thinking and size_mode != "remaining"
              else None)
+    # Read once, outside the reservations' lock (each task's measured cost may be a records
+    # read): what a cap-sized call leaves for another start (C3898).
+    room = start_room() if thinking else 0.0
     sized = {}
 
     def judge(held):
@@ -1209,12 +1244,13 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
         if caps_left and kind != "fixed_bound":
             # A fixed bound is never shrunk by a cap: its start rule already holds it.
             c = caps_left[0]
-            afford = int((c["remaining"] - prompt_usd) / rate)
+            afford, roomed = cap_sized_tokens(c["remaining"], prompt_usd, rate, typ, room)
             if afford < top:
                 top, kind, tight = max(1, afford), "cap", c
                 cap_words = (f"{c['name']}, {_usd(c['cap'])}, "
                              f"{_usd(max(0.0, c['remaining']))} remaining after other calls' "
-                             "holds")
+                             "holds" + (f", less {_usd(room)} left for another start"
+                                        if roomed else ""))
                 by = f"what {cap_words} can pay"
         sized.clear()
         sized.update(max_tokens=top, kind=kind, by=by, cap=tight, cap_words=cap_words)
