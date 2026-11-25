@@ -324,6 +324,30 @@ class TestNeverWrongLookingRight:
         S.step()
         assert "approvals:q8" not in _ids(S.read()) and not S.read()["store"].get("restored")
 
+    def test_the_page_kept_for_the_next_start_is_masked_at_rest(self, world):
+        """3902b7ef's kept page (FAST_LANE_DEBT.md, "Needs attention survives a restart": "the
+        mask at rest" owed): a row's words holding a secret in config syntax are written to
+        disk masked, as every drawing of the page is (`_keep`, `outbound.mask_payload`), and
+        the page read back after a start carries the mask, never the value."""
+        import json
+        from modules import config
+        planted = "snmp-server community Pl4ntedC0mmunity RO"
+        world.rows["approvals_source"] = [A.row(
+            source="approvals", kind="pending", key="q9", level="warning",
+            what="An approval is waiting", cause=f"the line read: {planted}",
+            action={"label": "Review the approval"})]
+        world.now += S.SLOW_S
+        S.step()
+        path = os.path.join(config.DATA_DIR, S.HELD_DIR, "Lab.json")
+        raw = open(path, encoding="utf-8").read()
+        assert "Pl4ntedC0mmunity" not in raw and "snmp-server community" in raw, raw[:400]
+        assert json.loads(raw)["rows"], "the row itself was kept"
+        S.clear()                                    # a start
+        page = S.read("Lab")
+        assert page["store"].get("restored") is True
+        row = next(r for r in page["rows"] if r["id"] == "approvals:q9")
+        assert "Pl4ntedC0mmunity" not in json.dumps(row) and "community" in row["cause"], row
+
     def test_a_restored_page_is_not_known_to_the_incident_page_or_run_the_check_again(
             self, world):
         """The page kept before a start is drawn restored, never as a current read (the
