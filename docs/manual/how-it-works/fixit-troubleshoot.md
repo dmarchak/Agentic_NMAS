@@ -188,7 +188,9 @@ It runs these steps, one investigation:
    it asked for was already answered here, or every new read was refused or empty): there is no
    paid call without new evidence, and no bound on passes or calls but the limits and the
    investigation's own time bound. A read is either of
-   the incident's device, asked as an engineer types it in Show commands (show, ping or
+   the incident's device or of a device one hop from it in the network's model (the topology
+   its pack sends, so a suspected neighbour across a link is read as an engineer would; an
+   unreadable model leaves the incident's device alone), asked as an engineer types it in Show commands (show, ping or
    traceroute and the rest of the command: a show of one of the AI's command families, an
    engineer's troubleshooting reads, each in one of its forms, held whole by Mercury's
    allowlist too; standby and VRRP only in their brief forms; an err-disabled port's own

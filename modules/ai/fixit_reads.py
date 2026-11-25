@@ -389,6 +389,31 @@ FAMILY = RL.ReadFamily(
           "Mercury's own")
 
 
+def neighbours_of(network: str, device: str) -> list:
+    """The managed devices one hop from *device* in *network*'s model (`network_model`: its
+    links and adjacencies, the topology an investigation's pack sends), by name, sorted; ``[]``
+    when the model or the device cannot be read (said in the log), so the scope is the
+    device alone, as before. Outside peers and Mercury's host are never devices of it."""
+    from modules import network_model as NM
+
+    try:
+        model, err = NM.model_for(network)
+        if model is None:
+            log.info("fixit reads: %s's neighbours are not read: %s", device, err)
+            return []
+        _sid, seeds, err = NM._seeds(network, model, device)
+        if err:
+            log.info("fixit reads: %s's neighbours are not read: %s", device, err)
+            return []
+        reached = NM._walk(model, {}, seeds, 1)
+    except Exception as exc:                          # noqa: BLE001 (the device alone, said)
+        log.warning("fixit reads: %s's neighbours could not be read: %s", device, exc)
+        return []
+    names = {str((model["nodes"].get(n) or {}).get("name") or "")
+             for n, (hop, _via) in reached.items() if hop == 1 and n in model["nodes"]}
+    return sorted(n for n in names if n and n != device)
+
+
 def scope_for(network: str, incident, *, actor: str, collector=None, series=None) -> dict:
     """What `FAMILY`'s comparisons read for *incident* (a `fixit.incident.Incident`): the router
     read set's scope for the incident's device (`router_reads.scope_for`), the incident's
@@ -397,10 +422,15 @@ def scope_for(network: str, incident, *, actor: str, collector=None, series=None
     *collector* and *series* replace the two local reads (tests). Reads committed intent; one
     that cannot be read names no stream, so every local read is refused."""
     try:
+        # The incident's device and each device one hop from it in the network's model, the
+        # topology the pack sends (C3685, the operator, 2026-11-14: "any command on the Show
+        # commands allowlist, on devices in the incident's scope"): a suspected neighbour is
+        # read as a senior engineer would, each still held by the device check.
+        hosts = [incident.device] + neighbours_of(network, incident.device)
         # The committed stores read once (the operator, 2026-11-16: the scope read every
         # device's intent twice), and given to the router read set's scope.
-        intents, goldens = RR._committed(network, [incident.device])
-        scope = RR.scope_for(network, [incident.device], incident=incident.id,
+        intents, goldens = RR._committed(network, hosts)
+        scope = RR.scope_for(network, hosts, incident=incident.id,
                              turned_on_by=actor, intents=intents, goldens=goldens)
     except Exception as exc:                          # noqa: BLE001 (closed: no device named)
         log.error("fixit reads: the scope of %s could not be built: %s", incident.id, exc)

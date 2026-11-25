@@ -495,3 +495,54 @@ def test_a_press_whose_answer_names_a_gap_records_it_for_review(ai, monkeypatch)
     else:
         r, html = press(ai, iid2)
     assert r.status_code == 200 and "a gap" in sec_of(html), "the answer stands"
+
+
+# ── The scope reaches the devices one hop from the incident's (C3685) ─────────────────────
+
+#: A planted model: edge1 linked to acc1, acc1 to far1, and edge1 to an outside peer.
+NEAR_MODEL = {"network": "Lab", "names": {"edge1": "dev:1", "acc1": "dev:2", "far1": "dev:3"},
+              "nodes": {"dev:1": {"id": "dev:1", "name": "edge1"},
+                        "dev:2": {"id": "dev:2", "name": "acc1"},
+                        "dev:3": {"id": "dev:3", "name": "far1"}},
+              "edges": {"dev:1": {"dev:2": "link:192.0.2.0/30", "ext:192.0.2.99": "bgp"},
+                        "dev:2": {"dev:1": "link:192.0.2.0/30", "dev:3": "link:192.0.2.4/30"},
+                        "dev:3": {"dev:2": "link:192.0.2.4/30"}},
+              "links": {}, "adjacencies": {}}
+
+
+class TestTheScopeReachesOneHop:
+    """C3685 (the operator, 2026-11-14: "any command on the Show commands allowlist, on devices
+    in the incident's scope"): an investigation reads the incident's device and each managed
+    device one hop from it in the network's model, the topology its pack sends; two hops, an
+    outside peer and Mercury's host are not in it; an unreadable model leaves the device
+    alone."""
+
+    def test_the_neighbours_are_the_managed_devices_one_hop_away(self, monkeypatch):
+        from modules import network_model as NM
+        from modules.ai import fixit_reads as FR
+        monkeypatch.setattr(NM, "model_for", lambda network: (NEAR_MODEL, ""))
+        assert FR.neighbours_of("Lab", "edge1") == ["acc1"]
+        assert FR.neighbours_of("Lab", "acc1") == ["edge1", "far1"]
+        assert FR.neighbours_of("Lab", "nobody") == []
+
+    def test_an_unreadable_model_leaves_the_device_alone(self, monkeypatch):
+        from modules import network_model as NM
+        from modules.ai import fixit_reads as FR
+        monkeypatch.setattr(NM, "model_for", lambda network: (None, "planted: unreadable"))
+        assert FR.neighbours_of("Lab", "edge1") == []
+
+    def test_the_scope_is_built_for_the_device_and_its_neighbours(self, monkeypatch):
+        import types
+        from modules import network_model as NM
+        from modules.ai import fixit_reads as FR
+        from modules.ai import router_reads as RR
+        monkeypatch.setattr(NM, "model_for", lambda network: (NEAR_MODEL, ""))
+        asked = []
+        monkeypatch.setattr(RR, "_committed", lambda network, hosts: (
+            asked.append(("committed", list(hosts))) or ({}, {})))
+        monkeypatch.setattr(RR, "scope_for", lambda network, hosts, **kw: (
+            asked.append(("scope", list(hosts))) or {"network": network, "devices": {},
+                                                     "addresses": [], "prefixes": []}))
+        inc = types.SimpleNamespace(device="edge1", id="hi-1", subscriptions=["101"])
+        FR.scope_for("Lab", inc, actor="person@example.invalid")
+        assert asked[:2] == [("committed", ["edge1", "acc1"]), ("scope", ["edge1", "acc1"])]

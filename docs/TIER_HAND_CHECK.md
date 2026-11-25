@@ -5135,3 +5135,23 @@ tests/test_ai_truncated_answers.py with the parts tests):
 | 5 | the judge handing no room (0.0) | **died**: `test_a_retry_sized_by_its_cap_leaves_room_for_one_start` |
 
 **The result: the canary and every mutant died.**
+
+## 2026-11-25: an investigation reads the devices one hop away (C3685), by hand
+
+**The change.** What leaves the host: an AI investigation's read scope (`fixit_reads.scope_for`),
+from the incident's device alone to it and each managed device one hop from it in the
+network's model (`neighbours_of`: `network_model._walk` one hop, managed nodes by name; an
+unreadable model, the device alone). The operator decided it, 2026-11-14: "any command on the
+Show commands allowlist, on devices in the incident's scope". Each device is still held by the
+device check, the allowlist, the arguments against golden and intent, and the egress classes.
+Run by `c3685_hand.sh` (scratch), tests/test_fixit_reads.py `-k TestTheScopeReachesOneHop` (3
+tests):
+
+| # | Mutant | Result |
+|---|---|---|
+| canary | the scope the device alone | **died**: `test_the_scope_is_built_for_the_device_and_its_neighbours` |
+| 1 | two hops walked | **equivalent**: only hop-1 devices are kept, so walking two hops changes nothing that leaves the host |
+| 2 | every hop the walk reached kept (two walked) | **died**: two tests (far1, two hops away, in the scope) |
+
+**The result: the canary and every non-equivalent mutant died; mutant 1 is equivalent, its
+reason above.**
