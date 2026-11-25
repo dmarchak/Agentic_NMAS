@@ -1629,8 +1629,11 @@ def test_device_page(tmp_path, monkeypatch):
             with _DevicePage(served, width, scale) as p:
                 p.open("/v2/device/r2")
                 p.swap("/v2/device/r2/capture?back=overview", ready, timeout=60)
+                # C4037: r2 departs from its intent (`_broken`), so its result is amber,
+                # "Recorded; differs from intent", never green over a departure (C1273;
+                # tests/test_device_capture_v2.py's result test).
                 p.click("#device-op .op-confirm",
-                        f"{_DEVICE_CARD} && /op-ok/.test({_DEVICE_CARD}.className)")
+                        f"{_DEVICE_CARD} && /op-warn/.test({_DEVICE_CARD}.className)")
                 p.shot("device-capture-result")
                 if width == 1440:
                     lab["running"]["r2"] = moved
