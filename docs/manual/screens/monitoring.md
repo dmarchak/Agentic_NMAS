@@ -178,7 +178,8 @@ Red is only for an alert firing now. What has stopped firing is drawn neutral, a
 **cleared**: the condition stopped, which says nothing about whether anything fixed it.
 
 The alerts are grouped by rule (a rule generated per device, such as a heartbeat, is one
-group), each alert a closed card naming its device, its network, when it began and its onset,
+group, and so is one generated per device and subscription, such as a lost telemetry stream),
+each alert a closed card naming its device, its network, when it began and its onset,
 how many pieces its pack holds and how many of its sources could not be read. A heartbeat or
 telemetry alert whose device went silent fires as **Alerting (NoData)** and is listed here like
 any firing alert, its pack saying what was absent (see

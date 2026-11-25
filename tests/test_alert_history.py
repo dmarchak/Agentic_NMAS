@@ -435,6 +435,24 @@ class TestEpisodes:
         assert "NMAS heartbeat missing" in fams
         assert not any(f.startswith("NMAS heartbeat missing:") for f in fams)
 
+    def test_telemetry_rules_per_subscription_are_one_group(self, store, monkeypatch):
+        """C2187: a telemetry rule's title names its device and then its subscription ("NMAS
+        telemetry stream lost: r1 subscription 101"), so each subscription drew its own group
+        under Fired (16 on the capture); the family leaves out the device and what follows
+        it, the device's name matched whole."""
+        from modules import evidence_pack as EP
+        _backfill(load("annotations_firing"))
+        monkeypatch.setattr(H, "_firing_now", lambda: set())
+        monkeypatch.setattr(EP, "read", lambda: {"state": "ok", "rows": [], "error": ""})
+        t = H.tab({"range": "all", "show": "all"}, now=H.epoch("2026-10-21T04:00:00Z"))
+        fams = [g["family"] for g in t["groups"]]
+        assert fams.count("NMAS telemetry stream lost") == 1, fams
+        assert not any(f.startswith("NMAS telemetry stream lost:") for f in fams), fams
+        assert EP.family("NMAS telemetry stream lost: r1 subscription 101", "r1") == \
+            "NMAS telemetry stream lost"
+        assert EP.family("Odd rule: r10 subscription 1", "r1") == "Odd rule: r10 subscription 1"
+        assert EP.family("Device unreachable (SNMP)", "s3") == "Device unreachable (SNMP)"
+
 
 # ---------------------------------------------------------------------------- retention
 
