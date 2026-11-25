@@ -200,6 +200,9 @@ ROW_KINDS = {
                              "do it, then say so, or decline it with a reason"),
     ("templates", "behind_drops"): ("a template behind the shipped version drops a section of the profile",
                                     "bring in the shipped version on Templates"),
+    ("templates", "behind_blocks"): ("a template behind the shipped version stops a device's "
+                                     "round trip the shipped version passes",
+                                     "bring in the shipped version on Templates"),
     ("adjacencies", "link"): ("an adjacency intent implies is not up",
                               "check the link and both ends"),
     ("adjacencies", "unmeasured"): ("adjacencies cannot be judged", "check the Prometheus targets"),
@@ -589,6 +592,8 @@ CLEARS = {
                                 "set-up"),
     ("templates", "behind_drops"): (("resolves",), "the template is brought to the shipped version, or "
                                     "the profile no longer has the section it drops"),
+    ("templates", "behind_blocks"): (("resolves",), "the template is brought to the shipped "
+                                     "version, or the device's round trip passes on it"),
     ("host_steps", "owed"): (("resolves", "acknowledge"), "its check finds it done, or a person "
                              "says it is done, or declines it with a reason, on the Update "
                              "page (History keeps either)"),
@@ -5842,6 +5847,65 @@ def host_steps_source(owed=None) -> dict:
                          checked=f"the last {host_steps.HISTORY} commits of {health._COMMIT[:10]}")
 
 
+def _behind_blocks(list_name: str, repo: str, path: str) -> dict:
+    """Whether the stale shipped *path* stops a bound device's round trip that the shipped
+    version passes (C3478): for each template importing it, one bound device with a capture
+    (`approve_op.bound_captures`) is validated as the approval validates it
+    (`approval.validate_template`), with the network's library and again with the shipped
+    *path* in a copy of it, as Bring in's preview renders it. ``{"template", "device",
+    "summary", "devices"}`` for the first that fails with the network's and passes with the
+    shipped, else ``{}``. Reads only; no device contact."""
+    import os
+    import shutil
+    import tempfile
+
+    from modules.nsot import approval, approve_op, template_bring, templates_repo
+
+    shipped = os.path.join(templates_repo.BUILTIN_ROOT, path)
+    if not os.path.isfile(shipped):
+        return {}
+    tmp = tempfile.mkdtemp(prefix="nmas-behind-")
+    try:
+        root = os.path.join(tmp, "templates")
+        shutil.copytree(templates_repo.templates_dir(repo), root)
+        shutil.copyfile(shipped, os.path.join(root, path))
+        for template in template_bring.importers(repo, path):
+            captured, _none = approve_op.bound_captures(repo, template)
+            if not captured:
+                continue
+            one = captured[:1]
+            now = approval.validate_template(repo, template, one)["results"]
+            if not now or now[0].get("ok"):
+                continue
+            then = approval.validate_template(repo, template, one, template_root=root)
+            if (then["results"] or [{}])[0].get("ok"):
+                return {"template": template, "device": one[0]["device"],
+                        "summary": approval._summary(now[0]), "devices": len(
+                            templates_repo.devices_for_template(repo, template))}
+    except Exception as exc:                            # noqa: BLE001 (no row, said)
+        log.warning("attention: whether %s's %s blocks a round trip could not be read: %s",
+                    list_name, path, exc)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return {}
+
+
+def _behind_blocks_row(list_name: str, path: str, blocked: dict) -> dict:
+    """The Needs attention row of a stale template that stops a round trip (C3478)."""
+    return row(source="templates", kind="behind_blocks", key=path, level="warning",
+               what=(f"{list_name}'s {path} is an older shipped version, and "
+                     f"{blocked['device']}'s round trip through {blocked['template']} fails on "
+                     f"it ({blocked['summary']}), so no deploy plan renders it; the shipped "
+                     f"version passes it ({blocked['devices']} devices bound through "
+                     f"{blocked['template']})"),
+               cause=(f"templates/{path} is behind the shipped version, unedited; the round "
+                      "trip with the shipped one passes"),
+               operands={"template": path, "through": blocked["template"],
+                         "device": blocked["device"]},
+               action={"label": "Bring in the shipped version on Templates",
+                       "open": "template_bring", "list": list_name, "path": path})
+
+
 def template_behind_source(ref=None) -> dict:
     """A template BEHIND the shipped version that drops a section of the profile (C566, board
     C): the profile's section reaches every device's intent and no device's configuration, and
@@ -5864,9 +5928,9 @@ def template_behind_source(ref=None) -> dict:
         return source_result("templates", label, read_at=started, took_ms=0,
                              error=f"{type(exc).__name__}: {exc}")
     rows, signatures = [], {}
-    for path in stale if doc else []:
+    for path in stale:
         dropped, devices = set(), set()
-        for template in template_bring.importers(repo, path):
+        for template in (template_bring.importers(repo, path) if doc else ()):
             bound = templates_repo.devices_for_template(repo, template)
             devices |= {e["device"] for e in bound}
             for entry in bound:
@@ -5881,6 +5945,12 @@ def template_behind_source(ref=None) -> dict:
                 dropped |= set(missing)
                 break                                   # one device measures the template
         if not dropped:
+            # C3478: one that drops nothing may still stop a device's round trip, which the
+            # shipped version passes (a stale shared file once blocked every deploy plan of
+            # two devices with no row).
+            blocked = _behind_blocks(ref.name, repo, path)
+            if blocked:
+                rows.append(_behind_blocks_row(ref.name, path, blocked))
             continue
         words = ", ".join(PROFILE_SECTION_WORDS.get(s, s) for s in sorted(dropped))
         rows.append(row(source="templates", kind="behind_drops", key=path, level="warning",

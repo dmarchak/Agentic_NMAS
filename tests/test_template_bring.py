@@ -155,3 +155,61 @@ class TestNeedsAttention:
         from modules.nsot import listref
         _propose_management(lab)
         assert attention.template_behind_source(listref.resolve("Lab"))["rows"] == []
+
+
+class TestARoundTripItBlocks:
+    """C3478: a stale shipped file that drops no profile section can still stop a bound
+    device's round trip, which the shipped version passes: Needs attention names it, with Bring
+    in the shipped version, and it clears once the file is brought in. On the stale fixture r2's
+    real round trip passes on the older file (its golden holds none of P1's lines, measured
+    2026-11-25), so the round trip stands in, keyed on where it renders from: it fails on the
+    network's library and passes on the copy holding the shipped file."""
+
+    @staticmethod
+    def _round_trip(monkeypatch, seen):
+        from modules.nsot import approval
+
+        def validate(repo, template, devices, template_root=""):
+            seen.append((template, [d["device"] for d in devices], bool(template_root)))
+            ok = bool(template_root)
+            return {"ok": ok, "template": template, "results": [
+                {"device": devices[0]["device"], "ok": ok, "missing": 0 if ok else 2}]}
+        monkeypatch.setattr(approval, "validate_template", validate)
+
+    def test_the_row_names_the_template_the_device_and_the_way_out(self, lab, monkeypatch):  # noqa: F811
+        from modules import attention
+        from modules.nsot import listref
+        monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+        _commit_stale(lab)                    # no profile section proposed: nothing dropped
+        seen = []
+        self._round_trip(monkeypatch, seen)
+        got = attention.template_behind_source(listref.resolve("Lab"))
+        assert seen == [("cisco_iosxe/base.j2", ["r2"], False),
+                        ("cisco_iosxe/base.j2", ["r2"], True)], "one device, both libraries"
+        assert [(r["id"], r["kind"]) for r in got["rows"]] == [
+            ("templates:_common.j2", "behind_blocks")], got
+        row = got["rows"][0]
+        assert row["operands"]["device"] == "r2" and row["action"]["open"] == "template_bring"
+        assert "the shipped version passes it" in row["what"], row["what"]
+        assert "2 line(s) not reproduced" in row["what"], row["what"]
+
+    def test_a_round_trip_that_fails_on_both_raises_no_row(self, lab, monkeypatch):  # noqa: F811
+        from modules import attention
+        from modules.nsot import approval, listref
+        monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+        _commit_stale(lab)
+        monkeypatch.setattr(approval, "validate_template", lambda repo, t, d, template_root="": {
+            "ok": False, "results": [{"device": d[0]["device"], "ok": False, "missing": 1}]})
+        assert attention.template_behind_source(listref.resolve("Lab"))["rows"] == []
+
+    def test_it_clears_once_the_file_is_brought_in(self, lab, monkeypatch):  # noqa: F811
+        from modules import attention
+        from modules.nsot import listref, template_bring
+        monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+        _commit_stale(lab)
+        self._round_trip(monkeypatch, [])
+        assert attention.template_behind_source(listref.resolve("Lab"))["rows"]
+        p = template_bring.preview("Lab", "_common.j2")
+        assert template_bring.bring("Lab", "_common.j2", p["copy_blob"], p["shipped_blob"],
+                                    "a person")["ok"]
+        assert attention.template_behind_source(listref.resolve("Lab"))["rows"] == []

@@ -276,7 +276,9 @@ it again); operations interrupted while they held a device (the process ended
 mid-run); a device's SSH host key that changed (**Re-key…** on its page), and the new keys a
 planned window kept; the records database's stores that do not match or do not answer; the
 scheduled rotation's timer, stopped on a failure; templates behind the shipped version in a
-way that drops lines; the log redaction found unhealthy; and, under **Mercury itself**
+way that drops lines, or that stops a bound device's round trip the shipped version passes
+(so no deploy plan renders it), each with **Bring in the shipped version on Templates**; the
+log redaction found unhealthy; and, under **Mercury itself**
 (above), never in the list or its counts: the CI verdict on the running commit (a warning, since the release keeps running: when its runs disagree, such as one run that
 passed and a later one that failed, it lists each run with its attempt, names the failed job
 and test, and says whether a re-run is running; its action is to re-run the failed job, or
