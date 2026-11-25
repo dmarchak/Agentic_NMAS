@@ -345,6 +345,31 @@ def test_every_line_is_labelled_and_the_sheet_is_masked(monkeypatch):
     assert "<redacted:" in text
 
 
+def test_a_secret_in_a_pack_s_log_line_leaves_in_no_byte_sent(world, monkeypatch):  # noqa: F811
+    """C2164: the fact sheet quotes a pack's log line (its reload line), so a secret planted in
+    that line is read in the bytes Explain sends, not by calling the mask: neither the sheet's
+    copy nor the logs' own carries it, and the sheet says where it was masked."""
+    from modules import redact
+    from modules.ai import triggers
+    from tests.ai_person import pressed_by
+    from modules import evidence_pack as EP
+    pack = _reloaded("%SYS-5-RELOAD: Reload requested by admin. key Planted5ecretValue9 "
+                     "snmp-server community Pl4ntedCommunity RO")
+    pack["hash"] = EP.digest(pack)            # sealed as a build seals it
+    monkeypatch.setattr(redact, "known_secret_values",
+                        lambda: {"Planted5ecretValue9": "Lab:planted"})
+    world.answer = _answer(pack)
+    with pressed_by("operator@example.com"):
+        got = explain.explain_pack(pack, actor="operator@example.com",
+                                   trigger=triggers.person("operator@example.com"),
+                                   send=world.send, today="2026-10-25")
+    assert world.sent, got
+    sent = world.sent[-1]["bytes"]
+    assert "Planted5ecretValue9" not in sent and "Pl4ntedCommunity" not in sent
+    sheet = _block(world.sent[-1]["body"], fact_sheet.PART)
+    assert "Reloads in the window (computed by Mercury)" in sheet and "<redacted:" in sheet, sheet
+
+
 def _data_blocks(body):
     return re.findall(r'<data name="([^"]+)">', body["messages"][0]["content"])
 

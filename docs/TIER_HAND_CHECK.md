@@ -5206,3 +5206,17 @@ naming the settings file. One control by hand, tests/test_notify.py `-k no_link_
 | canary | the key in the words again | **died**: `test_with_no_link_base_the_link_is_the_path_and_says_so` |
 
 **The result: the canary died.**
+
+## 2026-11-25: the fact sheet's egress read in the bytes sent (C2164), by hand
+
+**The change.** A test only: a secret planted in a pack's reload log line, which the fact sheet
+quotes, is read for in the bytes Explain sends (`world.sent`), not by calling the mask
+(tests/test_explain_fact_sheet.py `test_a_secret_in_a_pack_s_log_line_leaves_in_no_byte_sent`).
+Two controls by hand, each in an `nmas-control` worktree:
+
+| # | Mutant | Result |
+|---|---|---|
+| 1 | the sheet's own mask removed (`fact_sheet.sheet` returns its lines unmasked) | **lived, as it should**: the gateway's egress mask (`redact.egress_payload`) still masks every byte sent; the sheet's own mask keeps its own test (`test_every_line_is_labelled_and_the_sheet_is_masked`) |
+| 2 | the sheet's mask and the gateway's egress mask both removed | **died**: the planted key in the bytes sent |
+
+**The result: the bytes sent are masked by two layers, each held by its own test.**
