@@ -11,7 +11,7 @@
 {%- endif %}
 {%- endmacro -%}
 {%- set o = open or {} -%}
-<div class="ntf-tab" id="notify-tab">
+<div class="ntf-tab" id="notify-tab" hx-get="{{ url_for('notify_v2.tab') }}" hx-trigger="nmas:notifications from:body, nmas:settings from:body" hx-swap="outerHTML">
   {%- if n.state == 'unreadable' %}
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The teams store could not be read ({{ n.error }}): nothing is drawn as known, and every change is refused until it can be read.</p></div>
   {%- endif %}
@@ -26,7 +26,7 @@
       <span class="op-act"><a class="btn btn-small" data-op="settings" href="{{ url_for('settings_v2.installation', tab='notifications') }}" hx-get="{{ url_for('notify_v2.webhook_add_form') }}" hx-target="#notify-tab" hx-swap="outerHTML" title="Opens the webhook's fields: nothing is added until you press Add">Add a webhook…</a>{{ how('settings', 'notifications', compact=True, op='adding a webhook') }}</span></div>
     {{ said('webhooks') }}
     {%- if o.what == 'webhook_new' %}
-    <form class="ntf-add" method="post" action="{{ url_for('notify_v2.webhook_add') }}" hx-post="{{ url_for('notify_v2.webhook_add') }}" hx-target="#notify-tab" hx-swap="outerHTML">
+    <form class="ntf-add" data-holds-live="1" method="post" action="{{ url_for('notify_v2.webhook_add') }}" hx-post="{{ url_for('notify_v2.webhook_add') }}" hx-target="#notify-tab" hx-swap="outerHTML">
       {%- if n.teams %}
       <label class="heal-field">Team<select name="team">{% for t in n.teams %}<option value="{{ t.id }}"{% if t.id == o.team %} selected{% endif %}>{{ t.name }}</option>{% endfor %}</select></label>
       <label class="heal-field">Name<input type="text" name="name" value="{{ o.name or '' }}" autocomplete="off" placeholder="on-call chat"></label>
@@ -55,7 +55,7 @@
         {%- if answer and answer.where == 'dest:' ~ d.id %}<tr><td colspan="4">{{ said('dest:' ~ d.id) }}</td></tr>{% endif %}
         {%- if o.what == 'webhook_edit' and o.dest == d.id %}
         <tr><td colspan="4">
-          <form class="ntf-add" method="post" action="{{ url_for('notify_v2.webhook_edit', team=d.team, dest=d.id) }}" hx-post="{{ url_for('notify_v2.webhook_edit', team=d.team, dest=d.id) }}" hx-target="#notify-tab" hx-swap="outerHTML">
+          <form class="ntf-add" data-holds-live="1" method="post" action="{{ url_for('notify_v2.webhook_edit', team=d.team, dest=d.id) }}" hx-post="{{ url_for('notify_v2.webhook_edit', team=d.team, dest=d.id) }}" hx-target="#notify-tab" hx-swap="outerHTML">
             <label class="heal-field">Name<input type="text" name="name" value="{{ d.name or '' }}" autocomplete="off"></label>
             <label class="heal-field">URL<input type="text" name="url" class="mono" value="" autocomplete="off" placeholder="leave empty to keep it"><span class="set-origin">Kept unless you type a new one; a new URL is a new receiver, off until its code is typed back.</span></label>
             <label class="heal-field">Signing secret<input type="password" name="secret" autocomplete="new-password" placeholder="{{ 'set: type to replace' if d.secret_set else 'not set: type to set' }}"></label>
@@ -78,7 +78,7 @@
       <span class="op-act"><a class="btn btn-small" data-op="settings" href="{{ url_for('settings_v2.installation', tab='notifications') }}" hx-get="{{ url_for('notify_v2.team_add_form') }}" hx-target="#notify-tab" hx-swap="outerHTML" title="Opens the team's name: nothing is added until you press Add">Add a team…</a>{{ how('settings', 'notifications', compact=True, op='adding a team') }}</span></div>
     {{ said('teams') }}
     {%- if o.what == 'team_new' %}
-    <form class="ntf-inline" method="post" action="{{ url_for('notify_v2.team_add') }}" hx-post="{{ url_for('notify_v2.team_add') }}" hx-target="#notify-tab" hx-swap="outerHTML">
+    <form class="ntf-inline" data-holds-live="1" method="post" action="{{ url_for('notify_v2.team_add') }}" hx-post="{{ url_for('notify_v2.team_add') }}" hx-target="#notify-tab" hx-swap="outerHTML">
       <label class="sr-only" for="ntf-team-name">The team's name</label><input id="ntf-team-name" class="ntf-input" type="text" name="name" value="{{ o.name or '' }}" placeholder="Default on-call" autocomplete="off" required>
       <span class="op-act"><button type="submit" class="btn btn-small btn-primary" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Add the team</span><span class="op-busy">Adding…</span></button>{{ how('settings', 'notifications', compact=True, op='adding a team') }}</span>
       <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab='notifications') }}">Cancel</a>
@@ -96,7 +96,7 @@
             person Mercury names: each element that draws one says so (`data-address`). -#}
         <tr><td><span data-address="destination">{{ d.label }}</span>{% if d.channel == 'webhook' %} <span class="faint">(webhook)</span>{% endif %}</td>
           <td>{{ badge(d.chip[0], d.chip[1]) }}</td>
-          <td class="set-row-acts">
+          <td class="set-row-acts"{% if o.what == 'remove' and o.dest == d.id %} data-holds-live="1"{% endif %}>
             {%- if o.what == 'remove' and o.dest == d.id %}
             <span class="small">Remove <span data-address="destination">{{ d.label }}</span>? It receives nothing{% if d.channel == 'webhook' %} and its signing secret is erased{% endif %}; its delivery log rows stay in History.</span>
             <span class="op-act"><button type="button" class="btn btn-small btn-danger" data-op="settings" hx-post="{{ url_for('notify_v2.dest_remove', team=t.id, dest=d.id) }}" hx-target="#notify-tab" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Remove</span><span class="op-busy">Removing…</span></button>{{ how('settings', 'notifications', compact=True, op='removing a destination') }}</span>

@@ -12,7 +12,14 @@ shots do not draw (each form open, a refusal, a code typed, an edit to a new URL
 question) are compared by the templates and tests/test_notify_v2.py.
 Templates compared: templates/v2/_notify.html, templates/v2/_notify_relay.html
 Compared again 2026-11-24 (the week plan's Stage 5, every setting's description): `_notify_relay.html` draws one line under each relay field, what the setting does in plain words, from `settings_schema.DESCRIPTIONS` through `_macros.setting_desc`; the password (the credential store's, not a setting) has none. Nothing else moves and no region's verdict changed. Artboard B draws no such line: a deviation, logged once (docs/STANDING_APPROVAL_LOG.md, "Settings: every setting's description"). Compared by the template's diff and tests/test_settings_descriptions.py's render, not by new shots. Templates sha256 before: `cd468e69751a6502a653868135858fdcf3ab961036558b1d97ccb91a3bfb7901`.
-Templates sha256: `502c6c326404db0370a92164d4d58014fb773d4b83bd52179389e59f5e86ba11`
+Compared again 2026-11-24 (C2405): the tab redraws itself live (`hx-get` of its own GET,
+`notify_v2.tab`, on `notifications` and `settings`, the keys its changes announce), and each
+form a press opens (a webhook added or edited, a team added, a removal's question, the relay's
+Replace… and Test send to…) is held through that redraw (`data-holds-live`); markup only in
+attributes, nothing drawn moves, no deviation. Compared by the templates' diff and
+tests/test_notify_v2.py's browser case, not by new shots. Templates sha256 before:
+`502c6c326404db0370a92164d4d58014fb773d4b83bd52179389e59f5e86ba11`.
+Templates sha256: `3545d50537df25e7aab94c846908bc9522ffd4d1fbc090d698b8ebbd3434b5f9`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_notify_relay.html`, who set the relay's password is now

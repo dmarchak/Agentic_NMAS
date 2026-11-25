@@ -37,7 +37,7 @@
     {%- if f.key == 'notify_smtp_from' %}
     <span class="set-label">Password</span>
     <div>{%- if replacing %}
-      <span class="ntf-inline"><label class="sr-only" for="f-relay-password">The relay's new password</label><input id="f-relay-password" type="password" name="password" form="relay-password" autocomplete="new-password" placeholder="type the new password">
+      <span class="ntf-inline" data-holds-live="1"><label class="sr-only" for="f-relay-password">The relay's new password</label><input id="f-relay-password" type="password" name="password" form="relay-password" autocomplete="new-password" placeholder="type the new password">
       <span class="op-act"><button type="submit" class="btn btn-small btn-primary" form="relay-password" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Store it</span><span class="op-busy">Storing…</span></button>{{ how('settings', 'notifications', compact=True, op="replacing the relay's password") }}</span>
       <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab='notifications') }}" hx-get="{{ url_for('settings_v2.install_card', name='relay') }}" hx-target="#card-relay" hx-swap="outerHTML">Cancel</a></span>
       <span class="set-origin">Stored encrypted, never shown or read back; the relay's login reads it at each send.</span>
@@ -62,9 +62,9 @@
       {{ how('settings', 'notifications') }}
     </div>
   </form>
-  {%- if replacing %}<form id="relay-password" class="sr-only" method="post" action="{{ url_for('notify_v2.relay_password') }}" hx-post="{{ url_for('notify_v2.relay_password') }}" hx-target="#card-relay" hx-swap="outerHTML"></form>{% endif %}
+  {%- if replacing %}<form id="relay-password" class="sr-only" data-holds-live="1" method="post" action="{{ url_for('notify_v2.relay_password') }}" hx-post="{{ url_for('notify_v2.relay_password') }}" hx-target="#card-relay" hx-swap="outerHTML"></form>{% endif %}
   {%- if testing %}
-  <form class="ntf-inline ntf-test" method="post" action="{{ url_for('notify_v2.relay_test') }}" hx-post="{{ url_for('notify_v2.relay_test') }}" hx-target="#card-relay" hx-swap="outerHTML">
+  <form class="ntf-inline ntf-test" data-holds-live="1" method="post" action="{{ url_for('notify_v2.relay_test') }}" hx-post="{{ url_for('notify_v2.relay_test') }}" hx-target="#card-relay" hx-swap="outerHTML">
     {%- if rl.emails %}
     <label class="small" for="relay-to">Test send to</label>
     <select id="relay-to" name="to">{% for d in rl.emails %}<option data-address="destination" value="{{ d.to }}">{{ d.label }} ({{ d.team_name }})</option>{% endfor %}</select>

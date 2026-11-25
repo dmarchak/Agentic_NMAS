@@ -461,3 +461,50 @@ def test_no_secret_reaches_the_teams_log_on_an_add_or_an_edit(n):
     text = "\n".join(lines)
     assert f"destination {dest} added" in text and f"webhook {dest} in team" in text
     assert HOOK_SECRET not in text and NEW_SECRET not in text
+
+
+def test_the_tab_at_rest_is_its_own_get_and_hears_what_its_changes_announce(n):
+    """C2405: the tab redraws itself live from its own GET, on the keys its changes announce;
+    each form a press opens is held as the person's work (`data-holds-live`)."""
+    from modules import invalidation as I
+    r, tab = _get(n, f"{BASE}/tab")
+    assert r.status_code == 200 and tab.startswith('<div class="ntf-tab" id="notify-tab"')
+    head = tab.split(">", 1)[0]
+    assert f'hx-get="{BASE}/tab"' in head and 'hx-swap="outerHTML"' in head
+    heard = set(re.findall(r"nmas:(\w+) from:body", head))
+    announced = {k for name, keys in I.DECLARED.items() if name.startswith("notify_v2.")
+                 and isinstance(keys, tuple) for k in keys}
+    assert announced and announced <= heard, (announced, heard)
+    _r, opened = _get(n, f"{BASE}/teams/new")
+    assert re.search(r'<form class="ntf-inline" data-holds-live="1"[^>]*hx-post="'
+                     + re.escape(f"{BASE}/teams") + '"', opened), opened
+
+
+def test_in_a_real_browser_a_team_added_elsewhere_is_drawn_and_an_opened_form_stays(n):
+    """C2405 in Firefox: with "Add a team" opened here (a press's answer, nothing typed yet),
+    another person adds a team; the tab hears `notifications`, draws their team in place, and
+    the form opened here stays."""
+    from tests import browser
+
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why}); the tab's own checks above still run")
+    import app as APP
+
+    with browser.Served(APP.app) as srv, browser.Browser() as b:
+        try:
+            b.go(srv.url(TAB))
+            b.wait_for("return !!document.getElementById('notify-tab') && !!window.htmx")
+            b.click("#ntf-teams a[hx-get$='/teams/new']")
+            b.wait_for("return !!document.getElementById('ntf-team-name') &&"
+                       " !document.querySelector('.htmx-request')")
+            b.js("document.activeElement.blur(); return 1")
+            assert _post(n, f"{BASE}/teams", {"name": "Second shift"})[0].status_code == 200
+            b.js("htmx.trigger(document.body, 'nmas:notifications'); return 1")
+            b.wait_for("return /Second shift/.test(document.getElementById('ntf-teams')"
+                       ".innerText) && !document.querySelector('.htmx-request')", 10.0)
+            assert b.js("return !!document.getElementById('ntf-team-name')"), \
+                "the form the person opened was closed by the redraw"
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()

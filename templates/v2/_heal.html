@@ -14,7 +14,7 @@
 {%- set cur = h.cur -%}
 {%- set net = h.network -%}
 {%- set M = h.modals -%}
-<div class="heal-tab" id="heal-tab">
+<div class="heal-tab" id="heal-tab" hx-get="{{ url_for('heal_v2.tab', list_name=net) }}" hx-trigger="nmas:settings from:body" hx-swap="outerHTML">
   {%- if refused and not M.reopen and not stopping and not resuming %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not done:</strong> {{ refused }}. Nothing was changed.</p></div>
   {%- endif %}
@@ -67,7 +67,7 @@
       {%- endif %}
       {{ how('settings', 'self-healing') }}
     </div>
-    <details class="set-details" id="heal-history"><summary>History of this policy</summary>
+    <details class="set-details" id="heal-history" data-keep="heal-history"><summary>History of this policy</summary>
       {%- if h.history.state == 'unreadable' %}
       <p class="small">{{ net }}'s settings record could not be read: {{ h.history.error }}.</p>
       {%- elif not h.history.rows %}
@@ -176,7 +176,7 @@
     {%- endif %}
     {%- if resuming %}
     {%- set rp = resuming %}
-    <section class="card set-card heal-card" id="heal-resume" aria-labelledby="h-heal-resume">
+    <section class="card set-card heal-card" id="heal-resume" aria-labelledby="h-heal-resume" data-holds-live="1">
       <div class="card-head"><h2 id="h-heal-resume">Resume self-healing everywhere</h2></div>
       {%- if refused %}<div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not resumed:</strong> {{ refused }}.</p></div>{% endif %}
       <p class="small">{{ rp.why }}. Each network, as it will be once resumed:</p>
@@ -192,7 +192,7 @@
       </form>
     </section>
     {%- elif stopping and not h.stopped.stopped %}
-    <section class="card set-card heal-card heal-stop" id="heal-stop" aria-labelledby="h-heal-stop">
+    <section class="card set-card heal-card heal-stop" id="heal-stop" aria-labelledby="h-heal-stop" data-holds-live="1">
       <div class="card-head"><h2 id="h-heal-stop">Stop self-healing everywhere?</h2></div>
       {%- if refused %}<div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not stopped:</strong> {{ refused }}.</p></div>{% endif %}
       <p class="small">Every network stops at once, whatever its mode: nothing new starts, and a heal already applying finishes its own verify and rollback. One press, no confirm, recorded with who, when and why. Resuming is previewed and confirmed by a person with a reason.</p>

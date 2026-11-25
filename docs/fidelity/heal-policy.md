@@ -29,7 +29,13 @@ and the fields no longer move 50.8 px down when the answer appears (C3468's meas
 answer moves below its form within the same card; logged once (docs/STANDING_APPROVAL_LOG.md,
 "C3480: Who is told's answer below its Save"); compared by the template's diff and
 tests/test_heal_tab_v2.py, not by new shots. Templates sha256 before: `cd74ba464f9a862c832e9138a6c6d65f36facf1a11489b7afa98fc2b3b2d5003`.
-Templates sha256: `0d4433cc04c4705694cc8cc0a7612e257c16d25c29abcad9f60e904fcb8652f3`
+Compared again 2026-11-24 (C2405): the tab redraws itself live (`hx-get` of its own GET on
+`settings`, which every policy change announces), the stop and resume cards a press opens are
+held through that redraw (`data-holds-live`), and the policy's history entry keeps its open
+state (`data-keep`); markup only in attributes, nothing drawn moves, no deviation. Compared by
+the template's diff and tests/test_heal_tab_v2.py's browser cases, not by new shots. Templates
+sha256 before: `0d4433cc04c4705694cc8cc0a7612e257c16d25c29abcad9f60e904fcb8652f3`.
+Templates sha256: `2d75d5f6ac6a625a04234b58f920b9f75459c7b22ff3495dcc34d59ce6f26d71`
 
 **Compared again 2026-11-12 for C3196 (the BGP session clear listed twice):** by the template's
 diff against the Fix kinds region, not from new shots. The table and the change card draw a

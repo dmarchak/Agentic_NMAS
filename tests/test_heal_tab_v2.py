@@ -911,6 +911,84 @@ def test_in_a_real_browser_the_toggle_and_the_dropdown_open_their_modal_anchored
 
 
 
+def test_in_a_real_browser_a_change_made_elsewhere_is_drawn_in_the_open_tab(networks):
+    """C2405: the tab carried no live trigger, so a policy another person changed (another
+    tab, another viewer) was drawn only once the page was loaded again. It now hears
+    `settings`, which every policy change announces, and is merged in place: the new mode is
+    drawn, and the tab, its dropdown and the focus on it are the same nodes as before."""
+    from tests import browser
+
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why}); the tab's own checks above still run")
+    import app as APP
+    from modules import invalidation as I
+
+    assert I.DECLARED["heal_v2.policy_confirm"] == ("settings",)
+    page = "/v2/settings/network/Default?tab=heal"
+    with browser.Served(APP.app) as srv, browser.Browser() as b:
+        try:
+            b.go(srv.url(page))
+            b.wait_for("return !!document.getElementById('heal-tab') && !!window.htmx")
+            assert H.current("Default")["set"] == "off"
+            b.js("window.__tab = document.getElementById('heal-tab');"
+                 "window.__pick = document.getElementById('heal-mode-pick');"
+                 "window.__pick.focus(); return 1")
+            before = b.js("return document.querySelector('#heal-mode .heal-kv').innerText")
+            # Another person confirms Dry run (their own request, never this page's).
+            _preview_and_confirm(networks, "Default", {"part": "mode", "heal_mode": "dry_run"})
+            assert H.current("Default")["set"] == "dry_run"
+            b.js("htmx.trigger(document.body, 'nmas:settings'); return 1")
+            b.wait_for("return document.querySelector('#heal-mode .heal-kv').innerText !== "
+                       "arguments[0] && !document.querySelector('.htmx-request')", 10.0, before)
+            got = b.js("return {same: document.getElementById('heal-tab') === window.__tab,"
+                       " pick: document.getElementById('heal-mode-pick') === window.__pick,"
+                       " focus: document.activeElement === window.__pick,"
+                       " set: /Lab 10's walk/.test(document.querySelector("
+                       "'#heal-mode .heal-kv').innerText)}")
+            assert got == {"same": True, "pick": True, "focus": True, "set": True}, got
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+
+
+def test_in_a_real_browser_a_card_a_person_opened_stays_through_the_tabs_redraw(networks):
+    """C2405's cost, measured: with the tab live, a change elsewhere redraws it while a person
+    has a card open that a press drew (Stop self-healing everywhere…'s card, asking why), the
+    redraw at rest drawing no such card. The card they opened stays, as their work."""
+    from tests import browser
+
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why}); the tab's own checks above still run")
+    import app as APP
+
+    page = "/v2/settings/network/Default?tab=heal"
+    with browser.Served(APP.app) as srv, browser.Browser() as b:
+        try:
+            b.go(srv.url(page))
+            b.wait_for("return !!document.getElementById('heal-tab') && !!window.htmx")
+            b.click("#heal-kill .heal-kill-btn a")
+            b.wait_for("return !!document.getElementById('heal-stop') &&"
+                       " !document.querySelector('.htmx-request')")
+            b.js("document.body.focus(); document.activeElement.blur(); return 1")
+            _preview_and_confirm(networks, "Default", {"part": "mode", "heal_mode": "dry_run"})
+            b.js("htmx.trigger(document.body, 'nmas:settings'); return 1")
+            b.wait_for("return /Lab 10's walk/.test(document.querySelector("
+                       "'#heal-mode .heal-kv').innerText) && !document.querySelector("
+                       "'.htmx-request')", 10.0)
+            assert b.js("return !!document.getElementById('heal-stop')"), \
+                "the stop card the person opened was closed by the redraw"
+            # Held as their work, not stuck: their own Cancel closes it.
+            b.click("#heal-stop a.btn:not(.btn-danger)")
+            b.wait_for("return !document.getElementById('heal-stop') &&"
+                       " !!document.querySelector('#heal-kill .heal-kill-btn a') &&"
+                       " !document.querySelector('.htmx-request')", 10.0)
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+
+
 def test_a_kinds_toggle_in_dry_run_previews_the_kinds_it_changes():
     """C3550: in Off or Dry run a fix kind's toggle changes `heal_kinds_auto`; its preview's
     "Kinds that heal without a person" row says the change (outside Auto, "only in Auto"),

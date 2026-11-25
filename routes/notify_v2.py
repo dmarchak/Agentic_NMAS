@@ -62,6 +62,14 @@ def _sent_words(got: dict, what: str) -> str:
     return f"{what} not sent ({got.get('outcome')}): {got.get('error') or 'no reason given'}"
 
 
+@bp.route("/tab", methods=["GET"])
+def tab():
+    """The Notifications tab at rest, as the tab's own live redraw asks for it (C2405: a team,
+    a destination or the relay another person changed is drawn in place; a form a person
+    opened here is held as their work, `data-holds-live`)."""
+    return _tab()
+
+
 # ── The relay: its password and Test send to… ──────────────────────────────────────────────
 
 @bp.route("/relay/password/form", methods=["GET"])
