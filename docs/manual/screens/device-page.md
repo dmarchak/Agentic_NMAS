@@ -71,7 +71,9 @@ The tab opens with **one sentence** from what it draws under it: whether the dev
 the operation it is under, or that it is not probed yet) and how it stands against its intent
 (the Intent check's answer now first), then the checks that need a look, those not known yet and
 those not checked ("edge1 is reachable and runs its intent. Every other check passes." only
-when each says so). It moves with them.
+when each says so). It moves with them. Under it, one quiet line says how old its two readings
+are: when reachability was last checked and when what the device runs was last measured (or
+that neither has happened yet); hover either for its exact time.
 
 What the tool knows about the device, each fact with where it came from: its last golden, its
 intent state (the state the Devices list shows for it, from its last measurement, or "intent

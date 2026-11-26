@@ -6,7 +6,11 @@
     so it moves with them), then Around this device and Checks as sections, no box. -#}
 <div class="grid-2 overview-doc" id="overview" hx-get="{{ url_for('device_v2.overview', name=device.hostname) }}" hx-swap="outerHTML"
      hx-trigger="nmas:reachability from:body, nmas:alerts from:body, nmas:drift from:body, nmas:goldens from:body, nmas:intent from:body, nmas:templates from:body">
-{%- if said %}<p class="doc-summary overview-said" data-sentence><strong>{{ said.lead }}</strong>{% if said.rest %} {{ said.rest }}{% endif %}</p>{% endif %}
+{%- if said %}<p class="doc-summary overview-said" data-sentence><strong>{{ said.lead }}</strong>{% if said.rest %} {{ said.rest }}{% endif %}</p>
+{#- C's as-of line (Stage 5 step 5): how old the two readings the sentence leads with are,
+    the reachability probe and the last measurement of what it runs, each the same value its
+    row below draws. -#}
+<p class="doc-asof overview-asof" data-asof>reachability {% if answer.checked_at %}checked {{ stamp(answer.checked_at) }}{% else %}not probed yet{% endif %} · what it runs {% if records.measured %}measured {{ stamp(records.measured.iso, note='measurement ' ~ records.measured.sha) }}{% else %}not measured yet{% endif %}</p>{% endif %}
 <p class="tab-help">{{ info('device-page', 'overview', 'About this tab') }}</p>
   <section class="card">
     <div class="card-head"><h2>Around this device</h2></div>

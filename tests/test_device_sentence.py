@@ -80,3 +80,27 @@ def test_the_overview_opens_with_the_sentence_of_what_it_draws(lab):  # noqa: F8
     for c in ctx["checks"]:
         if c["name"] != "Intent" and c["state"] == "unknown" and not c.get("unreadable"):
             assert c["name"] in said.group(2), (c["name"], said.group(2))
+
+
+def test_under_the_sentence_the_age_of_what_it_stands_on(lab):  # noqa: F811
+    """C's as-of line (Stage 5 step 5): right under the sentence, how old its two readings
+    are, the reachability probe (or that none has run) and the last measurement of what the
+    device runs, each the same timestamp its row below draws."""
+    import app as A
+    from modules.device import load_saved_devices
+    from modules.nsot import listref
+    from routes import device_v2
+    _r, html = _get(lab, "/v2/device/r3/overview")
+    ref = listref.resolve("Lab")
+    dev = next(d for d in load_saved_devices(ref.csv_path) if d["hostname"] == "r3")
+    with A.app.test_request_context("/"):
+        ctx = device_v2._overview_ctx(ref, dev)
+    line = re.search(r'</p>\s*<p class="doc-asof overview-asof" data-asof>(.*?)</p>', html, re.S)
+    assert line and html.index("data-sentence") < line.start(), "the line is under the sentence"
+    words = re.sub(r"<[^>]+>", "", line.group(1))
+    measured = ctx["records"].get("measured")
+    assert measured, "the fixture's device has a measurement"
+    assert f'datetime="{measured["iso"]}"' in line.group(1), line.group(1)
+    assert words.startswith("reachability not probed yet" if not ctx["answer"].get("checked_at")
+                            else "reachability checked "), words
+    assert " · what it runs measured " in words, words

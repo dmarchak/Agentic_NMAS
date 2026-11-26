@@ -36,7 +36,9 @@ the template's diff and tests/test_devices_v2.py, not by new shots; logged once
 (docs/STANDING_APPROVAL_LOG.md, "C3714: one intent answer on the device page"). Templates sha256 before: `c95e4a63c14b67fd7caa8029051320929ea18be5aedffbf80d7032b6ca680afc`.
 Compared again 2026-11-25 (Stage 5 step 5, slice 1; the operator's GUI pick of 2026-11-25: C): `_overview.html` opens with the device's one sentence (`device_page.sentence`), across the tab, and its two cards, Around this device and Checks, are sections side by side, a hairline above each and no box; every row of each is unchanged. Shot in Firefox at 1366 and 500 and read against C's device page; deviations logged once (docs/STANDING_APPROVAL_LOG.md, "Stage 5 step 5, slice 1"). Templates sha256 before:
 `a3b35d90c51ed330d77c4254951c9ac84bd5f40155ff36373ebe64781c565ce0`.
-Templates sha256: `f42faf1992b26e4e973228213d1dd045541b87312ac82f5f60f59585a437945d`
+Compared again 2026-11-26 (Stage 5 step 5, C's as-of line): under the device's sentence, one quiet line with the age of what it stands on, "reachability checked <age> · what it runs measured <age>" (or "not probed yet", "not measured yet"), each the timestamp its row below draws. One deviation logged (Stage 5 step 5: the device's as-of line). Templates sha256 before:
+`f42faf1992b26e4e973228213d1dd045541b87312ac82f5f60f59585a437945d`.
+Templates sha256: `f1a757ee2e6f9454ee22989e1e206271dfe0f39243a8700fef35e217b0583c4c`
 Templates sha256 before the saved actions slot passed a reopened run on (2026-11-15, Gate 1b: In progress reopens a saved action's run at the device's Overview with `run=`, and the slot asks for that run's card; nothing drawn differently, every verdict unchanged): `4e998fc3c2d6391b896914b2fb1e4ffb4eac1d34f5caeeea2140fbe131148891`
 (2026-11-15, Gate 1b: `_overview.html` gains one include line after Checks, the saved actions'
 slot, asked in place, and its card compared with board saved-plans D, docs/boards/saved-plans.html,

@@ -626,6 +626,9 @@ h1 { margin: 0; font-size: 30px; font-weight: 700; line-height: 1.25; letter-spa
 /* A device's Overview as C's document (Stage 5 step 5): its sentence across the top, then its
    two sections side by side, each a hairline above and no box. */
 .overview-doc > .overview-said { grid-column: 1 / -1; margin: 0; max-width: none; }
+/* C's as-of line under a sentence: the age of what it stands on, quiet. */
+.doc-asof { font-size: 13px; color: var(--ink-3); margin: 0 0 14px; }
+.overview-doc > .overview-asof { grid-column: 1 / -1; margin-top: -6px; }
 .overview-doc > .card { background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0;
   padding: 14px 0 0; }
 .overview-doc > .card > .card-head h2 { font-size: 19px; font-weight: 700; }
