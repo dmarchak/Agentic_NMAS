@@ -14,7 +14,9 @@ It updates with the list.
 Each severity's rows are one list, the severity's colour as a bar at each row's start. From
 the keyboard, while not typing in a field: **j** moves to the next row and **k** to the one
 before, through the sections that are open; **Enter** opens the row you are on; **e** presses
-its one action, the button at the end of its line.
+its one action, the button at the end of its line; **a** opens it at its **Acknowledge…**, its
+reason box ready to type in, on a row that offers one (a row that does not offers nothing to
+press).
 
 ## Self-healing's switches {#control-strip}
 

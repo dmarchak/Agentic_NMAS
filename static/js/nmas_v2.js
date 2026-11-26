@@ -3182,8 +3182,10 @@
   /* B's queue on Needs attention (the operator's GUI pick, 2026-11-25: "B's Needs attention
      queue"): keyboard first. j and k move to the next and the previous row of the sections
      that are open (each row's own line, its summary, takes the focus: Enter opens it, as any
-     disclosure), e presses the row's one action (its line's, `_attention.html`'s `primary`).
-     Never while typing, never with a modifier, and only on a page that draws the list. PURE
+     disclosure), e presses the row's one action (its line's, `_attention.html`'s `primary`),
+     and a opens the row at its Acknowledge… form, its reason box focused (a row that offers
+     no acknowledgement does nothing). Never while typing, never with a modifier, and only on
+     a page that draws the list. PURE
      over its arguments: the index of the row to move to from *at* (-1: none yet) among *n*,
      by *key*; -1 for a key it does not move by. */
   function queueStep(key, at, n) {
@@ -3196,7 +3198,7 @@
     var t = e.target && e.target.tagName;
     if (e.ctrlKey || e.metaKey || e.altKey || t === 'INPUT' || t === 'TEXTAREA' ||
         t === 'SELECT' || (e.target && e.target.isContentEditable)) return;
-    if (e.key !== 'j' && e.key !== 'k' && e.key !== 'e') return;
+    if (e.key !== 'j' && e.key !== 'k' && e.key !== 'e' && e.key !== 'a') return;
     var list = root.document.getElementById('attention');
     if (!list) return;
     var lines = Array.prototype.filter.call(
@@ -3207,6 +3209,18 @@
       if (at < 0) return;
       var act = lines[at].querySelector('.att-primary a, .att-primary button');
       if (act) { e.preventDefault(); act.click(); }
+      return;
+    }
+    if (e.key === 'a') {
+      if (at < 0) return;
+      // The row's OWN acknowledgement, by its id: a group's members each have theirs.
+      var row = lines[at].parentNode;
+      var id = row && row.getAttribute('data-attention-row');
+      var ack = id && row.querySelector('.att-ack[data-row="' + id.replace(/"/g, '') + '"] > button');
+      if (!ack) return;
+      e.preventDefault();
+      row.open = true;
+      ack.click();
       return;
     }
     var to = queueStep(e.key, at, lines.length);

@@ -116,3 +116,52 @@ def test_j_and_k_move_from_row_to_row_and_e_presses_its_action_in_a_real_browser
             b.go("about:blank")
             browser.close_socketio_sessions()
     assert len(order) == 2 and seen == [order[0], order[1], order[0]], (order, seen)
+
+
+def test_a_opens_the_row_at_its_acknowledge_form_in_a_real_browser(monkeypatch):
+    """B's "a": on a row that offers Acknowledge… (an unplanned restart, acknowledged per event),
+    the row opens at its form with its reason box focused; on a row that offers none, nothing."""
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why}); the tests above still run")
+    import app as nmas
+    restart = A.row(source="restarts", kind="unplanned", key="unplanned:edge3", level="warning",
+                    what="edge3 restarted with no planned window", cause="its counter fell",
+                    action={"label": "Read why"}, devices=["edge3"], since=NOW - 120, event="e1")
+    monkeypatch.setattr(A, "SOURCES", (_src(_rows() + [restart]),))
+
+    def press(b, key):
+        b._call("POST", f"/session/{b.session}/actions", {"actions": [{
+            "type": "key", "id": "kb", "actions": [{"type": "keyDown", "value": key},
+                                                   {"type": "keyUp", "value": key}]}]})
+    with browser.Served(nmas.app) as srv, browser.Browser() as b:
+        try:
+            b.go(srv.url("/v2/"))
+            b.wait_for("return !!window.Alpine && document.querySelectorAll('details.att')"
+                       ".length === 3", 15)
+            order = b.js("return Array.from(document.querySelectorAll('details.att'))"
+                         ".map(function(d){return d.getAttribute('data-attention-row');})")
+            at = order.index(restart["id"])
+            assert at > 0, order
+            # On the first row, which offers no acknowledgement, "a" does nothing: the focus
+            # stays on its line and the row stays closed.
+            press(b, "j")
+            first = b.js("var a=document.activeElement, r=a.closest('details.att');"
+                         " return [a.className, r.getAttribute('data-attention-row'), r.open];")
+            press(b, "a")
+            still = b.js("var a=document.activeElement, r=a.closest('details.att');"
+                         " return [a.className, r.getAttribute('data-attention-row'), r.open];")
+            for _ in range(at):
+                press(b, "j")
+            press(b, "a")
+            b.wait_for("var a=document.activeElement; return !!a && a.id && a.id.indexOf('ack-')"
+                       " === 0", 5)
+            got = b.js("var a=document.activeElement, r=a.closest('details.att');"
+                       " return [a.id, r.getAttribute('data-attention-row'), r.open];")
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+    assert not any(r.get("acknowledge") for r in _rows()), "the other rows offer none"
+    assert first == still == ["att-line", order[0], False], (first, still)
+    assert got == [f"ack-{restart['id']}", restart["id"], True], got
