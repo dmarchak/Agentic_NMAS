@@ -151,6 +151,33 @@ def _stopped_by_a_person(monkeypatch):
     LP._jobs[NET]["thread"].join(10)
 
 
+def test_stop_stops_the_loop_even_when_its_line_cannot_be_written(networks,  # noqa: F811
+                                                                  monkeypatch):
+    """C4246's order (the stop line before the stop) never costs the stop itself: a log that
+    cannot be written raises to the caller, and the loop is told to stop all the same and
+    ends."""
+    from modules.sdn import capability
+    monkeypatch.setattr(capability, "read", lambda network, **kw: {
+        "ok": True, "error": "", "controllers": []})
+    gate = threading.Event()
+    monkeypatch.setattr(LP, "run_pass", lambda network, **kw: gate.wait(5))
+    LP.start(NET, actor="op@example.com", interval=5, run_for=600)
+    real_say = LP.say
+
+    def say(network, step, words, **kw):
+        if step == "stop":
+            raise OSError("the log cannot be written")
+        return real_say(network, step, words, **kw)
+    monkeypatch.setattr(LP, "say", say)
+    with pytest.raises(OSError):
+        LP.stop(NET, actor="op@example.com")
+    job = LP._jobs[NET]
+    assert job["stop"].is_set(), "Stop stopped the loop although its line failed"
+    gate.set()
+    job["thread"].join(10)
+    assert not job["thread"].is_alive()
+
+
 @pytest.mark.parametrize("how", ["run_for", "pass_cap", "stop"])
 @pytest.mark.parametrize("source", ["192.0.2.9", "2001:db8::9"], ids=["IPv4", "IPv6"])
 def test_the_watches_a_loop_leaves_open_close_when_it_stops(networks, monkeypatch,  # noqa: F811

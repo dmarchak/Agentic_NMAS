@@ -2221,6 +2221,13 @@ def stop(network: str, *, actor: str) -> dict:
         job = _jobs.get(network)
         if not job or not job["thread"].is_alive():
             raise ValueError(f"no loop is running on {network} in this process")
-        job["stop"].set()
-    say(network, "stop", f"stopped by {actor}")
+        # C4246: the stop line is written BEFORE the loop is told to stop, so the lines the
+        # stopping loop writes as it ends (each open watch it closes, `end_watches`) come after
+        # it; set first, a loop not yet in its first pass closed its watches before this line
+        # was written. A pass already running may still write after it. The stop is set even
+        # when the line cannot be written: Stop always stops the loop.
+        try:
+            say(network, "stop", f"stopped by {actor}")
+        finally:
+            job["stop"].set()
     return {"running": False, "stopped_by": actor}
