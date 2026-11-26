@@ -584,16 +584,19 @@ var out=[], n=0;
 document.querySelectorAll('table').forEach(function(t){
   if (!t.offsetParent) return;
   var row=t.querySelector('tbody tr') || t.querySelector('tr'); if (!row || !row.cells[0]) return;
-  var cell=row.cells[0], box=null;
+  var cell=row.cells[0], box=null, gap=%d;
   for (var p=t; p && p!==document.body; p=p.parentElement){
     var cs=getComputedStyle(p);
     if (parseFloat(cs.borderLeftWidth)>0 && cs.borderLeftStyle!=='none'){box=p; break;}
   }
+  // Stage 5 step 6 (C draws a table with no box): a table in no bordered box is measured
+  // against the page's main column, its first column never starting outside it.
+  if (!box) { box=t.closest('main'); gap=0; }
   if (!box) return;
   n++;
   var edge=box.getBoundingClientRect().left + parseFloat(getComputedStyle(box).borderLeftWidth);
   var text=cell.getBoundingClientRect().left + parseFloat(getComputedStyle(cell).paddingLeft);
-  if (text - edge < %d) out.push((t.className||'table')+': its first column starts '
+  if (text - edge < gap) out.push((t.className||'table')+': its first column starts '
     + Math.round(text-edge)+' px inside '+(box.className||box.tagName));
 });
 return [out, n];
