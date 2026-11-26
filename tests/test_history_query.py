@@ -22,6 +22,28 @@ def test_the_tab_sits_between_timeline_and_baselines(web):  # noqa: F811
                      html)
 
 
+@pytest.mark.parametrize("path", ["/v2/history?tab=query", "/v2/history/query/syslog",
+                                  "/v2/history/query/metric/errors",
+                                  "/v2/history/query/ask/logs",
+                                  "/v2/history/query/ask/metrics"])
+def test_query_opens_on_its_question_with_no_repo_header(web, monkeypatch, path):  # noqa: F811
+    """Stage 5 step 6 (the answer within the first screen): the repository's header (what is
+    uncommitted, the remote, Push now) repeated above every Query page, pushing the question
+    down; Query's pages neither read the repository's state nor draw it, and the Timeline
+    still does both."""
+    import routes.v2 as V
+    reads = []
+    real = V._history_remote
+    monkeypatch.setattr(V, "_history_remote", lambda ref: reads.append(ref) or real(ref))
+    r = web.get(path)
+    assert r.status_code == 200, path
+    assert reads == [], f"{path} read the repository's state"
+    html = r.get_data(as_text=True)
+    assert 'id="hist-remote"' not in html and 'id="remote-setup"' not in html
+    timeline = web.get("/v2/history").get_data(as_text=True)
+    assert len(reads) == 1 and 'id="hist-remote"' in timeline, "the Timeline keeps its header"
+
+
 def test_the_six_questions_in_the_board_s_order_and_only_the_built_one_links(web):  # noqa: F811
     html = _tab(web)
     titles = re.findall(r'class="hq-q(?: hq-later)?"[^>]*><strong>([^<]+)</strong>', html)

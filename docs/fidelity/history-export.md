@@ -20,7 +20,9 @@ short label added after the two fields, in the form's row; no element moves and 
 verdict moved; compared by the template's diff and tests/test_history_export.py, not by new
 shots; logged once (docs/STANDING_APPROVAL_LOG.md, "C3485: History › Export's days are the
 viewer's"). Templates sha256 before: `9e7a48f25e469cdfcea730d7eab8e226005d8872b4f403b6ed6e5c69e13fc13c`.
-Templates sha256: `c55d22fefe95d7960f2389e1681fdb2cb906764791e4c65f0f7b93d5d9028f5d`
+Compared again 2026-11-26 (Stage 5 step 6): the repository's header (what is uncommitted, the remote's sentence, Verify and Push now) is drawn on Timeline, Baselines and Export only; History's Query pages open on their tabs and their question, where the header repeated above every one. Every region's verdict is unchanged but the header's on a Query page, a deviation logged (Stage 5 step 6: History's Query pages without the repository header). Templates sha256 before:
+`c55d22fefe95d7960f2389e1681fdb2cb906764791e4c65f0f7b93d5d9028f5d`.
+Templates sha256: `16eb0ad7c578bcf2f8652638838da5455c9b0fd255a11a0e54e5d297b1e85520`
 
 Compared again 2026-11-10 (C2942): only the "Not on <network>" line's words changed (a call
 naming no network is now the installation's own, or one recorded before 2026-11-10). It is the

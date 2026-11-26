@@ -80,7 +80,7 @@ SC_PICK = ("the fragment is handed the whole pick model; these are drawn by `_sc
            "/v2/show-commands (filters, sets, limits, the matched devices)")
 RANGE_RAW = ("raw range epochs and seconds handed to the reader; drawn in words (the range's "
              "words, the answer's title, the kept-from words)")
-ASK_SHELL = ("the page shell's context (tabs, filters, the remote header, the flag choosing the "
+ASK_SHELL = ("the page shell's context (tabs, filters, the flag choosing the "
              "include, the network's ListRef), drawn by the full page through "
              "`_history_body.html`")
 STEPPER = ("the stepper's and the host steps' raw numbers and bookkeeping: their words (bar, "
@@ -218,7 +218,7 @@ UNDRAWN = {
         ("by_label log_query", "the selector and grouping label the query is built from; the "
                                "whole query is drawn token by token")],
     "GET /v2/history/query/ask/logs/region": [
-        ("ask_logs f ref remote tab tabs", ASK_SHELL), ("end seconds start", RANGE_RAW),
+        ("ask_logs f ref tab tabs", ASK_SHELL), ("end seconds start", RANGE_RAW),
         ("by_label log_query", "the selector and grouping label the query is built from; the "
                                "whole query is drawn token by token"),
         ("notes", "copies of the explain's device and severity notes, which the same region "
@@ -228,7 +228,7 @@ UNDRAWN = {
         ("end kept_from now_ts seconds start", RANGE_RAW),
         ("meta", "Prometheus metadata, drawn as the metric's kind, unit and help")],
     "GET /v2/history/query/ask/metrics/region": [
-        ("ask_metrics ref remote tab tabs", ASK_SHELL),
+        ("ask_metrics ref tab tabs", ASK_SHELL),
         ("end kept kept_from now_ts seconds start", RANGE_RAW),
         ("meta", "Prometheus metadata, drawn as the metric's kind, unit and help")],
     "GET /v2/history/query/metric/<key>": [
@@ -383,7 +383,9 @@ UNDRAWN = {
 #: -3 2026-11-12: C3166 slice 3, the Neighbours tab draws the adjacencies reader's stored view,
 #: which carries only what the tab draws (adjacencies `VIEW_*`): no protocol id `proto` (on
 #: the tab or the device page) and no RIP `source` marker.
-UNDRAWN_CEILING = 371
+#: -2 2026-11-26: Stage 5 step 6, History's Ask logs and Ask metrics regions no longer carry
+#: the repository header's `remote` (Query's pages neither read nor draw it).
+UNDRAWN_CEILING = 369
 
 #: {route: [(keys, reason), ...]}: in the preview a card is built from, read by neither its
 #: adapter nor its template.

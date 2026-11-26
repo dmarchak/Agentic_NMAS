@@ -3,7 +3,8 @@
 What happened to the network and its devices, and when, in four tabs: **Timeline**, one
 timeline of everything the tool records; **Query**, questions asked of the network's history;
 **Baselines**, the network's baselines; and **Export**, the call and cost log and the
-false-positive and failure log, downloaded for a report. The remote's state is at the top.
+false-positive and failure log, downloaded for a report. The remote's state is at the top of
+Timeline, Baselines and Export; Query's pages open on their question without it.
 
 ## The remote {#remote}
 

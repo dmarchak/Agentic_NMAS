@@ -904,8 +904,12 @@ def _history_ctx(request) -> dict:
         tab = "timeline"
     f = _history_filters(request)
     ctx = {"tab": tab, "tabs": HISTORY_TABS, "f": f, "ref": ref,
-           "remote": _history_remote(ref), "since_choices": HS.SINCE_CHOICES,
+           "since_choices": HS.SINCE_CHOICES,
            "kind_groups": HS.KIND_GROUPS, "quick_kinds": HS.QUICK_KINDS}
+    if tab != "query":
+        # The repository's header is drawn above Timeline, Baselines and Export; Query's
+        # pages open on their question (Stage 5 step 6: it repeated above every query).
+        ctx["remote"] = _history_remote(ref)
     if tab == "timeline":
         members = _history_members(ref)
         ctx["devices"] = members or []
@@ -1103,7 +1107,7 @@ def history_query_metric(key):
     ref = listref.active()
     m = history_query.metric_view(key, named_list(request) or ref.name, request.args)
     return _page("v2/history.html", active_nav="history", tab="query", tabs=HISTORY_TABS,
-                 ref=ref, remote=_history_remote(ref), f=_history_filters(request), metric=m)
+                 ref=ref, f=_history_filters(request), metric=m)
 
 
 @bp.route("/history/query/metric/<key>/data", methods=["GET"])
@@ -1136,7 +1140,7 @@ def _ask_logs_ctx(q: dict = None) -> dict:
     if q is None:
         q = history_logq.view(named_list(request) or ref.name, request.args)
     _words_model(q)
-    return {"tab": "query", "tabs": HISTORY_TABS, "ref": ref, "remote": _history_remote(ref),
+    return {"tab": "query", "tabs": HISTORY_TABS, "ref": ref,
             "f": _history_filters(request), "ask_logs": True, "q": q}
 
 
@@ -1203,7 +1207,7 @@ def _ask_metrics_ctx(q: dict = None) -> dict:
     if q is None:
         q = history_promq.view(named_list(request) or ref.name, request.args)
     _words_model(q)
-    return {"tab": "query", "tabs": HISTORY_TABS, "ref": ref, "remote": _history_remote(ref),
+    return {"tab": "query", "tabs": HISTORY_TABS, "ref": ref,
             "f": _history_filters(request), "ask_metrics": True, "q": q}
 
 
@@ -1423,7 +1427,7 @@ def syslog_ctx(request) -> dict:
     from routes.list_param import named_list
 
     ref = listref.active()
-    return {"tab": "query", "tabs": HISTORY_TABS, "ref": ref, "remote": _history_remote(ref),
+    return {"tab": "query", "tabs": HISTORY_TABS, "ref": ref,
             "f": _history_filters(request), "syslog": True,
             "g": logs_page.view(named_list(request) or ref.name, request.args)}
 

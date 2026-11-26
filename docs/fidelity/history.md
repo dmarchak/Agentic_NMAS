@@ -78,7 +78,9 @@ from History"). Templates sha256 before: `ec848ff3ae52a38760ae1fba66d118f9a4a613
 Compared again 2026-11-24 (C2851): the timeline's region also hears `heal_decisions` (a pass's
 self-healing decisions), so a new decision is drawn while the page is open; markup only in its
 trigger, nothing drawn moves. Templates sha256 before: `19a7ad0f6c6093c97fdd336698e697200603ba799875afdbf2daf1050edbcc03`.
-Templates sha256: `f3db73ab062f4b1d18fb74a46de1babe8792de42eb865788b2becde178de6cca`
+Compared again 2026-11-26 (Stage 5 step 6): the repository's header (what is uncommitted, the remote's sentence, Verify and Push now) is drawn on Timeline, Baselines and Export only; History's Query pages open on their tabs and their question, where the header repeated above every one. Every region's verdict is unchanged but the header's on a Query page, a deviation logged (Stage 5 step 6: History's Query pages without the repository header). Templates sha256 before:
+`f3db73ab062f4b1d18fb74a46de1babe8792de42eb865788b2becde178de6cca`.
+Templates sha256: `e9dd363872fb8d76b12a8b6797dad28f51505ee0def025fb8e5472c4fb6de7ea`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_timeline.html` and `_history_remote.html`, each place
