@@ -35,7 +35,9 @@ held through that redraw (`data-holds-live`), and the policy's history entry kee
 state (`data-keep`); markup only in attributes, nothing drawn moves, no deviation. Compared by
 the template's diff and tests/test_heal_tab_v2.py's browser cases, not by new shots. Templates
 sha256 before: `0d4433cc04c4705694cc8cc0a7612e257c16d25c29abcad9f60e904fcb8652f3`.
-Templates sha256: `2d75d5f6ac6a625a04234b58f920b9f75459c7b22ff3495dcc34d59ce6f26d71`
+Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
+`2d75d5f6ac6a625a04234b58f920b9f75459c7b22ff3495dcc34d59ce6f26d71`.
+Templates sha256: `44be42d9dfa542d4de898bed22508ee8a7bba4a54dd7f9a8a9d8643e25a3fe19`
 
 **Compared again 2026-11-12 for C3196 (the BGP session clear listed twice):** by the template's
 diff against the Fix kinds region, not from new shots. The table and the change card draw a

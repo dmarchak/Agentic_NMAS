@@ -50,7 +50,7 @@
 {%- elif c.state == 'result' %}
   {%- set r = c.record %}
   {%- set ok = r.state == 'done' %}
-  <div class="notice notice-{{ 'muted' if ok else ('warning' if r.state == 'unverified' else 'danger') }} set-result" role="{{ 'status' if ok else 'alert' }}">{{ icon('tick' if ok else 'warn', 16) }}<p><strong>{{ W.get(r.outcome, r.outcome) | capitalize }}:</strong> {{ r.why }}</p></div>
+  <div class="notice notice-{{ 'muted' if ok else ('warning' if r.state == 'unverified' else 'danger') }} set-result" role="{{ 'status' if ok else 'alert' }}">{{ icon('tick' if ok else 'warn', 16) }}<p><strong>{{ W.get(r.outcome, r.outcome) | capital }}:</strong> {{ r.why }}</p></div>
   {%- for s in r.subscriptions or [] %}
   <details class="small" data-keep="{{ cid }}-sub-{{ s.sub }}"><summary>Subscription {{ s.sub }}: {{ W.get(s.outcome, s.outcome) }}</summary>
     <ul>

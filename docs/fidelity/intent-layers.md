@@ -69,7 +69,9 @@ Shot `fleet-plan` again (form, plan, run at 1440, 1280 and 390): the states the 
 unchanged.
 
 Templates compared: templates/v2/intent_layers.html, templates/v2/_intent_layers.html, templates/v2/_fleet_plan.html, templates/v2/_fleet_run.html
-Templates sha256: `5b3c367784d67e29a19bc8f698f5ad721b4f31fc7abb5d2964d2d98b31ee22ce`
+Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
+`5b3c367784d67e29a19bc8f698f5ad721b4f31fc7abb5d2964d2d98b31ee22ce`.
+Templates sha256: `fa45c0aa95d288e23d21876efecf64b3102ebd74a54e13801bcf91e1ea4a93a0`
 (Before phase 2 (f3): `7540837172c158189161550fded88dd939fe891484fa6f32a118a126ddc631e1`; the form gains Add a setting, Bulk intent's own, redrawing the form with one more row and keeping what was typed, a new layer's rank and slug and the Where chosen; FC4 draws one setting, so a deviation, logged with (f3).)
 (Before phase 2 (f2): `08b91ca542f1d40056aaf29ef5d1ac94ebcd39b5e57f9b0b63ef60e8dd1ab31e`.)
 (Before phase 2 (f1): `7eb1f2639d3700cb228ed2c89bea39e669a468eca26226bb15d734e837103be3`.)

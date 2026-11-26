@@ -160,7 +160,9 @@ Compared again 2026-11-26 (Stage 5 step 6): on the Apps tab, a network with no c
 `765bce0909f2b362306abf900b3b95ffea9cdbd07298826e4c7c5023167e7fda`.
 Compared again 2026-11-26 (Stage 5 step 6): a background read not read yet, or whose stored value cannot be read, says so in one set of plain words on every page (`not_read_yet`, `read_unreadable` in _macros.html: "The DHCP server has not been read yet. Mercury reads it every 5 minutes, and this fills itself when it has."), where each page named its reader and a product. No region moves; every verdict is unchanged. Templates sha256 before:
 `e54aaf49e444249a96576911317fc7f77be8c365212801900fb1b1cbd039ce99`.
-Templates sha256: `3fd260db1682735958606af7180bf1fb44a85f92051026626d737f08bb0bccb9`
+Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
+`3fd260db1682735958606af7180bf1fb44a85f92051026626d737f08bb0bccb9`.
+Templates sha256: `4cbb4eed3c531d31b04d5078eb81240fe25c63721213800d99b63c1351aac644`
 
 **Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_sdn_view.html`, `_sdn_log.html`, `_sdn_apps.html`, `_sdn_analyse.html` and `_sdn_snapshots.html`, an override's end, a mitigation's expiry, the loop's log range and each of its lines, a receipt's time and its deploy's, a snapshot's collected time and the kept list's Collected column are `_macros.clock`'s: the viewer's own time, the zone named once on the screen, the UTC instant on hover; Run's choices name each run's start in the viewer's zone (`_macros.clock_option`); the Collected column reads without its "(UTC)". Nothing else moves. Compared by the templates' diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `8cbd5ec11735aca0ed19c68c32b8a296ee0ed4b5845dfcfc264c4344c7a44b01`.
 

@@ -13,7 +13,9 @@ it is compared by its template and tests/test_ai_feedback.py (Yes, No, the refus
 disabled buttons, the store unreadable, drawn under an Explain answer and never under a refused
 one) and reached by tests/v2_context.py's `_ai_feedback`.
 Templates compared: templates/v2/_ai_feedback.html, templates/v2/_ai_feedback_review.html, templates/v2/_ai_feedback_row.html, templates/v2/_ai_feedback_detail.html
-Templates sha256: `2f77d7867500d25ba7a46548d0eb27b8caace2c29a346a1135e3baf00e97fa93`
+Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
+`2f77d7867500d25ba7a46548d0eb27b8caace2c29a346a1135e3baf00e97fa93`.
+Templates sha256: `d7f299420eb0fe322023fe280b326463dce8cd78c4733e24bbc14bbc23c82153`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_ai_feedback.html`, `_ai_feedback_row.html` and

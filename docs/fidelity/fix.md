@@ -33,7 +33,9 @@ The board drew the form with no such line: a deviation, logged (docs/STANDING_AP
 the template's diff and tests/test_fixes_routes_rights.py's Set Automatic tests, not by new
 shots. Templates sha256 before:
 `6846e56e47df66e3f90eced5797956d98cca3ae1b43c660c784a527e2e96095e`.
-Templates sha256: `b44713e5451132ece10d4766ab9d922f9de525739b0abde295d00a0a8a383e07`
+Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
+`b44713e5451132ece10d4766ab9d922f9de525739b0abde295d00a0a8a383e07`.
+Templates sha256: `239a207f452d8a6ba63ca4fa3be3f6ba434e58da467d5dd76bca83bbb6285f3f`
 
 Compared again 2026-11-18 (the skip-mode debt's carried-fields pass, 67b90db3): in
 `_fix_run.html` the Run button posts to `c.post.url`, which `fix_page.run_card` builds with

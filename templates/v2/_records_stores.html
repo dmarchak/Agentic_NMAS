@@ -41,7 +41,7 @@
   <div class="table-wrap">
   <table class="table set-table">
     {%- set cols = 6 if pv.second_kind else 5 %}
-    <thead><tr><th>Network</th><th>File {{ pv.unit or "line" }}s</th><th>{{ pv.noun | capitalize }}</th>{% if pv.second_kind %}<th>{{ pv.second_kind | capitalize }}</th>{% endif %}<th>In the table</th><th>Written since the move</th></tr></thead>
+    <thead><tr><th>Network</th><th>File {{ pv.unit or "line" }}s</th><th>{{ pv.noun | capital }}</th>{% if pv.second_kind %}<th>{{ pv.second_kind | capital }}</th>{% endif %}<th>In the table</th><th>Written since the move</th></tr></thead>
     <tbody>
     {%- for n in pv.networks %}
     <tr><td class="mono">{{ n.network or 'the installation' }}</td><td>{{ n.lines }}</td><td>{{ n.rows }}</td>{% if pv.second_kind %}<td>{{ n.completions }}</td>{% endif %}<td>{{ '—' if n.copied is none else n.copied }}</td><td>{{ '—' if n.since is none else n.since }}</td></tr>

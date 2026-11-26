@@ -21,7 +21,9 @@ Compared again 2026-11-13 (the operator's approved rule, "money shown as $"): `_
 Hashed again 2026-11-13 (C3466, Jump to's day is the viewer's): `_history_body.html`'s Jump to field, drawn on the Timeline tab alone (`tab == 'timeline'`), has its accessible name without "(UTC)"; no line this page draws changed. Compared by the template's diff, not by new shots; the Timeline's own record: history.md. Templates sha256 before: `e22516b7a804d91a2ff51ffab5a362078dba1b28bf6a58152051c51f128838f0`.
 Compared again 2026-11-26 (Stage 5 step 6): the repository's header (what is uncommitted, the remote's sentence, Verify and Push now) is drawn on Timeline, Baselines and Export only; History's Query pages open on their tabs and their question, where the header repeated above every one. Every region's verdict is unchanged but the header's on a Query page, a deviation logged (Stage 5 step 6: History's Query pages without the repository header). Templates sha256 before:
 `4934dcf66b3f6da165301dd7bba2f6bad1b399111d0073338323f732c642dbac`.
-Templates sha256: `afecaecdd181b020caefac8d9d34e75f4cb4334a104c8a67d32c7e457ebfc40e`
+Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
+`afecaecdd181b020caefac8d9d34e75f4cb4334a104c8a67d32c7e457ebfc40e`.
+Templates sha256: `53bd175973eabb07379c22184603c63b7f9dfece6dbe1099d90505c122731c1d`
 (2026-11-10, Lab 9 B5: `_history_body.html`'s tabs gain Export, its body drawn only on its own
 tab (docs/fidelity/history-export.md); nothing else on this page moved. Before:
 `32bec95dbec13a023b57669e9e328e31b9d2d5bb39da4b1c5253fa8dcdcb2bf3`.)

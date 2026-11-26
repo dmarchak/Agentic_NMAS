@@ -45,7 +45,7 @@
       </label>
       {%- endif %}
       {%- for ch in c.choices %}
-      <label for="fix-run-ch-{{ ch.name }}">{{ ch.name | capitalize }} <span class="muted small" title="{{ ch.words }}">· {{ ch.words }}</span>
+      <label for="fix-run-ch-{{ ch.name }}">{{ ch.name | capital }} <span class="muted small" title="{{ ch.words }}">· {{ ch.words }}</span>
         <select id="fix-run-ch-{{ ch.name }}" name="choice_{{ ch.name }}">{% for o in ch.of %}<option value="{{ o.value }}"{% if o.chosen %} selected{% endif %}>{{ o.value }}</option>{% endfor %}</select>
       </label>
       {%- endfor %}

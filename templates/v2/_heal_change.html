@@ -89,7 +89,7 @@
       </div>
       {%- else %}
       {%- for key in c.guard['keys'] %}
-      <label class="heal-field">{{ c.guard_words[key] | capitalize }}
+      <label class="heal-field">{{ c.guard_words[key] | capital }}
         <input type="number" name="{{ key }}" value="{{ c.guard['values'][key] }}" min="0" autocomplete="off"></label>
       {%- endfor %}
       <p class="small muted">Default {{ c.guard.default }}.</p>

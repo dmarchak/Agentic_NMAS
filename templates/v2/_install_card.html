@@ -170,7 +170,7 @@
       uses, from Anthropic's pricing page, with the page and its date. -#}
   {%- set pt = k.prices %}
   <div class="set-prices">
-    <table class="table set-table" aria-label="Each task's pinned model, its prices and its measured typical cost per call"><thead><tr><th scope="col">Task</th><th scope="col">Model</th><th scope="col">Input / output</th><th scope="col">Cache write / read</th><th scope="col">{{ (pt.rows[0].cap_label if pt.rows else "typical cost per call (measured)") | capitalize }}</th></tr></thead><tbody>
+    <table class="table set-table" aria-label="Each task's pinned model, its prices and its measured typical cost per call"><thead><tr><th scope="col">Task</th><th scope="col">Model</th><th scope="col">Input / output</th><th scope="col">Cache write / read</th><th scope="col">{{ (pt.rows[0].cap_label if pt.rows else "typical cost per call (measured)") | capital }}</th></tr></thead><tbody>
     {%- for r in pt.rows %}
       <tr data-task="{{ r.task }}"><td>{{ r.words }}</td><td class="mono" title="{{ r.model_words }}: a context window of {{ r.context_window }} tokens and at most {{ r.max_output_tokens }} output tokens a call ({{ pt.limits_source }}){% if r.long_prompt_tokens %}; every rate 5x for a prompt over {{ r.long_prompt_tokens }} tokens{% endif %}">{{ r.model }}</td><td class="mono">{{ r.price.input | usd(true) }} / {{ r.price.output | usd(true) }}</td><td class="mono">{{ r.price.cache_write | usd(true) }} / {{ r.price.cache_read | usd(true) }}</td><td class="mono" title="{{ r.cap_basis }}; no call has a cap of its own: the spending limits are the only governor">{{ r.cap_usd | usd(true) }}{% if not r.cap_measured %} <span class="muted">(not measured yet)</span>{% endif %}</td></tr>
     {%- endfor %}

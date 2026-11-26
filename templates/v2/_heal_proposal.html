@@ -24,7 +24,7 @@
     <dl class="heal-kv"><dt>Job</dt><dd class="mono">{{ approved.job }}</dd><dt>Proposal hash approved</dt><dd class="mono">{{ approved.hash }}</dd></dl>
   </details>
 {%- elif declined and declined.ok %}
-  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>{{ declined.outcome | capitalize }}:</strong> {{ declined.words }}. {{ 'Nothing was sent' if not declined.sent else 'Lines were sent' }} to {{ declined.device }}; its incident stays open, needing a person, until what it would have fixed is gone.</p></div>
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>{{ declined.outcome | capital }}:</strong> {{ declined.words }}. {{ 'Nothing was sent' if not declined.sent else 'Lines were sent' }} to {{ declined.device }}; its incident stays open, needing a person, until what it would have fixed is gone.</p></div>
   <p class="small"><a href="{{ url_for('device_v2.device', name=declined.device, list=declined.network, tab='history') }}">Open {{ declined.device }}'s History</a></p>
   <details class="heal-record"><summary>Details for the record</summary>
     <p class="small">Recorded: {{ declined.records.approval }}; the step log {{ declined.records.step_log or 'not written' }}.</p>

@@ -38,7 +38,9 @@ Compared again 2026-11-25 (Stage 5 step 5, slice 1; the operator's GUI pick of 2
 `a3b35d90c51ed330d77c4254951c9ac84bd5f40155ff36373ebe64781c565ce0`.
 Compared again 2026-11-26 (Stage 5 step 5, C's as-of line): under the device's sentence, one quiet line with the age of what it stands on, "reachability checked <age> · what it runs measured <age>" (or "not probed yet", "not measured yet"), each the timestamp its row below draws. One deviation logged (Stage 5 step 5: the device's as-of line). Templates sha256 before:
 `f42faf1992b26e4e973228213d1dd045541b87312ac82f5f60f59585a437945d`.
-Templates sha256: `f1a757ee2e6f9454ee22989e1e206271dfe0f39243a8700fef35e217b0583c4c`
+Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
+`f1a757ee2e6f9454ee22989e1e206271dfe0f39243a8700fef35e217b0583c4c`.
+Templates sha256: `6b9e4b731d7199833366112ce6ffa447b11afa3739101e25af751f654e4b1c4c`
 Templates sha256 before the saved actions slot passed a reopened run on (2026-11-15, Gate 1b: In progress reopens a saved action's run at the device's Overview with `run=`, and the slot asks for that run's card; nothing drawn differently, every verdict unchanged): `4e998fc3c2d6391b896914b2fb1e4ffb4eac1d34f5caeeea2140fbe131148891`
 (2026-11-15, Gate 1b: `_overview.html` gains one include line after Checks, the saved actions'
 slot, asked in place, and its card compared with board saved-plans D, docs/boards/saved-plans.html,

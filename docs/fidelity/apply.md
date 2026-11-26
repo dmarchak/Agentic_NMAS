@@ -78,7 +78,9 @@ its order and its moved-order confirm), not a new shot. One row added; every oth
 unchanged, a pair's page aside.
 Templates sha256 before: `eac007dc8d20d89e3a3d00d13e3cf8bc0703950f2c379f11a03a2bf5c4c2875d`.
 Templates compared: templates/v2/apply.html, templates/v2/_apply_preview.html, templates/v2/_apply_job.html
-Templates sha256: `9acae678008c5400c25916090c63daf5b3dd11d63300a2e768c0b106ff59fd1e`
+Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
+`9acae678008c5400c25916090c63daf5b3dd11d63300a2e768c0b106ff59fd1e`.
+Templates sha256: `6a7f775971c52fb2646c35035b6798c5c5aaacba02b27e081b2971e5cfcbd039`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

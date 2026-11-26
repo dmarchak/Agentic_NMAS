@@ -60,7 +60,7 @@
       {%- else %}{% if f.state == 'stopped' %}{{ badge('stopped by its ' ~ ('month' if s.stopped.month else 'day') ~ ' cap', 'danger') }}{% else %}{{ badge('on', 'ok') }}{% endif %} <span class="set-origin">by {{ f.entry.by | people }} {{ stamp(f.entry.at) }}; approval until {{ clock(f.ends_iso, 'date') }}{% if f.renew %}, within {{ ai.renew_days }} days: turn it on again to approve it for another {{ ai.approval_days }}, or it stops then{% endif %}{% if f.state == 'stopped' %}; stopped {{ stamp(s.stopped_at.month if s.stopped.month else s.stopped_at.day) }}: it makes no call until the {{ 'month' if s.stopped.month else 'day' }} ends, or an admin raises the cap{% endif %}</span>
       {%- endif %}</div>
     </div>
-    <div class="ai-f-trigger"><span class="set-label">Trigger</span> <span class="muted">{{ f.trigger_words | capitalize }}; {{ f.calls_per_finding }} call per finding</span></div>
+    <div class="ai-f-trigger"><span class="set-label">Trigger</span> <span class="muted">{{ f.trigger_words | capital }}; {{ f.calls_per_finding }} call per finding</span></div>
     <div class="ai-f-caps"><span class="set-label">Caps</span>
       {%- if f.caps %} <span><span class="mono">{{ usd(f.caps.day) }}</span> a day · <span class="mono">{{ usd(f.caps.month) }}</span> a month</span>
         {%- if f.state in ('on', 'stopped') %}<br><span class="set-origin">{% if s %}today {{ usd(s.spent.day_usd) }}{{ pct(s.fractions.day) }} · month {{ usd(s.spent.month_usd) }}{{ pct(s.fractions.month) }}{% else %}spend unknown: the record of AI calls could not be read{% endif %}</span>{% endif %}

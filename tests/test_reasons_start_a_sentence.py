@@ -80,6 +80,31 @@ def test_no_page_says_a_reader_has_not_read_in_words_of_its_own():
     assert OWN_BANNER.search('<p>The DHCP reader has not read Kea yet')
 
 
+#: Jinja's own `capitalize`, which lowers every letter after the first.
+CAPITALIZE = re.compile(r"\|\s*capitalize\b")
+
+
+def test_no_page_uses_jinjas_capitalize_which_lowers_the_rest():
+    """Jinja's `capitalize` upper-cases the first letter and LOWERS the rest, so a name after it
+    is mangled (a person's reason, "Prometheus is not configured for Lab" → "... for lab", a
+    person's name in a stop's words). Thirty v2 sites used it; each uses `capital`
+    (`words.capital`), which touches only a plain lowercase first word. A planted use is found."""
+    sites, found = 0, []
+    for name in sorted(os.listdir(TEMPLATES)):
+        if not name.endswith(".html"):
+            continue
+        with open(os.path.join(TEMPLATES, name), encoding="utf-8") as fh:
+            text = fh.read()
+        sites += len(re.findall(r"\|\s*capital\b", text))
+        found += [name for _m in CAPITALIZE.finditer(text)]
+    assert sites >= 30, f"`capital` is drawn at {sites} sites, under the 30 measured"
+    assert found == [], f"Jinja's capitalize lowers names after the first letter: {found}"
+    assert CAPITALIZE.search("{{ fb.why | capitalize }}")
+    from modules import words
+    assert words.capital("prometheus is not configured for Lab") == \
+        "Prometheus is not configured for Lab"
+
+
 def test_a_planted_bare_reason_is_found_and_a_filtered_one_is_not():
     planted = ('<p><strong>Not read.</strong> {{ g.why }}</p>'
                '<p><strong>Not read.</strong> {{ (g.error or "none") | capital }}</p>'

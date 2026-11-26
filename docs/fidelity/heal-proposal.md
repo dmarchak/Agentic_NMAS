@@ -40,7 +40,9 @@ same `in_flight.mark_held` mark). The disabled state and its reason follow the c
 refusal pattern (an unmeasured reset); no element moves; compared by the template's diff and
 tests/test_heal_proposal_v2.py, not by new shots; logged once (docs/STANDING_APPROVAL_LOG.md,
 "C3093: a held device's proposal card"). Templates sha256 before: `cde54e5fd71ea1e6c034c5253888f06ef2edfd65a4d1741754dbdf89ce35c742`.
-Templates sha256: `af68ed89c4f628c5eec2f38b275f00d56256fe3a0c2c1b64a5594301b0d5df22`
+Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
+`af68ed89c4f628c5eec2f38b275f00d56256fe3a0c2c1b64a5594301b0d5df22`.
+Templates sha256: `dcf7580e8c6e7d6e4ad593c32bbe57b4e827bf6e32659e2e72ba7f98d18670a7`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_heal_proposal.html`, each place that draws a person

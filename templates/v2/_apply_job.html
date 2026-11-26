@@ -68,7 +68,7 @@
     {%- for r in arrivals.rows %}
     <li><strong class="mono">{{ r.device }}</strong>
       {%- for c in r.cells %}
-      <span class="arrival-cell arrival-{{ c.state }}">{{ c.label }}: {{ c.words }}{% if c.state == 'missing' %} · <a href="{{ url_for('device_v2.device', name=r.device, tab=c.where) }}">Diagnose on its {{ c.where | capitalize }} tab</a>{% endif %}</span>
+      <span class="arrival-cell arrival-{{ c.state }}">{{ c.label }}: {{ c.words }}{% if c.state == 'missing' %} · <a href="{{ url_for('device_v2.device', name=r.device, tab=c.where) }}">Diagnose on its {{ c.where | capital }} tab</a>{% endif %}</span>
       {%- endfor %}</li>
     {%- endfor %}
   </ul>

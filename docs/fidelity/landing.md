@@ -298,7 +298,9 @@ Compared again 2026-11-26 (Stage 5 step 3, B's queue head): after the critical c
 `df1c7a05f5bce4a75d494b7de6fc549a06c18a9a08723d1562c81d7444c5d18e`.
 Compared again 2026-11-26: the oldest critical item's age moved after the counts ("1 critical · 1 warning · the oldest critical 14 min ago"), as B's head places it. Templates sha256 before:
 `bb280163b4e45aad96aec81c17e2ff35e8009fbb99808591e7a9d4b397de37a3`.
-Templates sha256: `e289bf76bc48334787f0339888386d1cebf7245b964beb0f7b8c339393ff3eb0`
+Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
+`e289bf76bc48334787f0339888386d1cebf7245b964beb0f7b8c339393ff3eb0`.
+Templates sha256: `02e876bf737b5f252b87b654fc91f59257435c1837301c06e6cf4687c022aed8`
 (before the combined gate's reviews, 2026-11-15, above: `95963b5612ee0d494c7192eb31a8ade9c34068395adb2cb9bdede8db69638a35`)
 (before the port problem's fold, 2026-11-15, above: `a894c8009f442e454c18b53caaaa6a23a7ad9a59f9a045a201afd44e2459c8c6`)
 (before the lost stream's Start, 2026-11-14, below: `df04b28a2f32a3505d0451f14d5f4dbad62cc0643c8e194e95a2522806aba5bd`)

@@ -13,7 +13,7 @@
   <dt>What was asked</dt><dd>the request as it left the host, sha256 <span class="mono" title="{{ v.request_sha256 }}">{{ v.request_sha256[:8] or 'none recorded' }}</span>{% if v.subject %}; about {% for k, val in v.subject.items() %}<span class="mono">{{ k }} {{ val }}</span>{{ ', ' if not loop.last }}{% endfor %}{% endif %}</dd>
   <dt>The answer as kept</dt><dd>
   {%- if c %}<details class="ai-fb-ans" data-keep="ai-fb-ans-{{ v.id }}"><summary>Received, masked, {{ '{:,}'.format(d.received | length) }} characters, sha256 <span class="mono" title="{{ v.answer_sha256 }}">{{ v.answer_sha256[:8] }}</span></summary><pre class="hist-diff">{{ d.received }}</pre></details>
-  {%- else %}<span class="warn-text">{{ d.call_error | capitalize }}.</span> Kept with the verdict: the answer's sha256 <span class="mono" title="{{ v.answer_sha256 }}">{{ v.answer_sha256[:8] }}</span>.{% endif %}</dd>
+  {%- else %}<span class="warn-text">{{ d.call_error | capital }}.</span> Kept with the verdict: the answer's sha256 <span class="mono" title="{{ v.answer_sha256 }}">{{ v.answer_sha256[:8] }}</span>.{% endif %}</dd>
   {%- if v.verdict == 'no' %}
   <dt>What was wrong</dt><dd>{{ v.kind_words }}: “{{ v.words }}” <span class="faint">· {{ v.actor | people }} {{ stamp(v.at) }}</span></dd>
   {%- endif %}

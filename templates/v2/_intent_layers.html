@@ -32,7 +32,7 @@
   <nav class="card il-list" aria-label="Layers">
     {%- for l in v.layers %}
     <a class="il-item{{ ' on' if chosen and l.key == chosen.key }}" href="{{ url_for('intent_layers_v2.page', list=list_name, layer=l.key) }}"{% if chosen and l.key == chosen.key %} aria-current="true"{% endif %} data-layer="{{ l.key }}">
-      <span><span class="muted">{{ l.rank | capitalize }}</span> {{ l.slug or 'default' }}</span>
+      <span><span class="muted">{{ l.rank | capital }}</span> {{ l.slug or 'default' }}</span>
       <span class="muted">{{ l.devices | length }} device{{ 's' if l.devices | length != 1 }} · {{ l.count }} value{{ 's' if l.count != 1 }}</span></a>
     {%- endfor %}
     <p class="op-act il-note"><a class="btn btn-small" data-op="fleet-change" href="{{ url_for('intent_layers_v2.change', list=list_name) }}">Add a layer…</a>{{ how('fleet-change', compact=True, op='planning a layer change') }}</p>
@@ -40,7 +40,7 @@
   </nav>
   {%- if chosen %}
   <div class="card il-detail" data-chosen="{{ chosen.key }}">
-    <div class="card-head"><h2>{{ chosen.rank | capitalize }} {{ chosen.slug or 'default' }}</h2></div>
+    <div class="card-head"><h2>{{ chosen.rank | capital }} {{ chosen.slug or 'default' }}</h2></div>
     <p class="muted">{% if chosen.rank == 'network' %}Every device of {{ list_name }}{% else %}The inventory's {{ chosen.rank }} <code>{{ chosen.slug }}</code>{% endif %} · {{ chosen.devices | length }} device{{ 's' if chosen.devices | length != 1 }}
       {%- if chosen.devices and chosen.devices | length <= 12 %}: {{ chosen.devices | join(', ') }}{% endif %}
       · <code title="{{ chosen.file }}, last changed by {{ (chosen.sha or '')[:10] }} {{ chosen.subject }}">{{ chosen.file }}</code> last changed by <code>{{ (chosen.sha or '')[:10] }}</code> {{ chosen.subject }}</p>

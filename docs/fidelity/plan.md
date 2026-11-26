@@ -55,4 +55,6 @@ running: its job … is not known to Mercury now …" in the running state's pla
 stopped, beside the existing "ended without a record" notice; no element moves; compared by
 the template's diff and tests/test_plan_engine.py, not by new shots; logged once
 (docs/STANDING_APPROVAL_LOG.md, "C3651: a plan whose job is not known"). Templates sha256 before: `d63bddda8507cfe12625a33cfcf12557d3ceae7ba507df48bd3b1ff4f05ca0ff`.
-Templates sha256: `db48627a1b7ac635d498166de8abd21af87aa3352f9bebe1fcfbfd57e796d317`
+Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
+`db48627a1b7ac635d498166de8abd21af87aa3352f9bebe1fcfbfd57e796d317`.
+Templates sha256: `14dfc0c27ffb987d7a4c00c74006d1fac4aa293936e3b6dfa5bfa3c831c214a8`

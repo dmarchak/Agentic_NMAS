@@ -21,7 +21,9 @@ Compared again 2026-11-13 (the operator's approved rule, "money shown as $"): `_
 Hashed again 2026-11-13 (C3466, Jump to's day is the viewer's): `_history_body.html`'s Jump to field, drawn on the Timeline tab alone (`tab == 'timeline'`), has its accessible name without "(UTC)"; no line this page draws changed. Compared by the template's diff, not by new shots; the Timeline's own record: history.md. Templates sha256 before: `7bc6c66938d8e25821809e4aff4f99a2b7a3858963a91f44874f91f76d5f25d9`.
 Compared again 2026-11-26 (Stage 5 step 6): the repository's header (what is uncommitted, the remote's sentence, Verify and Push now) is drawn on Timeline, Baselines and Export only; History's Query pages open on their tabs and their question, where the header repeated above every one. Every region's verdict is unchanged but the header's on a Query page, a deviation logged (Stage 5 step 6: History's Query pages without the repository header). Templates sha256 before:
 `b69fa451a6fb12e85113df1372cee79d8efd5016fb500b89d9feeab790d157f9`.
-Templates sha256: `ec35a01e743dea0daaeddedfccf229275ca15d69c4f142d74794d51ebac01a0e`
+Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
+`ec35a01e743dea0daaeddedfccf229275ca15d69c4f142d74794d51ebac01a0e`.
+Templates sha256: `cf2bd647fa7a3b7cf24317f593bb1912d2da511b212962b8715ed926bff15e9c`
 (2026-11-12, C3166 slice 2, by the template diff and the pages tests/test_history_ask_logs.py
 draws, not a new shot: `_history_ask_logs.html`'s choices come from the loki-labels reader,
 never Loki on the request; under the notices one line says so, "The choices are what Loki held

@@ -37,7 +37,7 @@
   {{ actions_of(c) }}
 {%- elif c.state == 'result' %}
   {%- set r = c.record %}
-  <div class="notice notice-{{ 'muted' if c.level == 'ok' else ('warning' if c.level == 'warn' else 'danger') }} set-result" role="{{ 'status' if c.level == 'ok' else 'alert' }}">{{ icon('tick' if c.level == 'ok' else 'warn', 16) }}<p><strong>{{ (c.outcome_words.get(r.outcome, r.outcome)) | capitalize }}:</strong> {{ r.why }}</p></div>
+  <div class="notice notice-{{ 'muted' if c.level == 'ok' else ('warning' if c.level == 'warn' else 'danger') }} set-result" role="{{ 'status' if c.level == 'ok' else 'alert' }}">{{ icon('tick' if c.level == 'ok' else 'warn', 16) }}<p><strong>{{ (c.outcome_words.get(r.outcome, r.outcome)) | capital }}:</strong> {{ r.why }}</p></div>
   {%- if c.steps %}{% with iid=c.run, network=c.list, steps=c.steps, said='', static=True %}{% include "v2/_inc_step.html" %}{% endwith %}{% endif %}
   {{ actions_of(c) }}
   <p class="small">Approved by {{ r.actor | people }}, {{ stamp(r.at) }}{% if r.reason %}, with the reason “{{ r.reason }}”{% endif %}; hash {{ r.hash or 'none' }}.</p>

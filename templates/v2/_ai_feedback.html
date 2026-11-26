@@ -29,7 +29,7 @@
       <input type="hidden" name="verdict" value="no">
       <fieldset><legend>What was wrong?</legend>
         {%- for key, words in fb.kinds.items() %}
-        <label><input type="radio" name="why" value="{{ key }}"{% if loop.first %} checked{% endif %}> {{ words | capitalize }}</label>
+        <label><input type="radio" name="why" value="{{ key }}"{% if loop.first %} checked{% endif %}> {{ words | capital }}</label>
         {%- endfor %}
       </fieldset>
       <label for="ai-fb-w-{{ fid }}" class="small">In a sentence: what the right answer would have said</label>
@@ -38,7 +38,7 @@
     </form>
   </details>
   {%- endif %}
-  {%- if fb.why %}<span class="faint small ai-fb-why">{{ fb.why | capitalize }}.</span>{% endif %}
+  {%- if fb.why %}<span class="faint small ai-fb-why">{{ fb.why | capital }}.</span>{% endif %}
 {%- endif %}
 {%- if fb.error %}<p class="notice notice-danger small" role="alert"><strong>Couldn't record:</strong> {{ fb.error }}. Nothing was recorded.</p>{% endif %}
 {%- if fb_refused is defined and fb_refused %}<p class="notice notice-warn small" role="alert"><strong>Not recorded:</strong> {{ fb_refused }}.</p>{% endif %}

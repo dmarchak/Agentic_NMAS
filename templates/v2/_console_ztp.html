@@ -76,7 +76,7 @@
     <div class="op-part"><h3>Lines</h3><div>
       <p>The hostname is {{ c.hostname or "the device's NetBox name" }}, NetBox's name for it.</p>
       {%- for d in c.declared %}
-      <label class="sc-f">{{ d.name | capitalize }} ({{ d.shape }}: {{ 'the access port it reaches the relay on' if d.name == 'interface' else ('the VLAN its management interface is on' if d.name == 'vlan' else 'as the profile declares') }})<input type="text" name="param_{{ d.name }}" value="{{ c.params.get(d.name, '') }}" autocomplete="off" required></label>
+      <label class="sc-f">{{ d.name | capital }} ({{ d.shape }}: {{ 'the access port it reaches the relay on' if d.name == 'interface' else ('the VLAN its management interface is on' if d.name == 'vlan' else 'as the profile declares') }})<input type="text" name="param_{{ d.name }}" value="{{ c.params.get(d.name, '') }}" autocomplete="off" required></label>
       {%- else %}<p class="muted">The profile asks for nothing more.</p>
       {%- endfor %}</div></div>
     <div class="op-ft"><p class="op-note">Renders the exact lines and their hash; contacts no console and writes nothing.</p>

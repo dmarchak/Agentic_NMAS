@@ -17,7 +17,7 @@
   {%- else %}
   <div class="op-part"><h3>Last done</h3><div>
     {%- if d.last %}<p>{{ stamp(d.last.at) }}, by {{ (d.last.actor or 'nobody recorded') | people }}: the file made {{ stamp(d.last.created) if d.last.created else '(no date)' }} opened on the machine that keeps it, without the tool, {{ d.last.devices }} device(s). The next is {{ d.due.full }}, 90 days after it.</p>
-    {%- else %}<p>Never: nothing has shown the record opens without the tool. {{ d.due.full | capitalize }}: 90 days after the first export.</p>{% endif %}</div></div>
+    {%- else %}<p>Never: nothing has shown the record opens without the tool. {{ d.due.full | capital }}: 90 days after the first export.</p>{% endif %}</div></div>
   <div class="op-part"><h3>To do it</h3><div>
     <p>On the machine that keeps the file, with nothing of the tool running, give it the .bg file you kept:</p>
     <p class="bg-cmd"><code class="mono">nmas-breakglass drill &lt;the .bg file you kept&gt;</code><button type="button" class="btn btn-small" x-data="copy" data-label="Copy" data-copy="nmas-breakglass drill" x-on:click="copy" x-text="label">Copy</button></p>

@@ -32,7 +32,7 @@
 <div class="notice" role="status">{{ icon('info', 16) }}<p>{{ n }}.</p></div>
 {%- endfor %}
 {%- if q.state == 'not_configured' %}
-<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ q.error | capitalize }}: there are no metrics to ask here (Settings › Integrations › Prometheus).</p></div>
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ q.error | capital }}: there are no metrics to ask here (Settings › Integrations › Prometheus).</p></div>
 {%- elif q.state == 'error' and not q.answer %}
 {%- call part.state('danger', 'Prometheus not answering') %}<p><strong>Couldn't load: {{ q.error }}</strong>, asked {{ part.when(q.now, 't') }}. The choices below are the address's; Prometheus's metrics and labels could not be read, so no query is formed.</p><div>{{ go(dict(change), 'Ask again', 'btn btn-small') }}</div>{% endcall %}
 {%- endif %}

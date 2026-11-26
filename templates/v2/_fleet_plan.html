@@ -19,7 +19,7 @@
     <fieldset class="fc-where"><legend class="sr">Where the change goes</legend>
       <label><input type="radio" name="target" value="devices"{% if not f.target or f.target == 'devices' %} checked{% endif %}> Each device's own intent <span class="muted small">(one commit of each ticked device's file)</span></label>
       {%- for l in f.shared %}
-      <label><input type="radio" name="target" value="layer:{{ l.key }}"{% if f.target == 'layer:' ~ l.key %} checked{% endif %}> {{ l.label | capitalize }} <span class="muted small">(reaches {{ l.count }} device{{ 's' if l.count != 1 }}{% if l.beyond %}, {{ l.beyond }} beyond the ticked: the plan names them{% endif %})</span></label>
+      <label><input type="radio" name="target" value="layer:{{ l.key }}"{% if f.target == 'layer:' ~ l.key %} checked{% endif %}> {{ l.label | capital }} <span class="muted small">(reaches {{ l.count }} device{{ 's' if l.count != 1 }}{% if l.beyond %}, {{ l.beyond }} beyond the ticked: the plan names them{% endif %})</span></label>
       {%- endfor %}
     </fieldset>
     {%- if not f.shared %}
@@ -77,7 +77,7 @@
   {%- set back = url_for('v2.devices', list=p.list) if sel else url_for('intent_layers_v2.page', list=p.list, layer=pl.layer.key) %}
   {%- set back_to = 'Devices' if sel else pl.layer.label %}
   {%- set total = pl.planned + pl.unchanged | length + pl.refused | length %}
-  <div class="op-hd"><h2 id="fc-plan-title">{% if sel %}Change across the {{ sel.devices | length }} ticked{% else %}{{ pl.layer.label | capitalize }}'s change{% endif %} · {{ total }} device{{ 's' if total != 1 }}</h2>
+  <div class="op-hd"><h2 id="fc-plan-title">{% if sel %}Change across the {{ sel.devices | length }} ticked{% else %}{{ pl.layer.label | capital }}'s change{% endif %} · {{ total }} device{{ 's' if total != 1 }}</h2>
     <div class="op-hd-actions"><span class="badge">plan · nothing sent</span>{{ how('fleet-change', compact=True, op='planning a layer change') }}</div></div>
   <div class="op-part"><h3>What</h3><div>
     <p data-fc-headline><strong>{{ pl.headline }}</strong> · {{ pl.refused | length }} refused · {{ pl.unchanged | length }} unchanged</p>

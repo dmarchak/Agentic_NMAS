@@ -36,7 +36,7 @@
 <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>Not taken: {{ e }}. The query below leaves it out.</p></div>
 {%- endfor %}
 {%- if d.state == 'not_configured' %}
-<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ d.error | capitalize }}: there are no logs to ask here (Settings › Integrations › Loki).</p></div>
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ d.error | capital }}: there are no logs to ask here (Settings › Integrations › Loki).</p></div>
 {%- elif d.state == 'error' %}
 {%- call part.state('danger', 'Loki not answering') %}<p><strong>Couldn't load: {{ d.error }}</strong>, asked {{ part.when(q.now, 't') }}. The choices below are the address's; Loki's jobs, devices and labels could not be read.</p><div>{{ go(dict(change), 'Ask again', 'btn btn-small') }}</div>{% endcall %}
 {%- elif d.state == 'reading' %}
