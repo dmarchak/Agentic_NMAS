@@ -218,6 +218,13 @@ resets {{ clock(r.at, note=r.zone_hm ~ " " ~ r.zone ~ ": the cap's day begins at
 <div class="notice notice-danger" role="alert" data-read-unreadable>{{ icon('warn', 16) }}<p>What Mercury last read of {{ subject }} cannot be read: {{ why }}. {{ instead }}</p></div>
 {%- endmacro %}
 
+{#- Where a network's integrations are set (Stage 5 step 6): its Settings' Integrations tab, as
+    a link, wherever a page says one is not set up (it said "(Settings > Integrations)" in
+    plain text). -#}
+{% macro integrations_link(network) -%}
+<a href="{{ url_for('settings_v2.network', list_name=network, tab='integrations') }}" data-set-integration>Settings › {{ network }} › Integrations</a>
+{%- endmacro %}
+
 {% macro stamp(iso, words='', note='') -%}
 {%- if iso %}<time class="stamp" datetime="{{ iso }}" title="{{ iso }}{{ ' · ' ~ note if note }}" data-age="{{ iso }}">{{ words or (iso | age_words) }}</time>{% else %}<span class="stamp">not recorded</span>{% endif -%}
 {%- endmacro %}

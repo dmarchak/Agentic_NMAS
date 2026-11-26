@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, info, stamp -%}
+{%- from "v2/_macros.html" import integrations_link, icon, info, stamp -%}
 {%- import "v2/_history_ask_parts.html" as part with context -%}
 {#- History › Query › Ask your own, the metrics builder (board E3, QueryBuilderMetrics3 and its
     phone board, approved 2026-10-15; compared in docs/fidelity/history-ask-metrics.md). One
@@ -32,7 +32,7 @@
 <div class="notice" role="status">{{ icon('info', 16) }}<p>{{ n }}.</p></div>
 {%- endfor %}
 {%- if q.state == 'not_configured' %}
-<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ q.error | capital }}: there are no metrics to ask here (Settings › Integrations › Prometheus).</p></div>
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ q.error | capital }}: there are no metrics to ask here (its Prometheus card, on {{ integrations_link(q.list) }}).</p></div>
 {%- elif q.state == 'error' and not q.answer %}
 {%- call part.state('danger', 'Prometheus not answering') %}<p><strong>Couldn't load: {{ q.error }}</strong>, asked {{ part.when(q.now, 't') }}. The choices below are the address's; Prometheus's metrics and labels could not be read, so no query is formed.</p><div>{{ go(dict(change), 'Ask again', 'btn btn-small') }}</div>{% endcall %}
 {%- endif %}

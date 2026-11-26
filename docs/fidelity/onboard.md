@@ -13,7 +13,9 @@ Templates compared: templates/v2/onboard.html, templates/v2/_onboard_discovered.
 Compared again 2026-10-11: each group carries `data-keep`, so a live redraw keeps it open or closed as the person left it (C472); nothing drawn moved.
 Compared again 2026-11-26 (Stage 5 step 6): a background read not read yet, or whose stored value cannot be read, says so in one set of plain words on every page (`not_read_yet`, `read_unreadable` in _macros.html: "The DHCP server has not been read yet. Mercury reads it every 5 minutes, and this fills itself when it has."), where each page named its reader and a product. No region moves; every verdict is unchanged. Templates sha256 before:
 `fb65689ab7d668e6dad8230ca14b918344b3f6567b93b41129c1b58074bda427`.
-Templates sha256: `d936845885cee4306854a6e71ffb8e7a194a6764b051d1dc04a0679d5bb955a4`
+Compared again 2026-11-26 (Stage 5 step 6): where the page says something is not set up, it links the network's own Integrations tab (`integrations_link`: "Settings › <network> › Integrations"), where it said "(Settings › Integrations › Kea)" or similar in plain text. Every verdict unchanged. Templates sha256 before:
+`d936845885cee4306854a6e71ffb8e7a194a6764b051d1dc04a0679d5bb955a4`.
+Templates sha256: `81be47d079ba433200df7e42500f7e2e0d21a33b9faa61cf00edb00368f1341d`
 
 **Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_onboard_discovered.html`, board L's clock times are `_macros.clock`'s: the viewer's own time, the zone named once on the screen, the UTC instant on hover, in the same element and position; nothing else moves. Compared by the template's diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `7920d4c90e218fe88103424f1ac91e784f9b71d1a0653bfcafa95e2eabda776b`.
 Hashed again 2026-11-08 ~20:5x UTC for C2810, for one attribute: each device row of Discovered

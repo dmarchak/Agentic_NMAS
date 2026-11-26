@@ -23,7 +23,9 @@ Compared again 2026-11-26 (Stage 5 step 6): the repository's header (what is unc
 `4934dcf66b3f6da165301dd7bba2f6bad1b399111d0073338323f732c642dbac`.
 Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
 `afecaecdd181b020caefac8d9d34e75f4cb4334a104c8a67d32c7e457ebfc40e`.
-Templates sha256: `53bd175973eabb07379c22184603c63b7f9dfece6dbe1099d90505c122731c1d`
+Compared again 2026-11-26 (Stage 5 step 6): where the page says something is not set up, it links the network's own Integrations tab (`integrations_link`: "Settings › <network> › Integrations"), where it said "(Settings › Integrations › Kea)" or similar in plain text. Every verdict unchanged. Templates sha256 before:
+`53bd175973eabb07379c22184603c63b7f9dfece6dbe1099d90505c122731c1d`.
+Templates sha256: `c1475a9a5d2695ecc97d91974a3d219c8df38e0151fc53bd988d20a2781785f0`
 (2026-11-10, Lab 9 B5: `_history_body.html`'s tabs gain Export, its body drawn only on its own
 tab (docs/fidelity/history-export.md); nothing else on this page moved. Before:
 `32bec95dbec13a023b57669e9e328e31b9d2d5bb39da4b1c5253fa8dcdcb2bf3`.)

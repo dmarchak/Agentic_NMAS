@@ -22,7 +22,9 @@ Compared again 2026-11-13 (C3290, the words Python builds): `_logs_older.html`'s
 Hashed again 2026-11-13 (C3466, Jump to's day is the viewer's): `_history_body.html`'s Jump to field, drawn on the Timeline tab alone (`tab == 'timeline'`), has its accessible name without "(UTC)"; no line this page draws changed. Compared by the template's diff, not by new shots; the Timeline's own record: history.md. Templates sha256 before: `10427bbcdece680ec2a97aa9d248f497c65c1396a8d6b316689fb7007605fbcf`.
 Compared again 2026-11-26 (Stage 5 step 6): the repository's header (what is uncommitted, the remote's sentence, Verify and Push now) is drawn on Timeline, Baselines and Export only; History's Query pages open on their tabs and their question, where the header repeated above every one. Every region's verdict is unchanged but the header's on a Query page, a deviation logged (Stage 5 step 6: History's Query pages without the repository header). Templates sha256 before:
 `d4ddc460c2d9807a67190a32260f3849ff2ae7c18739c20b98debf86b5c369f5`.
-Templates sha256: `47a5b9a6621c767710e2cf726b3a35ca7cc8fb0232a68f294c87e7c4444a9440`
+Compared again 2026-11-26 (Stage 5 step 6): where the page says something is not set up, it links the network's own Integrations tab (`integrations_link`: "Settings › <network> › Integrations"), where it said "(Settings › Integrations › Kea)" or similar in plain text. Every verdict unchanged. Templates sha256 before:
+`47a5b9a6621c767710e2cf726b3a35ca7cc8fb0232a68f294c87e7c4444a9440`.
+Templates sha256: `990fe157180670305f71ccb98fb56941a06e014e79aa17f50d2fa64b40db6c22`
 (2026-11-12, the two comparisons below merged: the tail slice's stale line and local times'
 clock in the same `_logs_view.html` line pair, each kept; their own hashes were
 `e82b7456ce24c06e6e712faabf681e0424e15c73f85b7e574c283c0001349b10` (the tail slice) and

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import not_read_yet, icon, badge, stamp, info -%}
+{%- from "v2/_macros.html" import integrations_link, not_read_yet, icon, badge, stamp, info -%}
 {%- from "v2/_log_run.html" import log_run -%}
 {#- The device page's Logs (NSOT_GUI_BRIEF 3.3), from
     modules/device_logs.held_tab(): what the device sent to syslog, as the
@@ -14,7 +14,7 @@
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}. Not the same as {{ device.hostname }} having sent nothing.</p></div>
   {%- endfor %}
   {%- if not g.configured %}
-  <p class="cov-head">{{ icon('info') }} Loki is not configured, so {{ device.hostname }}'s logs cannot be read here. Set it up on <a href="{{ url_for('settings_v2.network', list_name=list_name, tab='integrations') }}" data-set-integration>Settings › {{ list_name }} › Integrations</a>.</p>
+  <p class="cov-head">{{ icon('info') }} Loki is not configured, so {{ device.hostname }}'s logs cannot be read here. Set it up on {{ integrations_link(list_name) }}.</p>
   {%- elif not g.errors and h.state == 'never' %}
   {#- One set of words for a read not done yet (`not_read_yet`, Stage 5 step 6): it said
       "Reading Loki: Mercury's logs reader has not read it yet". -#}

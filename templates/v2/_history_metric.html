@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, info, badge, clock -%}
+{%- from "v2/_macros.html" import integrations_link, icon, info, badge, clock -%}
 {#- History › Query › a metrics question (C667; board B, AskMetric): the question with its
     device, interface and range in the address (so a view is a link), the chart (the
     Monitoring panel island, reading history_query_metric_data), what holds the range, the
@@ -86,7 +86,7 @@
 </section>
 </div>
 <p class="small"><strong>Coverage:</strong>
-  {%- if m.past_live and not m.history_store %} this range reaches past the {{ m.live_days }} days the live store keeps, and no long-term store is set (Settings › Integrations), so it is not asked: choose a shorter range.
+  {%- if m.past_live and not m.history_store %} this range reaches past the {{ m.live_days }} days the live store keeps, and no long-term store is set (on {{ integrations_link(m.list) }}), so it is not asked: choose a shorter range.
   {%- elif m.past_live %} the last {{ m.live_days }} days at full detail from the live store; the rest from the long-term store, {{ m.history_store }}.
   {%- else %} full detail, from the live store (it keeps {{ m.live_days }} days).{% endif %}</p>
 {%- else %}

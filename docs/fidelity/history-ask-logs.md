@@ -23,7 +23,9 @@ Compared again 2026-11-26 (Stage 5 step 6): the repository's header (what is unc
 `b69fa451a6fb12e85113df1372cee79d8efd5016fb500b89d9feeab790d157f9`.
 Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
 `ec35a01e743dea0daaeddedfccf229275ca15d69c4f142d74794d51ebac01a0e`.
-Templates sha256: `cf2bd647fa7a3b7cf24317f593bb1912d2da511b212962b8715ed926bff15e9c`
+Compared again 2026-11-26 (Stage 5 step 6): where the page says something is not set up, it links the network's own Integrations tab (`integrations_link`: "Settings › <network> › Integrations"), where it said "(Settings › Integrations › Kea)" or similar in plain text. Every verdict unchanged. Templates sha256 before:
+`cf2bd647fa7a3b7cf24317f593bb1912d2da511b212962b8715ed926bff15e9c`.
+Templates sha256: `2858a948e9baf8f8e6bd978549e2891a16c231e0cf34e66e16311150e9ab8015`
 (2026-11-12, C3166 slice 2, by the template diff and the pages tests/test_history_ask_logs.py
 draws, not a new shot: `_history_ask_logs.html`'s choices come from the loki-labels reader,
 never Loki on the request; under the notices one line says so, "The choices are what Loki held

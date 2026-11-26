@@ -19,7 +19,9 @@ Compared again 2026-11-26 (Stage 5 step 6): a background read not read yet, or w
 `d05390ff88fe3bd35bdafbc66d1a471b916fa6eb079ba4d936fbb718c240206f`.
 Compared again 2026-11-26 (Stage 5 step 6): the logs not read yet are said in the one set of words every page uses (`not_read_yet`: "r3's logs have not been read yet: the last attempt failed, ... Not the same as r3 having sent nothing."), where it said "Reading Loki: Mercury's logs reader has not read it yet"; the macro's cadence is optional, unsaid where the page does not know it. Every verdict unchanged. Templates sha256 before:
 `2acf1d18db8a27e15c53bc3179eaa56bc97fe49d6534a8dbb399746047f4c157`.
-Templates sha256: `154dfc9cfaa8cb28dbd29f593ba191c6d1ba0fe2da3200bc7e3ef535c1368ee6`
+Compared again 2026-11-26 (Stage 5 step 6): where the page says something is not set up, it links the network's own Integrations tab (`integrations_link`: "Settings › <network> › Integrations"), where it said "(Settings › Integrations › Kea)" or similar in plain text. Every verdict unchanged. Templates sha256 before:
+`154dfc9cfaa8cb28dbd29f593ba191c6d1ba0fe2da3200bc7e3ef535c1368ee6`.
+Templates sha256: `68a8f81016dea7e9111826b6cacc16215823901ccb4740fa3e4c56fe36dfa9a6`
 
 `_macros.html` is folded in here (a61bb071 changed it for this page; it was in no record); every
 page draws it, so a change to it asks for this page to be compared again.

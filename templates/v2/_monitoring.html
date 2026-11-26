@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, panel_grid, info, range_controls -%}
+{%- from "v2/_macros.html" import integrations_link, icon, badge, stamp, panel_grid, info, range_controls -%}
 {%- set dev_name = device.hostname -%}
 {%- set cur_range = m.range or '1h' -%}
 {%- set dash_uid = (m.dashboard or {}).get('uid', '') -%}
@@ -56,7 +56,7 @@
 <div class="notice notice-muted">{{ icon('info', 16) }}<div><strong>{{ m.grafana_from }}'s Grafana's dashboards have not been read yet.</strong> {{ m.why | capital }}</div></div>
 {%- elif m.state == 'not_set' %}
 <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>No device dashboard is set for {{ m.network }}.</strong>
-  Name one by UID in Settings &gt; Integrations &gt; Grafana (Device dashboard UID), or choose one above for this view.</div></div>
+  Name one by UID (the Grafana card's Device dashboard UID, on {{ integrations_link(m.network) }}), or choose one above for this view.</div></div>
 {%- elif m.state == 'uid_gone' %}
 <div class="notice notice-danger">{{ icon('warn', 16) }}<div><strong>Grafana holds no dashboard with UID <span class="mono">{{ m.uid }}</span>.</strong>
   Grafana's own answer, asked now {{ stamp(m.live.asked_at) }}: the setting names a dashboard that was deleted or never existed. Choose one above, or correct the setting.</div></div>

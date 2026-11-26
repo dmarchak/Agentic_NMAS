@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, info, clock -%}
+{%- from "v2/_macros.html" import integrations_link, icon, badge, stamp, info, clock -%}
 {%- from "v2/_log_run.html" import log_run -%}
 {#- History › Query › Syslog by device (C652; moved under History by C667, its board's home),
     drawn to AskLogs: the question (range, severity), what the range can hold, the devices by
@@ -21,7 +21,7 @@
 {%- elif g.state == 'unreadable' %}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The logs reader's store cannot be read: {{ g.why }}. Nothing is drawn rather than counts that may be wrong.</p></div>
 {%- elif g.state in ('not_configured', 'not_applicable') %}
-<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ g.why }}: there are no logs to ask here (Settings › Integrations › Loki).</p></div>
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ g.why }}: there are no logs to ask here (its Loki card, on {{ integrations_link(g.list) }}).</p></div>
 {%- else %}
 {%- if g.failed %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The reader's last attempt failed ({{ g.failed }}); these are its last good counts, {{ stamp(g.value_at) }}.</p></div>{% endif %}
 {%- set c = g.coverage %}
