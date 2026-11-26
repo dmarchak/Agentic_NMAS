@@ -58,6 +58,22 @@ def test_the_tab_says_the_order_and_that_none_is_set(store):
     assert "Add a profile…" in html
 
 
+def test_the_answer_leads_and_the_order_is_one_level_down(store):
+    """Stage 5 step 6 (the answer within the first screen): the card led with a paragraph on
+    the order a login comes from, and its answer ("No profile is set") came under it. The
+    answer comes first; the order is a closed section after it, its words unchanged."""
+    html = store["client"].get("/v2/credentials/profiles?list=Lab").get_data(as_text=True)
+    card = html.split('aria-labelledby="cp-h"', 1)[1].split("</section>", 1)[0]
+    order = re.search(r'<details class="evidence cp-order" data-keep="cp-order">(.*?)</details>',
+                      card, re.S)
+    assert order, "the order is a section of its own"
+    assert "then a profile for its <strong>platform</strong>" in order.group(1)
+    assert card.index("No profile is set") < order.start(), "the answer comes after the order"
+    assert card.count("then a profile for its <strong>platform</strong>") == 1
+    # The state the answer stands on: the store does not exist, as it says.
+    assert not (store["dir"] / "credential_profiles.json").exists()
+
+
 def test_add_saves_records_and_resolves_without_a_value_returned(store):
     from modules import credentials
     r = _add(store, secret=EN)

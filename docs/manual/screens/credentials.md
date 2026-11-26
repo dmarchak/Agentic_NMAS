@@ -62,8 +62,9 @@ none is ever shown back.
 ## Profiles {#profiles}
 
 The **Profiles** tab lists the credential profiles, which apply to every network on this
-installation. A device a NetBox inventory brings in carries no login of its own, so it is
-given one in the order above; a local inventory's devices carry theirs in it and never read
+installation. Its card opens on its answer (the profiles, or that none is set), with the
+order a login comes from closed under it. A device a NetBox inventory brings in carries no
+login of its own, so it is given one in the order above; a local inventory's devices carry theirs in it and never read
 a profile for it (their read-only account comes from the profiles all the same: see
 [the read-only account](#read-account)). Each row says which devices it gives its login to: `platform:<slug>` every device on
 that NetBox platform, `role:<kind>` every device whose NetBox role has that `mercury_kind`

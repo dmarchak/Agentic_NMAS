@@ -13,7 +13,9 @@ bordered boxes in the first screen. Refresh keeps state cannot be judged from a 
 tests are tests/test_live_merge.py and tests/test_live_redraw_keeps_form.py). A page that shows
 "nothing yet" is the fixture, not a defect: the lines judge layout and words.
 
-**Done since the survey:** the alerts tab's green "Nothing is firing" over a reader never read
+**Done since the survey:** Incidents leads with its answer (9bf41fc0); History's Query pages
+open on their question (aa98dc77); SDN › Apps without git's message or its repeated notice
+(194d7db1, 9e015b6a); Credentials › Profiles leads with its answer; the alerts tab's green "Nothing is firing" over a reader never read
 (C4269, 104ba715); the Devices list's count sentence (8611fd2f); "no reader has written <path>"
 in plain words on every page that drew it. **Recorded:** the bare crash page of Topology and
 AI's background page (C4270, UNKNOWN: whether an installation can reach it).
@@ -24,7 +26,7 @@ AI's background page (C4270, UNKNOWN: whether an installation can reach it).
 | `/v2/credentials` | partly: one warning, no sentence about state | 1 | "No list is named Lab", "the list's own page" | partly | Replace the warning with one sentence that says what to do, with a link to it. |
 | `/v2/credentials/profiles` | partly: answer hidden under a precedence paragraph | 3 | "`mercury_kind`", "the store does not exist yet" | no | Lead with "No profile is set; 2 devices have no login", and fold the precedence rules into a section. |
 | `/v2/device/r2` (reworked) | yes: the sentence leads | 0 | raw reader file paths (now plain words), "cisco_iosxe" | yes | Say "not read yet" in place of the reader's file path in Reachable and Alerts (done). |
-| `/v2/devices` | partly: no count sentence (now added) | 2 (table card, selection bar) | ok ("golden changed" is borderline) | partly | Remove the second "How does this work?" beside the head's actions. |
+| `/v2/devices` | partly: no count sentence (now added) | 2 (table card, selection bar) | ok ("golden changed" is borderline) | partly | The count sentence (done). The two "How does this work?" links in the head each sit beside their own action (Add device…, Adopt a device…), as CLAUDE.md asks of every action: kept, where this line first said remove one. |
 | `/v2/devices/deploy` | yes: "No device was chosen" | 1 | ok | partly | Unbox the empty state and put it as the sentence under the title. |
 | `/v2/devices/save` | yes: "No device chosen" | 1 | ok | partly | Title "Save 0 devices" reads oddly; name the task, then give the state in the sentence. |
 | `/v2/dhcp` | partly: two banners, no sentence | 2 | "Kea", "Default's repository", "The DHCP reader" | no | Use one sentence: "Lab uses Default's DHCP server; not read yet (reads every 5 min)". |
@@ -79,7 +81,9 @@ AI's background page (C4270, UNKNOWN: whether an installation can reach it).
 2. `/v2/incidents`: its answer ("No incident is open") comes last.
 3. `/v2/monitoring/alerts`: green over a reader never read (done, C4269).
 4. `/v2/history`: a repository-state box leads every tab.
-5. `/v2/devices`: no count sentence (done) and a second How does this work?.
-6. `/v2/sdn/apps`: five boxes and a git error as the main words.
-7. `/v2/credentials/profiles`: the answer under a precedence paragraph naming a field key.
+5. `/v2/devices`: no count sentence (done; its two help links are each its action's, kept).
+6. `/v2/sdn/apps`: five boxes and a git error as the main words (the git error gone, C4273;
+   the repeated red notice gone).
+7. `/v2/credentials/profiles`: the answer under a precedence paragraph naming a field key
+   (done: the answer first, the order closed under it).
 8. Shared: "no reader has written <path>" on five pages (done, in one place).
