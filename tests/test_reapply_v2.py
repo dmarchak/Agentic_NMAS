@@ -81,11 +81,16 @@ def test_what_is_drawn_is_masked(planned):
     assert "snmp-server community" in html and PLANTED not in html
 
 
-@pytest.mark.parametrize("tag,words", [("golden/r1/x", "is not a baseline"),
-                                       ("", "is not a baseline")])
+@pytest.mark.parametrize("tag,words", [("golden/r1/x", "golden/r1/x is not a baseline"),
+                                       ("", "No baseline was chosen")])
 def test_a_name_that_is_no_baseline_is_said(planned, tag, words):
+    """Premise corrected (Stage 5 step 6; the empty case asserted "is not a baseline", drawn
+    as "nothing is not a baseline"): a wrong tag is named as no baseline, no tag says none was
+    chosen, and each links the Baselines tab a re-apply starts from."""
     _r, html = _page(planned, tag)
     assert words in html and 'id="apply-confirm"' not in html
+    assert "nothing is not a baseline" not in html
+    assert re.search(r'<a href="/v2/history\?[^"]*tab=baselines[^"]*" data-choose-baseline>', html)
 
 
 def test_a_withdrawn_baseline_is_said(lab, monkeypatch):  # noqa: F811

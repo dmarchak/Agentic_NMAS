@@ -18,7 +18,7 @@
 <div class="tab-body">
 <section class="card apply" id="apply-preview">
 {%- if error %}
-  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not offered:</strong> {{ error }}. Nothing was planned or sent.</p></div>
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not offered:</strong> {{ error }}. Nothing was planned or sent.{% if choose_baseline is defined and choose_baseline %} <a href="{{ url_for('v2.history_page', tab='baselines', list=list_name) }}" data-choose-baseline>Choose one on History › Baselines</a>{% endif %}</p></div>
 {%- else %}
   <p class="tpl-counts">{% for s, n in counts.items() if n %}<span>{{ states[s][0] }} <strong>{{ n }}</strong></span>{{ ' · ' if not loop.last }}{% endfor %}{% if skipped %} · <span>left as they are <strong>{{ skipped | length }}</strong></span>{% endif %}</p>
   {%- if skipped %}

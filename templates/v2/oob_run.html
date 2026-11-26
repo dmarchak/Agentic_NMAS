@@ -11,8 +11,10 @@
 <nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('v2.devices', list=list_name) }}">Devices</a><span aria-hidden="true">/</span><span>{{ device or 'a console run' }}</span></nav>
 <div class="page-head">
   <div class="page-title">
-    <div class="title-row"><h1 class="mono">{{ device or 'No device named' }} {{ info('onboard', 'out-of-band-onboarding') }}</h1> {{ badge('console run', 'muted') }}</div>
-    <p class="sub">{% if has_run %}Its newest console run in {{ run_list }}: this page can close, the run continues on the server and keeps its record on History.{% else %}No console run of {{ device or 'this device' }} is recorded in {{ run_list or 'this network' }}.{% endif %}</p>
+    {#- Stage 5 step 6: with no device named the title was "No device named" in code type; it
+        names the page then, and a device's name only when there is one. -#}
+    <div class="title-row"><h1{% if device %} class="mono"{% endif %}>{{ device or 'Console run' }} {{ info('onboard', 'out-of-band-onboarding') }}</h1>{% if device %} {{ badge('console run', 'muted') }}{% endif %}</div>
+    <p class="sub">{% if has_run %}Its newest console run in {{ run_list }}: this page can close, the run continues on the server and keeps its record on History.{% elif device %}No console run of {{ device }} is recorded in {{ run_list or 'this network' }}.{% else %}A console run's page opens by its device's name, from In progress or the running card.{% endif %}</p>
   </div>
   <div class="page-actions">{{ how('onboard', 'out-of-band-onboarding', op='the out-of-band onboarding') }}</div>
 </div>
@@ -23,7 +25,7 @@
 {%- set c = zc %}
 {% include "v2/_console_ztp.html" %}
 {%- elif not error %}
-<section class="card"><p>Nothing to show: {{ device or 'no device' }} has no console run in {{ run_list or 'no network' }}. A run is started from Devices › Add device… (Out-of-band (console)).</p>
+<section class="card"><p>{% if device %}Nothing to show: {{ device }} has no console run in {{ run_list or 'this network' }}.{% else %}No device was named, so there is no console run to show.{% endif %} A run is started from Devices › Add device… (Out-of-band (console)).</p>
   <p><a class="btn" href="{{ url_for('v2.devices', list=list_name) }}">Open Devices</a></p></section>
 {%- endif %}
 {% endblock %}

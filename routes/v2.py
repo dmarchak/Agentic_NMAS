@@ -960,7 +960,11 @@ def _reapply_ctx(req) -> dict:
     ctx = {"list_name": name, "tag": tag, "rows": [], "counts": {}, "error": "",
            "confirm_body": None, "states": REAPPLY_STATES, "skipped": []}
     if not tag.startswith("baseline/"):
-        ctx["error"] = f"{tag or 'nothing'} is not a baseline: a re-apply names a baseline tag"
+        # Stage 5 step 6: with no tag this read "nothing is not a baseline"; it says what to
+        # do, and the page links the Baselines tab a re-apply starts from.
+        ctx["error"] = (f"{tag} is not a baseline: a re-apply starts from a baseline" if tag
+                        else "No baseline was chosen: a re-apply starts from a baseline")
+        ctx["choose_baseline"] = True
         return ctx
     try:
         plan = restore_plan(name, tag, None, req=req)

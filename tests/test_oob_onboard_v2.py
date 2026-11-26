@@ -232,6 +232,21 @@ class TestTheRunPage:
         html = _text(client.get(f"/v2/onboard/oob/run?list={LIST}&device=nosuch"))
         assert "Nothing to show: nosuch has no console run in" in html
 
+    def test_no_device_named_reads_as_a_sentence_never_no_this_in_no_that(self, world, client,
+                                                                          monkeypatch):
+        """Stage 5 step 6: with no device named the page's title was "No device named" in code
+        type and its words "no device has no console run in no network"; the title names the
+        page and the words say no device was named, the run store never asked."""
+        asked = []
+        monkeypatch.setattr(O, "latest_run", lambda *a: asked.append(a))
+        html = _text(client.get(f"/v2/onboard/oob/run?list={LIST}"))
+        title = re.search(r"<h1[^>]*>(.*?)</h1>", html, re.S)
+        assert title and title.group(1).strip().startswith("Console run"), title
+        assert 'class="mono"' not in title.group(0)
+        assert "No device was named, so there is no console run to show." in html
+        assert "no device has no console run" not in html and "in no network" not in html
+        assert asked == [], "with no device named, no run is looked up"
+
     def test_a_running_run_of_another_process_draws_its_stepper_from_the_hold(self, world,
                                                                              client):
         from modules.nsot import console_ztp as Z
