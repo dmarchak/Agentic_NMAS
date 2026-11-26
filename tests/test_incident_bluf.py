@@ -263,7 +263,9 @@ class TestTheThreeLines:
         said = dict(lines_of(html))
         title = text_of(html.split("<h1", 1)[1].split(">", 1)[1].split("</h1>", 1)[0])
         assert said["what"] and said["what"] in title, (said, title)
-        assert "Not known" in said["impact"], said
+        # Premise corrected (edc8866b): the impact not known is said as a sentence with its
+        # subject ("Its impact is not known: ..."), not "Not known: ...".
+        assert "Its impact is not known" in said["impact"], said
         (only,) = primaries(html.split('id="incident-live"', 1)[1])
         assert only[2] == "Open r2" and 'data-fix="item"' in bluf(html), only
 

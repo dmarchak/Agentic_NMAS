@@ -51,23 +51,20 @@ def test_no_module_lowers_a_first_letter_by_hand():
     case and a floor on the files read."""
     import os
     import re
+
+    from tests.source_index import tracked
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     # A first letter lowered and the rest joined back on, never a lowercase comparison.
     hand = re.compile(r"\[(?:0|:1)\]\.lower\(\)\s*\+\s*[\w.'\"\[\]()]*\[1:\]")
     read, found = 0, []
-    for top in ("modules", "routes"):
-        for dirpath, _dirs, files in os.walk(os.path.join(root, top)):
-            for name in files:
-                if not name.endswith(".py"):
-                    continue
-                path = os.path.join(dirpath, name)
-                rel = os.path.relpath(path, root)
-                read += 1
-                if rel == os.path.join("modules", "words.py"):
-                    continue
-                with open(path, encoding="utf-8") as fh:
-                    found += [f"{rel}:{i}" for i, line in enumerate(fh, 1)
-                              if hand.search(line)]
+    # The tracked files only (tests/source_index.py): an untracked copy is not program.
+    for path in tracked("modules", "routes", suffix=".py"):
+        rel = os.path.relpath(path, root)
+        read += 1
+        if rel == os.path.join("modules", "words.py"):
+            continue
+        with open(path, encoding="utf-8") as fh:
+            found += [f"{rel}:{i}" for i, line in enumerate(fh, 1) if hand.search(line)]
     assert read > 300, f"the scan read {read} files"
     assert found == [], f"a first letter lowered by hand; use words.lower_start: {found}"
     assert hand.search('waits = waits[:1].lower() + waits[1:]')
