@@ -594,6 +594,19 @@ class TestThePage:
         _r, html = page("/v2/device/r3/neighbours")
         assert "Prometheus is not configured" in html and "nb-table" not in html
 
+    def test_prometheus_not_configured_links_the_networks_integrations(self, page,
+                                                                        monkeypatch):
+        """Stage 5 step 6: the line said "(Settings > Integrations)" in plain text; it links
+        the network's own Integrations tab, where its Prometheus card is."""
+        from modules.integrations.prometheus import PrometheusIntegration
+        monkeypatch.setattr(PrometheusIntegration, "is_configured", lambda self: False)
+        _r, html = page("/v2/device/r3/neighbours")
+        link = re.search(r'<a href="([^"]+)" data-set-integration>([^<]+)</a>', html)
+        assert link and link.group(1) == "/v2/settings/network/Lab?tab=integrations", html[-800:]
+        assert link.group(2) == "Settings › Lab › Integrations"
+        assert "Settings &gt; Integrations" not in html
+        assert PrometheusIntegration().is_configured() is False
+
     def test_prometheus_unreachable_is_said_never_none(self, page, monkeypatch):
         from modules.integrations.prometheus import PrometheusIntegration
         monkeypatch.setattr(PrometheusIntegration, "_get",

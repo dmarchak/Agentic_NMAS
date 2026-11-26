@@ -23,7 +23,7 @@
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}.</p></div>
   {%- endfor %}
   {%- if not n.configured %}
-  <p class="cov-head">{{ icon('info') }} Prometheus is not configured, so what {{ device.hostname }} reports about its neighbours cannot be read here (Settings &gt; Integrations).</p>
+  <p class="cov-head">{{ icon('info') }} Prometheus is not configured, so what {{ device.hostname }} reports about its neighbours cannot be read here. Set it up on <a href="{{ url_for('settings_v2.network', list_name=list_name, tab='integrations') }}" data-set-integration>Settings › {{ list_name }} › Integrations</a>.</p>
   {%- endif %}
   {%- set bad = n.counts.get('down', 0) + n.counts.get('not_seen', 0) %}
   {%- if n.protocols %}

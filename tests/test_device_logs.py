@@ -336,6 +336,19 @@ class TestTheSyslogJobIsMeasured:
         assert device_logs.job_matcher() == 'job=~"alpha_syslog|site_syslog"'
         assert _view("r3", loki)["lines"]
 
+    def test_loki_not_configured_links_the_networks_integrations(self, page, monkeypatch):
+        """Stage 5 step 6: the line said "(Settings > Integrations)" in plain text; it links
+        the network's own Integrations tab, where its Loki card is."""
+        from modules.integrations.loki import LokiIntegration
+        monkeypatch.setattr(LokiIntegration, "is_configured", lambda self: False)
+        _r, html = page("/v2/device/r3/logs")
+        link = re.search(r'<a href="([^"]+)" data-set-integration>([^<]+)</a>', html)
+        assert link and link.group(1).startswith("/v2/settings/network/"), html[-800:]
+        assert link.group(1).endswith("?tab=integrations")
+        assert link.group(2).startswith("Settings › ") and link.group(2).endswith(" › Integrations")
+        assert "Settings &gt; Integrations" not in html
+        assert LokiIntegration().is_configured() is False
+
     def test_none_found_is_said_and_no_line_is_asked(self, page, held, loki):
         from modules import device_logs
         held["jobs"] = []

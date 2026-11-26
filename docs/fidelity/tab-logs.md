@@ -19,7 +19,9 @@ Compared again 2026-11-26 (Stage 5 step 6): the logs not read yet are said in th
 `3348ce3992fc529f042e35939ac2768fb980b7c0318d62b3f8914f07216e1396`.
 Compared again 2026-11-26: the line says its cadence ("Mercury reads them every 5 seconds"), the logs-tail reader's. Templates sha256 before:
 `7613626b6a8142e6336c777ae53e48a737eee8aa0bf84867ffc47073556b18d8`.
-Templates sha256: `d832db8a6f57b46395b77c6a21a6287fa19b0286050f18712842a57bc2925939`
+Compared again 2026-11-26 (Stage 5 step 6): with Loki (or Prometheus) not set up, the tab's line links the network's own Integrations tab ("Set it up on Settings › <network> › Integrations."), where it said "(Settings > Integrations)" in plain text. Every verdict unchanged. Templates sha256 before:
+`d832db8a6f57b46395b77c6a21a6287fa19b0286050f18712842a57bc2925939`.
+Templates sha256: `413f66ab73dcee6ede1e622b6985a1260e1b5d706a7687d71b7da1baeb1854e1`
 (2026-11-12, C3330, by the template diff and the pages tests/test_logs_held_stale.py draws, not
 a new shot: once the logs-tail reader's last good read is older than its promise (its interval
 times its stale factor, 15 s, as its job-health row judges it), the card's foot ("From Loki,
