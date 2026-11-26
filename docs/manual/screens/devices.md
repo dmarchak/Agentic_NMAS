@@ -6,6 +6,13 @@ search or a filter, the list says "Showing N of M".
 
 ## The list {#the-list}
 
+The list opens with one sentence from its rows: the devices to look at, named (not answering,
+then differing from their intent), then the others counted by what is not known or not done
+(under an operation, waiting to be onboarded, not probed yet, intent changed since measured).
+With none to look at it says **Nothing known to be wrong.**, and **All N answer and run their
+intent.** only when each does. After a search or a filter it speaks of the rows shown. It
+redraws with the list.
+
 Each row: the device's status (Reachable or Not reachable, from the reachability reader), its address
 and platform, whether it was at its committed intent when it was last MEASURED and by
 what, and when that was. Hover the time to see when its golden last changed. Onboardings

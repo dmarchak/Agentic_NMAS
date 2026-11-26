@@ -7463,11 +7463,10 @@ def sentence(a: dict) -> dict:
         if top.get("level") in named:
             named[top["level"]].append(top.get("what") or "")
 
+    from modules.words import series
+
     def names(titles):
-        shown, more = titles[:3], len(titles) - 3
-        if more > 0:
-            return ", ".join(shown) + f" and {more} more"
-        return (", ".join(shown[:-1]) + " and " + shown[-1]) if len(shown) > 1 else shown[0]
+        return series(titles, 3)
 
     unknown = _count_words(n["unknown"], "unknown", "unknown") if n["unknown"] else ""
     if n["danger"]:

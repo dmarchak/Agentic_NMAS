@@ -26,6 +26,10 @@
   {%- elif not d.rows %}
   <p class="cov-head">{{ icon('info') }} No device of {{ d.total }} matches{% if d.q %} "{{ d.q }}"{% endif %}{% if d.state %}, state {{ d.state | replace('_', ' ') }}{% endif %}{% if d.platform %}, platform {{ d.platform }}{% endif %}.</p>
   {%- else %}
+  {#- C's one sentence (Stage 5 step 6; `device_list.sentence`), from the rows drawn below, so it
+      redraws with them. -#}
+  {%- set said = d | devices_sentence %}
+  {%- if said %}<p class="doc-summary devices-said" data-sentence><strong>{{ said.lead }}</strong>{% if said.rest %} {{ said.rest }}{% endif %}</p>{% endif %}
   {%- set picked = d.rows | selectattr('checked') | map(attribute='name') | list %}
   {%- set tickable = d.rows | rejectattr('pending') | list | length %}
   {%- set filtered = d.q or d.state or d.platform %}

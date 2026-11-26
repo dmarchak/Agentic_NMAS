@@ -95,6 +95,14 @@ def first_action(row) -> str:
     return attention.first_action(row or {})
 
 
+@bp.app_template_filter("devices_sentence")
+def devices_sentence(d) -> dict:
+    """The Devices list's one sentence (`device_list.sentence`), from the rows it draws."""
+    from modules import device_list
+
+    return device_list.sentence(d or {})
+
+
 @bp.app_template_filter("attention_sentence")
 def attention_sentence(a) -> dict:
     """Needs attention's one sentence (`attention.sentence`), from the rows the list draws."""

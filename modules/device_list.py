@@ -47,6 +47,8 @@ import logging
 import re
 import time
 
+from modules.words import series
+
 log = logging.getLogger(__name__)
 
 #: How far back the one `git log` reads. A device captured less recently than
@@ -596,6 +598,61 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
             "managed": len(inventory),
             "counts": counts, "platforms": platforms, "q": q, "state": state,
             "platform": platform, "bound": LOG_BOUND}
+
+
+
+def _devices(n: int) -> str:
+    return f"{n} device{'' if n == 1 else 's'}"
+
+
+def sentence(d: dict) -> dict:
+    """The Devices list's one sentence (the operator's GUI pick, 2026-11-25: C; Stage 5 step 6),
+    from the rows the list draws under it: ``{"lead", "rest"}``. The lead names the devices that
+    need a look (not answering, then differing from their intent); the rest counts the others
+    by what keeps them from "answers and runs its intent" (under an operation, waiting to be
+    onboarded, not probed yet, intent changed since measured). Only when every row answers
+    and is at its intent does it say so. A search or filter says it speaks of the rows shown.
+    Empty for an unreadable list or no row."""
+    rows = d.get("rows") or []
+    if d.get("error") or not rows:
+        return {}
+
+    def status(r):
+        return (r.get("status") or {}).get("state")
+
+    def intent(r):
+        return (r.get("intent") or {}).get("state")
+    down = [r["name"] for r in rows if status(r) == "danger"]
+    differ = [r["name"] for r in rows if intent(r) == "departs" and status(r) != "danger"]
+    shown = "" if len(rows) == d.get("total") else f"Of the {len(rows)} shown, "
+    look = []
+    if down:
+        look.append(f"{_devices(len(down))} not answering ({series(down, 3)})")
+    if differ:
+        look.append(f"{_devices(len(differ))} differing from {'its' if len(differ) == 1 else 'their'}"
+                    f" intent ({series(differ, 3)})")
+    counted = []
+    for state, words in (("planned", "under an operation"), ("warn", "waiting to be onboarded"),
+                         ("unknown", "not probed yet")):
+        n = sum(1 for r in rows if status(r) == state)
+        if n:
+            counted.append(f"{n} {words}")
+    moved = sum(1 for r in rows if intent(r) == "intent_moved" and status(r) != "danger")
+    if moved:
+        counted.append(f"{moved} with intent changed since measured")
+    if look:
+        lead = shown + " and ".join(look) + "."
+        rest = ("Besides: " + ", ".join(counted) + ".") if counted else ""
+    elif counted:
+        lead = shown + "nothing known to be wrong."
+        rest = ", ".join(counted)
+        rest = rest[:1].upper() + rest[1:] + "."
+    elif all(status(r) == "ok" and intent(r) == "at_intent" for r in rows):
+        lead = shown + f"All {_devices(len(rows))} answer and run their intent."
+        rest = ""
+    else:
+        lead, rest = shown + "nothing known to be wrong.", ""
+    return {"lead": lead[:1].upper() + lead[1:], "rest": rest}
 
 
 def matching(ref, values):

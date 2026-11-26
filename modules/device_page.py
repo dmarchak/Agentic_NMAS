@@ -24,6 +24,7 @@ import re
 import time
 
 from modules import panels
+from modules.words import series
 
 log = logging.getLogger(__name__)
 
@@ -495,9 +496,6 @@ _INTENT_SAID = {"ok": "runs its intent", "warn": "differs from its intent",
                 "no_intent": "has no committed intent", "no_golden": "has no golden to compare"}
 
 
-def _and(names: list) -> str:
-    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
-
 
 def sentence(dev: dict, answer: dict, records: dict, checks: list) -> dict:
     """The device's one sentence (the operator's GUI pick, 2026-11-25: C's "<device> is reachable and
@@ -525,11 +523,11 @@ def sentence(dev: dict, answer: dict, records: dict, checks: list) -> dict:
                  and c.get("state") not in ("ok", "warn", "danger", "unknown")]
     parts = []
     if look:
-        parts.append(f"{_and(look)} need{'s' if len(look) == 1 else ''} a look")
+        parts.append(f"{series(look)} need{'s' if len(look) == 1 else ''} a look")
     if unknown:
-        parts.append(f"{_and(unknown)} {'is' if len(unknown) == 1 else 'are'} not known yet")
+        parts.append(f"{series(unknown)} {'is' if len(unknown) == 1 else 'are'} not known yet")
     if unchecked:
-        parts.append(f"{_and(unchecked)} {'is' if len(unchecked) == 1 else 'are'} not checked")
+        parts.append(f"{series(unchecked)} {'is' if len(unchecked) == 1 else 'are'} not checked")
     if not parts and others:
         parts.append("every other check passes")
     rest = "; ".join(parts)

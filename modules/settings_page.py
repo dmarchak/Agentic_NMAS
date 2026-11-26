@@ -22,6 +22,8 @@ refused by `routes/list_param`, before this runs).
 import json
 import logging
 
+from modules.words import series
+
 log = logging.getLogger(__name__)
 
 #: The tabs a network's settings are split across, and the groups on each. Integrations are
@@ -327,13 +329,6 @@ def network_view(list_name: str, tab: str = "integrations") -> dict:
     return out
 
 
-def _names(labels: list, most: int = 3) -> str:
-    """"Grafana, Kea and Loki"; past *most*, the first *most* "and N more" (never "and 1 more":
-    one more is named)."""
-    if len(labels) > most + 1:
-        return ", ".join(labels[:most]) + f" and {len(labels) - most} more"
-    return labels[0] if len(labels) == 1 else ", ".join(labels[:-1]) + " and " + labels[-1]
-
 
 def _groups(n: int) -> str:
     return f"{n} group{'' if n == 1 else 's'}"
@@ -348,9 +343,6 @@ def runs_on_builtin(group: str) -> bool:
 
     return all(DEFAULTS.get(k) not in (None, "") for k in group_keys(group))
 
-
-def _join(parts: list) -> str:
-    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
 
 
 def sentence(view: dict) -> dict:
@@ -375,27 +367,27 @@ def sentence(view: dict) -> dict:
     builtin = (f"{_groups(nb)} " + ("runs on its built-in value" if nb == 1 else
                                     "run on their built-in values")) if nb else ""
     if view.get("is_default"):
-        lead = f"{_groups(len(gaps))} unset: {_names(gaps)}." if gaps else ""
+        lead = f"{_groups(len(gaps))} unset: {series(gaps, 3)}." if gaps else ""
         parts = []
         if by.get("own"):
             parts.append(f"{_groups(len(by['own']))} {'is' if len(by['own']) == 1 else 'are'} "
                          "set here, read by every network that inherits")
         if builtin:
             parts.append(builtin)
-        rest = (_join(parts) + ".") if parts else ""
+        rest = (series(parts) + ".") if parts else ""
         rest = rest[:1].upper() + rest[1:]
         return {"lead": lead, "rest": rest} if lead else {"lead": rest, "rest": ""}
     lead = (f"{_groups(len(gaps))} {'is' if len(gaps) == 1 else 'are'} set nowhere, here or "
-            f"in Default: {_names(gaps)}." if gaps else "")
+            f"in Default: {series(gaps, 3)}." if gaps else "")
     parts = []
     if by.get("own"):
-        parts.append(f"sets {_groups(len(by['own']))} itself ({_names(by['own'])})")
+        parts.append(f"sets {_groups(len(by['own']))} itself ({series(by['own'], 3)})")
     if by.get("inherited"):
         parts.append(f"takes {_groups(len(by['inherited']))} from Default")
     if by.get("not_applicable"):
         parts.append(f"declares {_groups(len(by['not_applicable']))} not applicable "
-                     f"({_names(by['not_applicable'])})")
-    rest = (f"{view['network']} " + _join(parts) + ".") if parts else ""
+                     f"({series(by['not_applicable'], 3)})")
+    rest = (f"{view['network']} " + series(parts) + ".") if parts else ""
     if builtin:
         rest = (rest + " " if rest else "") + builtin[:1].upper() + builtin[1:] + "."
     return {"lead": lead, "rest": rest} if lead else {"lead": rest, "rest": ""}
