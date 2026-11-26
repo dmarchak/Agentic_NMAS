@@ -117,7 +117,9 @@ new shots. Templates sha256 before:
 `560f2e016be7ea1c4245b0cb5a36db2df6725daa2db474f47761304b6c199ef8`.
 Compared again 2026-11-25 (the shared frame, Stage 5 step 1; the operator's GUI pick: "the assistant is a side panel the page reflows around, not a drawer over a dimmed page"): `base.html`'s body carries `side-open` while the assistant's or the help's side panel is open, and at 1100 px and wider the page's frame gives up the panel's width, so the page reflows beside the panel and nothing is under it; narrower, the panel covers the page's edge as before. No region of this screen moved while no panel is open, and none is drawn under an open one; no deviation. Compared by the template's diff and tests/test_ai_assistant_stage2.py's `test_the_page_reflows_around_the_open_panel_never_under_it` in Firefox at 1366 wide, not by new shots. Templates sha256 before:
 `825fd90a945d27a478b1c5d6578e4e4aecf552e5f484799c867e7c7d1d720e0b`.
-Templates sha256: `8584cffdb86747fdfbf8021826193d8556d95beb012d2f47a29d344db23e04e6`
+Compared again 2026-11-26 (Stage 5 step 6): the summary ("No incident is open on <network>.", or the counts by group) now leads the live region, above the period's board, where it followed the board; shot in Firefox at 1366. Its region's verdict is unchanged (the same words); one deviation logged (Stage 5 step 6: Incidents' answer before its board). Templates sha256 before:
+`8584cffdb86747fdfbf8021826193d8556d95beb012d2f47a29d344db23e04e6`.
+Templates sha256: `7266623edd1bc83440d6097baa4ff8053ce60b68f6571284c9a3de714d3b7101`
 
 Compared again 2026-11-14 04:2x UTC (the operator's notes on board T, 2026-11-14; provisional,
 operator review pending): "1. Remove the "N open" chip from Incidents in the sidebar. Needs

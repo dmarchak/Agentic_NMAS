@@ -494,6 +494,20 @@ class TestTheChipsAndTheEmptyList:
         body = drawn(p)
         assert f"No incident is open on {NET}." in body and 'class="inc-row"' not in body
 
+    def test_the_answer_comes_before_the_periods_board(self, planted, client):  # noqa: F811
+        """Stage 5 step 6 (the answer within the first screen): the page's sentence ("N open
+        · ..." or "No incident is open") leads the live region, and the period's board, its
+        evidence, follows it; it was drawn under the board, last on the first screen."""
+        page = client.get(f"/v2/incidents?list={NET}").get_data(as_text=True)
+        live = page.split('id="incidents-live"', 1)[1]
+        assert "data-board" in live, "the page draws the period's board"
+        assert live.index('class="inc-list-sum"') < live.index("data-board"), \
+            "the answer is drawn after the board"
+        p = L.page(NET, "open")
+        assert p["total"] >= 1, "incidents are open, so the answer is their counts"
+        assert f'data-total="{p["total"]}"' in live.split("data-board", 1)[0], \
+            "the sentence before the board is the open tab's count"
+
 
 def _browser():
     from tests import browser

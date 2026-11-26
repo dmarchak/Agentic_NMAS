@@ -23,7 +23,8 @@ opens it here.
 
 ## The last 30 days {#fleet-view}
 
-Above the tabs, on both of them, the network's incidents at a glance:
+Under the tabs, on both of them, the tab's summary line comes first ("No incident is open on
+<network>." or its counts, below), then the network's incidents at a glance:
 
 - **The outcome line:** of the incidents detected in the last 30 days, how many were
   self-healed (Mercury fixed them, by its own fix or a saved script), AI-fixed (a person
