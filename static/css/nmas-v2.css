@@ -1054,6 +1054,11 @@ a.cite-chip:hover { border-color: var(--accent); }
   border-radius: var(--r-card); padding: 12px 16px; }
 .att-clear .ico { color: var(--ok); }
 .evidence { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 8px 16px; }
+/* Needs attention as C's document (Stage 5 step 3, slice 3): What was checked, Mercury's own and
+   Recent changes are sections under the queue, a hairline above each and no box. */
+#attention .evidence, .main > #recent.card { background: none; border: 0; border-top: 1px solid var(--line);
+  border-radius: 0; padding: 8px 0; }
+.main > #recent.card > .card-head h2 { font-size: 17px; font-weight: 700; }
 .evidence summary { cursor: pointer; font-size: 13px; color: var(--ink-2); padding: 4px 0; }
 .evidence .table { margin-top: 6px; }
 /* Monitoring › Alerts: each firing alert a closed card; its evidence pack opens in it (P1). */
