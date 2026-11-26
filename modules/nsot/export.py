@@ -487,10 +487,13 @@ def read_in(repo_dir: str, rev: str = "HEAD", network: str = "") -> dict:
     network = network or "this network"
     rc, text, err = git_raw(repo_dir, "show", f"{rev}:{PATH}")
     if rc != 0:
-        # ``absent``: nothing committed, apart from one committed that does not verify.
+        # ``absent``: nothing committed, apart from one committed that does not verify. Said
+        # in words: git's own message ("fatal: path ... does not exist in 'HEAD'") was drawn
+        # as the SDN pages' main words (Stage 5 step 6); it goes to the log.
+        log.info("export: %s: git show %s:%s: %s", network, rev, PATH, str(err).strip()[:200])
+        at = "" if rev == "HEAD" else f" at {rev}"
         return {"ok": False, "export": None, "sha256": "", "absent": True,
-                "error": f"{network} has no committed NSOT export at {rev} ({PATH}): export it "
-                         f"first ({str(err).strip()[:120]})"}
+                "error": f"{network} has no committed NSOT export{at}: export it first"}
     try:
         doc = parse(text)
     except Refused as exc:

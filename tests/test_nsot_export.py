@@ -187,6 +187,15 @@ class TestCommitted:
             fh.write("{}")
         assert X.read(NETWORK)["sha256"] == built["sha256"]
 
+    def test_nothing_committed_is_said_in_words_never_gits_message(self, net):
+        """Stage 5 step 6: SDN › Apps drew "fatal: path 'nsot/export.json' does not exist in
+        'HEAD'" as its main words, git's message carried in the absent reason; the reason says
+        what to do, with no git message and no path, and still says absent."""
+        got = X.read(NETWORK)
+        assert (got["ok"], got["absent"]) == (False, True)
+        assert got["error"] == f"{NETWORK} has no committed NSOT export: export it first"
+        assert "fatal" not in got["error"] and X.PATH not in got["error"]
+
     def test_nothing_committed_is_said_and_an_unverified_actor_is_refused(self, net):
         assert not X.read(NETWORK)["ok"] and "no committed NSOT export" in X.read(NETWORK)["error"]
         built, _ = _build()
