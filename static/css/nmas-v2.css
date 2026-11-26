@@ -605,6 +605,10 @@ h1 { margin: 0; font-size: 30px; font-weight: 700; line-height: 1.25; letter-spa
 .inc-list-filter { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .inc-list-filter input[type="search"] { min-width: 0; flex: 1 1 220px; max-width: 360px; }
 .inc-group { padding: 10px 14px; }
+/* As C draws a list (Stage 5 step 6): each group a section of the page, a hairline above, no
+   box. */
+#incidents-live > .inc-group.card { background: none; border: 0; border-top: 1px solid var(--line);
+  border-radius: 0; padding: 10px 0; margin-top: 0; }
 .inc-group-head { cursor: pointer; display: flex; gap: 8px; align-items: center; }
 .inc-rows { list-style: none; margin: 8px 0 0; padding: 0; }
 .inc-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 10px; align-items: baseline;
