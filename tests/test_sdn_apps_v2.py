@@ -112,6 +112,26 @@ def test_sources_not_wired_say_what_is_not_built_and_draw_nothing_as_known(apps,
     assert deploy_receipts.read(NET)["rows"] == []
 
 
+@pytest.mark.parametrize("state, red", [("no_export", False), ("unreadable", True)])
+def test_no_export_is_said_once_by_its_card_and_an_unreadable_one_in_red(apps, monkeypatch,
+                                                                       state, red):
+    """Stage 5 step 6: with nothing committed the export card says the controller hosts can't
+    be listed without one and offers the export; a red "can't be listed" notice under it said
+    it again. Now drawn only when the export cannot be read, never for one not committed."""
+    error = {"no_export": f"they are read from {NET}'s committed NSOT export, and {NET} has "
+                          "no committed NSOT export: export it first",
+             "unreadable": f"they are read from {NET}'s committed NSOT export, and its hash is "
+                           "not its own"}[state]
+    monkeypatch.setattr(apps["src"], "controllers",
+                        lambda network: {"state": state, "error": error, "controllers": []})
+    html = unescape(apps["client"].get("/v2/sdn/apps").get_data(as_text=True))
+    assert ("controller hosts can't be listed:" in html) is red
+    assert ("notice-danger apps-none" in html) is red
+    assert "has no SDN controller host to deploy apps to" not in html
+    # The effect: drawing the tab sent nothing to any controller.
+    assert apps["src"].sent == []
+
+
 def test_the_controller_card_leads_with_the_record_and_groups_the_apps(apps):
     c = apps["client"]
     html = c.get("/v2/sdn/apps").get_data(as_text=True)

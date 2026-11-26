@@ -19,7 +19,11 @@
 {#- Board lab9-sdn B (C2904): DHCP steering, its preview and result drawn in its card's place. -#}
 {%- if g.dhcp %}{% with s=g.dhcp %}{% include "v2/_sdn_dhcp.html" %}{% endwith %}{% endif %}
 {%- set code_repo_url = url_for('settings_v2.network', list_name=g.network, tab='network') ~ '#code-repo-card' -%}
-{%- if g.state == 'not_wired' or g.state == 'unreadable' %}
+{#- No export committed: the export card above says the controller hosts can't be listed
+    without one and offers the export, so nothing more is drawn here (Stage 5 step 6: a red
+    notice repeated it). An export that can't be read is still said, in red. -#}
+{%- if g.state == 'no_export' %}
+{%- elif g.state == 'not_wired' or g.state == 'unreadable' %}
 <div class="notice notice-{{ 'warn' if g.state == 'not_wired' else 'danger' }} apps-none" role="status">{{ icon('info', 16) }}<p><strong>{{ g.network }}'s controller hosts can't be listed:</strong> {{ g.error }}. Nothing is drawn as known.</p></div>
 {%- elif not g.controllers %}
 <div class="notice notice-muted apps-none" role="status">{{ icon('info', 16) }}<p>{{ g.network }} has no SDN controller host to deploy apps to.</p></div>

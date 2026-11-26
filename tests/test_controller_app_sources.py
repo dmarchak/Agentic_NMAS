@@ -96,7 +96,10 @@ def lab(networks, platforms, monkeypatch):  # noqa: F811 - the fixture, used
     monkeypatch.setattr(X, "read", lambda network, rev="HEAD": {
         "ok": state["export"] is not None, "export": state["export"],
         "sha256": (state["export"] or {}).get("sha256", ""),
-        "error": "" if state["export"] else f"{network} has no committed NSOT export at HEAD"})
+        # As `export.read_in` answers for nothing committed: absent, said in words.
+        **({} if state["export"] is not None else {"absent": True}),
+        "error": "" if state["export"] else f"{network} has no committed NSOT export: export "
+                                            "it first"})
     monkeypatch.setattr("modules.device.load_saved_devices",
                         lambda path=None: [dict(d) for d in state["inventory"]])
     return state
@@ -156,10 +159,24 @@ def test_a_host_missing_what_a_read_needs_is_listed_and_every_read_refuses_namin
 
 
 def test_no_committed_export_is_unreadable_naming_it_never_no_controller(lab):
+    """Premise corrected (Stage 5 step 6; CLAUDE.md, "absent and unreadable are different
+    states"; the name predates it): with nothing committed the controllers are `no_export`,
+    not `unreadable`, and still never "no controller": none listed, the export named."""
     lab["export"] = None
     got = S.Wired().controllers(NET)
-    assert got["state"] == "unreadable" and got["controllers"] == []
+    assert got["state"] == "no_export" and got["controllers"] == []
     assert "committed NSOT export" in got["error"] and "no committed NSOT export" in got["error"]
+
+
+def test_an_export_that_cannot_be_read_is_unreadable_never_absent(lab, monkeypatch):
+    """An export committed but not readable (its hash not its own) is `unreadable`, which the
+    Apps tab draws in red; only nothing committed is `no_export`."""
+    monkeypatch.setattr(X, "read", lambda network, rev="HEAD": {
+        "ok": False, "export": None, "sha256": "",
+        "error": f"{network}'s NSOT export does not verify: its hash is not its own"})
+    got = S.Wired().controllers(NET)
+    assert got["state"] == "unreadable" and got["controllers"] == []
+    assert "does not verify" in got["error"]
 
 
 def test_the_controllers_are_read_from_the_committed_export_never_the_working_tree(

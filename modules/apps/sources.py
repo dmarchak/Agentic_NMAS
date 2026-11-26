@@ -64,7 +64,8 @@ def _export(network: str) -> dict:
         return {"ok": False, "export": None,
                 "error": f"its NSOT export could not be read ({type(exc).__name__}: {exc})"}
     if not got.get("ok"):
-        return {"ok": False, "export": None, "error": got.get("error") or "no export"}
+        return {"ok": False, "export": None, "absent": bool(got.get("absent")),
+                "error": got.get("error") or "no export"}
     return {"ok": True, "export": got["export"], "error": ""}
 
 
@@ -242,7 +243,11 @@ class Wired(deploy_op.Sources):
     def controllers(self, network):
         got = _export(network)
         if not got["ok"]:
-            return {"state": "unreadable", "controllers": [],
+            # Absent is not unreadable: with no export committed there is nothing to read
+            # (the Apps tab's export card says so and offers the export), where one that
+            # cannot be read or does not verify is.
+            return {"state": "no_export" if got.get("absent") else "unreadable",
+                    "controllers": [],
                     "error": (f"they are read from {network}'s committed NSOT export, and "
                               f"{got['error']}")}
         try:

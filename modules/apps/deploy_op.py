@@ -77,7 +77,8 @@ class Refused(ValueError):
 
 class Sources:
     """What the operation reads, and the one write (`send`). Every read answers a dict with a
-    ``state`` (``ok``, ``not_wired``, ``unreadable``, or for the stored read ``unread``: none
+    ``state`` (``ok``, ``not_wired``, ``unreadable``, for the controllers ``no_export``: the
+    network has no export committed to read them from, or for the stored read ``unread``: none
     is recorded yet) and its ``error`` in words."""
 
     def for_actor(self, actor: str) -> "Sources":
