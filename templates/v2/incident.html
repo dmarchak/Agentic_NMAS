@@ -72,8 +72,9 @@
 {#- R5 (board R5, approved 2026-11-15): the page is one card, the incident's (drawn by
     `_fixit_section.html`, which every fix-it post draws again in place): its title, impact and
     status, one action and one link; what follows is handed to it for its ONE Details: these
-    notes, the header's facts (`page_head`), and the timings, timeline, What's wrong, What
-    Mercury has done, Seen before and The record (`page_details`). Nothing is removed. -#}
+    notes and the header's facts (`page_head`). The timings, the events, What's wrong, What
+    Mercury has done, Seen before and The record (`page_parts`) are the page's own sections
+    after the story (Stage 5 step 4, slice 3; C). Nothing is removed. -#}
 {%- set page_notes %}
 {%- if p.only_log and not p.unreadable %}
 <div class="notice notice-muted" role="status">{{ icon('info', 16) }}<div>This incident is past the newest {{ p.kept }} closed incidents self-healing keeps for {{ p.network }}, so this page is drawn from its step log alone: its triggers and their times are no longer kept.</div></div>
@@ -158,11 +159,14 @@
   {%- if r.clears %}<p class="small att-clears">Its Needs attention item clears when {{ r.clears }}{% if r.clears_at %} (by {{ clock(r.clears_at, 'date') }}){% endif %}.</p>{% endif %}
   {%- endif %}
 {%- endset %}
-{%- set page_details %}
+{#- The page's parts (Stage 5 step 4, slice 3; C: sections after the story, each its one line):
+    drawn after the story at the page's level, never inside the card's Details (the card, drawn
+    alone by a fix-it post, never drew them). -#}
+{%- set page_parts %}
 {#- Timings, collapsed (R2): the four recorded times, TIME TO REPAIR and one line per
     attempt. -#}
 <details class="card inc-timings" id="inc-timings" data-keep="inc-timings-{{ p.id }}">
-  <summary>Timings · {% if p.ttr.seconds is not none %}repaired in {{ p.ttr.words }}{% elif p.opened %}since {{ at(p.opened) }}{% else %}not recorded{% endif %}</summary>
+  <summary>Timings · {% if p.ttr.seconds is not none %}repaired in {{ p.ttr.span or p.ttr.words }}{% elif p.opened %}since {{ at(p.opened) }}{% else %}not recorded{% endif %}</summary>
   <dl class="inc-times">
     {%- for c in p.header %}
     <div class="inc-time inc-time-{{ c.state }}" data-cell="{{ c.name | lower }}"{% if c.hover %} title="{{ c.hover }}"{% endif %}><dt>{{ c.name }}</dt><dd>{{ cell(c) }}</dd></div>
@@ -181,7 +185,7 @@
 </details>
 {%- if p.events %}
 <details class="card inc-events" data-keep="inc-events-{{ p.id }}"{% if p.resolved %} open{% endif %}>
-  <summary>Timeline · {{ p.events | length }} recorded event{{ '' if p.events | length == 1 else 's' }}, oldest first</summary>
+  <summary>Events · {{ p.events | length }} recorded event{{ '' if p.events | length == 1 else 's' }}, oldest first</summary>
   <ol class="inc-event-list">
     {%- for e in p.events %}
     <li>{{ at(e.at) }}: {{ e.words }}</li>
@@ -334,6 +338,7 @@
 {%- set page_state_word = p.state %}
 {% include "v2/_fixit_section.html" %}
 {%- if p.story is defined %}{% include "v2/_inc_story.html" %}{% endif %}
+<div class="inc-sections" data-parts>{{ page_parts }}</div>
 </div>
 {%- endif %}
 {%- endfilter %}

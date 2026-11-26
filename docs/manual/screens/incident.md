@@ -284,11 +284,14 @@ TIME TO REPAIR "not repaired"; hover over a cell for why.
 is said once, in the stage of What Mercury has done where it failed (open the stage for the
 whole of it). The timeline says each attempt's outcome ("attempt 1: rolled back").
 
-## The timeline {#timeline}
+## The events {#timeline}
 
-Every recorded event of the incident, oldest first: each trigger, each device attached, each
-decision, an approval or a decline, each attempt's apply and verify, and its close. It is open
-on a resolved incident and collapsed on one still open.
+**Events**, a section of the page after the story: every recorded event of the incident, oldest
+first: each trigger, each device attached, each decision, an approval or a decline, each
+attempt's apply and verify, and its close. It is open on a resolved incident and collapsed on
+one still open. The page's other parts are sections beside it, each its one line until opened:
+**Timings** (its line the time to repair, in the stepper's one duration), What's wrong, What
+Mercury has done, Seen before and The record.
 
 ## What's wrong {#whats-wrong}
 

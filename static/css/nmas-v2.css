@@ -3837,6 +3837,14 @@ dialog.modal::backdrop { background: var(--scrim); }
 .inc > .inc-fixit > .inc-bluf.card, .inc > .inc-bluf.card { background: none; border: 0; border-radius: 0;
   padding: 0 0 6px; }
 #inc-bluf h1.simple-title { font-size: 30px; }
+/* The page's parts after the story (slice 3): each a section, a hairline above and no box, its
+   one line its summary at the document's section size. */
+.inc-sections > .card { background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0;
+  padding: 0; margin: 0; }
+.inc-sections > details.card > summary { padding: 12px 0 10px; font-size: 17px; font-weight: 700; }
+.inc-sections > .card > .inc-fold-d > summary.card-head { padding: 12px 0 10px; }
+.inc-sections > .card > .inc-fold-d > summary.card-head h2 { font-size: 17px; font-weight: 700; }
+.inc-sections > .card[open], .inc-sections > .card > .inc-fold-d[open] { padding-bottom: 14px; }
 .bluf { margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .bluf-line { display: grid; grid-template-columns: 9.5em minmax(0, 1fr); gap: 4px 12px; align-items: baseline; }
 .bluf-line dt { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }

@@ -1417,3 +1417,16 @@ class TestTheTagAndTheEndInARealBrowser:
         assert first[3] == "fixed", "the tag sits beside the state"
         assert first[4:] == [verified, [verified]], "the span and the close end at the verify"
         assert again == first, "ending the drill changes no incident already tagged"
+
+
+def test_the_timings_line_says_the_one_duration_never_seconds(client):  # noqa: F811
+    """Timings is a section of its own after the story (Stage 5 step 4, slice 3), its line in
+    view: it says the time to repair in the stepper's one duration, as the story's Next does
+    (C4034), never the count of seconds (C4267)."""
+    iid = healed()
+    body = page(client, iid)
+    m = re.search(r"<summary>Timings · repaired in ([^<]+)</summary>", body)
+    model = IP.page(NET, iid, attention={})
+    assert model["ttr"]["seconds"] >= 60, model["ttr"]
+    assert m and m.group(1) == RS.duration_words(model["ttr"]["seconds"]), m and m.group(1)
+    assert not re.fullmatch(r"[\d,]+ s", m.group(1))
