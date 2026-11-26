@@ -49,6 +49,21 @@ from `_inc_proof.html` (the words stay, the lines go; a board record compared ag
 **Recommendation:** (a): the card keeps drawing the lines if a future runner ever keeps a
 differing run.
 
+### ci-ten-gate-memory
+
+- **Asked (2026-11-25):** the ten shards alone at 2 workers (`memory.peak`, each in its own scope,
+  2026-11-25 23:50 to 00:28 UTC): browser1 2.21, browser2 2.45, browser3 1.94, a 2.30, b 1.93,
+  c 2.05, d 3.87, e 1.78, f 4.40, g 4.09 GiB, 27.0 in all (the five's was 18.5); their tests
+  total 32,644, the full suite's. Your words cover SHARDS, BROWSER_SHARDS and WAVES only, and
+  that is not enough: two waves cannot fit the 11.1 GiB cap (about 13.5 each), and all at once
+  the gate would give each of the ten shards 2 workers (`nmas-workers` GATE_PEAK, measured for
+  five), about 27 GiB.
+- **Options:** (a) your words for three waves of about 8 to 10 GiB at 2 workers (f, browser2,
+  b · g, a, e · d, browser1, browser3, c) under today's cap, the gate's "in two waves" words
+  counting the waves, and all ten at once only at 1 worker a shard until a ten-shard gate is
+  measured (nmas-workers' GATE_PEAK); (b) CI ten and the gate five, dropping C349's parity;
+  (c) CI stays at five. **Recommendation:** (a). The edits wait as `~/mercury-runs/ci-ten-shards.patch`.
+
 ### claude-md-0230
 
 - **Asked:** CLAUDE.md is yours (the `claude-no-claude-md-edits` hook refuses the agent's edits), so
