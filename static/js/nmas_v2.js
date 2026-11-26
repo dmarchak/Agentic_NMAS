@@ -3176,6 +3176,44 @@
       var box = root.document.querySelector('.jump input');
       if (box) { e.preventDefault(); box.focus(); }
     });
+    root.document.addEventListener('keydown', queueKey);
+  }
+
+  /* B's queue on Needs attention (the operator's GUI pick, 2026-11-25: "B's Needs attention
+     queue"): keyboard first. j and k move to the next and the previous row of the sections
+     that are open (each row's own line, its summary, takes the focus: Enter opens it, as any
+     disclosure), e presses the row's one action (its line's, `_attention.html`'s `primary`).
+     Never while typing, never with a modifier, and only on a page that draws the list. PURE
+     over its arguments: the index of the row to move to from *at* (-1: none yet) among *n*,
+     by *key*; -1 for a key it does not move by. */
+  function queueStep(key, at, n) {
+    if (!n || (key !== 'j' && key !== 'k')) return -1;
+    if (at < 0) return key === 'j' ? 0 : n - 1;
+    return key === 'j' ? Math.min(n - 1, at + 1) : Math.max(0, at - 1);
+  }
+
+  function queueKey(e) {
+    var t = e.target && e.target.tagName;
+    if (e.ctrlKey || e.metaKey || e.altKey || t === 'INPUT' || t === 'TEXTAREA' ||
+        t === 'SELECT' || (e.target && e.target.isContentEditable)) return;
+    if (e.key !== 'j' && e.key !== 'k' && e.key !== 'e') return;
+    var list = root.document.getElementById('attention');
+    if (!list) return;
+    var lines = Array.prototype.filter.call(
+      list.querySelectorAll('details.att-grp[open] > details.att > summary.att-line'),
+      function (s) { return s.offsetParent !== null; });
+    var at = lines.indexOf(root.document.activeElement);
+    if (e.key === 'e') {
+      if (at < 0) return;
+      var act = lines[at].querySelector('.att-primary a, .att-primary button');
+      if (act) { e.preventDefault(); act.click(); }
+      return;
+    }
+    var to = queueStep(e.key, at, lines.length);
+    if (to < 0) return;
+    e.preventDefault();
+    lines[to].focus();
+    if (lines[to].scrollIntoView) lines[to].scrollIntoView({block: 'nearest'});
   }
 
   root.NMAS_V2 = {ageWords: ageWords, liveWords: liveWords, jumpTarget: jumpTarget, KEYS: KEYS,
@@ -3194,5 +3232,7 @@
                   reasonsTyped: reasonsTyped, holdReason: holdReason, pressKey: pressKey,
                   citeTarget: citeTarget, jumpToCite: jumpToCite, modalPlace: modalPlace,
                   // C2810's merge, for its tests in a real browser.
-                  keyOf: keyOf, capture: capture, mergeInto: mergeInto};
+                  keyOf: keyOf, capture: capture, mergeInto: mergeInto,
+                  // B's queue keys (Stage 5 step 3).
+                  queueStep: queueStep};
 })(typeof window !== 'undefined' ? window : this);

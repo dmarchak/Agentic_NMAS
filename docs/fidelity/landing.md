@@ -290,7 +290,9 @@ Compared again 2026-11-24 (C4071): `_attention.html`'s comment says the R5 row b
 owed (it named tests/r5_budget.py, which was never written); a comment only, nothing drawn
 changes, no deviation. Templates sha256 before:
 `3ac878bbe035cd0214e4df7a845e9f6fbfb615c6c16425439833c7c6ad841b5f`.
-Templates sha256: `a0447e73e88f8e72c0d24b06f9abfa6b3a1a0736591647e60c807cff052e9d9d`
+Compared again 2026-11-25 (Stage 5 step 3, slice 1; the operator's GUI pick of 2026-11-25: C with B's Needs attention queue): `landing.html`'s head is the document's (`_doc.html`'s `doc_head`); `_attention.html` draws C's sentence first in the list (`attention.sentence`: what is critical by its rows' titles, then what is below them; with nothing critical the warnings named; none with nothing to draw), then the summary as before; each severity's rows are one list (B's queue): hairlines between them, the level's bar at each row's start, no box or gap; j and k move from row to row and e presses the row's action (nmas_v2.js `queueKey`). Shot in Firefox at 1366 and 500 (a critical and a warning row) and read against C's home and B's: the sentence and the bars as they draw them; B's kind label, its filter chips, its keys legend and its side rail, and C's facts, not drawn: deviations, logged once (docs/STANDING_APPROVAL_LOG.md, "Stage 5 step 3, slice 1"). Each row's line (severity, title, age, action) is board R5's, unchanged. Templates sha256 before:
+`a0447e73e88f8e72c0d24b06f9abfa6b3a1a0736591647e60c807cff052e9d9d`.
+Templates sha256: `d03ab6ab3970ce53dbdac375bcab43019d6ab4cbc9eb2479c01cb34e68b40107`
 (before the combined gate's reviews, 2026-11-15, above: `95963b5612ee0d494c7192eb31a8ade9c34068395adb2cb9bdede8db69638a35`)
 (before the port problem's fold, 2026-11-15, above: `a894c8009f442e454c18b53caaaa6a23a7ad9a59f9a045a201afd44e2459c8c6`)
 (before the lost stream's Start, 2026-11-14, below: `df04b28a2f32a3505d0451f14d5f4dbad62cc0643c8e194e95a2522806aba5bd`)

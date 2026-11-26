@@ -1103,7 +1103,8 @@ class TestTheHealthyPageIsOneLine:
                                       value_at=NOW - 900, checked="checked 9 of 9")
         page = self._page(monkeypatch, old)
         html = _panel(page)
-        summary = html[html.index('<p class="att-summary">'):html.index("</p>")]
+        at = html.index('<p class="att-summary">')
+        summary = html[at:html.index("</p>", at)]
         assert "Nothing needs attention" in summary and "2 sources checked" in summary
         # The full list is still in the page, one click away, each value with its age.
         evidence = html[html.index('<details class="evidence"'):]
@@ -1115,7 +1116,8 @@ class TestTheHealthyPageIsOneLine:
         evidence table, never in the line."""
         page = self._page(monkeypatch)
         html = _panel(page)
-        summary = html[html.index('<p class="att-summary">'):html.index("</p>")]
+        at = html.index('<p class="att-summary">')
+        summary = html[at:html.index("</p>", at)]
         assert " ms" not in summary and "api/" not in summary
         table = html[html.index('<details class="evidence"'):]
         assert " ms</span>" in table

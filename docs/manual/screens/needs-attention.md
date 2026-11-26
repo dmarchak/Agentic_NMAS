@@ -2,6 +2,20 @@
 
 The landing page answers one question: does anything need you?
 
+## The sentence and the queue {#queue}
+
+The list opens with **one sentence** that answers it from the rows under it: what is critical,
+by the rows' own titles (three of them, then how many more), and what is below them ("1
+critical item needs you now: edge1 has drifted from its golden. Below it: 1 warning."). With
+nothing critical it names the warnings the same way. With nothing at all, the line under it
+says **Nothing needs attention**. A group of alike rows counts as its members and is named once.
+It updates with the list.
+
+Each severity's rows are one list, the severity's colour as a bar at each row's start. From
+the keyboard, while not typing in a field: **j** moves to the next row and **k** to the one
+before, through the sections that are open; **Enter** opens the row you are on; **e** presses
+its one action, the button at the end of its line.
+
 ## Self-healing's switches {#control-strip}
 
 The **Self-healing** and **Automatic AI troubleshooting** switches are on

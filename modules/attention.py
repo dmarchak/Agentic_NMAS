@@ -7435,6 +7435,59 @@ _PLURAL_VERBS = {"is": "are", "has": "have", "was": "were", "does": "do", "holds
 _ALIKE_NOUNS = {"job_health": "jobs"}
 
 
+def _count_words(n: int, one: str, many: str) -> str:
+    return f"{n} {one if n == 1 else many}"
+
+
+def sentence(a: dict) -> dict:
+    """Needs attention's one sentence (the operator's GUI pick, 2026-11-25: C's "Three things
+    need you now: …"), from the same rows the list draws under it: ``{"lead", "rest"}``. The
+    lead names what is critical, its rows' own titles, the first three and how many more; the
+    rest counts what is below it. With nothing critical, the warnings (else the unknown items)
+    are named the same way, and "critical" is never said. Findings are counted as the list
+    counts them, a group of alike rows by its members, each by its own level; a group is named
+    once, by its title. Empty with no row (the list's own summary says "Nothing needs
+    attention", once) and while the store's first value is not in (the list says it is
+    reading)."""
+    if (a.get("store") or {}).get("state") == "reading":
+        return {}
+    rows = [r for r in a.get("rows") or [] if not r.get("batch")]
+    if not rows:
+        return {}                 # the summary's own "Nothing needs attention" says it, once
+    n = {"danger": 0, "warning": 0, "unknown": 0}
+    named = {"danger": [], "warning": [], "unknown": []}
+    for top in rows:
+        for r in (top.get("folded") or [top]) if top.get("alike") else [top]:
+            level = r.get("level") if r.get("level") in n else "unknown"
+            n[level] += 1
+        if top.get("level") in named:
+            named[top["level"]].append(top.get("what") or "")
+
+    def names(titles):
+        shown, more = titles[:3], len(titles) - 3
+        if more > 0:
+            return ", ".join(shown) + f" and {more} more"
+        return (", ".join(shown[:-1]) + " and " + shown[-1]) if len(shown) > 1 else shown[0]
+
+    unknown = _count_words(n["unknown"], "unknown", "unknown") if n["unknown"] else ""
+    if n["danger"]:
+        below = " and ".join(x for x in (
+            _count_words(n["warning"], "warning", "warnings") if n["warning"] else "", unknown)
+            if x)
+        verb = "needs" if n["danger"] == 1 else "need"
+        lead = f"{_count_words(n['danger'], 'critical item', 'critical items')} {verb} you now: " \
+               f"{names(named['danger'])}."
+        them = "it" if n["danger"] == 1 else "them"
+        return {"lead": lead, "rest": f"Below {them}: {below}." if below else ""}
+    # No critical item: the warnings are what there is to do, named as the critical ones are
+    # (the page never says "critical" when nothing is).
+    if n["warning"]:
+        lead = f"{_count_words(n['warning'], 'warning', 'warnings')}: {names(named['warning'])}."
+        them = "it" if n["warning"] == 1 else "them"
+        return {"lead": lead, "rest": f"Below {them}: {unknown}." if unknown else ""}
+    return {"lead": f"{unknown}: {names(named['unknown'])}.", "rest": ""}
+
+
 def _alike_shape(r: dict):
     """``(subject, words)`` of a row whose words name one subject once: its key (its id after
     its source, a job's unit) or else one of its devices, *words* its own with the subject

@@ -95,6 +95,14 @@ def first_action(row) -> str:
     return attention.first_action(row or {})
 
 
+@bp.app_template_filter("attention_sentence")
+def attention_sentence(a) -> dict:
+    """Needs attention's one sentence (`attention.sentence`), from the rows the list draws."""
+    from modules import attention
+
+    return attention.sentence(a or {})
+
+
 @bp.app_template_filter("setting_label")
 def setting_label(key) -> str:
     """A setting's key as its field is labelled on a Settings card (`settings_page.field_label`,

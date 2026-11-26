@@ -537,7 +537,7 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
   overflow-wrap: anywhere; }
 .doc-kind { font-size: 15px; font-weight: 400; color: var(--ink-3); margin-left: 10px; letter-spacing: 0; }
 .doc-acts { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-.doc-summary { font-size: 19px; line-height: 1.5; margin: 10px 0 6px; max-width: 46em; color: var(--ink); }
+.doc-summary { font-size: 19px; line-height: 28px; margin: 10px 0 6px; max-width: 46em; color: var(--ink); }
 .doc-summary strong { font-weight: 600; }
 /* The outline goes where there is no room beside the text. */
 @media (max-width: 1100px) {
@@ -856,6 +856,18 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .att-grp-unknown > .att-grp-sum, .att-grp-ack > .att-grp-sum { color: var(--ink-2); }
 .att { background: var(--surface); border: 1px solid var(--line); border-left-width: 4px; border-radius: var(--r-card);
   min-width: 0; }
+/* B's queue (the operator's GUI pick, 2026-11-25): each severity one list of rows, hairlines
+   between them and the level's bar at each row's start, never a stack of boxes. The row a
+   person is on (j and k, nmas_v2.js `queueKey`) is its line focused, ringed as any focus. */
+.att-grp { gap: 0; }
+.att-grp > .att { border-width: 0 0 1px 3px; border-color: var(--line-2); border-radius: 0; }
+.att-grp[open] > .att-grp-sum { border-bottom: 1px solid var(--line-2); }
+.att-grp > .att-danger { border-left-color: var(--danger); }
+.att-grp > .att-warning { border-left-color: var(--warn-mark); }
+.att-grp > .att-unknown { border-left-color: var(--ink-3); }
+.att-line:focus-visible { outline-offset: -2px; }
+/* C's sentence above the list (`attention.sentence`), from the same rows. */
+.att-sentence { margin: 2px 0 4px; }
 .att-line { list-style: none; display: grid; grid-template-columns: 80px minmax(0, 1fr) auto auto;
   gap: 12px; align-items: center; padding: 9px 16px; cursor: pointer; }
 .att-line::-webkit-details-marker { display: none; }

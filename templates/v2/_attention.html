@@ -114,6 +114,11 @@
   {%- else %}
   {#- The GUI review's item 10 (C3457): counts are of findings, a group of alike rows counted as
       its members (each by its own level), and the summary says how many rows draw them. -#}
+  {#- C's one sentence (the operator's GUI pick, 2026-11-25; `attention.sentence`): what is
+      critical by its rows' own titles, then what is below them, from these same rows, so it
+      updates with the list. -#}
+  {%- set said = a | attention_sentence %}
+  {%- if said %}<p class="doc-summary att-sentence" data-sentence><strong>{{ said.lead }}</strong>{% if said.rest %} {{ said.rest }}{% endif %}</p>{% endif %}
   {%- set counts = namespace(danger=0, warning=0, unknown=0, grouped=0) %}
   {%- for top in rows %}{% if top.alike %}{% set counts.grouped = counts.grouped + 1 %}{% endif %}{% for r in (top.folded if top.alike else [top]) %}{% if r.level == 'danger' %}{% set counts.danger = counts.danger + 1 %}{% elif r.level == 'warning' %}{% set counts.warning = counts.warning + 1 %}{% else %}{% set counts.unknown = counts.unknown + 1 %}{% endif %}{% endfor %}{% endfor %}
   <p class="att-summary">

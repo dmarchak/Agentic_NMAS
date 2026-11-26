@@ -1,14 +1,12 @@
 {%- extends "v2/base.html" -%}
 {%- from "v2/_macros.html" import info -%}
+{%- from "v2/_doc.html" import doc_head -%}
 {% block title %}Needs attention · {{ brand.short }}{% endblock %}
 {% block main %}
-<div class="page-head">
-  <div class="page-title">
-    {#- Board R5 (approved 2026-11-15): the descriptive sub-heading is dropped (a paragraph);
-        the page's How this works says it. -#}
-    <h1>Needs attention {{ info('needs-attention') }}</h1>
-  </div>
-</div>
+{#- Board R5 (approved 2026-11-15): the descriptive sub-heading is dropped (a paragraph); the
+    page's How this works says it. The head is the document's (the operator's GUI pick of
+    2026-11-25: C); its sentence is the list's own, first in it, so it updates with the rows. -#}
+{% call doc_head('Needs attention') %}{{ info('needs-attention') }}{% endcall %}
 {#- C3789: the control strip is on Troubleshoot › Incidents alone; here, its run part, where G6's
     batch card's press answers (`control_strip.run_view`). -#}
 {%- if batch_run %}{% with s = batch_run %}{% include "v2/_control_strip.html" %}{% endwith %}{% endif %}
