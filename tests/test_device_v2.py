@@ -996,6 +996,27 @@ class TestTheModelAndPlatform:
         assert "C8000V" in text and "cisco_iosxe" in text
         assert "from the golden's Chassis type line" in text and "from the inventory" in text
 
+    def test_the_title_names_its_kind_in_words_beside_the_name(self, lab, monkeypatch):
+        """Stage 5 step 5 (C's head, "r2 IOS-XE router · C8000V"): the platform in words and
+        the model sit beside the device's name in its title, the platform's key and each
+        one's source on hover; the line under the title no longer repeats them."""
+        import re
+
+        import modules.device as device_mod
+        from modules.nsot.platform import FACT_WORDS
+
+        rows = [dict(r, platform="cisco_iosxe") for r in device_mod.load_saved_devices("x")]
+        monkeypatch.setattr("modules.device.load_saved_devices", lambda path=None: rows)
+        html = _get(lab, "/v2/device/r3")[1]
+        h1 = re.search(r"<h1>(.*?)</h1>", html, re.S).group(1)
+        kind = re.search(r'<span class="doc-kind" data-kind>(.*)</span>', h1, re.S).group(1)
+        assert re.sub(r"<[^>]+>", "", kind).strip() == f"{FACT_WORDS['cisco_iosxe']} · C8000V"
+        assert 'title="cisco_iosxe, from the inventory"' in kind
+        sub = re.search(r'<p class="sub">(.*?)</p>', html, re.S).group(1)
+        assert "C8000V" not in sub and "cisco_iosxe" not in sub, sub
+        # What the title stands on: the inventory row the page read names that platform.
+        assert next(r for r in rows if r["hostname"] == "r3")["platform"] == "cisco_iosxe"
+
     def test_a_device_with_no_golden_says_so(self, lab):
         text = html_mod.unescape(_get(lab, "/v2/device/r9/overview")[1])
         assert "no committed golden to read it from" in text

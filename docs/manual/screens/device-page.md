@@ -6,9 +6,10 @@ none. Every link, tab and action on the page keeps that network, so the page nev
 another network's device of the same name; a confirm sent from a page of another network does
 nothing and says so. When the address names no network and the name is not in the network
 shown, the page says which other network holds it, with the link, or lists each network that
-does; an address that names a network where the name is not says only that. Its header names
-the model, platform, address and the account the tool signs in as; Actions lists the
-operations on the device.
+does; an address that names a network where the name is not says only that. Its title names
+the device and, beside it, its platform in words and its model (hover either for where it came
+from); under the title, its address, the account the tool signs in as and its network.
+Actions lists the operations on the device.
 
 ## Actions {#actions}
 

@@ -119,6 +119,15 @@ def series(names, most=None) -> str:
     return words.series(list(names or ()), most)
 
 
+@bp.app_template_filter("platform_words")
+def platform_words(key) -> str:
+    """A platform's key in words ("cisco_iosxe" → "IOS-XE") from `platform.FACT_WORDS`, the key
+    itself where the table has none."""
+    from modules.nsot.platform import FACT_WORDS
+
+    return FACT_WORDS.get(key or "", key or "")
+
+
 @bp.app_template_filter("capital")
 def capital(text) -> str:
     """A reason drawn as a sentence's start (`words.capital`): after a full stop."""
