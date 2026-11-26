@@ -100,9 +100,11 @@ Host steps come in two kinds. A `Host-Step:` must be done BEFORE the update: whe
 can check it, it does so itself (done needs no tick; not done refuses, saying what it found);
 otherwise you tick it as done. A `Host-Step-After:` never blocks: once the release runs, it
 is a Needs attention row until it is checked done, you say **It is done**, or you decline it
-with a reason (below). Done steps stay on the page: **Host steps said done** names who said
-so and when, **Host steps the tool checked done** names each check and what it read, and
-**Host steps declined** names who declined each, when and why.
+with a reason (below). They are one section, **Host steps after the update**, its line the
+count of each ("1 to do · 1 declined · 2 checked done"): **Still to do on the host** first,
+with its actions, then **Settled**, each step marked: **said done** names who said so and when,
+**checked done** names each check and what it read, and **declined** names who declined it,
+when and why.
 
 One artifact is one row. Steps checked by the same check (three re-links of the topology
 renderer, say) are one row naming every commit: the newest step's words lead, and the older
@@ -228,13 +230,12 @@ reason box in place; type why the step is not to be done (at least three words) 
   (`data/host_steps_done.jsonl`, or the records database once it is moved there): you, how
   your identity was established, the time and the reason, masked as every typed reason is.
 - The panel draws the answer in place: the step leaves **Still to do on the host** and is
-  listed under **Host steps declined** as "Declined by <you> at <time>: <reason>. It is no
-  longer owed; History keeps it." Its Needs attention row leaves too, and History lists it
+  listed under **Settled**, marked **declined**, as "Declined by <you> at <time>: <reason>. It
+  is no longer owed; History keeps it." Its Needs attention row leaves too, and History lists it
   under **Host steps done or declined**, as it lists a step said done.
 - One row asked for by several commits is declined for each of them.
 - Declining never says a step is done. A step with a check can be declined too, and if its
-  check later reads done, it moves to **Host steps the tool checked done**: done stays the
-  check's.
+  check later reads done, it is marked **checked done**: done stays the check's.
 - Refused, nothing recorded, the refusal drawn under the list: no reason, or one without the
   shape of one; a step already declined or said done (naming who did so, and when); a step
   the running release does not owe; a request that is not a verified person's.

@@ -267,3 +267,27 @@ class TestTheRow:
         assert host_steps.owed(SLICE)["steps"] == []
         assert sorted(d["step"] for d in host_steps.owed(SLICE)["declined"]) == sorted(
             [INSTALL, *STEPS])
+
+
+def test_the_host_steps_are_one_section_with_its_count_first(host):  # noqa: F811
+    """Stage 5 step 6, slice 2 (the review's rank 4: "one fact told four times"): the host steps
+    are one section, its count line first, what is still to do before what is settled, each
+    settled step marked with its state."""
+    import re
+
+    from modules import host_steps
+    r = _decline(RUNNER, INSTALL)
+    html = r.get_data(as_text=True)
+    got = host_steps.owed(SLICE)
+    assert r.status_code == 200 and got["declined"], html[:600]
+    assert html.count('id="update-host-steps-sec"') == 1
+    assert '<section class="card" id="update-declined"' not in html
+    assert '<section class="card" id="update-owed"' not in html
+    count = re.search(r'<span class="muted update-steps-count">([^<]*)</span>', html).group(1)
+    want = [f"{len(got[k])} {w}" for k, w in (("steps", "to do"), ("declined", "declined"),
+                                               ("said_done", "said done"),
+                                               ("checked_done", "checked done")) if got.get(k)]
+    assert count == " · ".join(want), count
+    assert html.index('id="update-owed-steps"') < html.index('id="update-declined"')
+    declined = html.split('id="update-declined"')[1].split("</ul>")[0]
+    assert '<span class="badge badge-muted">declined</span> ' + INSTALL in declined

@@ -147,14 +147,21 @@
   {%- endif %}
 </section>
 
-{#- AFTER steps a release that runs now still owes (modules/host_steps.py):
-    the tool's check where there is one, and "It is done" from a person where
-    there is not. Each is also a Needs attention row. -#}
-{%- if owed and owed.steps %}
-<section class="card" id="update-owed">
-  {#- C503's rule (C522): the card's one "How does this work?" in words, beside its heading;
+{#- AFTER steps a release that runs now still owes (modules/host_steps.py): the tool's check
+    where there is one, and "It is done" from a person where there is not; each is also a Needs
+    attention row. One section, one list (Stage 5 step 6, slice 2; the review's rank 4: "one
+    fact told four times"): its count line first, then what is still to do with its actions,
+    then the steps settled, each marked declined, said done or checked done. -#}
+{%- set hs = owed or {} %}
+{%- set n_to_do, n_declined, n_said, n_checked = (hs.steps or [])|length, (hs.declined or [])|length, (hs.said_done or [])|length, (hs.checked_done or [])|length %}
+{%- if n_to_do or n_declined or n_said or n_checked %}
+<section class="card update-steps-doc" id="update-host-steps-sec">
+  {#- C503's rule (C522): the section's one "How does this work?" in words, beside its heading;
       each "It is done" keeps the (i) alone. -#}
-  <div class="card-head"><h2>Still to do on the host</h2><span class="card-head-how">{{ how('update', 'the-preview') }}</span></div>
+  <div class="card-head"><h2>Host steps after the update</h2><span class="muted update-steps-count">{% set said = [] %}{% if n_to_do %}{% set _ = said.append(n_to_do ~ ' to do') %}{% endif %}{% if n_declined %}{% set _ = said.append(n_declined ~ ' declined') %}{% endif %}{% if n_said %}{% set _ = said.append(n_said ~ ' said done') %}{% endif %}{% if n_checked %}{% set _ = said.append(n_checked ~ ' checked done') %}{% endif %}{{ said | join(' · ') }}</span><span class="card-head-how">{{ how('update', 'the-preview') }}</span></div>
+  {%- if n_to_do %}
+  <div id="update-owed">
+  <h3 class="sub-head">Still to do on the host</h3>
   <ul class="plain-list" id="update-owed-steps">
     {%- for s in owed.steps %}<li data-step-id="{{ s.id }}">{{ s.step }} <span class="muted">· {% if s.check_state == 'not_checkable' %}nothing can check it: say when it is done{% else %}checked: {{ s.check_detail }}{% endif %} <span class="mono">({% for x in s.shas or [s.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span>
       {%- if s.check_state == 'not_checkable' %}
@@ -181,6 +188,28 @@
       </form>
       </details></li>{% endfor %}
   </ul>
+  </div>
+  {%- endif %}
+  {%- if n_declined or n_said or n_checked %}
+  <h3 class="sub-head">Settled</h3>
+  {%- endif %}
+  {#- The steps a person declined with a reason: who, when and why, each no longer owed. -#}
+  {%- if n_declined %}
+  <ul class="plain-list update-settled" id="update-declined">
+    {%- for d in owed.declined %}<li data-step-id="{{ d.id }}">{{ badge('declined', 'muted') }} {{ d.step }} <span class="muted">· Declined by {{ d.by | people }} at {{ clock(d.at, 'date') }}: {{ d.why }}. It is no longer owed; History keeps it. <span class="mono">({% for x in d.shas or [d.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span></li>{% endfor %}
+  </ul>
+  {%- endif %}
+  {%- if n_said %}
+  <ul class="plain-list update-settled" id="update-said-done">
+    {%- for d in owed.said_done %}<li>{{ badge('said done', 'ok') }} {{ d.step }} <span class="muted">· said done by {{ d.by | people }}, {{ stamp(d.at) }} <span class="mono">({% for x in d.shas or [d.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span></li>{% endfor %}
+  </ul>
+  {%- endif %}
+  {#- C795: the steps the tool's own check reads done, with what it read. -#}
+  {%- if n_checked %}
+  <ul class="plain-list update-settled" id="update-checked-done">
+    {%- for d in owed.checked_done %}<li data-step-id="{{ d.id }}" data-check="{{ d.check }}">{{ badge('checked done', 'ok') }} {{ d.step }} <span class="muted">· [{{ d.check }}] checked: {{ d.check_detail }} <span class="mono">({% for x in d.shas or [d.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span></li>{% endfor %}
+  </ul>
+  {%- endif %}
 </section>
 {%- endif %}
 {#- "It is done" or a decline refused: said with its reason, and held against redraws nobody
@@ -188,32 +217,6 @@
     here). -#}
 {%- if step_refusal %}
 <div class="notice notice-danger" id="update-step-refused" role="alert" data-update-hold="result">{{ icon('warn') }}<p>{% if step_refusal.decline %}Not declined{% else %}Not recorded as done{% endif %} ("{{ step_refusal.step }}"): {{ step_refusal.error }}</p></div>
-{%- endif %}
-{#- The steps a person declined with a reason: who, when and why, each no longer owed. -#}
-{%- if owed and owed.declined %}
-<section class="card" id="update-declined">
-  <div class="card-head"><h2>Host steps declined</h2></div>
-  <ul class="plain-list">
-    {%- for d in owed.declined %}<li data-step-id="{{ d.id }}">{{ d.step }} <span class="muted">· Declined by {{ d.by | people }} at {{ clock(d.at, 'date') }}: {{ d.why }}. It is no longer owed; History keeps it. <span class="mono">({% for x in d.shas or [d.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span></li>{% endfor %}
-  </ul>
-</section>
-{%- endif %}
-{%- if owed and owed.said_done %}
-<section class="card" id="update-said-done">
-  <div class="card-head"><h2>Host steps said done</h2></div>
-  <ul class="plain-list">
-    {%- for d in owed.said_done %}<li>{{ d.step }} <span class="muted">· said done by {{ d.by | people }}, {{ stamp(d.at) }} <span class="mono">({% for x in d.shas or [d.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span></li>{% endfor %}
-  </ul>
-</section>
-{%- endif %}
-{#- C795: the steps the tool's own check reads done, with what it read. -#}
-{%- if owed and owed.checked_done %}
-<section class="card" id="update-checked-done">
-  <div class="card-head"><h2>Host steps the tool checked done</h2></div>
-  <ul class="plain-list">
-    {%- for d in owed.checked_done %}<li data-step-id="{{ d.id }}" data-check="{{ d.check }}">{{ icon('check', 14) }} {{ d.step }} <span class="muted">· [{{ d.check }}] checked: {{ d.check_detail }} <span class="mono">({% for x in d.shas or [d.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span></li>{% endfor %}
-  </ul>
-</section>
 {%- endif %}
 {%- if owed and not owed.ok %}
 <div class="notice notice-warn" id="update-owed-unread">{{ icon('warn') }}<p>Whether a release that runs now still owes a host step could not be read: {{ owed.error }}. This is not the same as none being owed.</p></div>
