@@ -222,7 +222,9 @@ tests/test_device_persist_v2.py (its browser walk included), not by new shots. T
 Compared again 2026-11-24 (C3716's fix forward): the collapsed Show the commands carries its
 keep key (`data-keep`, C472), so a live redraw leaves it as the person left it; no element
 moves. Templates sha256 before: `8c0323603032999430fcbc16d5478dc91c85708f1f667bc7ffdc5c3047d3ef70`.
-Templates sha256: `9651b4b1c6053939170074a03807f43cedd3504317b483576cce9774f9c0147c`
+Compared again 2026-11-25 (Stage 5 step 5, slice 1; the operator's GUI pick of 2026-11-25: C): `device.html`'s title is the page's own type at C's 30 px, where it was in code type; `_overview.html` opens with the device's one sentence (`device_page.sentence`: whether it answers and how it stands against its intent, then the checks that need a look, those not known yet and those not checked), and its two cards are sections, side by side, a hairline above each and no box. Shot in Firefox at 1366 and 500 (r2, not probed) and read against C's device page: the title, the sentence and the sections as C draws them; C's kind beside the title, its as-of line, its facts above the tabs and its other sections (intent against what it runs, recent changes) are not drawn: deviations, logged once (docs/STANDING_APPROVAL_LOG.md, "Stage 5 step 5, slice 1"). Templates sha256 before:
+`9651b4b1c6053939170074a03807f43cedd3504317b483576cce9774f9c0147c`.
+Templates sha256: `e7b3c511235ad58f52900489f0a1bd303f5c247da2a66435b545c8bf1cd2c660`
 
 **Hashed again 2026-11-12 for the reopened card's banner** (the operator's F1 smoke test of r3,
 "no "Reopened" label"; his words of 2026-11-11, "Your run, started 13:01"; C3162, C3122, and

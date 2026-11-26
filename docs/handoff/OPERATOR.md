@@ -64,6 +64,15 @@ differing run.
   measured (nmas-workers' GATE_PEAK); (b) CI ten and the gate five, dropping C349's parity;
   (c) CI stays at five. **Recommendation:** (a). The edits wait as `~/mercury-runs/ci-ten-shards.patch`.
 
+### ratchet-no-screen
+
+- **Asked (2026-11-25):** Settings' search names the settings no screen sets
+  (`modules/settings_index.py` `NO_SCREEN`): four by design, two gaps (C4266). Its test pins the
+  two gaps exactly, so a third cannot join without editing that test (5de31cb9). Declaring
+  `NO_SCREEN` a ratchet ("shrinks") is a line in tests/ratchet_lists.py, which needs your words.
+  **Options:** (a) your words for that one RATCHETS line; (b) leave the test's exact set as the
+  guard. **Recommendation:** (a), so the weakening check refuses a new gap on its own.
+
 ### claude-md-0230
 
 - **Asked:** CLAUDE.md is yours (the `claude-no-claude-md-edits` hook refuses the agent's edits), so

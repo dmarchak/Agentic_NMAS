@@ -139,9 +139,12 @@ def _device_or_404(name):
 
 
 def _overview_ctx(ref, dev):
-    return {"device": dev, "list_name": ref.name, "answer": device_page.answering(dev, ref.name),
-            "records": device_page.records(ref, dev), "checks": device_page.checks(ref, dev),
-            "hw": device_page.hardware(ref, dev)}
+    ctx = {"device": dev, "list_name": ref.name, "answer": device_page.answering(dev, ref.name),
+           "records": device_page.records(ref, dev), "checks": device_page.checks(ref, dev),
+           "hw": device_page.hardware(ref, dev)}
+    # C's one sentence (Stage 5 step 5), from the same answer, records and checks.
+    ctx["said"] = device_page.sentence(dev, ctx["answer"], ctx["records"], ctx["checks"])
+    return ctx
 
 
 def _netbox_ctx(ref, dev):

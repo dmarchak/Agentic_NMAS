@@ -488,6 +488,54 @@ def drift_detail(ref, dev: dict, now: float = None) -> dict:
             "logs": logs, "case": {"capture": case["capture"], "words": case["words"]}}
 
 
+#: The intent state's words in the sentence, by the Intent check's state now or the Devices
+#: list's (`device_list.intent_state`): what the device runs against what it should.
+_INTENT_SAID = {"ok": "runs its intent", "warn": "differs from its intent",
+                "at_intent": "runs its intent", "departs": "differs from its intent",
+                "no_intent": "has no committed intent", "no_golden": "has no golden to compare"}
+
+
+def _and(names: list) -> str:
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def sentence(dev: dict, answer: dict, records: dict, checks: list) -> dict:
+    """The device's one sentence (the operator's GUI pick, 2026-11-25: C's "<device> is reachable and
+    runs its intent"), from the same reachability answer, intent state and checks the Overview
+    draws under it: ``{"lead", "rest"}``. The lead says whether it answers (or the operation it
+    is under, or that it is not probed yet) and how it stands against its intent, the Intent
+    check's answer now before the Devices list's measured one; the rest names the checks that
+    need a look and those not known yet, never a check as passing that did not say so."""
+    host = dev.get("hostname") or "the device"
+    state = answer.get("state")
+    reach = (f"{host} is reachable" if state == "ok" else
+             f"{host}: {answer.get('text') or 'under an operation'}" if state == "planned" else
+             f"{host} is not reachable" if state == "danger" else
+             f"{host} has not been probed yet")
+    live = next((c for c in checks or [] if c.get("name") == "Intent"), None)
+    said = _INTENT_SAID.get((live or {}).get("state")) or \
+        _INTENT_SAID.get(((records or {}).get("intent_state") or {}).get("state"))
+    lead = f"{reach} and {said}." if said else f"{reach}."
+    others = [c for c in checks or [] if c.get("name") not in ("Intent",)]
+    look = [c["name"] for c in others if c.get("unreadable") or c.get("state") in ("warn", "danger")]
+    unknown = [c["name"] for c in others
+               if c.get("state") == "unknown" and not c.get("unreadable")]
+    # Any other state that is not a pass (the Credential check's "off": no rotation policy).
+    unchecked = [c["name"] for c in others if not c.get("unreadable")
+                 and c.get("state") not in ("ok", "warn", "danger", "unknown")]
+    parts = []
+    if look:
+        parts.append(f"{_and(look)} need{'s' if len(look) == 1 else ''} a look")
+    if unknown:
+        parts.append(f"{_and(unknown)} {'is' if len(unknown) == 1 else 'are'} not known yet")
+    if unchecked:
+        parts.append(f"{_and(unchecked)} {'is' if len(unchecked) == 1 else 'are'} not checked")
+    if not parts and others:
+        parts.append("every other check passes")
+    rest = "; ".join(parts)
+    return {"lead": lead, "rest": (rest[:1].upper() + rest[1:] + ".") if rest else ""}
+
+
 def checks(ref, dev: dict) -> list:
     """The checks the Overview draws, each with its state, words, source and
     the time of the value it rests on. An unreadable source is its own row,

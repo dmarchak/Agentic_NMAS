@@ -1,8 +1,12 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, STATE_KIND, INTENT_KIND, info -%}
 {#- Re-fetched whenever a reader it draws from announces (nmas_v2.js), and when a golden,
     intent or the template library moves its intent state (C532). -#}
-<div class="grid-2" id="overview" hx-get="{{ url_for('device_v2.overview', name=device.hostname) }}" hx-swap="outerHTML"
+{#- As C's document (the operator's GUI pick, 2026-11-25; Stage 5 step 5): the device's one
+    sentence first (`device_page.sentence`, from the answer, records and checks drawn under it,
+    so it moves with them), then Around this device and Checks as sections, no box. -#}
+<div class="grid-2 overview-doc" id="overview" hx-get="{{ url_for('device_v2.overview', name=device.hostname) }}" hx-swap="outerHTML"
      hx-trigger="nmas:reachability from:body, nmas:alerts from:body, nmas:drift from:body, nmas:goldens from:body, nmas:intent from:body, nmas:templates from:body">
+{%- if said %}<p class="doc-summary overview-said" data-sentence><strong>{{ said.lead }}</strong>{% if said.rest %} {{ said.rest }}{% endif %}</p>{% endif %}
 <p class="tab-help">{{ info('device-page', 'overview', 'About this tab') }}</p>
   <section class="card">
     <div class="card-head"><h2>Around this device</h2></div>
