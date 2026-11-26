@@ -84,6 +84,9 @@ def installation():
         diag = {"ai": settings_view.view(request.args.get("network") or ""),
                 # Answers said wrong (PHASE8_PLAN 16.11 item 1, board FB): to review first.
                 "fbr": feedback.view()}
+    # C's one sentence, from the connections' health the same cards draw (Connections only:
+    # no other tab's cards carry a connection).
+    v["sentence"] = I.sentence(cards)
     return _page("v2/settings_installation.html", tab=tab, tabs=I.TABS, built=I.BUILT_TABS,
                  v=v, r=I.records_card() if tab == "connections" else None, cards=cards,
                  **diag)

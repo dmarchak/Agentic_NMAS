@@ -78,6 +78,11 @@ Default's cards show its values and, on each, who takes them: "inherited by 12 Â
 
 What every network shares, standalone ones included: these are the installation's own, never a network's or Default's, so a change here changes all of them. Its tabs are Connections, Access and identity, Platforms and roles, Console servers, Diagnostics, AI and Notifications (see [Notifications](#notifications); the Server card is on Connections; AI and workflow left with the AI family, 2026-10-14, and AI came back as each network's background AI features, 2026-10-27).
 
+On **Connections**, one sentence under the title says how each connection stands, as the
+cards below draw it from their last stored check: a connection that does not answer or refuses
+its credential first, then those that answer, are not set up, or have not been read yet. Test
+on a card asks it again now.
+
 - **Records database** (Connections): the database Mercury's records move to, store by store (receipts first). With no host it is **off**: every store stays on its files, as today. Its card says whether it is **answering** (the last Test passed, with the server's version, when and by whom), **not answering** (the check that failed, named), or **not tested yet**, and when a Save or Replace came after the last Test. **Save** writes the host, port, database and role; it never opens the database, so it works with the database down or the password wrong, and the change is recorded in the installation's settings record. **Test** asks the database six things and names the first that fails: it signs in, the server is PostgreSQL 18, the role owns its database, the role is not a superuser, Mercury reaches it on a loopback address, and a temporary row written and read back is rolled back. The password shows only as set; **Replaceâ€¦** opens the rotation order: change it on the server first, with the host step `scripts/host-steps/postgres-rotate.sh`, then enter the same password here, and its Test runs at once (see [The records database](records-database)).
 - **Record stores** (Connections): the 24 stores that can move to the records database, its
   badge counting how many are on it ("N of 24 on the database"). They are Deploy receipts,

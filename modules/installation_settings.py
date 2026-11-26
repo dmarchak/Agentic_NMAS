@@ -562,6 +562,40 @@ def _health(name: str) -> dict:
             "at_iso": good.get("value_at") or ""}
 
 
+#: How a connection's stored health reads in Connections' sentence (`sentence`); the first
+#: two are the state to act on, which the sentence leads with.
+HEALTH_WORDS = {"down": "does not answer", "refused": "refuses its credential",
+                "up": "answers", "not_configured": "is not set up",
+                "unread": "has not been read yet"}
+ACT_ON = ("down", "refused")
+
+
+def sentence(cards: list) -> dict:
+    """Connections' one sentence (Stage 5 step 2; the operator's GUI pick of 2026-11-25: C),
+    from the health the same cards draw (`card`'s ``health``, the integrations reader's stored
+    value, never a probe): ``{"lead", "rest"}``. The lead is a connection to act on (one that
+    does not answer or refuses its credential), else every connection's state; empty for a tab
+    whose cards carry no connection."""
+    from modules.words import series
+
+    by = {}
+    for c in cards:
+        h = c.get("health")
+        if h:
+            by.setdefault(h.get("state") or "unread", []).append(c["spec"]["title"])
+    if not by:
+        return {}
+
+    def said(states):
+        parts = [f"{series(by[s])} {HEALTH_WORDS.get(s, s)}" for s in states if by.get(s)]
+        return (series(parts) + ".") if parts else ""
+    rest_states = [s for s in HEALTH_WORDS if s not in ACT_ON] + \
+        [s for s in by if s not in HEALTH_WORDS]
+    lead = said(ACT_ON)
+    return {"lead": lead, "rest": said(rest_states)} if lead else \
+        {"lead": said(rest_states), "rest": ""}
+
+
 def _writes_state() -> dict:
     """NetBox's master switch: on or off, and the last Turn off on record (who, when)."""
     from modules.settings_schema import get_setting
