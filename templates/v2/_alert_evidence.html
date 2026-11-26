@@ -7,8 +7,11 @@
 {%- set c = e.counts -%}
 <div class="alert-evidence" id="alert-evidence" hx-get="{{ url_for('v2.monitoring_alerts_list', q=e.q or none, kind=e.kind or none) }}"
      hx-trigger="nmas:alerts from:body" hx-swap="outerHTML">
+  {#- C4269's rule at the top too: with a Grafana reader never read and nothing listed, how
+      many fire is not known, never "0 firing". -#}
+  {%- set unread = e.sources | rejectattr('store', 'equalto', 'sdn') | rejectattr('state', 'equalto', 'ok') | list %}
   <p class="att-summary">
-    <strong>{{ c.firing }} firing</strong> · {{ c.packed }} with {{ 'its' if c.packed == 1 else 'their' }} evidence pack
+    <strong>{% if not c.firing and unread %}Firing not known{% else %}{{ c.firing }} firing{% endif %}</strong> · {{ c.packed }} with {{ 'its' if c.packed == 1 else 'their' }} evidence pack
     {%- if c.waiting %} · <span class="warn-text">{{ c.waiting }} waiting for one</span> (at most {{ e.max_per_run }} are built each time the alerts are read){% endif %}
     · {{ c.earlier }} earlier pack{{ '' if c.earlier == 1 else 's' }}
   </p>
@@ -49,7 +52,6 @@
   {#- C4269: nothing listed is "nothing firing" only where every Grafana reader was read; a
       reader never read leaves what fires unknown, said plainly and never green (absent and
       unreadable are different states). -#}
-  {%- set unread = e.sources | rejectattr('store', 'equalto', 'sdn') | rejectattr('state', 'equalto', 'ok') | list %}
   {%- if not c.firing and unread %}
   <p class="muted" data-none-known>Nothing is listed, and that is not known to be all: {{ unread | map(attribute='store') | join(', ') }} {{ 'has' if unread | length == 1 else 'have' }} not been read.</p>
   {%- elif not c.firing %}

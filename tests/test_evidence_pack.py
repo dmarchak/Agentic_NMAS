@@ -521,7 +521,10 @@ class TestTheTab:
     def test_a_reader_that_never_read_and_a_store_that_cannot_be_read_are_said(self, pack_lab,
                                                                               monkeypatch):
         html = pack_lab["client"].get("/v2/monitoring/alerts").get_data(as_text=True)
-        assert "have not been read" in html and "0 firing" in html
+        # Premise corrected (Stage 5 step 6, C4269's rule at the top): never read, the count
+        # says firing is not known, never "0 firing".
+        assert "have not been read" in html and "<strong>Firing not known</strong>" in html
+        assert "0 firing" not in html
         (pack_lab["tmp"] / "packs-dir").mkdir()
         # C4269: never read, nothing is drawn as "nothing firing", and nothing green.
         assert "Nothing is firing in what the reader stored" not in html

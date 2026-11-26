@@ -29,7 +29,9 @@ Compared again 2026-11-25 (C4269): `_alert_evidence.html` draws, with a Grafana 
 `8c1b8ae9eff9f9a06e540701f78ab420eb1819e984597e12df4c5f676599c7fe`.
 Compared again 2026-11-26 (Stage 5 step 6): a reason drawn right after a bold sentence's full stop starts with a capital (the `capital` filter, `words.capital`: a plain first word only, a file name or key left as it is), where it started lowercase ("... have not been read yet. its reader has not run yet"). No region moves; every verdict is unchanged. Templates sha256 before:
 `e897d928f8472c62eda481c83e33ed5a1ae994e7c47a4a62e4dc081c296b6ea4`.
-Templates sha256: `9afe08c4b5559f8eba76554e64e8e83d5715aec853ed03eb5d9c154278273adf`
+Compared again 2026-11-26 (C4285): with a Grafana reader never read and nothing listed, the summary's count says "Firing not known", never "0 firing" (C4269's rule at the top). Every verdict unchanged. Templates sha256 before:
+`9afe08c4b5559f8eba76554e64e8e83d5715aec853ed03eb5d9c154278273adf`.
+Templates sha256: `e9f8ec78c6e4d7a34e3e976b7975f2defdb83bb6cef1207a980189f48437588b`
 
 **Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_evidence_pack.html`, each time an evidence piece names (a window's ends, a peak, a gap's end, the first and last failure, a sighting, a flow's install, a log line) is `_macros.clock`'s: the viewer's own time, drawn by the server in their kept zone, the zone named once on the screen, the UTC instant on hover, in the same element and position; where `stamp` was given clock words (which the page's script turned into an age) it now reads as the clock time those words named. Compared by the template's diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `5137eb26bb5dd2f6501375f094cc7c54812ed4027903d325d767c376645eccc8`.
 
