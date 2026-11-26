@@ -1529,6 +1529,8 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
   padding: 14px 0 6px; }
 .monitored-by.card > .card-head h2 { font-size: 19px; font-weight: 700; }
 .mb-said { margin: 8px 0 4px; font-size: 17px; color: var(--ink); }
+/* Fixes' list as C draws a table (Stage 5 step 6): under its counts, no box. */
+#fixes-live > .table-wrap.card { background: none; border: 0; border-radius: 0; padding: 0; }
 /* The Devices list as C draws a fleet (Stage 5 step 6): its sentence, then the table, no box. */
 #devices.card.devices { background: none; border: 0; border-radius: 0; padding: 4px 0 0; }
 /* Monitoring › Profile's table as a section of C's document (Stage 5 step 6): no box. */
