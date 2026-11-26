@@ -14,18 +14,20 @@
   <div class="notice notice-warn">{{ icon('warn') }}<p>What {{ dev_name }} is monitored by could not be read ({{ mb.error }}): not the same as it being monitored by nothing.</p></div>
   {%- else %}
   {%- set r = mb.row %}
+  {#- The answer, then its action, before the list it stands on (Stage 5 step 6; C: the
+      sentence first): it was the card's last line, under every row. -#}
+  {%- if r.supplies and r.selectable %}
+  <p class="mb-action" data-mb-said><a class="btn btn-primary" data-op="monitoring-templates" href="{{ url_for('v2.profile_apply', list=mb.list, device=dev_name) }}">Apply monitoring profile…</a>{{ how('monitoring-templates') }}
+    <span class="muted">The network's monitoring profile supplies what {{ dev_name }} lacks; the preview shows exactly what would be sent.</span></p>
+  {%- elif r.gaps and not r.selectable %}
+  <p class="mb-said" data-mb-said>The profile cannot be applied here: {{ r.why_not }}.</p>
+  {%- elif not r.gaps %}
+  <p class="mb-said" data-mb-said>{{ dev_name }} is configured for everything the network uses.</p>
+  {%- endif %}
   <ul class="mb-list">
     {%- for col in mb.columns %}{% set cell = r.cells[col.key] %}
     <li class="cov cov-{{ cell.state }}">{{ icon(ICON[cell.state], 14) }} <strong>{{ col.words }}</strong>{% if col.connector %}<span class="muted"> through {{ col.connector }}</span>{% endif %}: {{ cell.words }}</li>
     {%- endfor %}
   </ul>
-  {%- if r.supplies and r.selectable %}
-  <p class="mb-action"><a class="btn btn-primary" data-op="monitoring-templates" href="{{ url_for('v2.profile_apply', list=mb.list, device=dev_name) }}">Apply monitoring profile…</a>{{ how('monitoring-templates') }}
-    <span class="muted">The network's monitoring profile supplies what {{ dev_name }} lacks; the preview shows exactly what would be sent.</span></p>
-  {%- elif r.gaps and not r.selectable %}
-  <p class="muted">The profile cannot be applied here: {{ r.why_not }}.</p>
-  {%- elif not r.gaps %}
-  <p class="muted">{{ dev_name }} is configured for everything the network uses.</p>
-  {%- endif %}
   {%- endif %}
 </section>

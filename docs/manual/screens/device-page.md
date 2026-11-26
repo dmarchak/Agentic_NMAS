@@ -279,13 +279,13 @@ red, "Not reachable · overdue after edge1's reload". The states are the Devices
 
 ## Monitoring {#monitoring-tab}
 
-What the device is monitored by, and its dashboard. The **Monitored by** card names each
-integration the network uses and what the device's committed golden holds for it (Coverage's
-own cells, in words): configured, missing, excluded with why, not applicable. When the
-network's monitoring profile supplies something it lacks, **Apply monitoring profile…** opens
-the preview of exactly what would be sent ([Apply a monitoring template](monitoring-templates));
-otherwise the card says why it cannot be applied, or that the device is configured for
-everything the network uses. Below it, the panels of the device dashboard that select this
+What the device is monitored by, and its dashboard. **Monitored by** opens with its answer:
+that the device is configured for everything the network uses; or, when the network's
+monitoring profile supplies something it lacks, **Apply monitoring profile…**, which opens the
+preview of exactly what would be sent ([Apply a monitoring template](monitoring-templates));
+or why the profile cannot be applied. Under it, each integration the network uses and what the
+device's committed golden holds for it (Coverage's own cells, in words): configured, missing,
+excluded with why, not applicable. Below it, the panels of the device dashboard that select this
 device, drawn here, with the same range controls as Monitoring's Dashboards. A panel that does not apply (telemetry on a switch that
 streams none) is folded, with why. A panel folded by a rule about the device's model is
 folded only once Grafana, asked as the page is drawn, finds no series for its queries for this

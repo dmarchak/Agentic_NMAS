@@ -929,6 +929,22 @@ class TestMonitoredBy:
         assert "r2 is configured for everything the network uses." in html
         assert "Apply monitoring profile" not in html
 
+    @pytest.mark.parametrize("name, said", [
+        ("r2", "r2 is configured for everything the network uses."),
+        ("r6", "Apply monitoring profile…")])
+    def test_the_answer_and_its_action_come_before_the_rows(self, page, name, said):
+        """Stage 5 step 6 (C: the sentence first): the card's answer, or the action that
+        answers it, was its last line under every row; it is its first, above the rows it
+        stands on."""
+        _r, html = page(name)
+        first = re.search(r'<p class="mb-(?:said|action)" data-mb-said>(.*?)</p>', html, re.S)
+        assert first and said in first.group(1), html[:1500]
+        assert html.index("data-mb-said") < html.index('<ul class="mb-list">')
+        # The answer stands on the rows' own states: r2's have no gap the profile supplies.
+        gaps = [c for c in html.split('<ul class="mb-list">', 1)[1].split("</ul>", 1)[0]
+                .split("<li ") if "cov-gap" in c]
+        assert (gaps == []) is (name == "r2"), gaps
+
     def test_the_link_opens_the_same_preview_for_that_device(self, ready, page):
         _r, html = page("r6")
         href = html_mod.unescape(re.search(r'href="(/v2/monitoring/apply\?[^"]+)"', html).group(1))
