@@ -20,7 +20,7 @@ TEMPLATES = os.path.join(ROOT, "templates", "v2")
 #: naming a `why`, an `error` or a `reason`.
 SITE = re.compile(r"\.</strong> \{\{ ([^}]*\b[a-z_]*(?:why|error|reason)[a-z_]*\b[^}]*)\}\}")
 #: The sites measured 2026-11-26: thirteen, in six templates.
-SITES_FLOOR = 13
+MEASURED_SITES = 13
 
 
 def _unfiltered(text: str) -> list:
@@ -52,7 +52,8 @@ def test_a_plain_first_word_is_capitalised_and_nothing_else_moves():
 
 def test_every_reason_after_a_full_stop_goes_through_capital():
     sites, bare = _scan()
-    assert sites >= SITES_FLOOR, f"the scan found {sites} sites, under its floor {SITES_FLOOR}"
+    assert sites >= MEASURED_SITES, \
+        f"the scan found {sites} sites, under the {MEASURED_SITES} measured"
     assert bare == [], ("a reason drawn after a full stop starts lowercase; pipe it through "
                         f"`| capital`: {bare}")
 
