@@ -711,6 +711,13 @@ time.clock { white-space: nowrap; }
 .seg-btn { font-size: 13px; padding: 6px 12px; color: var(--ink-2); text-decoration: none; border-left: 1px solid var(--line); }
 .seg-btn:first-child { border-left: none; }
 .seg-btn.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+/* A setting's On and Off (Stage 5 step 2, slice 4; C's toggle): two radios as one control, the
+   chosen side drawn from its own radio, the radio itself out of sight but focusable. */
+.set-onoff { align-self: flex-start; }
+.set-onoff .seg-btn { cursor: pointer; position: relative; }
+.set-onoff input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.set-onoff .seg-btn:has(> input:checked) { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+.set-onoff .seg-btn:has(> input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
 .range-custom { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 /* A refused range is said AT the control (2026-10-02), on its own line under it. */
 .range-refused { flex-basis: 100%; display: flex; align-items: center; gap: 6px; margin: 2px 0 0;

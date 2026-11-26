@@ -248,6 +248,25 @@ class TestTheDocument:
         _html, got = outline("Branch", "integrations")
         assert dict(got)["card-grafana"] == L.INHERITED
 
+    def test_an_on_off_setting_is_a_toggle_that_saves_its_side(self, networks):
+        """C's toggle (slice 4): an on/off setting is On and Off side by side, the stored side
+        checked; saving Off through the card writes it and draws Off checked."""
+        from modules.settings_schema import get_setting
+
+        def sides(html):
+            card = _card(html, "ai_topology_class")
+            got = re.findall(r'<input (?:id="[^"]*" )?type="radio" name="ai_topology_class" '
+                             r'value="(on|off)"( checked)?>', card)
+            return {v: bool(c) for v, c in got}
+        _r, html = _get(networks, "/v2/settings/network/Default?tab=network")
+        assert get_setting("ai_topology_class") is True
+        assert sides(html) == {"on": True, "off": False}
+        assert 'role="radiogroup" aria-label="Ai topology class"' in _card(html, "ai_topology_class")
+        r, _saved = _save(networks, "Default", "ai_topology_class", {"ai_topology_class": "off"})
+        assert r.status_code == 200 and get_setting("ai_topology_class") is False
+        _r, html = _get(networks, "/v2/settings/network/Default?tab=network")
+        assert sides(html) == {"on": False, "off": True}
+
     def test_a_tab_with_no_cards_has_no_sentence_and_no_outline(self, networks):
         """Self-healing draws its own template, no group card: nothing to count or to list."""
         from modules import settings_page
@@ -518,6 +537,27 @@ class TestInARealBrowser:
                    f"return c && c.className.indexOf('op-ok') >= 0 && {SETTLED}", 15)
         assert L.mode("Branch") == L.STANDALONE
         assert b.js("return window.__notReloaded") == 1
+
+    def test_pressing_off_draws_off_as_the_chosen_side(self, served):
+        """C's toggle in Firefox: the stored side is drawn chosen; pressing Off checks it and
+        draws it chosen, On no longer, with no script of the page's own."""
+        b = served["b"]
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 1280, "height": 1000})
+        b.go(served["srv"].url("/v2/settings/network/Default?tab=network"))
+        b.wait_for("return !!window.Alpine && " + SETTLED, 15)
+        drawn = ("var ls=document.querySelectorAll('#card-ai_topology_class .set-onoff .seg-btn');"
+                 " return Array.from(ls).map(function(l){return [l.textContent.trim(),"
+                 " l.querySelector('input').checked, getComputedStyle(l).fontWeight];});")
+        before = b.js(drawn)
+        b.js("window.scrollTo(0, 0); return 1")
+        b.click('#card-ai_topology_class .set-onoff .seg-btn:nth-child(2)')
+        b.wait_for("return document.querySelector('#card-ai_topology_class input[value=off]')"
+                   ".checked", 5)
+        after = b.js(drawn)
+        assert [(t, c) for t, c, _w in before] == [("On", True), ("Off", False)], before
+        assert [(t, c) for t, c, _w in after] == [("On", False), ("Off", True)], after
+        assert int(before[0][2]) > int(before[1][2]), ("On drawn chosen", before)
+        assert int(after[1][2]) > int(after[0][2]), ("Off drawn chosen", after)
 
     def test_at_phone_width_nothing_runs_past_the_screen(self, served, monkeypatch):
         from modules import csp

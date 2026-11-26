@@ -72,7 +72,7 @@ bring it back. To use the name again, create a network of that name (see
 
 ## Default's page {#default}
 
-Default's cards show its values and, on each, who takes them: "inherited by 12 · own Grafana in 4 · not configured in 2 · not applicable in 1", counting only the networks that chose to inherit, with the names one click down. Each card takes its fields in place, with **Save** and **Test**; a secret shows only as set, with **Replace…**. A change to Default changes every network counted there, and the result says so.
+Default's cards show its values and, on each, who takes them: "inherited by 12 · own Grafana in 4 · not configured in 2 · not applicable in 1", counting only the networks that chose to inherit, with the names one click down. Each card takes its fields in place, with **Save** and **Test**; a secret shows only as set, with **Replace…**; a setting that is on or off is **On** and **Off** side by side, the chosen one marked, saved with the card's **Save**. A change to Default changes every network counted there, and the result says so.
 
 ## Installation {#installation}
 

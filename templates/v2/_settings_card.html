@@ -56,7 +56,13 @@
     <label for="f-{{ g }}-{{ f.key }}">{{ f.label }}</label>
     <div>
       {%- if f.kind == 'switch' %}
-      <select id="f-{{ g }}-{{ f.key }}" name="{{ f.key }}"><option value="on"{% if f.value == 'on' %} selected{% endif %}>on</option><option value="off"{% if f.value == 'off' %} selected{% endif %}>off</option></select>
+      {#- C's toggle (Stage 5 step 2, slice 4): On and Off side by side, the chosen one drawn
+          from its radio's own state, so it reads right with no script; it sends "on" or "off"
+          as the select did. -#}
+      <span class="seg set-onoff" role="radiogroup" aria-label="{{ f.label }}">
+        <label class="seg-btn"><input id="f-{{ g }}-{{ f.key }}" type="radio" name="{{ f.key }}" value="on"{% if f.value == 'on' %} checked{% endif %}>On</label>
+        <label class="seg-btn"><input type="radio" name="{{ f.key }}" value="off"{% if f.value == 'off' %} checked{% endif %}>Off</label>
+      </span>
       {%- elif f.kind == 'json' %}
       <textarea id="f-{{ g }}-{{ f.key }}" name="{{ f.key }}" class="mono" rows="2">{{ f.value }}</textarea>
       {%- elif f.kind == 'secret' and f.note.startswith('set') %}

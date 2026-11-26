@@ -100,7 +100,9 @@ Compared again 2026-11-25 (Stage 5 step 2, the operator's GUI pick of 2026-11-25
 `7517b95b2c019bd1e57d58e439de56cbc12ce71f0c5e1e560a5c6b4e0100c155`.
 Compared again 2026-11-25 (Stage 5 step 2, slice 2, C's search): `settings.html` draws Find a setting under the page's sentence and above the scope bar (`_settings_find_box.html`), as C draws its filter under its summary; what it matches comes under it (`_settings_find.html`): a count by where each is set, then each setting a link to its section on whichever page and tab it is set in, with what it does. Shot in Firefox at 1366 (Branch's Integrations tab, "retention" typed: 5 matches across two tabs) and read against C: the box and the count line as C draws them; C folds the sections that do not match in place and lists nothing, where this lists the matches across every page and tab (a setting is often on another tab than the one shown): a deviation, logged once (docs/STANDING_APPROVAL_LOG.md, "Stage 5 step 2, slice 2: Find a setting"). Nothing else moves. Templates sha256 before:
 `13f3a2bc6f202b208520d2032eda5104a7c73b971579ba733b7e30bd03f8fbb3`.
-Templates sha256: `a40e645b57b519bd42d5be43ddea0e3a1f890facaf093de04ec39a0d8fea63f4`
+Compared again 2026-11-25 (Stage 5 step 2, slice 4; C's toggles): `_settings_card.html` draws an on/off setting as On and Off side by side (two radios as one segmented control, the chosen side drawn from its radio), where it drew a select of "on" and "off"; it sends the same values. Shot in Firefox at 1280 (Default's Network tab, AI: the topology class) and read against C's settings rows: the toggle as C draws one, as words where C draws a switch: a deviation, logged once (docs/STANDING_APPROVAL_LOG.md, "Stage 5 step 2, slice 4"). Templates sha256 before:
+`a40e645b57b519bd42d5be43ddea0e3a1f890facaf093de04ec39a0d8fea63f4`.
+Templates sha256: `82dec3be200b0c71ad2ffcfcf07e2b85f5d8e6976aa1ff0d2b42a90d6ae6867e`
 
 **Compared again 2026-11-13 (C3290's last gap):** in `_ai_classes.html`, Device state's line
 "turned on by <person> at <instant>: “<reason>”" is drawn through `times`, so its instant is
