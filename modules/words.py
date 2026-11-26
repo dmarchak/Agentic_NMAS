@@ -12,7 +12,12 @@ def capital(text) -> str:
     import re
 
     text = "" if text is None else str(text)
-    m = re.match(r"[a-z]+(?=[\s,;:!?)]|$)", text)
+    # A whole sentence in capitals (two words or more: "THE RECEIVER IS REMOVED", an outcome's
+    # stored words) reads in sentence case, as Jinja's capitalize drew it; one word in
+    # capitals is an acronym and stays.
+    if sum(1 for w in text.split() if w.strip(".,;:!?").isalpha()) > 1 and text == text.upper():
+        return text[:1] + text[1:].lower()
+    m = re.match(r"[a-z]+(?:-[a-z]+)*(?=[\s,;:!?)'’]|$)", text)
     return text[:1].upper() + text[1:] if m else text
 
 
@@ -26,7 +31,7 @@ def lower_start(text) -> str:
     from modules.brand import PRODUCT_SHORT
 
     text = "" if text is None else str(text)
-    m = re.match(r"([A-Z][a-z]+)(?=[\s,;:!?)]|$)", text)
+    m = re.match(r"([A-Z][a-z]+(?:-[a-z]+)*)(?=[\s,;:!?)]|$)", text)
     if not m or m.group(1) == PRODUCT_SHORT:
         return text
     return text[:1].lower() + text[1:]

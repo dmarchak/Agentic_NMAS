@@ -44,6 +44,15 @@ def test_a_plain_first_word_is_capitalised_and_nothing_else_moves():
     from modules import words
     assert words.capital("its reader has not run yet") == "Its reader has not run yet"
     assert words.capital("no export: export it first") == "No export: export it first"
+    # A hyphenated word and a contraction are plain words too (Jinja's capitalize, which these
+    # sites used, capitalised them: "Re-subscribed; ...").
+    assert words.capital("re-subscribed; the stream did not come back") == \
+        "Re-subscribed; the stream did not come back"
+    assert words.capital("it's done") == "It's done"
+    assert words.capital("r3's logs") == "r3's logs"
+    # A whole sentence stored in capitals reads in sentence case; one acronym stays.
+    assert words.capital("THE RECEIVER IS REMOVED") == "The receiver is removed"
+    assert words.capital("BGP") == "BGP"
     for same in ("user_settings.json: torn", "records_db could not be read", "It is read",
                  "/var/lib/x is missing", "", "HTTP 500"):
         assert words.capital(same) == same, same
