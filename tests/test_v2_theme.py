@@ -123,10 +123,10 @@ class TestTheTokens:
         for line in rest.splitlines():
             if re.search(r"#[0-9A-Fa-f]{3,6}\b|rgba?\(", line):
                 found.append(line.strip())
-        # White text on --side, which is dark in both themes: the sidebar and
-        # the phone's top bar.
-        allowed = (".brand-name", ".nav-item:hover", ".nav-item.active", ".topbar {", ".net {", ".jump input")
-        assert found and all(line.startswith(allowed) or "  .topbar" in line for line in found), found
+        # None at all since the operator's GUI pick of 2026-11-25 (C's quiet navigation): the
+        # sidebar and the phone's top bar were dark in both themes, their white words the one
+        # exception; now they draw in the page's own tokens like everything else.
+        assert found == [], found
 
 
 class TestThePage:
@@ -211,7 +211,8 @@ GROUNDS = ("--ground", "--surface", "--surface-2", "--hover", "--muted-soft", "-
            "--lab-soft", "--ai-soft", "--sdn-soft")
 #: A word drawn on a filled control or a dark panel, with the fill it is drawn on.
 ON_FILLS = (("--on-accent", "--accent"), ("--on-danger", "--danger"), ("--side-ink", "--side"),
-            ("--side-ink", "--side-on"), ("--code-ink", "--code-bg"), ("--mark-ink", "--mark"))
+            ("--side-ink", "--side-on"), ("--code-ink", "--code-bg"), ("--mark-ink", "--mark"),
+            ("--on-warn", "--warn-mark"), ("--side-ink-2", "--side"), ("--side-ink-2", "--side-on"))
 
 
 class TestContrast:
