@@ -467,6 +467,51 @@ PANEL_OPEN = ("var p = document.getElementById('asst-panel');"
 ANSWERS = "return document.querySelectorAll('#asst-answer .asst-answer').length;"
 
 
+#: The page's content box and the panel's left edge, in CSS pixels.
+EDGES = ("var m = document.getElementById('main').getBoundingClientRect();"
+         "var p = document.getElementById('asst-panel').getBoundingClientRect();"
+         "return [Math.round(m.right), Math.round(p.left), Math.round(window.innerWidth)];")
+
+
+def test_the_page_reflows_around_the_open_panel_never_under_it(lab):
+    """The operator's GUI pick (2026-11-25): "the assistant is a side panel the page reflows
+    around, not a drawer over a dimmed page". In Firefox at 1366 wide: open, the page's content
+    ends at the panel's left edge (nothing under it); closed, it runs to the window's edge
+    again. No scrim is drawn over the page."""
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    import app as APP
+    with browser.Served(APP.app) as srv, browser.Browser() as b:
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1366, "height": 768})
+            b.go(srv.url("/v2/devices"))
+            b.wait_for("return !!window.Alpine", 15)
+            b.js("document.getElementById('nmas-assistant').click(); return 1")
+            b.wait_for(PANEL_OPEN, 15)
+            b.wait_for("var m = document.getElementById('main').getBoundingClientRect();"
+                       "var p = document.getElementById('asst-panel').getBoundingClientRect();"
+                       "return m.right <= p.left + 1;", 5)
+            opened = b.js(EDGES)
+            scrim = b.js("var s = document.querySelector('.scrim');"
+                         "return !!s && getComputedStyle(s).display !== 'none';")
+            b.js("document.querySelector('#asst-panel [aria-label=\"Close the assistant\"]')"
+                 ".click(); return 1")
+            b.wait_for("return getComputedStyle(document.getElementById('asst-panel'))"
+                       ".display === 'none'", 5)
+            b.wait_for("return document.getElementById('main').getBoundingClientRect().right"
+                       " > window.innerWidth - 40;", 5)
+            closed = b.js("return Math.round(document.getElementById('main')"
+                          ".getBoundingClientRect().right)")
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+    main_right, panel_left, width = opened
+    assert main_right <= panel_left + 1, f"the page runs under the open panel: {opened}"
+    assert scrim is False, "no scrim dims the page"
+    assert closed > width - 40, f"closed, the page runs to the edge again: {closed} of {width}"
+
+
 def test_the_panel_in_a_browser_keeps_its_thread_and_opens_again_on_the_next_page(lab):
     """In Firefox: the Assistant opens the panel; Ask adds the answer under the thread in place;
     on the next page the panel opens again by itself, drawing the same thread with no call and

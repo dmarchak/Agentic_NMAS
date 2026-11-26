@@ -1,7 +1,8 @@
 # The assistant: how to do something, from the manual
 
 The top bar's **AI Assistant**, after the AI chip, opens a panel on the right, in the help panel's
-place. Ask how to do something in {{product}}, or what {{product}} holds about the device or
+place. On a window wide enough, the page moves over to make room for it, so nothing is under the
+panel and the page stays usable beside it; on a narrow one it covers the page's right edge. Ask how to do something in {{product}}, or what {{product}} holds about the device or
 incident you are looking at, in your own words, and press **Ask**. The answer rests on this
 manual's sections and on the reads {{product}} ran for it, each linked. It is labelled
 **Advisory (beta)**: a person should confirm it. Esc or **Close the assistant** (✕) closes the

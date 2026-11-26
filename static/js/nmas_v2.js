@@ -2398,6 +2398,10 @@
         // At phone width the go-to box is its button (board B, C537): open or not.
         jumpOpen: false,
         get drawerClass() { return this.drawer ? 'open' : ''; },
+        // The operator's GUI pick (2026-11-25): a side panel (the assistant's, the help's) is
+        // one the page reflows around, never one over it; the body says one is open, and the
+        // frame gives up the panel's width (nmas-v2.css, `.side-open`).
+        get sideClass() { return (this.help || this.asst) ? 'side-open' : ''; },
         get jumpClass() { return this.jumpOpen ? 'open' : ''; },
         get jumpExpanded() { return this.jumpOpen ? 'true' : 'false'; },
         open: function () { this.drawer = true; },
