@@ -236,3 +236,28 @@ class TestTheUpdatePageAsADocument:
         assert sec and " open" not in sec.group(0).split(">")[0], "the checks start closed"
         assert f'title="{passed} of {len(gates)} pass"' in sec.group(1), sec.group(1)
         assert f">{len(gates) - passed} to look at<" in sec.group(1)
+
+    def test_not_now_is_one_line_naming_the_checks_never_their_details(self, monkeypatch,
+                                                                         running):
+        """Stage 5 step 6: "Not now" ran every failing check's detail together in one
+        paragraph above the button; it is one line, how many of the checks don't pass and
+        their names, with Checks below saying why (the details stay on its hover)."""
+        import re
+        from html import unescape
+
+        import app as A
+        from modules import words
+        from routes import v2
+        TestTheTopBar._offerable(self, monkeypatch)
+        TestTheTopBar._get(self, monkeypatch, _value())
+        page = A.app.test_client().get("/v2/update").get_data(as_text=True)
+        with A.app.test_request_context("/v2/update"):
+            gates = v2._update_ctx()["p"]["gates"]
+        held = [g for g in gates if g["state"] != "pass"]
+        assert held, "the value holds the update back"
+        line = re.search(r'<p class="muted" id="update-why-not"[^>]*>(.*?)</p>', page, re.S)
+        assert line, "the Not now line is drawn"
+        said = unescape(line.group(1))
+        assert said == (f"Not now: {len(held)} of {len(gates)} checks don't pass "
+                        f"({words.series([g['name'] for g in held])}). Checks, below, says why.")
+        assert not any(g["detail"] and g["detail"] in said for g in held), said

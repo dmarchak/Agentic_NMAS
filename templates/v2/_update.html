@@ -85,8 +85,12 @@
     {%- if p.wait_ended %}
     <div class="notice notice-warn" id="update-wait-ended">{{ icon('warn') }}<p>The wait for CI ended {{ stamp(p.wait_ended.ended_at) }}: {{ p.wait_ended.words }}.</p></div>
     {%- endif %}
+    {%- set failing = p.gates | rejectattr('state', 'equalto', 'pass') | list %}
     {%- if p.waitable %}<p id="update-when-ci">{{ p.ci_words }}.</p>
-    {%- elif not p.selectable and not p.waiting.target %}<p class="muted" id="update-why-not">Not now: {{ p.why_not }}</p>{% endif %}
+    {%- elif not p.selectable and not p.waiting.target %}
+    {#- Stage 5 step 6: one line naming the checks that hold it back; each check's detail is
+        Checks' below (it was every detail run together here). -#}
+    <p class="muted" id="update-why-not" title="{{ p.why_not }}">Not now: {{ failing | length }} of {{ p.gates | length }} checks don't pass ({{ failing | map(attribute='name') | series }}). Checks, below, says why.</p>{% endif %}
     {#- Every stage visible: the button says it is sending, a refusal is shown
         with its reason, and once accepted the stepper follows the updater's own
         steps (its record names the step it is on). -#}
@@ -113,7 +117,6 @@
     <div data-update-steps x-show="running" x-cloak>{{ run_stepper(update_run) }}</div>
     <p class="wait" x-show="running" x-text="words" role="status" aria-live="polite"></p>
   </div>
-  {%- set failing = p.gates | rejectattr('state', 'equalto', 'pass') | list %}
   {#- Closed: "Not now" above says each check that holds it back, once; here is the evidence. -#}
   {% call doc_section('update-checks', 'Checks', (p.gates | length - failing | length) ~ ' of ' ~ (p.gates | length) ~ ' pass', ('ready' if not failing else (failing | length) ~ ' to look at'), ('ok' if not failing else 'warn')) %}
   <ul class="gate-list" id="update-gates">

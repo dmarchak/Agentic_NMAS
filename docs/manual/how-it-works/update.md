@@ -57,8 +57,9 @@ hour.
 ## The preview
 
 The preview leads with its answer: what is pushed and not running, the target's CI, the host
-steps to tick before it runs, and **Update** with, when it cannot run now, **Not now:** and
-each reason. Its evidence follows, each part one line until opened: **Checks** ("6 of 10
+steps to tick before it runs, and **Update** with, when it cannot run now, one **Not now:**
+line naming the checks that don't pass ("3 of 10 checks don't pass (...)"; each one's reason
+is in Checks, and on the line's hover). Its evidence follows, each part one line until opened: **Checks** ("6 of 10
 pass"), **The commits it would run**, **After the update** and **What it does NOT do** (open
 when this release changes the updater's own files).
 

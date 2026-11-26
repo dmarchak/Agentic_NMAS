@@ -111,6 +111,14 @@ def attention_sentence(a) -> dict:
     return attention.sentence(a or {})
 
 
+@bp.app_template_filter("series")
+def series(names, most=None) -> str:
+    """Names joined for a sentence ("a, b and c"), from the one helper, `words.series`."""
+    from modules import words
+
+    return words.series(list(names or ()), most)
+
+
 @bp.app_template_filter("setting_label")
 def setting_label(key) -> str:
     """A setting's key as its field is labelled on a Settings card (`settings_page.field_label`,
