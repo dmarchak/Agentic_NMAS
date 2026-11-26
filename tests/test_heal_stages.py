@@ -10,7 +10,9 @@ test of r3 in Auto, 2026-11-12, the headline of Lab 10's video):
    read "by Mercury's self-healing · policy set by <display name>"." And: "the card still says
    "Started … as <the operator's email>" for a self-heal": no email anywhere on them. (C3161)
 4. "A linear stepper (one row, wrapping cleanly), not a grid with gaps; no "Reopened" label."
-   (C3162)
+   (C3162). The row is superseded by the operator's GUI pick of 2026-11-25 ("C with B's Needs
+   attention queue and step timeline"): the stages run down as one timeline at every width,
+   still one stepper with no gaps.
 5. "The stepper shows FIVE stages: Detected → Decided → Fixing → Checking → Done, each with one
    plain sentence, its time and its state ... Each stage expands to its detailed steps." (C3163)
 
@@ -196,8 +198,11 @@ class TestMercurysOwn:
 
 
 def test_the_stages_are_one_row_that_wraps_in_a_real_browser(heal):  # noqa: F811
-    """C3162: one row of stages on a desk, each beside the one before with no gap but its
-    padding; at phone width each below the one before; nothing past the screen's edge."""
+    """C3162 as the operator's GUI pick of 2026-11-25 draws it (B's step timeline inside C's
+    pinned vertical stepper; design/proposals/README.md): on a desk and at phone width, each
+    stage below the one before with no gap, every mark on the one line the marks share, and
+    nothing past the screen's edge. (The name is kept from the one row of 2026-11-12, which
+    this replaces.)"""
     from tests import browser
     ok, why = browser.available()
     if not ok:
@@ -209,7 +214,10 @@ def test_the_stages_are_one_row_that_wraps_in_a_real_browser(heal):  # noqa: F81
     measure = ("return {inner: window.innerWidth, scroll: document.documentElement.scrollWidth,"
                " boxes: Array.from(document.querySelectorAll('#device-op .run-stage')).map("
                "function(e){var r=e.getBoundingClientRect(); return [Math.round(r.left),"
-               " Math.round(r.top), Math.round(r.right), Math.round(r.bottom)];})};")
+               " Math.round(r.top), Math.round(r.right), Math.round(r.bottom)];}),"
+               " marks: Array.from(document.querySelectorAll('#device-op .run-stage-box > summary"
+               " > .run-mark')).map(function(e){var r=e.getBoundingClientRect();"
+               " return Math.round((r.left + r.right) / 2);})};")
     # The run named (its result drawn whoever opened it before).
     url = f"/v2/device/edge-b?list=Default&result={job}"
     got = {}
@@ -232,14 +240,15 @@ def test_the_stages_are_one_row_that_wraps_in_a_real_browser(heal):  # noqa: F81
     assert recorded(d) == "healed", "the run drawn is the one the record holds"
     desk, phone = got["desk"], got["phone"]
     assert phone["inner"] <= 520, ("as narrow as geckodriver makes a window", phone)
-    boxes = desk["boxes"]
-    assert len(boxes) == 5 and len({top for _l, top, _r, _b in boxes}) == 1, \
-        ("one row on a desk", boxes)
-    for (_l, _t, right, _b), (left, _t2, _r2, _b2) in zip(boxes, boxes[1:]):
-        assert 0 <= left - right <= 1, ("each stage beside the one before, no gap", boxes)
-    assert desk["scroll"] <= desk["inner"], desk
-    boxes = phone["boxes"]
-    for (_l, _t, _r, bottom), (_l2, top, _r3, _b3) in zip(boxes, boxes[1:]):
-        assert top >= bottom - 1, ("each stage below the one before at phone width", boxes)
-    assert all(right <= phone["inner"] for _l, _t, right, _b in boxes), phone
-    assert phone["scroll"] <= phone["inner"], phone
+    for name, got_ in (("desk", desk), ("phone", phone)):
+        boxes = got_["boxes"]
+        assert len(boxes) == 5, (name, boxes)
+        assert len({left for left, _t, _r, _b in boxes}) == 1, ("one column", name, boxes)
+        for (_l, _t, _r, bottom), (_l2, top, _r3, _b3) in zip(boxes, boxes[1:]):
+            assert 0 <= top - bottom <= 1, ("each stage below the one before, no gap", name,
+                                            boxes)
+        marks = got_["marks"]
+        assert len(marks) == 5 and max(marks) - min(marks) <= 1, \
+            ("every mark on the one line", name, marks)
+        assert all(right <= got_["inner"] for _l, _t, right, _b in boxes), (name, got_)
+        assert got_["scroll"] <= got_["inner"], (name, got_)
