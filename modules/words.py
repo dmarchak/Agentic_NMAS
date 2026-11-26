@@ -16,6 +16,22 @@ def capital(text) -> str:
     return text[:1].upper() + text[1:] if m else text
 
 
+def lower_start(text) -> str:
+    """*text* continuing a sentence after a colon: its first word lowercased when it is a plain
+    capitalised word ("Tried to ..." → "tried to ..."), never the product's own name
+    (`brand.PRODUCT_SHORT`, "Mercury cannot fix this yet" stays) nor a word with more than its
+    first letter upper case (an acronym, a mixed-case name). The inverse of `capital`."""
+    import re
+
+    from modules.brand import PRODUCT_SHORT
+
+    text = "" if text is None else str(text)
+    m = re.match(r"([A-Z][a-z]+)(?=[\s,;:!?)]|$)", text)
+    if not m or m.group(1) == PRODUCT_SHORT:
+        return text
+    return text[:1].lower() + text[1:]
+
+
 def series(names, most: int = None) -> str:
     """"a", "a and b", "a, b and c". With *most*, past it the first *most* and "and N more",
     never "and 1 more": one more is named. An empty list is ""."""

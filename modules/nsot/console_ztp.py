@@ -67,6 +67,7 @@ import time
 from dataclasses import dataclass
 
 from modules.operation_stages import STAGES as _OPERATION_STAGES
+from modules.words import lower_start
 
 log = logging.getLogger(__name__)
 
@@ -157,7 +158,7 @@ STEP_NOTES = {
 def run_stepper_steps(kind: str) -> tuple:
     """*kind*'s run steps for THE stepper: ``((key, label, waits, names), ...)``."""
     steps = SURVEY_STEPS if kind == KIND_SURVEY else KICKSTART_STEPS
-    return tuple((key, STEP_LABELS[key], words[0].lower() + words[1:], STEP_NOTES[kind][key])
+    return tuple((key, STEP_LABELS[key], lower_start(words), STEP_NOTES[kind][key])
                  for key, words in steps if key not in BEFORE_RUN)
 #: The session lines a platform's console needs that are not the profile's reads or its
 #: kick-start: the privileged prompt, the pager off for this session, the setup dialog

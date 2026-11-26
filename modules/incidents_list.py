@@ -56,6 +56,8 @@ import os
 import threading
 import time
 
+from modules.words import lower_start
+
 log = logging.getLogger(__name__)
 
 #: The list's tabs, in order, each with its label (the board's suggested Problems tab has no
@@ -329,10 +331,8 @@ def status_words(state: str, waits: str) -> str:
         return "Waiting for a person" if state == "needs_person" else ""
     if state == "needs_person":
         # A reason in its own sentence (`incident_page.waits_words`) continues this one: its
-        # first word lower-cased, unless it is a name or an acronym ("BGP", "R1").
-        if waits[:1].isupper() and waits[1:2].islower():
-            waits = waits[:1].lower() + waits[1:]
-        return f"Waiting for a person: {waits}"
+        # first word lower-cased, unless it is a name or an acronym ("BGP", "R1", "Mercury").
+        return f"Waiting for a person: {lower_start(waits)}"
     return waits[:1].upper() + waits[1:]
 
 
@@ -569,8 +569,7 @@ def _page(network: str, tab: str, q: str, device: str, batched, laps: list) -> d
                            "rows": [{k: r[k] for k in DRAWN} for r in members[:SHOWN]],
                            "more": max(0, len(members) - SHOWN),
                            "open": len(matched) <= OPEN_UNDER})
-    summary = [f"{counts[k]} {w[:1].lower() + w[1:]}".replace(" mercury", " Mercury")
-               for k, w, _d in groups_of if counts[k]]
+    summary = [f"{counts[k]} {lower_start(w)}" for k, w, _d in groups_of if counts[k]]
     model = {"network": network, "tab": tab,
              "tabs": [{"key": t, "words": TABS[t],
                        "n": sum(1 for r in got["rows"] if r["resolved"] == (t == "closed"))}

@@ -41,6 +41,8 @@ import os
 import re
 import time
 
+from modules.words import lower_start
+
 log = logging.getLogger(__name__)
 
 #: How close a restart must fall to a planned window's edges to count as that window's.
@@ -897,7 +899,7 @@ def words(r: dict) -> str:
         when += time.strftime(" (last answered %H:%M)", time.gmtime(_epoch(r["last_seen"])))
     how = "restarted as planned" if r.get("planned") else "restarted unexpectedly"
     reason = (r.get("reason") or "").strip()
-    tail = (f" — reason: {reason[0].lower() + reason[1:]}" if reason else
+    tail = (f" — reason: {lower_start(reason)}" if reason else
             f" — reason not read ({r.get('reason_error') or 'no answer'})")
     if r.get("crash_file"):
         tail += " (crash file saved)"

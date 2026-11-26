@@ -98,6 +98,8 @@ import re
 import threading
 import time
 
+from modules.words import lower_start
+
 log = logging.getLogger(__name__)
 
 #: A self-healing incident's id, as `heal.incidents._new` mints it.
@@ -1268,7 +1270,7 @@ def _todo(st: dict, device: str, tl: dict, fixit: dict, item: dict) -> dict:
         # Its reason in plain words (`waits_words`), never a reasonless line.
         "decided": ("It needs a person: its fix did not heal it. The stage that failed under "
                     "What Mercury has done says why." if st.get("at_stage") else
-                    f"It needs a person: {st['reason'][:1].lower()}{st['reason'][1:]}."
+                    f"It needs a person: {lower_start(st['reason'])}."
                     if st.get("reason") else "It needs a person."),
         "lost_stream": f"It needs a person: the fix changes {device}'s configuration, so a "
                        f"person approves it. Until one does, {device}'s telemetry stays lost.",

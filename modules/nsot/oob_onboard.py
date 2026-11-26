@@ -48,6 +48,7 @@ from dataclasses import dataclass
 
 from modules.nsot import oob_steps
 from modules.nsot.onboard import KEY_SETTLE_S
+from modules.words import lower_start
 
 log = logging.getLogger(__name__)
 
@@ -154,7 +155,7 @@ class Refused(ValueError):
 
 def run_stepper_steps() -> tuple:
     """The run's steps for THE stepper (C1579): ``((key, label, waits, names), ...)``."""
-    return tuple((key, STEP_LABELS[key], words[0].lower() + words[1:], STEP_NOTES[key])
+    return tuple((key, STEP_LABELS[key], lower_start(words), STEP_NOTES[key])
                  for key, words in STEPS if key not in BEFORE_RUN)
 
 

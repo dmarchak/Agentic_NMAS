@@ -38,6 +38,7 @@ import time
 from urllib.parse import urlencode
 
 from modules import money as _money
+from modules.words import lower_start
 
 log = logging.getLogger(__name__)
 
@@ -1609,7 +1610,7 @@ def drift_source(status=None, now=None, presence=None) -> dict:
             (f"{booting[0].upper()}{booting[1:]}. The check said: " if booting else "")
             + (d.get("reason") or "no reason recorded"),
             {"label": "Check the device answers (its status on Devices), then "
-                      + _CHECK_NOW[0].lower() + _CHECK_NOW[1:], "href": _DRIFT_HOME,
+                      + lower_start(_CHECK_NOW), "href": _DRIFT_HOME,
              "known": False},
             "unknown", devices=[d["hostname"]], operands={"coverage": coverage})
     return source_result("drift", "Drift", read_at=started, took_ms=took, rows=rows,
@@ -4705,7 +4706,7 @@ def _sdn_action_said(action: str) -> str:
     label = (closed_loop.CATALOGUE.get(action or "") or {}).get("label") or ""
     if not label:
         return "no action" if not action else "an action Mercury does not list"
-    return label[0].lower() + label[1:]
+    return lower_start(label)
 
 
 def _one_row_per_attack(rows: list, waiting: dict) -> list:

@@ -601,6 +601,10 @@ class TestTheStates:
         assert "Mercury cannot fix this yet" in body
         assert re.search(r"It needs a person: [^<]*cannot fix this yet", body), \
             "it needs a person, and the line says why"
+        # Stage 5 step 4: its reason continues the sentence with the product's name as it is
+        # ("mercury cannot fix this yet" was drawn from a first letter lowered by hand).
+        assert "It needs a person: Mercury cannot fix this yet" in body
+        assert "mercury cannot" not in body
         # Premise corrected (C3454, the approved rule "The stepper never says "failed" for a
         # decision that worked"): its decision is drawn as needing a person, never failed.
         assert 'data-step="d-decide"' in body and "run-step-needs" in body
