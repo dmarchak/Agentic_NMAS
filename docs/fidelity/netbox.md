@@ -26,7 +26,9 @@ Shots: the operator's captures above; no board shot (no board file).
 Compared 2026-10-17; the job card's Free <address> from <record>… (C1504) compared by the
 template and its tests 2026-10-21, no capture or board shot.
 Templates compared: templates/v2/netbox.html, templates/v2/_netbox_job.html
-Templates sha256: `e3f8d445492d10a6b1d8ce3c47e9c057d6df958b33f6e13bb004179bba774a57`
+Compared again 2026-11-26 (Stage 5 step 6): the page opens with C's sentence, the connection's stored health in Settings' own words ("NetBox does not answer.", "NetBox is not set up." with where to set it), which replaces the notice inside the Connection card; Connection and Networks are sections, no box. One deviation logged (Stage 5 step 6: NetBox's sentence). Templates sha256 before:
+`e3f8d445492d10a6b1d8ce3c47e9c057d6df958b33f6e13bb004179bba774a57`.
+Templates sha256: `b04c1f241c5cb5a08be9ae540b2a7c8d4bb6bb468a6bfff3528af6ae4ea4e2c2`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

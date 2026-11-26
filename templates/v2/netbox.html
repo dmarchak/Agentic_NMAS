@@ -14,12 +14,14 @@
     <p class="sub">Import a network's devices into NetBox from their committed golden configs, or remove what {{ brand.short }} created there. Each is previewed against the real NetBox and confirmed once; nothing is sent to a device.</p>
   </div>
 </div>
+{#- C's one sentence (Stage 5 step 6): the connection's state, and while it is not set up,
+    where to set it (it was a notice inside the Connection card, under the fold's start). -#}
+{%- if v.said %}
+<p class="doc-summary" data-said><strong>{{ v.said.lead }}</strong>{% if not v.configured %} Set its address and token on <a href="{{ url_for('settings_v2.installation') }}">Settings › Installation › Connections</a>; nothing here can run until it is.{% elif v.said.rest %} {{ v.said.rest }}{% endif %}</p>
+{%- endif %}
 <section class="card" id="netbox-state" aria-labelledby="h-netbox-state">
   <div class="card-head"><h2 id="h-netbox-state">Connection</h2>
     {%- set h = v.health %}{{ badge({'up': 'answering', 'down': 'not answering', 'refused': 'refused', 'not_configured': 'not configured'}.get(h.state, 'not read yet'), {'up': 'ok', 'down': 'danger', 'refused': 'danger'}.get(h.state, 'neutral')) }}</div>
-  {%- if not v.configured %}
-  <p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>NetBox is not configured: set its address and token on <a href="{{ url_for('settings_v2.installation') }}">Settings › Installation › Connections</a>. Nothing here can run until it is.</span></p>
-  {%- endif %}
   <p class="small">{% if h.message %}{{ h.message }}. {% endif %}Writes are <strong>{{ 'on' if v.writes else 'off' }}</strong> for every network{% if not v.writes %}: a confirm below can turn them on, with your permission, only once its token and plan both pass{% else %}; they are turned off on Settings › Installation's NetBox card{% endif %}.</p>
 </section>
 <section class="card" id="netbox-networks" aria-labelledby="h-netbox-networks">

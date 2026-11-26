@@ -86,6 +86,31 @@ class TestThePage:
             assert f"<td>{name}</td>" in html, name
         assert "Writes are <strong>off</strong>" in html and "Import every network…" in html
 
+    @pytest.mark.parametrize("state, configured, lead", [
+        ("down", True, "NetBox does not answer."),
+        ("up", True, "NetBox answers."),
+        ("not_configured", False, "NetBox is not set up.")])
+    def test_the_page_opens_with_the_connections_sentence(self, networks, nb, monkeypatch,
+                                                          state, configured, lead):
+        """Stage 5 step 6 (C: the sentence first): the page opens with the connection's
+        stored health in Settings' own words; while NetBox is not set up, where to set it,
+        which was a notice inside the Connection card."""
+        from modules import installation_settings as I
+        from modules import netbox_ops
+        monkeypatch.setattr(I, "_health", lambda name: {"state": state, "message": "",
+                                                         "at_iso": ""})
+        monkeypatch.setattr(netbox_ops, "configured", lambda: configured)
+        html = re.sub(r"\s+", " ", networks["client"].get("/v2/netbox").get_data(as_text=True))
+        said = re.search(r'<p class="doc-summary" data-said><strong>(.*?)</strong>(.*?)</p>',
+                         html)
+        assert said and said.group(1) == lead, html[:2000]
+        assert html.index("data-said") < html.index('id="netbox-state"')
+        assert ("Settings › Installation › Connections</a>; nothing here can run until it is"
+                in said.group(2)) is (not configured)
+        assert "NetBox is not configured: set its address" not in html
+        assert I.sentence([{"spec": {"title": "NetBox"},
+                            "health": I._health("netbox")}])["lead"] == lead
+
     def test_each_network_counts_its_devices_from_its_own_source(self, networks, nb,
                                                                   monkeypatch):
         """C933: the count came from devices.csv alone, so a NetBox-sourced network read 0

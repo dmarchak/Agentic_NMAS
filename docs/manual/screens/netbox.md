@@ -17,9 +17,10 @@ Importing each network into NetBox, and removing what {{product}} put there: the
 
 ## Connection {#connection}
 
-Whether NetBox answers (the integrations reader's last read, every minute) and whether writes are
-on for every network. If NetBox is not configured, its address and token are set on
-Settings › Installation › Connections, and nothing here runs until they are.
+The page opens with one sentence: whether NetBox answers, from its last check (every minute),
+in the words Settings › Installation › Connections uses. If NetBox is not set up, the sentence
+says where to set its address and token (Settings › Installation › Connections), and nothing
+here runs until they are. The Connection section adds whether writes are on for every network.
 
 ## Networks {#networks}
 

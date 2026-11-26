@@ -73,7 +73,11 @@ def _view() -> dict:
     from modules import netbox_ops
     from modules.netbox_guard import writes_allowed
 
-    return {"configured": netbox_ops.configured(), "health": I._health("netbox"),
+    health = I._health("netbox")
+    # C's one sentence (Stage 5 step 6): the connection's stored health in the same words
+    # Settings › Installation › Connections says it (`installation_settings.sentence`).
+    said = I.sentence([{"spec": {"title": "NetBox"}, "health": health}])
+    return {"configured": netbox_ops.configured(), "health": health, "said": said,
             "writes": writes_allowed(), "networks": _networks()}
 
 
