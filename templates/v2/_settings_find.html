@@ -1,6 +1,7 @@
 {#- Find a setting (Stage 5 step 2; the operator's GUI pick of 2026-11-25, C: "one searchable
     document"): what *f.q* matches, `settings_index.find`. A count by where each is set first,
-    then each setting, its name a link to the section it is set in, what it does and where; at
+    then each setting, its name a link to the section it is set in (its key on hover), what it
+    does and where; at
     most `settings_index.MOST` drawn, the rest counted. A setting no screen sets says so and why.
     Nothing when nothing was typed. -#}
 {%- if f.q %}
@@ -8,7 +9,7 @@
 <p class="set-found-count">"{{ f.q }}" matches {{ f.count }} setting{{ '' if f.count == 1 else 's' }}: {% for where, n in f.pages.items() %}{{ n }} in {{ where }}{{ '; ' if not loop.last }}{% endfor %}.{% if f.count > f.shown %} The first {{ f.shown }} are below; add a word to narrow it.{% endif %}</p>
 <ul class="set-found">
   {%- for m in f.matches %}
-  <li>{% if m.href %}<a href="{{ m.href }}">{{ m.label }}</a>{% else %}<strong>{{ m.label }}</strong>{% endif %} <span class="set-found-where">· {{ m.where }}{% if m.group != m.label %} · {{ m.group }}{% endif %}</span>
+  <li>{% if m.href %}<a href="{{ m.href }}" title="{{ m.key }}">{{ m.label }}</a>{% else %}<strong title="{{ m.key }}">{{ m.label }}</strong>{% endif %} <span class="set-found-where">· {{ m.where }}{% if m.group != m.label %} · {{ m.group }}{% endif %}</span>
     {%- if m.desc %}<span class="set-desc">{{ m.desc }}</span>{% endif %}
     {%- if m.why %}<span class="set-origin">{{ m.why }}</span>{% endif %}</li>
   {%- endfor %}

@@ -3046,6 +3046,15 @@ def _day_cap_confirm(client, _lab, _mp):
     assert gateway.day_cap() == before, "a confirmation writes nothing"
 
 
+def _settings_find(client, _lab, _mp):
+    """Find a setting (Stage 5 step 2, `settings_index.find`): a search matching settings on two
+    tabs of a network's Settings, and one matching a setting no screen sets, so the count by
+    where, each match and the no-screen row's why draw. Reads only."""
+    for q in ("retention", "no+change+windows"):
+        r = client.get(f"/v2/settings/find?q={q}&at=Lab")
+        assert r.status_code == 200 and "matches" in r.get_data(as_text=True), (q, r.status_code)
+
+
 def _settings_ai(client, _lab, _mp):
     """Settings › Installation › AI (board AI3, C1843): a planted background feature with a
     measured frequency turned on for Lab through Turn on…'s form, its caps changed (refused
@@ -6025,7 +6034,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _lab9_sitting_findings,
                    _display_names,
                    _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
-                   _console_ztp, _console_servers, _day_cap_confirm, _settings_ai,
+                   _console_ztp, _console_servers, _day_cap_confirm, _settings_find, _settings_ai,
                    _settings_ai_catch_up, _ai_feedback,
                    _ai_spend, _assistant, _plans, _oob_onboard, _sdn, _sdn_apps,
                    _nsot_export_and_code_repo, _dhcp_steering, _heal_and_notify,

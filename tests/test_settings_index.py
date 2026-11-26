@@ -73,8 +73,8 @@ def test_find_matches_every_word_and_links_the_home(networks):  # noqa: F811
     assert '"deploy workers" matches 1 setting: 1 in Settings › Branch › Network.' in html
     want = X.home("deploy_max_workers")
     assert want["section"] == "card-deploy_max_workers"
-    assert ('<a href="/v2/settings/network/Branch?tab=network#card-deploy_max_workers">'
-            'Deploy max workers</a>') in html
+    assert ('<a href="/v2/settings/network/Branch?tab=network#card-deploy_max_workers" '
+            'title="deploy_max_workers">Deploy max workers</a>') in html
     import app as A
     with A.app.test_request_context("/"):
         heal = X.find("heal", "Branch")
