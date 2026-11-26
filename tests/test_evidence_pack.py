@@ -404,6 +404,14 @@ class TestBuiltWhenTheReaderStoresItFiring:
         assert EP.after_alerts_read(clock=lambda: NOW) is False
         assert EP.read()["state"] == "absent"
 
+    def test_read_with_nothing_firing_is_said_as_nothing_firing(self, pack_lab):
+        """C4269's other side: the reader read, and nothing fires: the green line stands."""
+        _store("grafana-alerts", _alerts(V4, kind="NoData"))
+        html = pack_lab["client"].get("/v2/monitoring/alerts").get_data(as_text=True)
+        assert EP.firing(_alerts(V4, kind="NoData")) == []
+        assert "Nothing is firing in what the reader stored." in html
+        assert "not known to be all" not in html and "have not been read" not in html
+
     def test_at_most_max_per_run_each_read(self, pack_lab, monkeypatch):
         value = _alerts(V4)
         second = copy.deepcopy(value["instances"][0])
@@ -515,6 +523,10 @@ class TestTheTab:
         html = pack_lab["client"].get("/v2/monitoring/alerts").get_data(as_text=True)
         assert "have not been read" in html and "0 firing" in html
         (pack_lab["tmp"] / "packs-dir").mkdir()
+        # C4269: never read, nothing is drawn as "nothing firing", and nothing green.
+        assert "Nothing is firing in what the reader stored" not in html
+        assert ("Nothing is listed, and that is not known to be all: grafana-alerts has not been "
+                "read.") in html
         monkeypatch.setattr(EP, "_path", lambda: str(pack_lab["tmp"] / "packs-dir"))
         html = pack_lab["client"].get("/v2/monitoring/alerts").get_data(as_text=True)
         assert "The evidence packs cannot be read." in html

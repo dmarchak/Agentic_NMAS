@@ -46,7 +46,13 @@
     <button type="submit" class="btn btn-small btn-outline">Show</button>
     {%- if e.q %}<span class="muted small">{{ c.shown }} of {{ c.firing }} firing match &ldquo;{{ e.q }}&rdquo;{% if e.kind %} of the kind &ldquo;{{ e.kind }}&rdquo;{% endif %}</span>{% endif %}
   </form>
-  {%- if not c.firing %}
+  {#- C4269: nothing listed is "nothing firing" only where every Grafana reader was read; a
+      reader never read leaves what fires unknown, said plainly and never green (absent and
+      unreadable are different states). -#}
+  {%- set unread = e.sources | rejectattr('store', 'equalto', 'sdn') | rejectattr('state', 'equalto', 'ok') | list %}
+  {%- if not c.firing and unread %}
+  <p class="muted" data-none-known>Nothing is listed, and that is not known to be all: {{ unread | map(attribute='store') | join(', ') }} {{ 'has' if unread | length == 1 else 'have' }} not been read.</p>
+  {%- elif not c.firing %}
   <p class="att-clear">{{ icon('check', 16) }} Nothing is firing in what the reader stored.</p>
   {%- elif e.kind and not c.shown %}
   <p class="muted small" data-kind-none>Nothing of the kind &ldquo;{{ e.kind }}&rdquo; is firing{% if e.q %} that matches &ldquo;{{ e.q }}&rdquo;{% endif %}. <a href="{{ url_for('v2.monitoring_alerts', q=e.q or none) }}">Every kind</a></p>

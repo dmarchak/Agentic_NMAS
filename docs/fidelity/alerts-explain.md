@@ -25,7 +25,9 @@ Explain's hover says the call is held to the spending limits where it said "capp
 only, the same elements, no deviation. Compared by the template's diff and
 tests/test_explain_card.py, not by new shots. Templates sha256 before:
 `15e520295b75d7747e681e4af86e80a686519adf56ff60b7630c21df2c66b684`.
-Templates sha256: `8c1b8ae9eff9f9a06e540701f78ab420eb1819e984597e12df4c5f676599c7fe`
+Compared again 2026-11-25 (C4269): `_alert_evidence.html` draws, with a Grafana reader not read and nothing listed, "Nothing is listed, and that is not known to be all: <reader> has not been read.", muted, where it drew the green "Nothing is firing in what the reader stored." under its own not-read notice; read with nothing firing, the green line stands. Words and a state only: no element moves; compared by the template's diff and the never-read shot of the step 6 survey (1366); logged once (docs/STANDING_APPROVAL_LOG.md, "C4269"). Templates sha256 before:
+`8c1b8ae9eff9f9a06e540701f78ab420eb1819e984597e12df4c5f676599c7fe`.
+Templates sha256: `e897d928f8472c62eda481c83e33ed5a1ae994e7c47a4a62e4dc081c296b6ea4`
 
 **Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_evidence_pack.html`, each time an evidence piece names (a window's ends, a peak, a gap's end, the first and last failure, a sighting, a flow's install, a log line) is `_macros.clock`'s: the viewer's own time, drawn by the server in their kept zone, the zone named once on the screen, the UTC instant on hover, in the same element and position; where `stamp` was given clock words (which the page's script turned into an age) it now reads as the clock time those words named. Compared by the template's diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `5137eb26bb5dd2f6501375f094cc7c54812ed4027903d325d767c376645eccc8`.
 
