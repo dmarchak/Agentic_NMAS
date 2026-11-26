@@ -257,7 +257,10 @@ class TestEveryReaderDrawsPending:
         with A.app.test_request_context("/"):
             html = render_template("v2/_history.html", h=h,
                                    device={"hostname": "s4"})
-        line = html[html.index("hist-kind"):html.index("commit PENDING")]
+        # Premise corrected (341d509d): the tab's sentence names its newest record above the
+        # rows, so the row's own words are the first after its kind badge.
+        start = html.index("hist-kind")
+        line = html[start:html.index("commit PENDING", start)]
         assert "badge-warn" in line and "badge-ok" not in line
 
     def test_the_landing_marks_it(self, monkeypatch):

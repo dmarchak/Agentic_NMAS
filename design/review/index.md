@@ -15,7 +15,12 @@ tests are tests/test_live_merge.py and tests/test_live_redraw_keeps_form.py). A 
 
 **Done since the survey:** Incidents leads with its answer (9bf41fc0); History's Query pages
 open on their question (aa98dc77); SDN › Apps without git's message or its repeated notice
-(194d7db1, 9e015b6a); Credentials › Profiles leads with its answer; the alerts tab's green "Nothing is firing" over a reader never read
+(194d7db1, 9e015b6a); Credentials › Profiles leads with its answer (664dd05d); two refusals as
+sentences (2c9dc76d); Update's "Not now" in one line (dccc9967); a read not done yet in one
+set of plain words (bc96aae7, 05d09791); Monitored by answers first (8c378f1d); NetBox's
+sentence (93505194); the device NetBox tab's link (C4277); the History tab's sentence
+(341d509d); Ask's tier on hover (e267a184); Profile and Show commands unboxed (8fca8f67);
+the alerts tab's green "Nothing is firing" over a reader never read
 (C4269, 104ba715); the Devices list's count sentence (8611fd2f); "no reader has written <path>"
 in plain words on every page that drew it. **Recorded:** the bare crash page of Topology and
 AI's background page (C4270, measured C: only a device-lists file edited by hand reaches it).
