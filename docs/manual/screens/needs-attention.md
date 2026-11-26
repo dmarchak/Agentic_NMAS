@@ -11,6 +11,11 @@ nothing critical it names the warnings the same way. With nothing at all, the li
 says **Nothing needs attention**. A group of alike rows counts as its members and is named once.
 It updates with the list.
 
+Under the counts, **chips** filter the list: **All**, each severity with items (**Critical**,
+**Warnings**, **Unknown**) and **Acknowledged**, each with its count. A chip shows only its
+group, and the page's address carries it, so a filtered view can be copied, survives a refresh
+and stays as the list updates itself; a chip with nothing in it says so, with **Show all**.
+
 Each severity's rows are one list, the severity's colour as a bar at each row's start. From
 the keyboard, while not typing in a field: **j** moves to the next row and **k** to the one
 before, through the sections that are open; **Enter** opens the row you are on; **e** presses

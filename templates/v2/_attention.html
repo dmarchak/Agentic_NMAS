@@ -10,6 +10,8 @@
     a person, What to do with how it clears, the reading's line; the rest one level down under
     Details, or on the incident's own page where that page draws it. -#}
 {%- set LEVEL_WORDS = {'danger': 'Critical', 'warning': 'Warning', 'unknown': 'Unknown'} -%}
+{#- The chip the address chose (`?show=`, routes/v2._attention_show), "" for every group. -#}
+{%- set show = show if show is defined else '' -%}
 {#- Every row names something wrong and its action (attention.ROW_KINDS, the
     operator, 2026-10-02); a fact nobody acts on is in its source's finding,
     under "What was checked", never a row. -#}
@@ -107,7 +109,7 @@
 {#- Every instant a row's builders wrote into its words is drawn by the clock (C3290). -#}
 {%- filter times %}
 {%- set store = a.store or {} %}
-<div id="attention" class="attention" hx-get="{{ url_for('v2.attention_list') }}" hx-swap="outerHTML"
+<div id="attention" class="attention" hx-get="{{ url_for('v2.attention_list', show=show or none) }}" hx-swap="outerHTML"
      hx-trigger="{{ attention_trigger }}"{% if store.state == 'reading' %} aria-busy="true"{% endif %}>
   {%- if store.state == 'reading' %}
   <p class="att-summary" role="status"><strong>Reading Needs attention&#8230;</strong> <span class="muted">Its sources are read in the background; this fills itself when their first value lands.</span></p>
@@ -136,13 +138,30 @@
         card, never rows (PHASE8_PLAN 20.2). -#}
     {%- for x in a.expected or [] %} · {% if x.device %}<a href="{{ url_for('device_v2.device', name=x.device) }}">{{ x.words }}</a>{% else %}{{ x.words }}{% endif %}{% endfor -%}
   </p>
-  {%- if rows %}
+  {#- B's filter chips (Stage 5 step 3; the operator's GUI pick of 2026-11-25: C with B's
+      queue): All, then each level with items and Acknowledged, each a link (`?show=`), so a
+      filtered view is an address, a live redraw keeps it and the page reads with no script.
+      Counts are the summary's, of findings. -#}
+  {%- set chips = [('', 'All', a.badge.n if rows else 0), ('danger', 'Critical', counts.danger), ('warning', 'Warnings', counts.warning), ('unknown', 'Unknown', counts.unknown), ('ack', 'Acknowledged', (a.acknowledged or [])|length)] %}
+  {%- if rows or a.acknowledged %}
+  <nav class="att-filters" aria-label="Show">
+    {%- for key, words, n in chips if n or not key or key == show %}
+    <a class="att-filt{{ ' on' if key == show }}" href="{{ url_for('v2.landing', show=key or none) }}"{% if key == show %} aria-current="true"{% endif %} data-show="{{ key or 'all' }}">{{ words }}<b>{{ n }}</b></a>
+    {%- endfor %}
+  </nav>
+  {%- endif %}
+  {%- set shown = namespace(any=false) %}
+  {%- for level in ('danger', 'warning', 'unknown') %}{% if (not show or show == level) and rows|selectattr('level', 'equalto', level)|rejectattr('batch')|list %}{% set shown.any = true %}{% endif %}{% endfor %}
+  {%- if show and show != 'ack' and not shown.any %}
+  <p class="muted att-filt-none" data-show-none>{{ {'danger': 'Nothing is critical now.', 'warning': 'No warning now.', 'unknown': 'Nothing is unknown now.'}[show] }} <a href="{{ url_for('v2.landing') }}">Show all</a></p>
+  {%- endif %}
+  {%- if rows and show != 'ack' %}
   {#- Round 2 (the operator, 2026-11-17): no "Held for a person" batch card; a batch row is
       drawn nowhere (the switch-on runs every fix). -#}
   <div class="att-list">
     {%- for level in ('danger', 'warning', 'unknown') %}
     {%- set group = rows|selectattr('level', 'equalto', level)|rejectattr('batch')|list %}
-    {%- if group %}
+    {%- if group and (not show or show == level) %}
     <details class="att-grp att-grp-{{ level }}" data-keep="att-grp-{{ level }}"{% if level != 'danger' %} data-remember="att-grp-{{ level }}"{% endif %} open>
       {%- set inlevel = namespace(n=0) %}{% for top in group %}{% set inlevel.n = inlevel.n + (top.alike.count if top.alike else 1) %}{% endfor %}
       <summary class="att-grp-sum">{{ LEVEL_WORDS[level] }} · {{ inlevel.n }}{% if inlevel.n != group|length %} <span class="att-grp-rows">in {{ group|length }} row{{ '' if group|length == 1 else 's' }}</span>{% endif %}</summary>
@@ -532,11 +551,14 @@
     {%- endif %}
     {%- endfor %}
   </div>
-  {%- else %}
+  {%- elif not rows %}
   <p class="att-clear">{{ icon('check', 16) }} Every source answered and none reports anything a person must do.</p>
   {%- endif %}
-  {%- if a.acknowledged %}
-  <details class="att-grp att-grp-ack" data-keep="att-grp-ack" data-remember="att-grp-ack">
+  {%- if show == 'ack' and not a.acknowledged %}
+  <p class="muted att-filt-none" data-show-none>Nothing is acknowledged now. <a href="{{ url_for('v2.landing') }}">Show all</a></p>
+  {%- endif %}
+  {%- if a.acknowledged and (not show or show == 'ack') %}
+  <details class="att-grp att-grp-ack" data-keep="att-grp-ack" data-remember="att-grp-ack"{% if show == 'ack' %} open{% endif %}>
     <summary class="att-grp-sum">Acknowledged · {{ a.acknowledged|length }}</summary>
     <p class="att-acked">Acknowledged, so not listed:</p>
     <ul class="att-members">

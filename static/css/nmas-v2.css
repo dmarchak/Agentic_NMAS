@@ -878,6 +878,16 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .warn-text { color: var(--warn); }
 .att-summary { margin: 0; font-size: 13px; color: var(--ink-2); }
 .att-summary strong { color: var(--ink); }
+/* B's filter chips (Stage 5 step 3): links, the chosen one filled, its count beside it. */
+.att-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+a.att-filt { display: inline-flex; gap: 6px; align-items: baseline; border: 1px solid var(--line);
+  border-radius: 14px; padding: 2px 11px; font-size: 13px; text-decoration: none;
+  color: var(--ink-2); background: var(--surface); }
+a.att-filt b { color: var(--ink); font-weight: 600; }
+a.att-filt:hover { border-color: var(--accent); }
+a.att-filt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+a.att-filt.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); }
+a.att-filt.on b { color: var(--accent-ink); }
 .att-list { display: flex; flex-direction: column; gap: 10px; }
 /* Board NA-R: a section per severity, its count in its heading; each item one line, opened to
    What to do first, then the details. */

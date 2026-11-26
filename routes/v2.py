@@ -594,7 +594,18 @@ def landing():
     from routes.device_v2 import _page_ref
 
     return _page("v2/landing.html", a=_attention(), recent=_recent(), active_nav="attention",
-                 batch_run=control_strip.run_view(_page_ref().name))
+                 batch_run=control_strip.run_view(_page_ref().name), show=_attention_show())
+
+
+#: Needs attention's filter chips (Stage 5 step 3, B's queue): the group a chip shows, by its
+#: address's `show`; "" shows every group.
+ATTENTION_SHOWS = ("", "danger", "warning", "unknown", "ack")
+
+
+def _attention_show() -> str:
+    """The chip chosen by the address (`?show=`), or "" (every group) for any other value."""
+    show = (request.args.get("show") or "").strip()
+    return show if show in ATTENTION_SHOWS else ""
 
 
 @bp.route("/recent", methods=["GET"])
@@ -628,8 +639,9 @@ def ai_spend():
 
 @bp.route("/attention", methods=["GET"])
 def attention_list():
-    """The list alone, re-fetched when a source's reader announces."""
-    return _strict(render_template("v2/_attention.html", a=_attention()))
+    """The list alone, re-fetched when a source's reader announces, with its chip kept."""
+    return _strict(render_template("v2/_attention.html", a=_attention(),
+                                   show=_attention_show()))
 
 
 def _subject(commit: str) -> str:

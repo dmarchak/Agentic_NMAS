@@ -83,6 +83,49 @@ def test_the_page_draws_the_lists_own_sentence_inside_the_part_that_redraws(monk
     assert html.index("data-sentence") < html.index('class="att-summary"')
 
 
+CHIP = re.compile(r'<a class="att-filt( on)?" href="([^"]+)"[^>]*data-show="(\w+)">'
+                  r'([A-Za-z]+)<b>(\d+)</b></a>')
+
+
+@pytest.mark.parametrize("show, heads, on", [
+    ("", ["Critical · 1", "Warning · 1"], "all"),
+    ("danger", ["Critical · 1"], "danger"),
+    ("warning", ["Warning · 1"], "warning"),
+    ("nonsense", ["Critical · 1", "Warning · 1"], "all"),
+    ("ack", [], "ack")])
+def test_a_chip_shows_its_group_and_the_redraw_keeps_it(monkeypatch, show, heads, on):
+    """B's filter chips (Stage 5 step 3): All, each level with items, and the chip the address
+    chose, each a link (`?show=`); the chosen one marked, only its group drawn, and the list's
+    own live redraw asks for the same chip, so a redraw never undoes it. An unknown value is
+    All. With nothing acknowledged, Acknowledged says so, never "nothing to do"."""
+    from html import unescape
+    from urllib.parse import parse_qs, urlsplit
+
+    import app as nmas
+    monkeypatch.setattr(A, "SOURCES", (_src(_rows()),))
+    client = nmas.app.test_client()
+    html = client.get(f"/v2/?show={show}").get_data(as_text=True)
+    assert re.findall(r'<summary class="att-grp-sum">([^<]+)</summary>', html) == heads
+
+    def shows(href):
+        url = urlsplit(unescape(href))
+        return url.path, parse_qs(url.query).get("show", [""])[0]
+    chips = {m.group(3): (bool(m.group(1)), shows(m.group(2)), m.group(4), int(m.group(5)))
+             for m in CHIP.finditer(html)}
+    assert [k for k, c in chips.items() if c[0]] == [on], chips
+    assert chips["all"][1:] == (("/v2/", ""), "All", 2) and chips["danger"][3] == 1
+    assert chips["warning"][1] == ("/v2/", "warning") and "unknown" not in chips
+    live = unescape(re.search(r'<div id="attention" class="attention" hx-get="([^"]+)"',
+                              html).group(1))
+    assert shows(live) == ("/v2/attention", "" if on == "all" else on)
+    again = client.get(live).get_data(as_text=True)
+    assert re.findall(r'<summary class="att-grp-sum">([^<]+)</summary>', again) == heads
+    if on == "ack":
+        assert "Nothing is acknowledged now." in html and "Every source answered" not in html
+    # A chip hides groups; it removes nothing from the list.
+    assert len(A.needs_attention()["rows"]) == 2
+
+
 def test_j_and_k_move_from_row_to_row_and_e_presses_its_action_in_a_real_browser(monkeypatch):
     from tests import browser
     ok, why = browser.available()
