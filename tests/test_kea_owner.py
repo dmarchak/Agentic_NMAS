@@ -287,6 +287,21 @@ def test_an_inheriting_network_s_page_is_read_only_and_links_to_the_owner(web, t
     assert _write_links(html) == []
 
 
+def test_why_it_inherits_is_the_owner_line_s_hover_said_once(web):
+    """Stage 5 step 6 (each fact once): why a network uses another's Kea is the owner line's
+    hover, where it followed the line in small type and said the same thing again."""
+    html = web["client"].get("/v2/dhcp?list=Branch").get_data(as_text=True)
+    line = re.search(r'<div class="notice notice-muted dh-owner"[^>]*>(.*?)</div>', html, re.S)
+    assert line, html[:3000]
+    strong = re.search(r'<strong title="([^"]+)">Branch uses Default', line.group(1))
+    assert strong and strong.group(1), line.group(1)
+    assert line.group(1).count(strong.group(1)) == 1, "said once, on the hover"
+    # The hover is the owner's own reason, and the owner is Default.
+    owner, why = L.kea_owner("Branch")
+    assert owner == "Default"
+    assert strong.group(1) == why
+
+
 @pytest.mark.parametrize("tab", ["res", "exc"])
 def test_the_owner_s_page_draws_its_controls_and_no_owner_line(web, tab):
     """Control: Default's own page draws its Add (the fixture holds no Mercury subnet, so the

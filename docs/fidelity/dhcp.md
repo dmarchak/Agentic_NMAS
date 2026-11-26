@@ -28,7 +28,9 @@ Compared again 2026-11-26 (Stage 5 step 6): a background read not read yet, or w
 `859ff0d4b75402555afb9c1f2cb63a8fcb557762e784063cc29d1f9ceeca08f7`.
 Compared again 2026-11-26 (Stage 5 step 6): where the page says something is not set up, it links the network's own Integrations tab (`integrations_link`: "Settings › <network> › Integrations"), where it said "(Settings › Integrations › Kea)" or similar in plain text. Every verdict unchanged. Templates sha256 before:
 `6d8f865a0ba3b1536426c9f204b9e7c0be4ec236fd99e5359f59d8edca963d67`.
-Templates sha256: `9d1eb39960ca8e0d809fca0c60c45d90e5620299218af53bb65d4085e115aefa`
+Compared again 2026-11-26 (Stage 5 step 6, each fact once): on a network that inherits its DHCP server, why it does ("Lab inherits Kea from Default") is the bold line's hover, where it followed the line in small type, saying the same thing again. Every verdict unchanged. Templates sha256 before:
+`9d1eb39960ca8e0d809fca0c60c45d90e5620299218af53bb65d4085e115aefa`.
+Templates sha256: `603f34f418d888973ed967336f71219e663bdf35e65faa9f82be750528c3488b`
 
 **Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_dhcp_lease.html` and `_dhcp_view.html`, a lease's last renewal and end, the lease list's end day and an event's day are `_macros.clock`'s: the viewer's own time (or day), the zone named once on the screen, the UTC instant on hover, in the same element and position; nothing else moves. Compared by the templates' diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `8ab7925e4d39eac2eb2177b0a84057e1a2e7f93d250540755032db59f7766791`.
 
