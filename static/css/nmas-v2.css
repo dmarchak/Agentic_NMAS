@@ -3866,9 +3866,25 @@ dialog.modal::backdrop { background: var(--scrim); }
    one line its summary at the document's section size. */
 .inc-sections > .card { background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0;
   padding: 0; margin: 0; }
-.inc-sections > details.card > summary { padding: 12px 0 10px; font-size: 17px; font-weight: 700; }
-.inc-sections > .card > .inc-fold-d > summary.card-head { padding: 12px 0 10px; }
-.inc-sections > .card > .inc-fold-d > summary.card-head h2 { font-size: 17px; font-weight: 700; }
+/* Each drawn as a document section (`.doc-sec`, the story's Timeline above them): one marker,
+   one size, one spacing, so the page's sections read as one list (Stage 5 step 4). */
+.inc-sections > details.card > summary,
+.inc-sections > .card > .inc-fold-d > summary.card-head { list-style: none; cursor: pointer;
+  display: flex; align-items: baseline; gap: 12px; padding: 14px 0 10px; font-size: 19px;
+  font-weight: 700; line-height: 1.25; }
+/* A summary of words and a time (Timings, Events) flows as one line of text. */
+.inc-sections > details.card > summary { display: block; }
+.inc-sections > details.card > summary::before { display: inline-block; margin-right: 12px; }
+/* The fold's own marker on its heading (`.inc-fold-d … h2::before`) is the section's now. */
+.inc-sections > .card > .inc-fold-d > summary.card-head h2::before { content: none; }
+.inc-sections > details.card > summary::-webkit-details-marker,
+.inc-sections > .card > .inc-fold-d > summary.card-head::-webkit-details-marker { display: none; }
+.inc-sections > details.card > summary::before,
+.inc-sections > .card > .inc-fold-d > summary.card-head::before { content: "\25B8"; color: var(--ink-3);
+  font-size: 13px; width: 12px; flex: none; font-weight: 400; }
+.inc-sections > details.card[open] > summary::before,
+.inc-sections > .card > .inc-fold-d[open] > summary.card-head::before { content: "\25BE"; }
+.inc-sections > .card > .inc-fold-d > summary.card-head h2 { margin: 0; font-size: 19px; font-weight: 700; }
 .inc-sections > .card[open], .inc-sections > .card > .inc-fold-d[open] { padding-bottom: 14px; }
 .bluf { margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .bluf-line { display: grid; grid-template-columns: 9.5em minmax(0, 1fr); gap: 4px 12px; align-items: baseline; }
