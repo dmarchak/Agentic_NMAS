@@ -56,6 +56,12 @@ hour.
 
 ## The preview
 
+The preview leads with its answer: what is pushed and not running, the target's CI, the host
+steps to tick before it runs, and **Update** with, when it cannot run now, **Not now:** and
+each reason. Its evidence follows, each part one line until opened: **Checks** ("6 of 10
+pass"), **The commits it would run**, **After the update** and **What it does NOT do** (open
+when this release changes the updater's own files).
+
 The preview shows the commits between the running version and the target, the target's CI
 verdict, what lies beyond it, the host steps of the commits up to the target (a step in a
 commit beyond it is not this update's), and whether the checkout on the host is clean.

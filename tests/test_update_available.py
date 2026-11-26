@@ -205,3 +205,34 @@ class TestTheTopBar:
         slot = page[page.index('id="nmas-update"') - 60:page.index('id="nmas-update"') + 200]
         assert 'hx-get="/v2/update-available"' in slot
         assert "nmas:app_version from:body" in slot
+
+
+class TestTheUpdatePageAsADocument:
+    """Stage 5 step 6, slice 1 (the operator's GUI pick of 2026-11-25: C): the Update page says
+    its answer and its action before its evidence, the facts, then the Update button with its
+    "Not now", then the checks, closed, their line the count of those that pass, then the
+    commits, the after-steps and what it does not do, each closed."""
+
+    def test_the_answer_and_action_come_before_the_evidence(self, monkeypatch, running):
+        import re
+
+        import app as A
+        from routes import v2
+        TestTheTopBar._offerable(self, monkeypatch)
+        TestTheTopBar._get(self, monkeypatch, _value())
+        page = A.app.test_client().get("/v2/update").get_data(as_text=True)
+        with A.app.test_request_context("/v2/update"):
+            gates = v2._update_ctx()["p"]["gates"]
+        passed = sum(1 for g in gates if g["state"] == "pass")
+        assert gates and passed < len(gates), gates
+        at = {k: page.index(m) for k, m in (("confirm", 'id="update-confirm"'),
+                                            ("checks", 'id="update-checks"'),
+                                            ("not", 'id="update-not-sec"'))}
+        # (This value names no commits, so their section is not drawn.)
+        assert 'id="update-commits-sec"' not in page
+        assert at["confirm"] < at["checks"] < at["not"], at
+        sec = re.search(r'<details class="doc-sec" id="update-checks"[^>]*>\s*<summary>(.*?)'
+                        r'</summary>', page, re.S)
+        assert sec and " open" not in sec.group(0).split(">")[0], "the checks start closed"
+        assert f'title="{passed} of {len(gates)} pass"' in sec.group(1), sec.group(1)
+        assert f">{len(gates) - passed} to look at<" in sec.group(1)

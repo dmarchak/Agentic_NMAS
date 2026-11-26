@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, clock, check_again, how -%}
+{%- from "v2/_doc.html" import doc_section -%}
 {%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- The Update operation (modules/update_op.py): the last outcome, the preview
     in its parts, and the confirm, which then waits on /health. Re-fetched when
@@ -50,13 +51,10 @@
     <div><dt>Beyond it</dt><dd id="update-beyond" title="{% for b in f.beyond %}{{ b.sha[:10] }}: {{ b.state or 'not asked yet' }}{{ '; ' if not loop.last }}{% endfor %}">{{ f.beyond_words }}, up to origin/main's <span class="mono">{{ f.tip[:10] }}</span>; not offered until CI passes one</dd></div>
     {%- endif %}
   </dl>
-  {%- if f.commits %}
-  <h3 class="sub-head">The commits it would run</h3>
-  <ul class="commit-list" id="update-commits">
-    {%- for c in f.commits %}<li><span class="mono">{{ c.sha[:10] }}</span> {{ c.subject }} <span class="muted">· {{ c.author | people }}, {{ stamp(c.at) }}</span></li>{% endfor %}
-  </ul>
-  {%- if f.commits_cut %}<p class="muted">Showing the newest {{ f.commits|length }} of {{ f.behind }}.</p>{% endif %}
-  {%- endif %}
+  {#- As C's document (Stage 5 step 6, slice 1): the answer and its action first, the facts
+      above, then what a person must do before (the host steps, ticked before Update is
+      pressed), then Update itself; the commits, the after-steps, what it does not do and the
+      checks follow as sections that open, each one line until opened. -#}
   {%- if f.host_steps %}
   <h3 class="sub-head">Before the update</h3>
   <p class="muted">Each is done on the host by a person, before the update runs. Where the tool can check a step it says what it found; tick the others once they are done.</p>
@@ -69,24 +67,6 @@
     {%- endfor %}
   </ul>
   {%- endif %}
-  {%- if f.after_steps %}
-  <h3 class="sub-head">After the update</h3>
-  <p class="muted">These never hold the update back. Once it runs, Needs attention lists each until it is done.</p>
-  <ul class="plain-list" id="update-after-steps">
-    {%- for s in f.after_steps %}<li>{{ s.step }} <span class="muted">· {% if s.check_state == 'not_checkable' %}you say when it is done{% else %}checked by the tool{% endif %} <span class="mono">({{ s.sha[:10] }})</span></span></li>{% endfor %}
-  </ul>
-  {%- endif %}
-  <h3 class="sub-head">What it does NOT do</h3>
-  <ul class="plain-list" id="update-not">
-    <li>It runs nothing from the repository as root: git runs as the service user, and only the restart is root's.</li>
-    <li>It touches no device, no list's repository and no NetBox.</li>
-    <li>It does not update the updater itself.{% if f.updater_changes %} <strong>This release changes the updater's own files ({{ f.updater_changes|join(', ') }}): re-install them after it (docs/UPDATE.md, "Re-install").</strong>{% endif %}</li>
-    <li>It rolls back only a version that does not come up within {{ up_bound_s }} s. A defect found later is fixed by the next release, not by this button.</li>
-  </ul>
-  <h3 class="sub-head">Checks</h3>
-  <ul class="gate-list" id="update-gates">
-    {%- for g in p.gates %}<li class="gate-{{ g.state }}">{{ icon('check' if g.state == 'pass' else 'warn', 14) }} <strong>{{ g.name }}</strong><span class="muted"> · {{ g.detail }}</span></li>{% endfor %}
-  </ul>
   {#- The confirm is THE pattern (C850, Stage 7 acceptance criterion 6): htmx posts the preview's
       hash and the ticked host steps, the button is busy on itself until the answer, and the
       answer is this panel drawn again (routes/update.py): the stepper following the request,
@@ -133,6 +113,37 @@
     <div data-update-steps x-show="running" x-cloak>{{ run_stepper(update_run) }}</div>
     <p class="wait" x-show="running" x-text="words" role="status" aria-live="polite"></p>
   </div>
+  {%- set failing = p.gates | rejectattr('state', 'equalto', 'pass') | list %}
+  {#- Closed: "Not now" above says each check that holds it back, once; here is the evidence. -#}
+  {% call doc_section('update-checks', 'Checks', (p.gates | length - failing | length) ~ ' of ' ~ (p.gates | length) ~ ' pass', ('ready' if not failing else (failing | length) ~ ' to look at'), ('ok' if not failing else 'warn')) %}
+  <ul class="gate-list" id="update-gates">
+    {%- for g in p.gates %}<li class="gate-{{ g.state }}">{{ icon('check' if g.state == 'pass' else 'warn', 14) }} <strong>{{ g.name }}</strong><span class="muted"> · {{ g.detail }}</span></li>{% endfor %}
+  </ul>
+  {% endcall %}
+  {%- if f.commits %}
+  {% call doc_section('update-commits-sec', 'The commits it would run', (f.commits | length) ~ ' commit' ~ ('' if f.commits | length == 1 else 's') ~ ', newest first' ~ (' (of ' ~ f.behind ~ ')' if f.commits_cut else '')) %}
+  <ul class="commit-list" id="update-commits">
+    {%- for c in f.commits %}<li><span class="mono">{{ c.sha[:10] }}</span> {{ c.subject }} <span class="muted">· {{ c.author | people }}, {{ stamp(c.at) }}</span></li>{% endfor %}
+  </ul>
+  {%- if f.commits_cut %}<p class="muted">Showing the newest {{ f.commits|length }} of {{ f.behind }}.</p>{% endif %}
+  {% endcall %}
+  {%- endif %}
+  {%- if f.after_steps %}
+  {% call doc_section('update-after-sec', 'After the update', (f.after_steps | length) ~ ' host step' ~ ('' if f.after_steps | length == 1 else 's') ~ '; none holds the update back') %}
+  <p class="muted">These never hold the update back. Once it runs, Needs attention lists each until it is done.</p>
+  <ul class="plain-list" id="update-after-steps">
+    {%- for s in f.after_steps %}<li>{{ s.step }} <span class="muted">· {% if s.check_state == 'not_checkable' %}you say when it is done{% else %}checked by the tool{% endif %} <span class="mono">({{ s.sha[:10] }})</span></span></li>{% endfor %}
+  </ul>
+  {% endcall %}
+  {%- endif %}
+  {% call doc_section('update-not-sec', 'What it does NOT do', 'no root git, no device, not the updater itself; it rolls back only a version that does not come up', open=f.updater_changes | length > 0) %}
+  <ul class="plain-list" id="update-not">
+    <li>It runs nothing from the repository as root: git runs as the service user, and only the restart is root's.</li>
+    <li>It touches no device, no list's repository and no NetBox.</li>
+    <li>It does not update the updater itself.{% if f.updater_changes %} <strong>This release changes the updater's own files ({{ f.updater_changes|join(', ') }}): re-install them after it (docs/UPDATE.md, "Re-install").</strong>{% endif %}</li>
+    <li>It rolls back only a version that does not come up within {{ up_bound_s }} s. A defect found later is fixed by the next release, not by this button.</li>
+  </ul>
+  {% endcall %}
   {%- endif %}
 </section>
 
