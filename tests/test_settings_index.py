@@ -40,7 +40,7 @@ def test_every_setting_has_one_home_or_says_why_none():
     assert groups_none == set(X.NO_SCREEN), "every group declared set by no screen is one"
     # The gaps, named exactly (C4266): a setting a person cannot set in Mercury joins this
     # test's own words, never the index's alone. The others are set by no screen by design.
-    gaps = {g for g, why in X.NO_SCREEN.items() if why.startswith("C")}
+    gaps = {g for g, why in X.NO_SCREEN.items() if why.startswith("not yet:")}
     assert gaps == {"ai_read_account", "no_change_windows"}, gaps
     assert len(none) <= 8, none
 
@@ -92,7 +92,7 @@ def test_a_setting_no_screen_sets_is_found_saying_so(networks):  # noqa: F811
     X = _index()
     _r, html = _get(networks, "/v2/settings/find?q=no+change+windows&at=Branch")
     why = X.home("no_change_windows")["none"]
-    assert why.startswith("C4266"), "the gap names its register row"
+    assert why.startswith("not yet:"), "a gap says it is not built yet (C4266)"
     row = re.search(r"<li>(.*?)</li>", html, re.S).group(1)
     assert "set by no screen" in row and f'<span class="set-origin">{why}</span>' in row
     assert "href=" not in row, "a setting no screen sets links nowhere"

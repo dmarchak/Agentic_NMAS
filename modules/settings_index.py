@@ -61,16 +61,16 @@ KEY_HOMES.update({k: "card-gates" for k in (
                                     for op in ("approve", "break_glass", "configure", "confirm",
                                                "publish_remote", "reveal")))})
 
-#: Groups no screen sets, with why: ``group: why``, the search's words for them. A gap (a "C<n>:"
-#: why) is named exactly by tests/test_settings_index.py, so none joins unseen.
+#: Groups no screen sets, with why: ``group: why``, the search's words for them. A gap (C4266: a
+#: why beginning "not yet:") is named exactly by tests/test_settings_index.py, so none joins unseen.
 NO_SCREEN = {
     "schema": "the settings file's own version, written by the migration, never a person",
     "settings_not_applicable": "the Default network's record of the groups declared not "
                                "applicable, written by each group's switch",
     "installation_kind": "written by the laptop kit's init, never by a screen",
     "lab_demo": "lab tooling's script path, set by the lab's own setup",
-    "ai_read_account": "C4266: no screen sets whether AI reads may ping and traceroute",
-    "no_change_windows": "C4266: no screen sets the no-change windows",
+    "ai_read_account": "not yet: no screen sets whether AI reads may ping and traceroute",
+    "no_change_windows": "not yet: no screen sets the no-change windows",
 }
 
 
