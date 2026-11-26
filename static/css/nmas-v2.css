@@ -1539,6 +1539,13 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
   border-radius: 0; }
 #hist-remote.card { border-bottom: 1px solid var(--line); padding: 4px 0 12px; }
 #hist-timeline.card, #hist-baselines.card { border-top: 1px solid var(--line); padding: 10px 0 0; }
+/* Credentials › Profiles as C's document (Stage 5 step 6): the profiles, the scheduled rotation
+   and the read-only account are sections, no boxes; a form opened in place keeps its box. */
+#cred-profiles > section.card:not(.set-card), section.card[aria-labelledby="cr-h"] {
+  background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0;
+  padding: 14px 0 10px; }
+#cred-profiles > section.card:not(.set-card) > .card-head h2,
+section.card[aria-labelledby="cr-h"] > .card-head h2 { font-size: 19px; font-weight: 700; }
 /* Monitoring › Coverage as C draws a fleet (Stage 5 step 6): its counts, then the table, no box. */
 #coverage.card.coverage { background: none; border: 0; border-radius: 0; padding: 0; }
 /* Fixes' list as C draws a table (Stage 5 step 6): under its counts, no box. */
