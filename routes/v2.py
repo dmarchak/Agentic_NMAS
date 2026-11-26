@@ -119,6 +119,14 @@ def series(names, most=None) -> str:
     return words.series(list(names or ()), most)
 
 
+@bp.app_template_filter("capital")
+def capital(text) -> str:
+    """A reason drawn as a sentence's start (`words.capital`): after a full stop."""
+    from modules import words
+
+    return words.capital(text)
+
+
 @bp.app_template_filter("setting_label")
 def setting_label(key) -> str:
     """A setting's key as its field is labelled on a Settings card (`settings_page.field_label`,

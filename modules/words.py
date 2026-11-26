@@ -4,6 +4,18 @@ a helper of its own).
 """
 
 
+def capital(text) -> str:
+    """*text* as a sentence's start: its first word capitalised when it is a plain lowercase
+    word ("its reader has not run yet" → "Its reader has not run yet"), else unchanged, so a
+    file name, a key or a command a reason begins with is never altered ("user_settings.json:
+    torn" stays). A reason drawn after a full stop goes through this (Stage 5 step 6)."""
+    import re
+
+    text = "" if text is None else str(text)
+    m = re.match(r"[a-z]+(?=[\s,;:!?)]|$)", text)
+    return text[:1].upper() + text[1:] if m else text
+
+
 def series(names, most: int = None) -> str:
     """"a", "a and b", "a, b and c". With *most*, past it the first *most* and "and N more",
     never "and 1 more": one more is named. An empty list is ""."""

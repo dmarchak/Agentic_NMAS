@@ -102,7 +102,9 @@ Compared again 2026-11-25 (Stage 5 step 2, slice 2, C's search): `settings.html`
 `13f3a2bc6f202b208520d2032eda5104a7c73b971579ba733b7e30bd03f8fbb3`.
 Compared again 2026-11-25 (Stage 5 step 2, slice 4; C's toggles): `_settings_card.html` draws an on/off setting as On and Off side by side (two radios as one segmented control, the chosen side drawn from its radio), where it drew a select of "on" and "off"; it sends the same values. Shot in Firefox at 1280 (Default's Network tab, AI: the topology class) and read against C's settings rows: the toggle as C draws one, as words where C draws a switch: a deviation, logged once (docs/STANDING_APPROVAL_LOG.md, "Stage 5 step 2, slice 4"). Templates sha256 before:
 `a40e645b57b519bd42d5be43ddea0e3a1f890facaf093de04ec39a0d8fea63f4`.
-Templates sha256: `82dec3be200b0c71ad2ffcfcf07e2b85f5d8e6976aa1ff0d2b42a90d6ae6867e`
+Compared again 2026-11-26 (Stage 5 step 6): a reason drawn right after a bold sentence's full stop starts with a capital (the `capital` filter, `words.capital`: a plain first word only, a file name or key left as it is), where it started lowercase ("... have not been read yet. its reader has not run yet"). No region moves; every verdict is unchanged. Templates sha256 before:
+`82dec3be200b0c71ad2ffcfcf07e2b85f5d8e6976aa1ff0d2b42a90d6ae6867e`.
+Templates sha256: `877e9ac07be363d599c2ff210e6a32b63a5147f3025cab83151a7cc644bae5d6`
 
 **Compared again 2026-11-13 (C3290's last gap):** in `_ai_classes.html`, Device state's line
 "turned on by <person> at <instant>: “<reason>”" is drawn through `times`, so its instant is

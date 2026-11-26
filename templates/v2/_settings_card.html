@@ -44,7 +44,7 @@
   {%- endif %}
   {%- if tested %}
   <div class="notice notice-{{ 'muted' if tested.ok else 'danger' }} set-result" role="status">{{ icon('tick' if tested.ok else 'warn', 16) }}<div>
-    <strong>Test: {{ 'passed' if tested.ok else 'failed' }}.</strong> {{ tested.message if tested.ok else tested.error }}
+    <strong>Test: {{ 'passed' if tested.ok else 'failed' }}.</strong> {{ (tested.message if tested.ok else tested.error) | capital }}
     {%- if tested.steps %}<ol class="set-steps">{% for s in tested.steps %}<li>{{ badge('passed' if s.ok else 'failed', 'ok' if s.ok else 'danger') }} {{ s.name }}: {{ s.detail }}</li>{% endfor %}</ol>{% endif %}</div></div>
   {%- endif %}
   <form class="set-form" id="form-{{ g }}" method="post" action="{{ url_for('settings_v2.group_save', list_name=list_name, group=g) }}"

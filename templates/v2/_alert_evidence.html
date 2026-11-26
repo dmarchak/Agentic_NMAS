@@ -16,17 +16,17 @@
   {#- Mercury's own SDN detections (C1867) are their own source, named SDN detection, never a
       Grafana reader: what it has found, or that its state cannot be read. -#}
   {%- if s.store == 'sdn' and s.state != 'ok' %}
-  <div class="notice notice-warn" data-source="sdn">{{ icon('warn', 16) }}<div><strong>SDN detection could not be read.</strong> {{ s.why or 'Its state has not been read' }}. What it has found is not known, so no SDN detection is listed.</div></div>
+  <div class="notice notice-warn" data-source="sdn">{{ icon('warn', 16) }}<div><strong>SDN detection could not be read.</strong> {{ (s.why or 'Its state has not been read') | capital }}. What it has found is not known, so no SDN detection is listed.</div></div>
   {%- elif s.store == 'sdn' %}
   <p class="limits" data-source="sdn">{{ badge('SDN detection', 'info', title="Mercury's own detection over its SDN controllers' flows and port counters, never a Grafana alert") }} Mercury's SDN detections as last judged, {{ stamp(s.value_at, note='the newest judgement this list stands on') }}: each judged from its network's collection of its controllers' flows and port counters.</p>
   {%- elif s.state != 'ok' %}
-  <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>Grafana's alerts ({{ s.store }}) have not been read.</strong> {{ s.why or 'The reader has stored no value yet' }}. What fires there is not known, so it is not listed.</div></div>
+  <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>Grafana's alerts ({{ s.store }}) have not been read.</strong> {{ (s.why or 'The reader has stored no value yet') | capital }}. What fires there is not known, so it is not listed.</div></div>
   {%- else %}
   <p class="limits">Alerts as the <span class="mono">{{ s.store }}</span> reader stored them, {{ stamp(s.value_at, note='the reading this list stands on') }}{% if s.why %}; its newest read failed, so this is its last good value: {{ s.why }}{% endif %}.</p>
   {%- endif %}
   {%- endfor %}
   {%- if e.store.state == 'unreadable' %}
-  <div class="notice notice-danger">{{ icon('warn', 16) }}<div><strong>The evidence packs cannot be read.</strong> {{ e.store.error }}. No pack is built or shown until they can be: a firing alert below reads as waiting.</div></div>
+  <div class="notice notice-danger">{{ icon('warn', 16) }}<div><strong>The evidence packs cannot be read.</strong> {{ e.store.error | capital }}. No pack is built or shown until they can be: a firing alert below reads as waiting.</div></div>
   {%- endif %}
   {#- The firing alerts counted by kind (their group, `evidence_pack.family`), most first, over
       everything firing whatever the filter; each count a link filtering the list to its group,

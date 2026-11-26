@@ -50,7 +50,7 @@
 </nav>
 <div class="tab-body" id="tab-body">
 {%- if v.error %}
-<div class="notice notice-danger">{{ icon('warn', 16) }}<div><strong>{{ v.network }}'s settings could not be read.</strong> {{ v.error }}. Nothing of {{ v.network }} is drawn as known, and every switch refuses until the file is readable again.</div></div>
+<div class="notice notice-danger">{{ icon('warn', 16) }}<div><strong>{{ v.network }}'s settings could not be read.</strong> {{ v.error | capital }}. Nothing of {{ v.network }} is drawn as known, and every switch refuses until the file is readable again.</div></div>
 {%- else %}
 {%- if heal %}
 {#- Board H, artboard A (H9): the network's own heal policy and who is told, never inherited. -#}

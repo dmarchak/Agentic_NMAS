@@ -15,7 +15,7 @@
 <div class="alert-history" id="alert-history" hx-get="{{ url_for('v2.monitoring_alerts_history_list', q=h.q or none, rule=h.rule or none, device=h.device or none, range=h.range, show=h.show) }}"
      hx-trigger="nmas:alerts from:body" hx-swap="outerHTML">
   {%- if h.store.state == 'unreadable' %}
-  <div class="notice notice-danger">{{ icon('warn', 16) }}<div><strong>The alert history cannot be read.</strong> {{ h.store.error }}. Nothing is listed until it can be: an empty list here would read as a quiet network.</div></div>
+  <div class="notice notice-danger">{{ icon('warn', 16) }}<div><strong>The alert history cannot be read.</strong> {{ h.store.error | capital }}. Nothing is listed until it can be: an empty list here would read as a quiet network.</div></div>
   {%- else %}
   <p class="att-summary">
     <strong>{{ c.outcomes.fired }} alert{{ '' if c.outcomes.fired == 1 else 's' }} fired and cleared</strong> in {{ h.range_words }}
@@ -28,7 +28,7 @@
   <p class="limits">{% if c.transitions %}Transitions as Grafana timed them, never a device's clock: {{ c.transitions }} kept{% if h.first_reader %}, recorded by the alerts reader since {{ stamp(h.first_reader) }}{% endif %}{% if h.oldest %}, the oldest from {{ stamp(h.oldest) }}{% endif %}{% if c.moved %}; {{ c.moved }} older than their network's retention moved to the data lake{% endif %}.{% else %}No transition is kept yet: the alerts reader records each one it sees from now, and Grafana's own state history is read in once (scripts/nmas-alert-backfill).{% endif %}</p>
   {%- endif %}
   {%- if h.packs_store.state == 'unreadable' %}
-  <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>The evidence packs cannot be read.</strong> {{ h.packs_store.error }}. Which past alert has a pack is not known, so none is built until they can be read.</div></div>
+  <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>The evidence packs cannot be read.</strong> {{ h.packs_store.error | capital }}. Which past alert has a pack is not known, so none is built until they can be read.</div></div>
   {%- endif %}
   <form class="dev-filters ah-filter" method="get" action="{{ url_for('v2.monitoring_alerts_history') }}" role="search">
     <label class="sr-only" for="ah-q">Search rule, device or label</label>

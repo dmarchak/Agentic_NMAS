@@ -23,7 +23,9 @@ about $…" (the task's typical cost, no bound since 7b0bb884) where it read "up
 Explain's hover says the call is held to the spending limits where it said "capped"; words
 only, the same elements, no deviation. Compared by the template's diff, not by new shots.
 Templates sha256 before: `7d36ff0cdb1a04517c79dfd7f888789eda7e8e8cf8eace320618d45514472206`.
-Templates sha256: `5ed409b64c797f78b70c28486a3cfc7b4607c185e27ce8d1669f28b70248fd89`
+Compared again 2026-11-26 (Stage 5 step 6): a reason drawn right after a bold sentence's full stop starts with a capital (the `capital` filter, `words.capital`: a plain first word only, a file name or key left as it is), where it started lowercase ("... have not been read yet. its reader has not run yet"). No region moves; every verdict is unchanged. Templates sha256 before:
+`5ed409b64c797f78b70c28486a3cfc7b4607c185e27ce8d1669f28b70248fd89`.
+Templates sha256: `2609a76ca5a694d014604b3c9b77441e3eee9991cdef6080479cf10cbde9020c`
 
 **Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_alert_history.html` and `_evidence_pack.html`, an alert's state times, its resolution and Build evidence's "as of", and each evidence piece's times, are `_macros.clock`'s: the viewer's own time, drawn by the server in their kept zone, the zone named once on the screen, the UTC instant on hover, in the same element and position. Compared by the templates' diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `b233eb75c781d6440e0882e82c94de012b291d3dcc575cd8b4a2f5ae33654b5b`.
 
