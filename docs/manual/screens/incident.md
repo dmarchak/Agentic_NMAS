@@ -32,11 +32,11 @@ The page reads as a document: the incident's title first, with its impact and it
 (the incident's card, below), then its story: its facts, then sections that open, each one
 line until opened.
 
-- **The facts:** four lines. What happened (drawn only where it says more than the title); the
-  likely cause (the AI's first hypothesis,
+- **The facts:** four lines, what to do next first. Then what happened (drawn only where it
+  says more than the title); the likely cause (the AI's first hypothesis,
   "Inconclusive" with its reason when the AI ended without a fix, or else the kind of what
-  opened the incident, such as a configuration change from outside Mercury); the evidence, four lines
-  each opening to its raw text, with the rest counted; and what to do next. The next step is
+  opened the incident, such as a configuration change from outside Mercury); and the evidence,
+  four lines each opening to its raw text, with the rest counted. The next step is
   said here only: the incident's card below holds its action, not the sentence again. Under
   them, one line says what Mercury does not score yet (confidence, severity and risk) and what
   each needs, rather than print a number it cannot stand behind.

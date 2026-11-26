@@ -207,6 +207,31 @@ def test_the_partial_draws_every_part_and_its_needs(monkeypatch):
     assert "The record of AI calls holds no row for ai-32c642bea0ba4e30" in html
 
 
+def test_what_is_next_leads_the_facts(monkeypatch):
+    """Stage 5 step 4 (C: the answer first): the story's facts open with what is next, then the
+    likely cause and the evidence; Next was their last line."""
+    import re
+
+    from flask import render_template
+
+    from app import app
+    monkeypatch.setattr("modules.ai.calls.rows_since",
+                        lambda since: {"state": "ok", "rows": [], "error": ""})
+    model = _model()
+    summary = S.summary(model, LINES)
+    story = {"lifecycle": S.lifecycle(model, LINES), "summary": summary,
+             "hypotheses": S.hypotheses(LINES), "ai": S.ai_call(LINES, 1.0),
+             "needs": dict(S.NEEDS)}
+    with app.test_request_context("/"):
+        html = render_template("v2/_inc_story.html", p=dict(model, story=story))
+    facts = re.search(r"<dl class=\"inc-sum-lines[^\"]*\" data-summary>(.*?)</dl>", html, re.S)
+    terms = re.findall(r"<dt>([^<]+)</dt>", facts.group(1))
+    assert terms[0] == "Next" and terms.index("Likely cause") > 0, terms
+    assert summary["next"], "the model has a next step"
+    first = facts.group(1).split("</dd>", 1)[0]
+    assert 'class="inc-sum-next"' in first, "the first fact's value is the next step"
+
+
 def test_the_timeline_is_a_section_whose_line_is_the_stages_reached(monkeypatch):
     """Stage 5 step 4 (the operator's GUI pick of 2026-11-25: C with B's step timeline): the
     lifecycle is the Timeline section, closed, its line the stages reached in order and its

@@ -214,7 +214,9 @@ Compared again 2026-11-26 (Stage 5 step 4): with no impact in Mercury's table, t
 `1216de673caee944785341c9207e1c2b9cb8abba76155bfef5cf08e84cf9707a`.
 Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
 `e0eb724956256afa3e349b88d3570993dace8b55dfa1b693800981872da00f28`.
-Templates sha256: `80e01f7314a19e620b7d9bafbbd6eec5a2ef2bd9719cdcec4124492ffac24baf`
+Compared again 2026-11-26 (Stage 5 step 4, C: the answer first): the story's facts open with Next, then the likely cause and the evidence, where Next was their last line. One deviation logged (Stage 5 step 4: Next leads the incident's facts). Templates sha256 before:
+`80e01f7314a19e620b7d9bafbbd6eec5a2ef2bd9719cdcec4124492ffac24baf`.
+Templates sha256: `b0e996fd9cc5a0fee24e151a78f9e97ff3aeae109aa073259737140d1ffad8ad`
 Templates sha256 before the saved plans card said a right's holders unset (2026-11-15, Gate 1b's review, item 7; the row "Rights not set" below): `770515ac382839dde54d1ae789920a7578375acf87fe6fb9d221961273361976`
 Templates sha256 before C3725's session moved from a press to the proposal's record (2026-11-15, the operator; the session row below): `90974cd13f0f0f2aece5e005c3cc5e3c2c21726aa22192e6535bce1ca4953909`
 Templates sha256 before the verify-speed gate's page fixes (2026-11-14, C3725, C3727, C3728, C3729, below): `b8969275f9560c0d423e154d881391989736eb6548a35bb27ab4020fa5542a6c`
