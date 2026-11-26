@@ -66,9 +66,9 @@
 {%- if p.unreadable %}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>Part of this incident's record couldn't be read:</strong> {{ p.unreadable | join('; ') }}. Whether {{ p.id }} is open is not known; what could be read is drawn below. <a href="{{ url_for('incident_v2.incident', incident_id=p.id) }}">Read again</a></div></div>
 {%- endif %}
-{#- The story at a glance (the GUI redesign brief §4.1, 2026-11-18): the lifecycle bar, the
-    four-line summary, the hypotheses and the right rail, above the incident's card. -#}
-{%- if p.story is defined %}{% include "v2/_inc_story.html" %}{% endif %}
+{#- The story (the GUI redesign brief §4.1, 2026-11-18) comes after the incident's card, at
+    every width (the operator's GUI pick of 2026-11-25, C: the title first, then the facts and
+    the sections; board R2's bottom line first, which the phone already drew). -#}
 {#- R5 (board R5, approved 2026-11-15): the page is one card, the incident's (drawn by
     `_fixit_section.html`, which every fix-it post draws again in place): its title, impact and
     status, one action and one link; what follows is handed to it for its ONE Details: these
@@ -333,6 +333,7 @@
 {%- set page_drill = p.drill %}
 {%- set page_state_word = p.state %}
 {% include "v2/_fixit_section.html" %}
+{%- if p.story is defined %}{% include "v2/_inc_story.html" %}{% endif %}
 </div>
 {%- endif %}
 {%- endfilter %}

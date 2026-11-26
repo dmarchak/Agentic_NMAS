@@ -69,8 +69,8 @@ off for now (see [Devices](devices#drained)).
 The tab opens with **one sentence** from what it draws under it: whether the device answers (or
 the operation it is under, or that it is not probed yet) and how it stands against its intent
 (the Intent check's answer now first), then the checks that need a look, those not known yet and
-those not checked ("r2 is reachable and runs its intent. Every other check passes." only when
-each says so). It moves with them.
+those not checked ("edge1 is reachable and runs its intent. Every other check passes." only
+when each says so). It moves with them.
 
 What the tool knows about the device, each fact with where it came from: its last golden, its
 intent state (the state the Devices list shows for it, from its last measurement, or "intent

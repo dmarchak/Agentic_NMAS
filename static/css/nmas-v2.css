@@ -3832,6 +3832,11 @@ dialog.modal::backdrop { background: var(--scrim); }
    Colours by tokens only, so dark mode follows them. A hold is a plain line: ink, never red. */
 .inc-fixit { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .inc-bluf { border-left: 4px solid var(--accent); }
+/* As C's document (Stage 5 step 4, slice 2): the incident's card is the page's head, its title
+   first on the page at C's size, no box; its Details and the story's sections follow it. */
+.inc > .inc-fixit > .inc-bluf.card, .inc > .inc-bluf.card { background: none; border: 0; border-radius: 0;
+  padding: 0 0 6px; }
+#inc-bluf h1.simple-title { font-size: 30px; }
 .bluf { margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .bluf-line { display: grid; grid-template-columns: 9.5em minmax(0, 1fr); gap: 4px 12px; align-items: baseline; }
 .bluf-line dt { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
@@ -3996,9 +4001,7 @@ h1.simple-title { font-size: 22px; }
 .inc-kv dt { color: var(--ink-3); }
 .inc-kv dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 700px) {
-  /* The bottom line and its one button lead on a phone (board R2): the story follows the
-     incident's card (`.inc` is a flex column). */
-  .inc-story { order: 1; }
+  /* The story follows the incident's card in the page's own order now, at every width. */
   .inc-story-cols { grid-template-columns: 1fr; }
   .inc-sum-lines { grid-template-columns: 1fr; gap: 2px; font-size: 15px; }
   .inc-sum-lines dt { margin-top: 6px; }

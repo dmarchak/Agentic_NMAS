@@ -28,10 +28,12 @@ SDN incident are on [Needs attention](needs-attention) until theirs are built.
 
 ## At a glance {#at-a-glance}
 
-The top of the page tells the incident's story before any detail, as a document: its facts
-first, then sections that open, each one line until opened.
+The page reads as a document: the incident's title first, with its impact and its one action
+(the incident's card, below), then its story: its facts, then sections that open, each one
+line until opened.
 
-- **The facts:** four lines. What happened; the likely cause (the AI's first hypothesis,
+- **The facts:** four lines. What happened (drawn only where it says more than the title); the
+  likely cause (the AI's first hypothesis,
   "Inconclusive" with its reason when the AI ended without a fix, or else the kind of what
   opened the incident, such as a configuration change from outside Mercury); the evidence, four lines
   each opening to its raw text, with the rest counted; and what to do next. The next step is

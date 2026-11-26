@@ -11,7 +11,7 @@
 {%- set s = p.story %}
 <div class="inc-story" role="region" aria-label="What happened, at a glance" data-story>
   <dl class="inc-sum-lines inc-facts{{ ' inc-sum-open' if not p.resolved }}" data-summary>
-    <dt>What</dt><dd>{{ s.summary.what }}</dd>
+    {%- if s.summary.what != p.title %}<dt>What</dt><dd>{{ s.summary.what }}</dd>{% endif %}
     <dt>Likely cause</dt><dd{% if s.summary.inconclusive %} class="inc-sum-inconclusive"{% endif %}>{{ s.summary.cause or 'Not named yet.' }}</dd>
     <dt>Evidence</dt><dd>
       {%- for e in s.summary.evidence %}

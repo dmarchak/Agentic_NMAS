@@ -233,3 +233,25 @@ def test_the_timeline_is_a_section_whose_line_is_the_stages_reached(monkeypatch)
     assert f">{done} of {len(life)} done<" in sec.group(1)
     assert '<dl class="inc-sum-lines inc-facts' in html and 'class="card inc-sum' not in html
     assert html.count('data-needs') == 1
+
+
+def test_what_happened_is_said_once_when_it_is_the_title(monkeypatch):
+    """The title leads the page (Stage 5 step 4, slice 2): the facts draw What only where it
+    says something else than the title (each fact once)."""
+    from flask import render_template
+
+    from app import app
+    monkeypatch.setattr("modules.ai.calls.rows_since",
+                        lambda since: {"state": "ok", "rows": [], "error": ""})
+    model = _model()
+    summary = S.summary(model, LINES)
+    story = {"lifecycle": S.lifecycle(model, LINES), "summary": summary,
+             "hypotheses": S.hypotheses(LINES), "ai": S.ai_call(LINES, 1.0),
+             "needs": dict(S.NEEDS)}
+    with app.test_request_context("/"):
+        same = render_template("v2/_inc_story.html",
+                               p=dict(model, story=story, title=summary["what"]))
+        other = render_template("v2/_inc_story.html",
+                                p=dict(model, story=story, title="another title"))
+    assert "<dt>What</dt>" not in same
+    assert f"<dt>What</dt><dd>{summary['what']}</dd>" in other
