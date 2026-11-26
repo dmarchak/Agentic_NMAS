@@ -31,7 +31,9 @@ Shots: `tab-ask-board-1440`, `-1280` beside `tab-ask-page-1440`, `-1280` (idle);
 `tab-ask-t2-preview-page-*`, `tab-ask-t2-result-page-*` and `tab-ask-t2-nothing-page-1440`.
 Compared 2026-10-16.
 Templates compared: templates/v2/_ask.html, templates/v2/_ask_check.html, templates/v2/_ask_reason.html, templates/v2/_privileged.html
-Templates sha256: `6ba9db4cb7cd06790999d7a1b1d720596c531ebfe4edc92b14328ca50bb500a1`
+Compared again 2026-11-26 (Stage 5 step 6): the command box's label says "A read or diagnostic command" with the policy's tier on its hover, and its help line opens "Reads and diagnostics only", the tier on hover, where both led with "Tier 1" (the operator's rule for tiers, item 27). Every verdict unchanged. Templates sha256 before:
+`6ba9db4cb7cd06790999d7a1b1d720596c531ebfe4edc92b14328ca50bb500a1`.
+Templates sha256: `4ce9070932590665b3163fcce441b0418c9351da66265aeec927529d09bc384b`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_ask.html` and `_privileged.html`, each place that draws

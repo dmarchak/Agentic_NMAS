@@ -10,7 +10,9 @@
   <div class="ask-hd"><h2 id="ask-h">Ask {{ c.host }}</h2>{{ info('device-page', 'ask-the-device', label='How Ask the device works') }}</div>
   <form class="ask-form" method="post" action="{{ url_for('reads_v2.ask_run', name=c.host) }}" hx-post="{{ url_for('reads_v2.ask_run', name=c.host) }}" hx-target="#ask" hx-swap="outerHTML">
     <input type="hidden" name="list" value="{{ c.list }}">
-    <label class="ask-label" for="ask-command">A read or diagnostic command (Tier 1)</label>
+    {#- The policy's tier on hover, its words in the label (Stage 5 step 6; the operator's rule
+        for tiers, item 27: who or what it is in words, the tier on hover). -#}
+    <label class="ask-label" for="ask-command" title="Tier 1 of Mercury's command policy: reads and diagnostics, send log included">A read or diagnostic command</label>
     <div class="ask-row">
       <input id="ask-command" name="command" type="text" class="mono ask-input{{ ' ask-bad' if c.check.why }}" value="{{ c.command }}"
              placeholder="show ip route" autocomplete="off" spellcheck="false" aria-describedby="ask-check"
@@ -26,7 +28,7 @@
     {%- endif %}
     <div class="ask-pickrow"><span class="ask-lbl">Common reads</span>{% for cmd in c.common %}<a class="ask-pick mono" href="{{ url_for('device_v2.device', name=c.host, tab='ask', command=cmd) }}" hx-get="{{ url_for('device_v2.ask', name=c.host, command=cmd) }}" hx-target="#ask" hx-swap="outerHTML">{{ cmd }}</a>{% endfor %}</div>
   </div>
-  <p class="faint small">Tier 1, reads and diagnostics: checked against Mercury's command policy as you type, and again when it runs. Nothing here changes {{ c.host }}'s configuration (a <span class="mono">send log</span> writes one line to its log); every read is recorded in its History.</p>
+  <p class="faint small"><span title="Tier 1 of Mercury's command policy">Reads and diagnostics only</span>: checked against Mercury's command policy as you type, and again when it runs. Nothing here changes {{ c.host }}'s configuration (a <span class="mono">send log</span> writes one line to its log); every read is recorded in its History.</p>
   {%- elif c.state == 'running' %}
   <p class="op-wait">Reading {{ c.host }} now: <span class="mono">{{ c.command }}</span>. The answer appears here when it arrives.</p>
   {%- elif c.state == 'refused' %}
