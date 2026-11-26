@@ -16,6 +16,12 @@
 {%- else %}
 <section class="card history" id="history" hx-get="{{ url_for('device_v2.history', name=device.hostname, kind=kinds or None, on=on or None, before=before or None) }}"
          hx-trigger="nmas:goldens from:body, nmas:heal_decisions from:body, nmas:deploy_job from:body, nmas:restarts from:body, nmas:fault_drills from:body, nmas:acknowledgements from:body, nmas:rotation from:body, nmas:device_state from:body, nmas:inventory from:body, nmas:reveals from:body" hx-swap="outerHTML">
+{#- C's sentence (Stage 5 step 6): what happened last, the newest record the rows below hold
+    (never a count: the rows are a page of the newest 50). -#}
+{%- set newest = (h.events or [none])[0] %}
+{%- if newest and not before and not on %}
+<p class="doc-summary hist-said" data-said>{{ device.hostname }}'s newest {{ 'record' if not kind_words else (kind_words | join(' or ') | lower) ~ ' record' }}, {{ stamp(newest.at) }}: {{ newest.what | people | times }}.</p>
+{%- endif %}
 <p class="tab-help">{{ info('device-page', 'history-tab', 'About this tab') }} <a class="small" href="{{ url_for('v2.history_page', device=device.hostname, since='', kind=kinds or None) }}">The fleet's timeline, filtered to {{ device.hostname }}</a></p>
 <div class="seg hist-quick" role="group" aria-label="Kind">
   <a class="seg-btn{% if not kinds %} on{% endif %}" aria-pressed="{{ 'true' if not kinds else 'false' }}" href="{{ url_for('device_v2.device', name=device.hostname, tab='history', on=on or None) }}">All</a>

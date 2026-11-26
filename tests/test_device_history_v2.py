@@ -119,6 +119,25 @@ class TestTheTimeline:
         # The one timeline (C369): the newest of how many, and where the rest are.
         assert re.search(r"Showing the newest 1 of \d+", html), html
 
+    def test_the_tab_opens_with_what_happened_last(self, lab):
+        """Stage 5 step 6 (C: the sentence first): the tab opens with its newest record, when
+        and what, the first row below it, never a count (the rows are a page of the newest
+        50); with nothing recorded, no sentence."""
+        at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 5))
+        _receipt(at=at)
+        _r, html = _get(lab, "/v2/device/r3/history")
+        said = re.search(r'<p class="doc-summary hist-said" data-said>(.*?)</p>', html, re.S)
+        assert said, html[:2000]
+        assert f'datetime="{at}"' in said.group(1)
+        assert _text(said.group(1)).startswith("r3's newest record, ")
+        assert _text(said.group(1)).endswith(": Deployed: deployed.")
+        assert html.index("data-said") < html.index("<strong>Deployed: deployed</strong>")
+        _r, none = _get(lab, "/v2/device/r9/history")
+        assert "data-said" not in none
+        # What it stands on: the receipt written is the device's newest record.
+        from modules.nsot import receipts
+        assert [r["at"] for r in receipts.read("Lab")["rows"] if r.get("device") == "r3"] == [at]
+
     def test_nothing_recorded_says_so(self, lab):
         _r, html = _get(lab, "/v2/device/r9/history")
         assert "Nothing is recorded for r9 yet" in _text(html)

@@ -18,7 +18,7 @@ open on their question (aa98dc77); SDN › Apps without git's message or its rep
 (194d7db1, 9e015b6a); Credentials › Profiles leads with its answer; the alerts tab's green "Nothing is firing" over a reader never read
 (C4269, 104ba715); the Devices list's count sentence (8611fd2f); "no reader has written <path>"
 in plain words on every page that drew it. **Recorded:** the bare crash page of Topology and
-AI's background page (C4270, UNKNOWN: whether an installation can reach it).
+AI's background page (C4270, measured C: only a device-lists file edited by hand reaches it).
 
 | Page | Answer above the fold | Boxed cards | Plain language | Pattern | The one change that would help most |
 |---|---|---|---|---|---|
@@ -77,7 +77,7 @@ AI's background page (C4270, UNKNOWN: whether an installation can reach it).
 ## The changes that would help a person most, in order
 
 1. `/v2/topology` and its views, and AI's background page: a bare crash page with no frame
-   (C4270, UNKNOWN whether an installation reaches it).
+   (C4270: measured, only a device-lists file edited by hand reaches it, so C).
 2. `/v2/incidents`: its answer ("No incident is open") comes last.
 3. `/v2/monitoring/alerts`: green over a reader never read (done, C4269).
 4. `/v2/history`: a repository-state box leads every tab.

@@ -53,7 +53,9 @@ operation's stored reads as buttons before its record, as docs/fidelity/history.
 element moves. Templates sha256 before: `8bd7a58693d38b2b025b97f11b5e0b512723e0257bda40e9ae1ec294e04b76fd`.
 Compared again 2026-11-24 (C2851): the tab's region hears `heal_decisions` too; its trigger
 alone, nothing drawn moves. Templates sha256 before: `5df5280c1aaa5976fd27ec89059432687afdb5eba590a9ef8406eb5a22e00ce4`.
-Templates sha256: `3effc06bbcc5eb45eb3848bed8126e89e552bc5cdcb54700e2e336735063d702`
+Compared again 2026-11-26 (Stage 5 step 6): the tab opens with C's sentence, its newest record ("r3's newest record, 2 min ago: Deployed: deployed."), never a count of a page of 50; the tab is drawn as a section, no box. One deviation logged (Stage 5 step 6: the History tab's sentence). Templates sha256 before:
+`3effc06bbcc5eb45eb3848bed8126e89e552bc5cdcb54700e2e336735063d702`.
+Templates sha256: `f6accafa5627e3150d54b78969b4f90bd86be639e8d466295806a0988534aff1`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_timeline.html`, each place that draws a person now

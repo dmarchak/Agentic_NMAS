@@ -192,7 +192,9 @@ See [Set a secret reference's value](set-secret-value).
 
 ## History {#history-tab}
 
-The History page's timeline filtered to this device, over all time. It is the same reader
+The tab opens with one sentence: the device's newest record, when and what (its newest of the
+kind chosen, when one is). Under it, the History page's timeline filtered to this device, over
+all time. It is the same reader
 drawing the same rows, so the two can never disagree; the link at the top opens the History page
 filtered to the device. The tab has no Device column, every row being this device's; a record
 that is also another device's says so in its line (the other device by name, "with 8 other

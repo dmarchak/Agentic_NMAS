@@ -1529,6 +1529,10 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
   padding: 14px 0 6px; }
 .monitored-by.card > .card-head h2 { font-size: 19px; font-weight: 700; }
 .mb-said { margin: 8px 0 4px; font-size: 17px; color: var(--ink); }
+/* A device's History tab as a section of C's document (Stage 5 step 6): its sentence first,
+   no box. */
+#tab-body > #history.card { background: none; border: 0; border-top: 1px solid var(--line);
+  border-radius: 0; padding: 10px 0 0; }
 /* Source of truth › NetBox as C's document (Stage 5 step 6): its sentence, then Connection and
    Networks as sections, no box. */
 #netbox-state.card, #netbox-networks.card { background: none; border: 0; border-top: 1px solid var(--line);
