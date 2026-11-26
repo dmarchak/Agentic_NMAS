@@ -589,6 +589,20 @@ class TestTheStates:
         assert "Mercury is still reading edge-b" in body
         assert "resolved: read-only" not in body
 
+    def test_an_impact_not_known_says_whose_under_the_title(self, client):
+        """Stage 5 step 4 (C's sentence under the title): with no impact in Mercury's table,
+        the line under the title said "Not known: Mercury's table holds no impact ...", a
+        sentence with no subject; it says the incident's impact is not known, and why."""
+        iid = cant_fix()
+        body = page(client, iid)
+        line = re.search(r'<p class="simple-impact" data-bluf="impact">(.*?)</p>', body, re.S)
+        assert line, "the impact line is drawn"
+        assert ("Its impact is not known: Mercury's table holds none for this kind of "
+                "incident.") in unescape(line.group(1))
+        assert "Not known: Mercury" not in body
+        assert not IP.page(NET, iid)["fixit"]["bluf"].get("impact"), \
+            "the incident's model holds no impact"
+
     def test_a_cant_fix_standing_needs_a_person(self, client):
         iid = cant_fix()
         body = page(client, iid)
