@@ -1529,6 +1529,14 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
   padding: 14px 0 6px; }
 .monitored-by.card > .card-head h2 { font-size: 19px; font-weight: 700; }
 .mb-said { margin: 8px 0 4px; font-size: 17px; color: var(--ink); }
+/* Monitoring › Profile's table as a section of C's document (Stage 5 step 6): no box. */
+#profile.card.prof { background: none; border: 0; border-top: 1px solid var(--line);
+  border-radius: 0; padding: 14px 0 10px; }
+#profile.card.prof > .prof-hd h2 { font-size: 19px; font-weight: 700; }
+/* Show commands' parts as sections of C's document (Stage 5 step 6): no box. */
+#sc-pick.card, #sc-runs.card { background: none; border: 0; border-top: 1px solid var(--line);
+  border-radius: 0; padding: 14px 0 10px; }
+#sc-pick.card > .sc-hd h2, #sc-runs.card > h2.sc-h2 { font-size: 19px; font-weight: 700; }
 /* A device's History tab as a section of C's document (Stage 5 step 6): its sentence first,
    no box. */
 #tab-body > #history.card { background: none; border: 0; border-top: 1px solid var(--line);
