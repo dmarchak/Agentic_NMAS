@@ -38,6 +38,7 @@
 {%- endif %}
 <p class="sub">{% if v.is_default %}Default is the base layer: its values are set here, and every network that inherits takes them. Each section names who that is.{% else %}{{ v.network }}'s own settings: each section says where its values come from, and chooses for itself.{% endif %}
   Settings that are the installation's (sign-in, the central NetBox connection, this host) are under Installation.{% if v.tab == 'heal' %} Self-healing is each network's own: no network inherits it.{% endif %}</p>
+{% with at=v.network %}{% include "v2/_settings_find_box.html" %}{% endwith %}
 {% include "v2/_settings_scope.html" %}
 {%- if not v.is_default and not v.error %}
 <div id="settings-mode">{% with s=v %}{% include "v2/_settings_mode.html" %}{% endwith %}</div>

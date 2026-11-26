@@ -1236,6 +1236,21 @@ def network(list_name):
                  aic=aic, crepo=crepo)
 
 
+@bp.route("/find", methods=["GET"])
+def find():
+    """Find a setting (Stage 5 step 2; C's one searchable Settings): every setting whose words
+    match *q*, each with where it is set and a link there, a network's page that of *at* (the
+    network the page shown is of; the active one from Installation). Reads declarations only."""
+    from modules import settings_index
+    from modules.nsot import listref
+
+    at = request.args.get("at") or listref.active().name
+    if not listref.exists(at):
+        at = listref.active().name
+    return _fragment("v2/_settings_find.html",
+                     f=settings_index.find(request.args.get("q", "")[:200], at))
+
+
 @bp.route("/network/<list_name>/group/<group>", methods=["GET"])
 def group_card(list_name, group):
     """One card, drawn again (Cancel, Close, and a page's refresh after a switch)."""

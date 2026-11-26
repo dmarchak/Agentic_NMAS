@@ -2069,6 +2069,21 @@ input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft);
 .doc .set-card-done { border-top: 2px solid var(--ok); }
 .doc .set-card > .card-head h2 { font-size: 19px; font-weight: 700; line-height: 1.25; }
 .doc .sdn-set-wrap { margin-top: 0; }
+/* Find a setting (C's search, Stage 5 step 2): one quiet box, what it matches under it as a list
+   of links, each with what it does and where it is set. */
+.set-find { margin: 8px 0 0; }
+.set-find-box { display: flex; align-items: center; gap: 8px; max-width: 560px; height: 36px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink-3); }
+.set-find-box:focus-within { border-color: var(--accent); }
+.set-find-box input { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; background: none; font: inherit;
+  font-size: 14.5px; color: var(--ink); }
+.set-found-wrap:empty { display: none; }
+.set-found-wrap { margin: 6px 0 4px; max-width: 860px; }
+.set-found-count { margin: 0 0 6px; font-size: 13.5px; color: var(--ink-2); }
+.set-found { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line-2); }
+.set-found > li { padding: 7px 0; border-bottom: 1px solid var(--line-2); }
+.set-found a { font-weight: 600; }
+.set-found-where { font-size: 13px; color: var(--ink-3); }
 /* F4, Platforms and roles: a map row of controls stacks into a two-column grid on a narrow
    screen, so no select or button runs past its card. */
 @media (max-width: 720px) {

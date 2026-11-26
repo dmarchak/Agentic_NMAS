@@ -4,6 +4,16 @@ The tool's configuration, in three scopes of one page: **Installation** (what ev
 
 Every setting a Settings page draws has a one-line description under it, saying what the setting does in plain words: the same words wherever the setting appears (a card's field, a row of a table, a switch's preview).
 
+## Find a setting {#find}
+
+Every Settings page has **Find a setting** above its scope bar. Type a few words of a setting's
+name, what it does or its group, and the settings matching every word appear under the box. A
+count comes first ("heal" matches 30 settings: 27 in Settings › Lab › Self-healing; …). Then
+each setting: its name links to the section it is set in, on whichever page and tab that is,
+with what it does and where. A long answer shows its first 40 and counts the rest; add a word
+to narrow it. A setting no screen sets is found too, saying so and why. Nothing is read from a
+device or changed: the search reads only what each setting is and where it lives.
+
 ## A network's page {#network}
 
 The page reads as one document: its title and the network's mode, then **one sentence** that

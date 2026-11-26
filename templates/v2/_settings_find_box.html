@@ -1,0 +1,12 @@
+{%- from "v2/_macros.html" import icon -%}
+{#- Find a setting (Stage 5 step 2; C's "one searchable document"): one box above every
+    Settings page's tabs, whatever the page and the tab; what it matches is drawn under it
+    (`_settings_find.html`), each match a link to the section it is set in. *at*: the network a
+    network page's link opens (the page's own; the active one from Installation). -#}
+<form class="set-find" role="search" action="{{ url_for('settings_v2.find') }}" method="get"
+      hx-get="{{ url_for('settings_v2.find') }}" hx-target="#set-found" hx-swap="innerHTML"
+      hx-trigger="keyup changed delay:300ms from:#set-find-q, search from:#set-find-q, submit">
+  <input type="hidden" name="at" value="{{ at }}">
+  <label class="set-find-box">{{ icon('search', 15) }}<span class="sr">Find a setting</span><input id="set-find-q" type="search" name="q" placeholder="Find a setting: its name or what it does" autocomplete="off" maxlength="200"></label>
+</form>
+<div class="set-found-wrap" id="set-found" aria-live="polite"></div>
