@@ -2074,7 +2074,7 @@ input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft);
 .set-find { margin: 8px 0 0; }
 .set-find-box { display: flex; align-items: center; gap: 8px; max-width: 560px; height: 36px; padding: 0 10px;
   border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink-3); }
-.set-find-box:focus-within { border-color: var(--accent); }
+.set-find-box:focus-within { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 1px; }
 .set-find-box input { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; background: none; font: inherit;
   font-size: 14.5px; color: var(--ink); }
 .set-found-wrap:empty { display: none; }
