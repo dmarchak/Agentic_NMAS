@@ -785,7 +785,10 @@ def test_the_trace_pressed_in_a_browser(web):
                 b.screenshot(os.path.join(SHOTS, f"sdn-trace-{width}.png"))
             b.js("Array.prototype.find.call(document.querySelectorAll('.topo-trace-acts a'), "
                  "function (a) { return a.textContent === 'Trace the reverse'; }).click();")
-            b.wait_for("return document.querySelector('#topo-of-h').textContent"
+            # C4284: the region is swapped in place, so the heading is absent for a moment;
+            # guarded as the wait above it is, never read through a null.
+            b.wait_for("return document.querySelector('#topo-of-h') && "
+                       "document.querySelector('#topo-of-h').textContent"
                        ".indexOf('2001:db8:8::3 to 2001:db8:8::1') === 0", timeout=20)
             assert "src=2001%3Adb8%3A8%3A%3A3" in b.js("return location.search")
 
