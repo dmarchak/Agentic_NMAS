@@ -11,7 +11,9 @@ controls) and the card's parts sit one above the other, as every op card does.
 Templates compared: templates/v2/_decline.html, templates/v2/_coverage.html, templates/v2/ip_sla.html
 Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
 `2dec582d06e53b2efd7399ffcbc51d97f79c219aabf80711ca4e77600de6e32d`.
-Templates sha256: `003d99869c90af78e15a8054895359511150f1ffe0a45afc87570de8dbb352e8`
+Compared again 2026-11-26 (Stage 5 step 6): the grid is drawn under its counts with no box, and each device's platform in words ("IOS-XE") with its key on hover. One deviation logged (Stage 5 step 6: Coverage unboxed, platforms in words). Templates sha256 before:
+`003d99869c90af78e15a8054895359511150f1ffe0a45afc87570de8dbb352e8`.
+Templates sha256: `e8055bafbc044463033b4d57b4fd075085a467b20eb925647c04b4d8289337ef`
 
 **Compared again 2026-11-12 (local times, docs/UI_RULES.md "One time zone per screen"):** in `_coverage.html`, a declined section's "Declined by …, <time>" is `_macros.clock`'s, the viewer's own date and time drawn by the server in their kept zone, the zone named once on the screen, the UTC instant on hover, in the same element and position; nothing else moves. Compared by the template's diff, not a new shot; logged once (docs/STANDING_APPROVAL_LOG.md, "Local times"). Templates sha256 before: `6d288ff1ce3e89ba264ef82d8c82f5a1679c1b653ea152e1f3eb911b6c3c9cc4`.
 

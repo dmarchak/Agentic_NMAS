@@ -83,7 +83,7 @@
                   is on the row, for hover and a screen reader. #}<span class="sr-only">Nothing to deploy: {{ d.why_not }}{% if d.not_reporting %}. A template not reporting is diagnosed, not redeployed{% endif %}</span>{% endif -%}
             </td>
             <th scope="row" class="gdev">
-              <a href="{{ url_for('device_v2.device', name=d.host) }}">{{ d.host }}</a> <span class="muted">{{ d.platform or 'platform unknown' }}</span>
+              <a href="{{ url_for('device_v2.device', name=d.host) }}">{{ d.host }}</a> <span class="muted"{% if d.platform %} title="{{ d.platform }}"{% endif %}>{{ (d.platform | platform_words) or 'platform unknown' }}</span>
               {%- if d.golden == 'none' %}<span class="cov-why">No committed golden: nothing shows it configured.</span>{% endif %}
               {%- if d.golden == 'unreadable' %}<span class="cov-why">Its golden could not be read ({{ d.error }}): not the same as not configured.</span>{% endif %}
             </th>

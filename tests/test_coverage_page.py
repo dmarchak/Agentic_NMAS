@@ -149,6 +149,21 @@ def _page(lab, monkeypatch, path="/v2/monitoring/coverage"):
 
 
 class TestThePage:
+    def test_each_device_names_its_platform_in_words_its_key_on_hover(self, lab, monkeypatch):
+        """Stage 5 step 6: beside each device the grid drew the dialect's key ("cisco_iosxe");
+        it says the platform in words, as the device page and Devices do, the key on hover."""
+        from modules.nsot.platform import FACT_WORDS
+        _r, html = _page(lab, monkeypatch)
+        for dev in (R2, R6):
+            key = dev.get("platform")
+            assert key, dev
+            assert (f'<span class="muted" title="{key}">{FACT_WORDS.get(key, key)}</span>'
+                    in html), (key, html[html.index('id="coverage"'):][:1500])
+        # The grid's own model holds each device's key, which only the drawing puts in words.
+        fleet = _fleet(lab)
+        assert {_row(fleet, d["hostname"])["platform"] for d in (R2, R6)} == \
+            {R2["platform"], R6["platform"]}
+
     def test_before_a_profile_it_says_propose_and_offers_no_apply(self, lab, monkeypatch):
         r, html = _page(lab, monkeypatch)
         assert r.status_code == 200 and "script-src" in r.headers["Content-Security-Policy"]

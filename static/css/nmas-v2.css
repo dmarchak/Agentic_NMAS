@@ -1539,6 +1539,8 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
   border-radius: 0; }
 #hist-remote.card { border-bottom: 1px solid var(--line); padding: 4px 0 12px; }
 #hist-timeline.card, #hist-baselines.card { border-top: 1px solid var(--line); padding: 10px 0 0; }
+/* Monitoring › Coverage as C draws a fleet (Stage 5 step 6): its counts, then the table, no box. */
+#coverage.card.coverage { background: none; border: 0; border-radius: 0; padding: 0; }
 /* Fixes' list as C draws a table (Stage 5 step 6): under its counts, no box. */
 #fixes-live > .table-wrap.card { background: none; border: 0; border-radius: 0; padding: 0; }
 /* The Devices list as C draws a fleet (Stage 5 step 6): its sentence, then the table, no box. */
