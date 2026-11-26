@@ -227,8 +227,21 @@ class TestTheBound:
             self, blocked, monkeypatch):
         from html import unescape
 
+        import threading
+
         from modules import troubleshoot_job as TJ
-        monkeypatch.setattr(TJ, "bound_s", lambda: 0.3)
+        # C3987: the bound is counted from the step the test blocks, never from the job's
+        # start: a 0.3 s bound from the start raced the steps before it ("building the
+        # request") on a loaded runner, so the record named another step. The real watchdog
+        # runs; only its clock waits for the blocked step first.
+        real_watch = TJ._watch
+
+        def watch_from_the_blocked_step(*args, **kwargs):
+            def wait(bound):
+                blocked.entered.wait(10)
+                threading.Event().wait(bound)
+            return real_watch(*args, wait=wait, bound=0.3, **kwargs)
+        monkeypatch.setattr(TJ, "_watch", watch_from_the_blocked_step)
         iid = plant()
         attempt(blocked.client, subs=("101",))
         blocked.answer = answer(fix())
