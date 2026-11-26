@@ -37,7 +37,9 @@ Hashed again 2026-11-22 for the merge of the Lab 9 kit's hotfix branch into main
 templates with C4139's notice above (the only line of `_topology_map.html` the merge changed);
 no other region moves, and the verdicts stand (the templates before it, main's, hashed
 `bb9d7146567e396dd1495af785333b6461db9a0cf16ab7dbd1ddfd1352be9a05`).
-Templates sha256: `dd1fd1fe71ad40f15b6ee890edfbcbc0ce0c589c008bcf41a9d1bc2f43fb6c6a`
+Compared again 2026-11-26 (Stage 5 step 6): a background read not read yet, or whose stored value cannot be read, says so in one set of plain words on every page (`not_read_yet`, `read_unreadable` in _macros.html: "The DHCP server has not been read yet. Mercury reads it every 5 minutes, and this fills itself when it has."), where each page named its reader and a product. No region moves; every verdict is unchanged. Templates sha256 before:
+`dd1fd1fe71ad40f15b6ee890edfbcbc0ce0c589c008bcf41a9d1bc2f43fb6c6a`.
+Templates sha256: `4da1e4723eb73a9c785fd26ffbaf1def7f6534dc9de97ff8f8d9c2d15dc5efe3`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_topology_map.html`, each place that draws a person

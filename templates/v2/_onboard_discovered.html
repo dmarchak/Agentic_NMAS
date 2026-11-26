@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, info, how, clock -%}
+{%- from "v2/_macros.html" import not_read_yet, read_unreadable, icon, badge, stamp, info, how, clock -%}
 {#- Onboard devices › Discovered (board L): the summary and the range, the vendor filter and the
     search, then the three groups (asking now open; picked, gone quiet collapsed). Everything from
     the discovery reader's stored value; never a Kea call per view. -#}
@@ -19,9 +19,9 @@
 </nav>
 
 {%- if g.state == 'never' %}
-<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>The discovery reader has not read Kea yet{% if g.failed %}: its last attempt failed, {{ g.failed }}{% endif %}. It reads every 30 s; this page redraws when it has.</p></div>
+{{ not_read_yet("The DHCP server's requests from unknown devices", '30 seconds', g.failed, plural=True) }}
 {%- elif g.state == 'unreadable' %}
-<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The discovery reader's store cannot be read: {{ g.why }}. Nothing is drawn rather than a list that may be wrong.</p></div>
+{{ read_unreadable("the DHCP server's requests", g.why, 'Nothing is drawn rather than a list that may be wrong.') }}
 {%- elif g.state in ('not_configured', 'not_applicable') %}
 <div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ g.why }}: there is no DHCP server to read here (Settings › Integrations › Kea).</p></div>
 {%- else %}

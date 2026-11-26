@@ -1347,7 +1347,7 @@ def test_a_value_stored_before_the_layout_still_draws(web):
 
 
 @pytest.mark.parametrize("value,ok,words", [
-    (None, True, "The topology reader has not read yet"),
+    (None, True, "The topology (from the metrics store) has not been read yet"),
     ({"configured": False, "networks": {}, "errors": []}, True,
      "Prometheus is not configured"),
     ({"configured": True, "networks": {}, "errors": []}, True, "Lab was not in the reader"),
@@ -1361,7 +1361,8 @@ def test_an_unreadable_store_draws_nothing(web):
     with open(reader_job.store_path("topology-graph"), "w", encoding="utf-8") as fh:
         fh.write("{not json")
     html = _get(web)
-    assert "store cannot be read" in html and "<svg class=\"topo-map" not in html
+    assert "What Mercury last read of the topology cannot be read" in html \
+        and "<svg class=\"topo-map" not in html
 
 
 #: Every drawn link against every device it does not join, measured by the browser on what it

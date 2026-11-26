@@ -7,8 +7,9 @@ discovery reader last read from Kea; it never asks Kea while you look. The reade
 30 seconds, and the page redraws by itself when a device asks anew. Its two tabs are **Plan
 devices** (the Devices page) and **Discovered (N)**.
 
-When there is nothing to draw it says why instead: the discovery reader has not read Kea yet
-(and why its last attempt failed, if it did); its store cannot be read, so nothing is drawn
+When there is nothing to draw it says why instead: the DHCP server's requests from unknown
+devices have not been read yet (and why the last attempt failed, if it did); what Mercury last
+read of them cannot be read, so nothing is drawn
 rather than a list that may be wrong; or there is no DHCP server to read here (Settings ›
 Integrations › Kea).
 

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, how, info -%}
+{%- from "v2/_macros.html" import not_read_yet, read_unreadable, icon, badge, stamp, how, info -%}
 {#- Topology's region (P.11 step 2), drawn to boards TopoDesktop and TopoPhone (mockups canvas,
     signed off 2026-10-04; compared region by region in docs/fidelity/topology.md): the header
     (counts, read time, Find, How does this work?), the toolbar (protocols over the links, Ports,
@@ -53,9 +53,9 @@
 </div>
 
 {%- if t.state == 'never' %}
-<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>The topology reader has not read yet{% if t.failed %}: its last attempt failed, {{ t.failed }}{% endif %}. It reads Prometheus every minute; this region redraws when it has.</p></div>
+{{ not_read_yet("The topology (from the metrics store)", 'minute', t.failed) }}
 {%- elif t.state == 'unreadable' %}
-<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The topology reader's store cannot be read: {{ t.failed }}. Nothing is drawn rather than a map that may be wrong.</p></div>
+{{ read_unreadable('the topology', t.failed, 'Nothing is drawn rather than a map that may be wrong.') }}
 {%- elif t.state == 'not_configured' %}
 <div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>Prometheus is not configured, so there is nothing to draw: Topology is built from what Prometheus scrapes (Settings › Prometheus).</p></div>
 {%- elif t.state == 'not_read' %}

@@ -58,6 +58,28 @@ def test_every_reason_after_a_full_stop_goes_through_capital():
                         f"`| capital`: {bare}")
 
 
+#: A page's own banner for a background read not read yet, or whose stored value cannot be
+#: read, in the words each page wrote for itself before `not_read_yet` and `read_unreadable`.
+OWN_BANNER = re.compile(r"<p>The [\w' -]+ reader (?:has not read|'s store cannot be read)")
+
+
+def test_no_page_says_a_reader_has_not_read_in_words_of_its_own():
+    """Stage 5 step 6: five pages said "The <X> reader has not read <product> yet" and "The
+    <X> reader's store cannot be read", each its own way, naming the reader and a product
+    (Kea, Prometheus); each now draws the macros' plain words. A planted banner is found."""
+    own, macros = [], 0
+    for name in sorted(os.listdir(TEMPLATES)):
+        if not name.endswith(".html"):
+            continue
+        with open(os.path.join(TEMPLATES, name), encoding="utf-8") as fh:
+            text = fh.read()
+        own += [name for _m in OWN_BANNER.finditer(text)]
+        macros += len(re.findall(r"\{\{ (?:not_read_yet|read_unreadable)\(", text))
+    assert macros >= 10, f"the macros are drawn at {macros} sites, under the 10 measured"
+    assert own == [], f"a banner in words of its own; use not_read_yet/read_unreadable: {own}"
+    assert OWN_BANNER.search('<p>The DHCP reader has not read Kea yet')
+
+
 def test_a_planted_bare_reason_is_found_and_a_filtered_one_is_not():
     planted = ('<p><strong>Not read.</strong> {{ g.why }}</p>'
                '<p><strong>Not read.</strong> {{ (g.error or "none") | capital }}</p>'

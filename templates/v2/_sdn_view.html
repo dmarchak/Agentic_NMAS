@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, info, how, clock -%}
+{%- from "v2/_macros.html" import not_read_yet, read_unreadable, icon, badge, stamp, info, how, clock -%}
 {#- The SDN page's region (PHASE8_PLAN 17.1 S11): Controllers (board SdnControllers) or Flows
     (board SdnFlows), at phone width as SdnPhone draws. Everything from the SDN reader's stored
     value beside the network's connection list (modules/sdn_page.py); never a controller call
@@ -43,9 +43,9 @@
 {%- else %}
 {%- set rd = g.read %}
 {%- if rd.state == 'unreadable' %}
-<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The SDN reader's store cannot be read: {{ rd.why }}. No controller's state is drawn rather than one that may be wrong.</p></div>
+{{ read_unreadable("this network's SDN controllers", rd.why, "No controller's state is drawn rather than one that may be wrong.") }}
 {%- elif rd.state == 'never' %}
-<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>The SDN reader has not read this network's controllers yet{% if rd.failed %}: its last attempt failed, {{ rd.failed }}{% endif %}. It reads every 30 seconds; this page redraws when it has.</p></div>
+{{ not_read_yet("This network's SDN controllers", '30 seconds', rd.failed, plural=True) }}
 {%- elif rd.failed %}
 <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The SDN reader's last attempt failed ({{ rd.failed }}); this is its last good read, {{ stamp(rd.value_at) }}.</p></div>
 {%- endif %}

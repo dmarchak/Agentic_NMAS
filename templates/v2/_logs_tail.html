@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, info, clock -%}
+{%- from "v2/_macros.html" import not_read_yet, read_unreadable, icon, badge, stamp, info, clock -%}
 {%- from "v2/_log_run.html" import log_run -%}
 {#- The sidebar's Logs, the live tail (C675; board D, LogsTail): the logs-tail reader's stored
     15-minute window, filtered here (modules/logs_tail_page.py). Redrawn when the reader announces
@@ -24,9 +24,9 @@
 </div>
 
 {%- if g.state == 'never' %}
-<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>The logs-tail reader has not read the log store yet{% if g.failed %}: its last attempt failed, {{ g.failed }}{% endif %}. It reads every 5 seconds; this page redraws when it has.</p></div>
+{{ not_read_yet('The log store', '5 seconds', g.failed) }}
 {%- elif g.state == 'unreadable' %}
-<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The logs-tail reader's store cannot be read: {{ g.why }}. Nothing is drawn rather than lines that may be wrong.</p></div>
+{{ read_unreadable('the log store', g.why, 'Nothing is drawn rather than lines that may be wrong.') }}
 {%- elif g.state in ('not_configured', 'not_applicable') %}
 <div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ g.why }}: there is no log store to read here (the network's Loki card in Settings).</p></div>
 {%- else %}

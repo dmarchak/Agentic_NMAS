@@ -227,7 +227,7 @@ class TestControllers:
 
     def test_saved_and_not_read_yet(self, lab):
         _r, html = get(lab, "/v2/sdn")
-        assert "Not read yet" in html and "has not read this network" in html
+        assert "Not read yet" in html and "SDN controllers have not been read yet" in html
 
     def test_the_empty_state_is_the_board_s(self, lab):
         _r, html = get(lab, "/v2/sdn?list=Branch")

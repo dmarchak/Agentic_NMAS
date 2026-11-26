@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, info, how, clock -%}
+{%- from "v2/_macros.html" import not_read_yet, read_unreadable, icon, badge, stamp, info, how, clock -%}
 {#- The DHCP page's region (C529 step 1), drawn to board A: the network, the counts and the read,
     the tabs Subnets, Leases, Reservations and Exclusions. Everything from the DHCP reader's
     stored value; never a Kea call per view. -#}
@@ -16,9 +16,9 @@
 {% include "v2/_dhcp_owner.html" %}
 
 {%- if g.state == 'never' %}
-<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>The DHCP reader has not read Kea yet{% if g.failed %}: its last attempt failed, {{ g.failed }}{% endif %}. It reads every 5 minutes; this page redraws when it has.</p></div>
+{{ not_read_yet('The DHCP server', '5 minutes', g.failed) }}
 {%- elif g.state == 'unreadable' %}
-<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The DHCP reader's store cannot be read: {{ g.why }}. Nothing is drawn rather than a picture of Kea that may be wrong.</p></div>
+{{ read_unreadable('the DHCP server', g.why, 'Nothing is drawn rather than a picture of it that may be wrong.') }}
 {%- elif g.state in ('not_configured', 'not_applicable') %}
 <div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ g.why }}: there is no DHCP server to read here (Settings › Integrations › Kea).</p></div>
 {%- else %}

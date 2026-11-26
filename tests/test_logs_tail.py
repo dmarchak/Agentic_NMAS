@@ -207,7 +207,7 @@ class TestThePage:
                                                          "'from': 'query'"))
 
     @pytest.mark.parametrize("value,ok,words", [
-        (None, True, "The logs-tail reader has not read the log store yet"),
+        (None, True, "The log store has not been read yet"),
         ({"configured": False}, True, "no log store is configured for this network"),
     ])
     def test_each_state_has_its_words(self, web, value, ok, words):

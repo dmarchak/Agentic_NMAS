@@ -89,7 +89,8 @@ class TestTheStates:
     def test_never_read_says_so(self, web):
         store(None, ok=False, error="Kea (dhcp4) could not be asked: refused")
         text = _page(web)
-        assert "The discovery reader has not read Kea yet: its last attempt failed, Kea" in text
+        assert ("The DHCP server's requests from unknown devices have not been read yet: the "
+                "last attempt failed, Kea") in text
         assert "Asking now" not in text
 
     def test_a_range_kea_does_not_run_says_so_first(self, web):

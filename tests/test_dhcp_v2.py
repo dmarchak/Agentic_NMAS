@@ -477,7 +477,7 @@ def test_a_family_not_answered_is_drawn_as_last_read_with_its_error(web):
 
 
 @pytest.mark.parametrize("value,words", [
-    (None, "The DHCP reader has not read Kea yet"),
+    (None, "The DHCP server has not been read yet"),
     ({"configured": False}, "Kea is not configured for this network"),
 ])
 def test_each_state_has_its_words(web, value, words):
@@ -489,7 +489,8 @@ def test_an_unreadable_store_draws_nothing(web):
     with open(web["path"], "w", encoding="utf-8") as fh:
         fh.write("{not json")
     html = _get(web)
-    assert "store cannot be read" in html and "<table" not in html
+    assert "What Mercury last read of the DHCP server cannot be read" in html \
+        and "<table" not in html
 
 
 # ---- Board B (C529 step 2): a reservation's add, change and remove, in place of the tab.

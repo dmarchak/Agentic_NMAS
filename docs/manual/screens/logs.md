@@ -39,8 +39,9 @@ configuration text; the heartbeat lines are left out.
 - **Older than 15 minutes** opens History › Query's Syslog by device with the same filters.
   **Open these lines on Logs** there comes back here filtered to that device, and says so.
 
-When the log store cannot be read, the page says so: the reader has not read it yet, the
-reader's own store cannot be read (nothing is drawn rather than lines that may be wrong), no log
+When the log store cannot be read, the page says so: it has not been read yet (Mercury reads it
+every 5 seconds), what Mercury last read of it cannot be read (nothing is drawn rather than
+lines that may be wrong), no log
 store is configured or applies to the network (its Loki card in Settings), or the last read
 failed, which shows the error and its time over the last window that was read.
 
