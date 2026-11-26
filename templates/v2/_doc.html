@@ -1,0 +1,40 @@
+{#- The document page (the operator's GUI pick, 2026-11-25: C, "Document"; design/proposals/
+    C-document/): every page reads top to bottom, the answer first and the evidence one level
+    down. Its parts, each one macro, the same on every page that adopts them (the key facts,
+    the as-of line and the sections that open join with the first page that draws them):
+
+    - `doc_page(outline, label, wide)`: the document's column and, on a window wide enough, its
+      outline beside it (each section's title and state, a link to it); the page's body is the
+      caller. *wide*: a body of tables side by side rather than text (Self-healing's policy
+      and guards) takes the page's width, not the reading measure.
+    - `doc_head(title, kind)`: the title, what it is a page of, and the page's actions (the
+      caller).
+    - `doc_summary()`: the one sentence that answers the page's question (the caller), built
+      from the same data as the sections under it.
+
+    No cards: rules, whitespace and type carry the structure (nmas-v2.css, "the document"). -#}
+
+{%- macro doc_page(outline=none, label='On this page', wide=False) %}
+<div class="doc-page{% if outline %} doc-page-outlined{% endif %}{% if wide %} doc-page-wide{% endif %}">
+  <div class="doc">{{ caller() }}</div>
+  {%- if outline %}
+  <nav class="doc-outline" aria-label="{{ label }}">
+    <h2 class="doc-outline-head">{{ label }}</h2>
+    <ol>
+      {%- for o in outline %}
+      <li><a href="#{{ o.key }}">{{ o.title }}{% if o.state %}<span class="doc-outline-st">{{ o.state }}</span>{% endif %}</a></li>
+      {%- endfor %}
+    </ol>
+  </nav>
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+{%- macro doc_head(title, kind='') %}
+<div class="doc-head">
+  <h1>{{ title }}{% if kind %}<span class="doc-kind">{{ kind }}</span>{% endif %}</h1>
+  {%- if caller %}<div class="doc-acts">{{ caller() }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{%- macro doc_summary() %}<p class="doc-summary">{{ caller() }}</p>{%- endmacro %}

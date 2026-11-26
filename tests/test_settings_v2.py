@@ -132,6 +132,132 @@ class TestThePage:
         assert r.status_code == 404
 
 
+def _sentence(html):
+    m = re.search(r'<p class="doc-summary"><strong>(.*?)</strong>(.*?)</p>', html, re.S)
+    return (m.group(1), m.group(2).strip()) if m else None
+
+
+def _badges(html):
+    """Each group's card and the words of its state chip, as the page draws them."""
+    return dict(re.findall(r'id="h-(\w+)">[^<]*</h2><span class="badge badge-\w+">([^<]*)<',
+                           html))
+
+
+class TestTheDocument:
+    """A network's Settings as one document (the operator's GUI pick, 2026-11-25: C; Stage 5
+    step 2): its sentence from the cards drawn under it, a group that runs on built-in values
+    never counted as missing, and the outline of the tab's sections, each linking one."""
+
+    def test_the_sentence_leads_with_what_nothing_sets_and_follows_a_switch(self, networks):
+        """Before and after a person's switch of Branch's Grafana back to inheriting: the
+        sentence counts what the cards say, the groups nothing sets first."""
+        _r, html = _get(networks, "/v2/settings/network/Branch?tab=integrations")
+        chips = _badges(html)
+        assert len(chips) == 7, chips
+        assert len([g for g, w in chips.items() if w == L.UNSET_EVERYWHERE]) == 5, chips
+        assert _sentence(html) == (
+            "5 groups are set nowhere, here or in Default: Grafana dashboards, Prometheus, Kea "
+            "and 2 more.", "Branch sets 1 group itself (Grafana) and takes 1 group from Default.")
+        _r, prev = _get(networks, "/v2/settings/network/Branch/group/grafana/switch?to=inherit")
+        out = networks["client"].post("/v2/settings/network/Branch/group/grafana/switch",
+                                      data=_form(prev))
+        assert out.status_code == 200
+        assert L.resolve("Branch", "grafana_url") == ("http://192.0.2.10:3000", L.INHERITED)
+        _r, html = _get(networks, "/v2/settings/network/Branch?tab=integrations")
+        assert _badges(html)["grafana"] == L.INHERITED
+        assert _sentence(html) == (
+            "5 groups are set nowhere, here or in Default: Grafana dashboards, Prometheus, Kea "
+            "and 2 more.", "Branch takes 2 groups from Default.")
+
+    def test_a_group_with_built_in_values_is_never_drawn_as_missing(self, networks):
+        """The Network tab's groups (deploy workers, retentions) each have a built-in value for
+        every key: set nowhere, they run on those, so the sentence says so and names nothing as
+        set nowhere, though each card's chip says where (or that nowhere) it is set."""
+        from modules import settings_page
+        from modules.settings_schema import DEFAULTS
+        from modules.settings_scope import group_keys
+        for net in ("Branch", "Remote", "Default"):
+            _r, html = _get(networks, f"/v2/settings/network/{net}?tab=network")
+            chips = _badges(html)
+            assert len(chips) >= 10, chips                                # 14 on 2026-11-25
+            assert all(DEFAULTS.get(k) not in (None, "") for g in chips for k in group_keys(g))
+            assert _sentence(html) == (f"{len(chips)} groups run on their built-in values.", ""), \
+                net
+            # C4264: each chip says so in the neutral kind, never warn, the outline the same.
+            assert set(chips.values()) == {settings_page.BUILTIN_WORDS}, (net, chips)
+            assert 'badge-muted">built-in values<' in html and 'badge-warn' not in \
+                html[html.index('id="tab-body"'):html.index('id="network-source"')], net
+        # And a group with a key that has none is never counted as running on built-ins: its
+        # chip keeps the warn kind of a group with nothing to run on.
+        assert not settings_page.runs_on_builtin("grafana")
+        assert settings_page.runs_on_builtin("deploy_max_workers")
+        _r, html = _get(networks, "/v2/settings/network/Branch?tab=integrations")
+        assert _badges(html)["kea"] == L.UNSET_EVERYWHERE
+        assert '<span class="badge badge-warn">unset everywhere</span>' in html
+        # C4265: a standalone network's group it does not set runs on the built-in values when
+        # every key has one (`list_settings.value` reads them), so its card draws them with
+        # their source, never "nothing of it is read"; Kea, with nothing to run on, still says so.
+        assert L.value("Remote", "deploy_max_workers") == DEFAULTS["deploy_max_workers"]
+        _r, html = _get(networks, "/v2/settings/network/Remote?tab=network")
+        workers = _card(html, "deploy_max_workers")
+        assert "nothing of it is read" not in workers
+        assert (f'<span class="mono">{DEFAULTS["deploy_max_workers"]}</span> <span '
+                'class="set-origin">built-in default: Remote is standalone and sets none</span>'
+                ) in workers
+        _r, html = _get(networks, "/v2/settings/network/Remote?tab=integrations")
+        assert "nothing of it is read for Remote" in _card(html, "kea")
+
+    def test_defaults_sentence_says_what_it_leaves_unset_and_follows_a_save(self, networks):
+        _r, html = _get(networks, "/v2/settings/network/Default?tab=integrations")
+        chips = _badges(html)
+        assert sorted(g for g, w in chips.items() if w == L.SET_HERE) == ["grafana", "loki"]
+        assert _sentence(html) == ("5 groups unset: Grafana dashboards, Prometheus, Kea and 2 more.",
+                                   "2 groups are set here, read by every network that inherits.")
+        r, _saved = _save(networks, "Default", "kea", {"kea_url": "http://192.0.2.12:8000"})
+        assert r.status_code == 200
+        _r, html = _get(networks, "/v2/settings/network/Default?tab=integrations")
+        assert _badges(html)["kea"] == L.SET_HERE
+        assert _sentence(html) == ("4 groups unset: Grafana dashboards, Prometheus, Monitoring "
+                                   "profile and S3 archive.",
+                                   "3 groups are set here, read by every network that inherits.")
+
+    def test_the_outline_links_every_section_the_tab_draws_and_follows_a_switch(self, networks):
+        def outline(net, tab):
+            _r, html = _get(networks, f"/v2/settings/network/{net}?tab={tab}")
+            nav = re.search(r'<nav class="doc-outline" aria-label="On this tab">(.*?)</nav>',
+                            html, re.S)
+            assert nav, (net, tab)
+            got = re.findall(r'<a href="#([\w-]+)">[^<]*(?:<span class="doc-outline-st">'
+                             r'([^<]*)</span>)?</a>', nav.group(1))
+            for key, _st in got:
+                assert re.search(rf'<section class="[^"]*" id="{key}"', html), (net, tab, key)
+            return html, got
+        for net, tab, extra in (("Branch", "integrations", ["sdn-card"]),
+                                ("Branch", "network", ["network-source", "code-repo-card",
+                                                       "ai-classes", "network-delete"]),
+                                ("Default", "network", ["network-source", "code-repo-card",
+                                                        "ai-classes"])):
+            html, got = outline(net, tab)
+            assert [k for k, _s in got] == [f"card-{g}" for g in _badges(html)] + extra, \
+                (net, tab, got)
+        _html, got = outline("Branch", "integrations")
+        assert dict(got)["card-grafana"] == "its own"
+        _r, prev = _get(networks, "/v2/settings/network/Branch/group/grafana/switch?to=inherit")
+        assert networks["client"].post("/v2/settings/network/Branch/group/grafana/switch",
+                                       data=_form(prev)).status_code == 200
+        _html, got = outline("Branch", "integrations")
+        assert dict(got)["card-grafana"] == L.INHERITED
+
+    def test_a_tab_with_no_cards_has_no_sentence_and_no_outline(self, networks):
+        """Self-healing draws its own template, no group card: nothing to count or to list."""
+        from modules import settings_page
+        v = settings_page.network_view("Branch", "heal")
+        assert v["cards"] == [] and settings_page.sentence(v) == {}
+        assert settings_page.outline(v, {"sdn": True, "source": True}) == []
+        assert settings_page.sentence(dict(settings_page.network_view("Branch"),
+                                           error="unreadable")) == {}
+
+
 class TestTheGroupSwitch:
     def test_back_to_inheriting_previews_confirms_and_records(self, networks):
         r, prev = _get(networks, "/v2/settings/network/Branch/group/grafana/switch?to=inherit")
@@ -380,6 +506,10 @@ class TestInARealBrowser:
         assert "inherits from Default" in b.js(
             "return document.getElementById('card-grafana').textContent")
         assert L.resolve("Branch", "grafana_url")[1] == L.INHERITED
+        # Back up to the banner, as a person scrolls to it: the confirm left the page scrolled
+        # with the banner's top just under the sticky top bar, where WebDriver counts it in
+        # view and clicks the bar (the page as one document is taller, Stage 5 step 2).
+        b.js("window.scrollTo(0, 0); return 1")
         b.click('#settings-mode-banner a[data-op="settings-switch"]')
         b.wait_for(f"return document.querySelector('#settings-mode-op .op-confirm') && {SETTLED}",
                    15)

@@ -78,15 +78,17 @@
     </div>
   </form>
   {%- if c.state == 'own' and not is_default %}<p class="muted small">Set here: {{ list_name }}'s own. Default's settings are not read for {{ c.label }}.</p>{% endif %}
-  {%- elif c.state == 'not_configured' %}
+  {%- elif c.state == 'not_configured' and not c.builtin %}
   <p>Nothing is set here, and nothing comes from Default. <span class="muted">{{ list_name }}'s pages that use {{ c.label }} say "{{ c.label }} is not configured for {{ list_name }}", and nothing of it is read for {{ list_name }}.</span></p>
   {%- else %}
   <dl class="facts set-fields">
     {%- for f in c.fields %}
     {#- Where each value came from: a value nothing sets is the built-in default, said so,
-        never "unset" beside a value. -#}
+        never "unset" beside a value; a standalone network's group it does not set runs on
+        those too, where every key has one (C4265, `list_settings.value`). -#}
     {%- set ORIGIN = {'unset everywhere': 'built-in default, set nowhere' if not is_default else 'built-in default',
-                      'unset here': "built-in default: this group is " ~ list_name ~ "'s own, never Default's"} %}
+                      'unset here': "built-in default: this group is " ~ list_name ~ "'s own, never Default's",
+                      'not configured for this network': "built-in default: " ~ list_name ~ " is standalone and sets none"} %}
     <div><dt>{{ f.label }}</dt><dd><span class="{{ 'mono' if not f.secret }}">{{ f.value }}</span>
       {%- if f.origin != 'set here' %} <span class="set-origin">{{ ORIGIN.get(f.origin, f.origin) }}</span>{% endif %}{{ setting_desc(f.key) }}</dd></div>
     {%- endfor %}

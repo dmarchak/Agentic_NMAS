@@ -1225,6 +1225,13 @@ def network(list_name):
         heal = heal_page.view(list_name)
         # Every change the tab offers, each its own modal (C3158).
         heal["modals"] = heal_page.modals(heal, list_name, zone=viewer_zone())
+    # The page as one document (Stage 5 step 2): its sentence and its outline, from the
+    # sections it draws.
+    on_network = v.get("tab") == "network" and not v.get("error")
+    v["sentence"] = settings_page.sentence(v)
+    v["outline"] = settings_page.outline(v, shown={
+        "sdn": bool(sdn), "source": on_network, "crepo": bool(crepo), "aic": bool(aic),
+        "delete": on_network and not v.get("is_default")})
     return _page("v2/settings.html", v=v, list_name=list_name, src=src, sdn=sdn, heal=heal,
                  aic=aic, crepo=crepo)
 

@@ -1,5 +1,6 @@
 {%- extends "v2/base.html" -%}
 {%- from "v2/_macros.html" import icon, info, stamp, clock -%}
+{%- from "v2/_doc.html" import doc_page, doc_head, doc_summary -%}
 {#- Settings per network (P.8 step 7; boards A to J, approved 2026-10-05): the scope bar (H),
     a network's mode with its switch (I, J1), and one card per group, each saying where its
     values come from, with its own three-way choice (A, I) whose preview opens in place of the
@@ -26,13 +27,17 @@
   {%- else %}<strong>{{ v.network }} is not a network.</strong> No network has this name and none was deleted under it.{% endif %}
   Nothing here can be changed: a save, a switch or a preview naming {{ v.network }} is refused. Choose a network above, or make a new one.</div></div>
 {%- else %}
-<div class="page-head">
-  <div class="page-title">
-    <h1>Settings · {{ v.network }} {{ info('settings') }}</h1>
-    <p class="sub">{% if v.is_default %}Default is the base layer: its values are set here, and every network that inherits takes them. Each card names who that is.{% else %}{{ v.network }}'s own settings: each card says where its values come from, and chooses for itself.{% endif %}
-      Settings that are the installation's (sign-in, the central NetBox connection, this host) are under Installation.{% if v.tab == 'heal' %} Self-healing is each network's own: no network inherits it.{% endif %}</p>
-  </div>
-</div>
+{#- One document (the operator's GUI pick, 2026-11-25: C; Stage 5 step 2): the title and where
+    the values come from, the one sentence built from the same cards drawn under it
+    (`settings_page.sentence`), each group a section with its state, and the outline of the
+    tab's sections beside them on a wide window (`settings_page.outline`). -#}
+{% call doc_page(v.outline, 'On this tab', wide=(v.tab == 'heal')) %}
+{% call doc_head('Settings · ' ~ v.network, 'the base layer' if v.is_default else v.mode_words) %}{{ info('settings') }}{% endcall %}
+{%- if v.sentence %}
+{% call doc_summary() %}<strong>{{ v.sentence.lead }}</strong>{% if v.sentence.rest %} {{ v.sentence.rest }}{% endif %}{% endcall %}
+{%- endif %}
+<p class="sub">{% if v.is_default %}Default is the base layer: its values are set here, and every network that inherits takes them. Each section names who that is.{% else %}{{ v.network }}'s own settings: each section says where its values come from, and chooses for itself.{% endif %}
+  Settings that are the installation's (sign-in, the central NetBox connection, this host) are under Installation.{% if v.tab == 'heal' %} Self-healing is each network's own: no network inherits it.{% endif %}</p>
 {% include "v2/_settings_scope.html" %}
 {%- if not v.is_default and not v.error %}
 <div id="settings-mode">{% with s=v %}{% include "v2/_settings_mode.html" %}{% endwith %}</div>
@@ -67,5 +72,6 @@
 {%- endif %}
 {%- endif %}
 </div>
+{% endcall %}
 {%- endif %}
 {% endblock %}
