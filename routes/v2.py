@@ -121,8 +121,8 @@ def series(names, most=None) -> str:
 
 @bp.app_template_filter("platform_words")
 def platform_words(key) -> str:
-    """A platform's key in words ("cisco_iosxe" → "IOS-XE") from `platform.FACT_WORDS`, the key
-    itself where the table has none."""
+    """A platform's dialect key in words (the IOS-XE dialect → "IOS-XE") from
+    `platform.FACT_WORDS`, the key itself where the table has none."""
     from modules.nsot.platform import FACT_WORDS
 
     return FACT_WORDS.get(key or "", key or "")
