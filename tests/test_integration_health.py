@@ -108,7 +108,9 @@ class TestTheRoute:
 
     def test_the_test_button_stays_a_live_check(self, client, monkeypatch):
         """Rule 11: a person asking NOW is a check, never a cached report. A card's Test on
-        Settings › Default (today's Integrations card's Test until it left at 7.8)."""
+        Settings › Default (today's Integrations card's Test until it left at 7.8). Premise
+        corrected (5a7dc6b4): the answer is drawn after "Test: passed." as its sentence's
+        start, so its first word is capitalised ("Asked live")."""
         from modules.integrations.prometheus import PrometheusIntegration
         stored()
         monkeypatch.setattr(PrometheusIntegration, "is_configured", lambda self: True)
@@ -116,7 +118,7 @@ class TestTheRoute:
                             lambda self: {"ok": True, "message": "asked live"})
         r = client.post("/v2/settings/network/Default/group/prometheus/test")
         assert r.status_code == 200, r.get_data(as_text=True)
-        assert "asked live" in r.get_data(as_text=True)
+        assert "Test: passed.</strong> Asked live" in r.get_data(as_text=True)
 
 
 class TestTheSource:
