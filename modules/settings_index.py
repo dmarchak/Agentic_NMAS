@@ -12,9 +12,10 @@ moment it is declared:
 
 The groups drawn by their own templates are declared in `OWN_HOMES`, each by the section id
 its template gives it, and a key inside one may name a closer section (`KEY_HOMES`). A group
-with no screen is in `NO_SCREEN` with why; that list only shrinks. tests/test_settings_index.py
-holds that every declared setting has exactly one of them, and that each home's page, fetched,
-draws its section.
+with no screen is in `NO_SCREEN` with why: four by design, and C4266's two gaps, which the
+test names exactly so that a third cannot join unseen. tests/test_settings_index.py holds that
+every declared setting has exactly one of them, and that each home's page, fetched, draws its
+section.
 
 The search (`find`) reads only declarations: each setting's label (`settings_page.field_label`
 or its card's), its description (`settings_schema.DESCRIPTIONS`), its group's label and its key;
@@ -60,7 +61,8 @@ KEY_HOMES.update({k: "card-gates" for k in (
                                     for op in ("approve", "break_glass", "configure", "confirm",
                                                "publish_remote", "reveal")))})
 
-#: Groups no screen sets, with why: ``group: why``. Only shrinks (tests/test_settings_index.py).
+#: Groups no screen sets, with why: ``group: why``, the search's words for them. A gap (a "C<n>:"
+#: why) is named exactly by tests/test_settings_index.py, so none joins unseen.
 NO_SCREEN = {
     "schema": "the settings file's own version, written by the migration, never a person",
     "settings_not_applicable": "the Default network's record of the groups declared not "

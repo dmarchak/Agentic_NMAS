@@ -17,10 +17,6 @@ import re
 
 from tests.test_settings_v2 import _get, live_browser, networks, served  # noqa: F401 (fixtures)
 
-#: Settable keys on 2026-11-25: 210 (108 a network's, 102 the host's).
-FLOOR = 200
-
-
 def _index():
     """The index, imported by each test (so a tree without it fails each test, red)."""
     from modules import settings_index
@@ -30,7 +26,7 @@ def _index():
 def test_every_setting_has_one_home_or_says_why_none():
     X = _index()
     keys = X.settable()
-    assert len(keys) >= FLOOR, len(keys)
+    assert len(keys) >= 200, len(keys)          # 210 on 2026-11-25: 108 a network's, 102 the host's
     none, groups_none = [], set()
     for k in keys:
         h = X.home(k)
@@ -42,6 +38,10 @@ def test_every_setting_has_one_home_or_says_why_none():
             assert h["page"] in (X.NETWORK, X.INSTALLATION, X.SDN, X.CREDENTIALS), (k, h)
             assert h["tab"] and h["section"], (k, h)
     assert groups_none == set(X.NO_SCREEN), "every group declared set by no screen is one"
+    # The gaps, named exactly (C4266): a setting a person cannot set in Mercury joins this
+    # test's own words, never the index's alone. The others are set by no screen by design.
+    gaps = {g for g, why in X.NO_SCREEN.items() if why.startswith("C")}
+    assert gaps == {"ai_read_account", "no_change_windows"}, gaps
     assert len(none) <= 8, none
 
 
