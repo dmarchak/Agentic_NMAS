@@ -13,7 +13,7 @@
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}. Not the same as NetBox holding nothing.</p></div>
   {%- endfor %}
   {%- if not nb.configured %}
-  <p class="cov-head">{{ icon('info') }} NetBox is not configured, so its record of {{ device.hostname }} cannot be read here (Settings &gt; Integrations).</p>
+  <p class="cov-head">{{ icon('info') }} NetBox is not set up, so its record of {{ device.hostname }} cannot be read here. Set it up on <a href="{{ url_for('settings_v2.installation') }}" data-set-netbox>Settings › Installation › Connections</a>.</p>
   {%- elif nb.absent %}
   <p class="cov-head">{{ icon('info') }} NetBox holds no device named {{ device.hostname }}. NetBox's Import into NetBox… (the sidebar's NetBox) records it from its committed golden.</p>
   {%- elif nb.record %}

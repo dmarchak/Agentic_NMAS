@@ -211,6 +211,19 @@ class TestThePage:
         assert f'href="{BASE}/dcim/devices/7/"' in html
         assert all(u.startswith(BASE) for u, _p in nb.asked) and len(nb.asked) == 3
 
+    def test_netbox_not_set_up_links_where_it_is_set_up(self, page, monkeypatch):
+        """Stage 5 step 6: the tab named "Settings > Integrations" for NetBox, which a
+        network's Settings holds no card for; NetBox is set on Settings › Installation ›
+        Connections, and the tab links there."""
+        monkeypatch.setattr("modules.netbox_client._nb_ready",
+                            lambda: (False, "NetBox URL and API token are not configured", None, ""))
+        _r, html = page("/v2/device/r3/netbox")
+        link = re.search(r'<a href="([^"]+)" data-set-netbox>([^<]+)</a>', html)
+        assert link and link.groups() == ("/v2/settings/installation",
+                                          "Settings › Installation › Connections"), html[:1500]
+        assert "Settings &gt; Integrations" not in html
+        assert _view("r3")["configured"] is False
+
     def test_the_tab_is_built_and_redraws_on_netbox_writes(self, page):
         from modules import invalidation
         _r, html = page("/v2/device/r3?tab=netbox")
