@@ -126,6 +126,24 @@ def test_a_chip_shows_its_group_and_the_redraw_keeps_it(monkeypatch, show, heads
     assert len(A.needs_attention()["rows"]) == 2
 
 
+def test_the_counts_say_how_long_the_oldest_critical_has_stood(monkeypatch):
+    """B's queue head ("3 critical · ... · oldest critical 14 min"; Stage 5 step 3): after the
+    counts, how long the oldest critical item has stood, from its row's own start; with
+    nothing critical, nothing is said of it."""
+    page = _page(monkeypatch, [_src(_rows())])
+    crit = [r for r in page["rows"] if r["level"] == "danger"]
+    assert len(crit) == 1 and crit[0]["since"], crit
+    html = _panel(page)
+    m = re.search(r'<span data-oldest-critical>the oldest critical <time class="stamp" '
+                  r'datetime="([^"]+)"[^>]*>([^<]+)</time></span>', html)
+    assert m and m.group(1) == crit[0]["since"], html[:2500]
+    # Its age as the page's own words: the module's clock is read at import, so only the
+    # shape is fixed here ("6 min ago", later in a long run).
+    assert re.fullmatch(r"\d+ min ago", m.group(2)), m.group(2)
+    calm = _page(monkeypatch, [_src([r for r in _rows() if r["level"] != "danger"])])
+    assert "data-oldest-critical" not in _panel(calm)
+
+
 def test_j_and_k_move_from_row_to_row_and_e_presses_its_action_in_a_real_browser(monkeypatch):
     from tests import browser
     ok, why = browser.available()

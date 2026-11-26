@@ -11,7 +11,9 @@ nothing critical it names the warnings the same way. With nothing at all, the li
 says **Nothing needs attention**. A group of alike rows counts as its members and is named once.
 It updates with the list.
 
-Under the counts, **chips** filter the list: **All**, each severity with items (**Critical**,
+The counts line ends with how long the oldest critical item has stood ("the oldest critical
+14 min ago"), where its source records when it began. Under the counts, **chips** filter the
+list: **All**, each severity with items (**Critical**,
 **Warnings**, **Unknown**) and **Acknowledged**, each with its count. A chip shows only its
 group, and the page's address carries it, so a filtered view can be copied, survives a refresh
 and stays as the list updates itself; a chip with nothing in it says so, with **Show all**.

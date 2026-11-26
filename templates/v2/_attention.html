@@ -125,7 +125,11 @@
   {%- for top in rows %}{% if top.alike %}{% set counts.grouped = counts.grouped + 1 %}{% endif %}{% for r in (top.folded if top.alike else [top]) %}{% if r.level == 'danger' %}{% set counts.danger = counts.danger + 1 %}{% elif r.level == 'warning' %}{% set counts.warning = counts.warning + 1 %}{% else %}{% set counts.unknown = counts.unknown + 1 %}{% endif %}{% endfor %}{% endfor %}
   <p class="att-summary">
     {%- if rows %}<strong>{{ a.badge.n }} item{{ '' if a.badge.n == 1 else 's' }}</strong>
+    {#- B's queue head (Stage 5 step 3): how long the oldest critical item has stood, from its
+        row's own start, where its source records one. -#}
+    {%- set crit_since = rows | selectattr('level', 'equalto', 'danger') | map(attribute='since') | select | sort | first %}
     {%- if counts.danger %} · {{ counts.danger }} critical{% endif %}{% if counts.warning %} · {{ counts.warning }} warning{% endif %}{% if counts.unknown %} · {{ counts.unknown }} unknown{% endif %}
+    {%- if counts.danger and crit_since %} · <span data-oldest-critical>the oldest critical {{ stamp(crit_since, note='when the oldest critical item began') }}</span>{% endif %}
     {%- if counts.grouped %} · <span class="att-grouped" title="Items that say the same thing about a different subject are one row, opening to each of them">in {{ rows|length }} row{{ '' if rows|length == 1 else 's' }} ({{ counts.grouped }} {{ 'is a group' if counts.grouped == 1 else 'are groups' }} of alike items)</span>{% endif %}
     {%- else %}<strong>Nothing needs attention</strong>{% endif %}
     {%- if a.acknowledged %} · {{ a.acknowledged|length }} acknowledged{% endif %}
