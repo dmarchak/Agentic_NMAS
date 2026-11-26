@@ -618,7 +618,9 @@ class TestTheTabDrawsTheReadersValue:
     def test_before_the_readers_first_value_it_says_reading_and_asks_nothing(self, page):
         _r, html = page("/v2/device/r3/neighbours", read_first=False)
         assert page.asked == []
-        assert "Reading: the adjacencies reader has not read r3&#39;s neighbours yet" in html
+        # Premise corrected (Stage 5 step 6): said as every page says a read not done yet.
+        # The device's name is never capitalised (`words.capital` leaves it as it is).
+        assert "r3&#39;s neighbours have not been read yet. Mercury reads them every " in html
         assert "nb-table" not in html and "reports none" not in html
 
     def test_the_control_a_device_the_reader_has_not_read_says_reading(self, page):
@@ -628,7 +630,7 @@ class TestTheTabDrawsTheReadersValue:
         from modules.nsot import listref
         view = N.held_view(listref.resolve("Lab"), {"hostname": "s9"})
         assert view["held"]["state"] == "reading"
-        assert "has not read s9's neighbours yet" in view["held"]["why"]
+        assert "s9's neighbours have not been read yet" in view["held"]["why"]
 
     def test_a_failed_refresh_keeps_the_last_good_view_and_says_so(self, page, monkeypatch):
         from modules.integrations.prometheus import PrometheusIntegration

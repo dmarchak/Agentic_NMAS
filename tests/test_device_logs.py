@@ -342,9 +342,12 @@ class TestTheSyslogJobIsMeasured:
         r, html = page("/v2/device/r3/logs")
         assert r.status_code == 200
         # C3166: the logs-tail reader's read failed on it, and the tab says so in its words.
-        assert ("The logs reader could not read Loki yet: NoSyslogJob: no job in Loki holds a "
-                "device&#39;s syslog line (a device&#39;s own name, its time and a mnemonic) "
-                "in the last 24 h. Not the same as r3 having sent nothing") in html, html[-1500:]
+        # Premise corrected (Stage 5 step 6): in the one set of words every page uses for a
+        # read not done yet (`not_read_yet`), the failure and its meaning kept.
+        assert ("r3&#39;s logs have not been read yet: the last attempt failed, NoSyslogJob: "
+                "no job in Loki holds a device&#39;s syslog line (a device&#39;s own name, its "
+                "time and a mnemonic) in the last 24 h. Not the same as r3 having sent "
+                "nothing. Mercury reads them every 5 seconds") in html, html[-1500:]
         assert [q for _p, q in loki["asked"]] == [device_logs.job_query()]
 
     def test_a_refused_ask_is_said_with_lokis_words(self, held, loki):

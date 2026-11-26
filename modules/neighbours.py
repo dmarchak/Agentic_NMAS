@@ -885,9 +885,9 @@ def held_view(ref, dev: dict) -> dict:
     if got["state"] != "ok" or not good or stored is None:
         # Absent and unreadable are different states: an unreadable store says so (its file's
         # path is never drawn); absent, or no view of this device yet, is "not read yet".
-        why = ("the adjacencies reader's stored value could not be read, so it is read again"
-               if got["state"] == "unreadable" else
-               f"the adjacencies reader has not read {host}'s neighbours yet")
+        why = ("what Mercury last read of the neighbours cannot be read, so they are read "
+               "again" if got["state"] == "unreadable" else
+               f"{host}'s neighbours have not been read yet")
         view["held"] = {"state": "reading", "why": why,
                         "every": ADJ.INTERVAL_SECONDS,
                         "refresh_error": (attempt.get("error") or "")

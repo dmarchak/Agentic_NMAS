@@ -15,7 +15,11 @@ Shots: the operator's capture above; the board at 1440, rendered in the same hea
 Compared 2026-10-17.
 Templates compared: templates/v2/_logs.html, templates/v2/_log_run.html
 Compared again 2026-11-13 (C3452, the GUI review's item 4; provisional, operator review pending): the mnemonic and the device time are never broken inside (the stylesheet's `.log-msg code`, `.log-table td.mono`); identical adjacent lines (the same mnemonic, severity and words) are one row, the mnemonic and words then "×N · <first> to <last>", opening to each line with its received age and its device time (`_log_run.html`, compared here from now on), and a note under the table says the counts are of lines when any row holds a repeat; the row's received and device times are its newest line's. The board draws each line its own row: The line is a **deviation** (log: Logs: identical adjacent lines are one row). Compared by the template's diff and the page tests/test_log_runs.py draws, not by a new shot (this tab has no shot test). Templates sha256 before: `4039133c6d781397ef4ae9f7617176982c949846203010d77540a7a879998cef`.
-Templates sha256: `3348ce3992fc529f042e35939ac2768fb980b7c0318d62b3f8914f07216e1396`
+Compared again 2026-11-26 (Stage 5 step 6): the logs not read yet are said in the one set of words every page uses (`not_read_yet`: "r3's logs have not been read yet: the last attempt failed, ... Not the same as r3 having sent nothing."), where it said "Reading Loki: Mercury's logs reader has not read it yet"; the macro's cadence is optional, unsaid where the page does not know it. Every verdict unchanged. Templates sha256 before:
+`3348ce3992fc529f042e35939ac2768fb980b7c0318d62b3f8914f07216e1396`.
+Compared again 2026-11-26: the line says its cadence ("Mercury reads them every 5 seconds"), the logs-tail reader's. Templates sha256 before:
+`7613626b6a8142e6336c777ae53e48a737eee8aa0bf84867ffc47073556b18d8`.
+Templates sha256: `d832db8a6f57b46395b77c6a21a6287fa19b0286050f18712842a57bc2925939`
 (2026-11-12, C3330, by the template diff and the pages tests/test_logs_held_stale.py draws, not
 a new shot: once the logs-tail reader's last good read is older than its promise (its interval
 times its stale factor, 15 s, as its job-health row judges it), the card's foot ("From Loki,

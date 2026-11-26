@@ -275,7 +275,9 @@ class TestNoPageAsksLoki:
 
     def test_before_the_first_read_it_says_reading_never_quiet(self, lab, page):
         html = lab["client"].get("/v2/device/r3/logs").get_data(as_text=True)
-        assert page == [] and "Reading Loki" in html and "fills itself" in html
+        # Premise corrected (Stage 5 step 6): in the shared words for a read not done yet.
+        assert page == [] and "r3&#39;s logs have not been read yet" in html \
+            and "fills itself" in html
         assert "sent nothing" not in html
 
     def test_a_failed_refresh_keeps_the_lines_and_says_it_failed(self, lab, page, monkeypatch):

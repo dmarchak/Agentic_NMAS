@@ -13,7 +13,9 @@
 <p class="tab-help">{{ info('device-page', 'neighbours', 'About this tab') }}</p>
   {%- set h = n.held or {} %}
   {%- if h.state == 'reading' %}
-  <p class="cov-head" role="status">{{ icon('info') }} Reading: {{ h.why }}{% if h.refresh_error %} (its last read failed: {{ h.refresh_error }}){% endif %}. This tab fills itself when it has (every {{ h.every }} s).</p>
+  {#- In plain words, as every page says a read not done yet (Stage 5 step 6): it said
+      "Reading: the adjacencies reader has not read <device>'s neighbours yet". -#}
+  <p class="cov-head" role="status">{{ icon('info') }} {{ h.why | capital }}{% if h.refresh_error %}: the last attempt failed, {{ h.refresh_error }}{% endif %}. Mercury reads them every {{ h.every }} seconds, and this fills itself when it has.</p>
   {%- elif h.refresh_error %}
   <div class="notice notice-warn" role="status">{{ icon('warn') }}<p>The last refresh failed ({{ h.refresh_error }}): this is what the adjacencies reader held when it last read Prometheus, {{ stamp(h.at) }}.</p></div>
   {%- endif %}

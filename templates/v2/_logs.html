@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
+{%- from "v2/_macros.html" import not_read_yet, icon, badge, stamp, info -%}
 {%- from "v2/_log_run.html" import log_run -%}
 {#- The device page's Logs (NSOT_GUI_BRIEF 3.3), from
     modules/device_logs.held_tab(): what the device sent to syslog, as the
@@ -15,10 +15,10 @@
   {%- endfor %}
   {%- if not g.configured %}
   <p class="cov-head">{{ icon('info') }} Loki is not configured, so {{ device.hostname }}'s logs cannot be read here (Settings &gt; Integrations).</p>
-  {%- elif not g.errors and h.state == 'never' and h.failed %}
-  <div class="notice notice-warn" role="status">{{ icon('warn') }}<p>The logs reader could not read Loki yet: {{ h.failed }}. Not the same as {{ device.hostname }} having sent nothing; this tab fills itself when it can.</p></div>
   {%- elif not g.errors and h.state == 'never' %}
-  <p class="cov-head" role="status">{{ icon('info') }} Reading Loki: {{ brand.short }}'s logs reader has not read it yet. This tab fills itself when it has.</p>
+  {#- One set of words for a read not done yet (`not_read_yet`, Stage 5 step 6): it said
+      "Reading Loki: Mercury's logs reader has not read it yet". -#}
+  {{ not_read_yet(device.hostname ~ "'s logs", '5 seconds', failed=h.failed, plural=True, also=('Not the same as ' ~ device.hostname ~ ' having sent nothing.') if h.failed else '') }}
   {%- elif not g.errors %}
   {%- if h.failed and not h.stale %}
   <div class="notice notice-warn" role="status">{{ icon('warn') }}<p>The last refresh failed ({{ h.failed }}): these are the lines held when Loki was last read, {{ stamp(h.value_at) }}.</p></div>

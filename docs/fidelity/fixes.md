@@ -17,7 +17,9 @@ Templates compared: templates/v2/fixes.html, templates/v2/_macros.html
 Compared again 2026-11-24 (the week plan's Stage 5, every setting's description): `_macros.html` gains the `setting_desc` macro, which only the Settings screens call; `fixes.html` calls none of it, so nothing on this page moves and no region's verdict changed. Compared by the templates' diff, not by new shots. Templates sha256 before: `8ee5ab408ce7c561531c2fd7f8a615dcbc1c2ba33ac2e2443760012b74daefa3`.
 Compared again 2026-11-26 (Stage 5 step 6): a background read not read yet, or whose stored value cannot be read, says so in one set of plain words on every page (`not_read_yet`, `read_unreadable` in _macros.html: "The DHCP server has not been read yet. Mercury reads it every 5 minutes, and this fills itself when it has."), where each page named its reader and a product. No region moves; every verdict is unchanged. Templates sha256 before:
 `d05390ff88fe3bd35bdafbc66d1a471b916fa6eb079ba4d936fbb718c240206f`.
-Templates sha256: `2acf1d18db8a27e15c53bc3179eaa56bc97fe49d6534a8dbb399746047f4c157`
+Compared again 2026-11-26 (Stage 5 step 6): the logs not read yet are said in the one set of words every page uses (`not_read_yet`: "r3's logs have not been read yet: the last attempt failed, ... Not the same as r3 having sent nothing."), where it said "Reading Loki: Mercury's logs reader has not read it yet"; the macro's cadence is optional, unsaid where the page does not know it. Every verdict unchanged. Templates sha256 before:
+`2acf1d18db8a27e15c53bc3179eaa56bc97fe49d6534a8dbb399746047f4c157`.
+Templates sha256: `154dfc9cfaa8cb28dbd29f593ba191c6d1ba0fe2da3200bc7e3ef535c1368ee6`
 
 `_macros.html` is folded in here (a61bb071 changed it for this page; it was in no record); every
 page draws it, so a change to it asks for this page to be compared again.
