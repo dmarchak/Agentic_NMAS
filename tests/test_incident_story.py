@@ -7,6 +7,7 @@ call from the record of AI calls, or why not; and the partial drawing every part
 "needs" lines where Mercury records nothing."""
 
 import json
+import re
 import os
 
 from modules import incident_story as S
@@ -204,3 +205,31 @@ def test_the_partial_draws_every_part_and_its_needs(monkeypatch):
     for key in S.NEEDS:
         assert "needs: " + str(escape(S.NEEDS[key])) in html
     assert "The record of AI calls holds no row for ai-32c642bea0ba4e30" in html
+
+
+def test_the_timeline_is_a_section_whose_line_is_the_stages_reached(monkeypatch):
+    """Stage 5 step 4 (the operator's GUI pick of 2026-11-25: C with B's step timeline): the
+    lifecycle is the Timeline section, closed, its line the stages reached in order and its
+    state how many of the eight are done; the facts are drawn with no box, and what Mercury
+    does not score is one line."""
+    from flask import render_template
+
+    from app import app
+    monkeypatch.setattr("modules.ai.calls.rows_since",
+                        lambda since: {"state": "ok", "rows": [], "error": ""})
+    model = _model()
+    life = S.lifecycle(model, LINES)
+    story = {"lifecycle": life, "summary": S.summary(model, LINES),
+             "hypotheses": S.hypotheses(LINES), "ai": S.ai_call(LINES, 1.0),
+             "needs": dict(S.NEEDS)}
+    with app.test_request_context("/"):
+        html = render_template("v2/_inc_story.html", p=dict(model, story=story))
+    reached = [n["name"] for n in life if n["state"] not in ("todo", "skip")]
+    done = sum(1 for n in life if n["state"] == "done")
+    sec = re.search(r'<details class="doc-sec" id="inc-life-[^"]*"[^>]*>\s*<summary>(.*?)</summary>',
+                    html, re.S)
+    assert sec and " open" not in sec.group(0).split(">")[0], "the Timeline starts closed"
+    assert f'<span class="doc-gist" title="{" → ".join(reached)}">' in sec.group(1)
+    assert f">{done} of {len(life)} done<" in sec.group(1)
+    assert '<dl class="inc-sum-lines inc-facts' in html and 'class="card inc-sum' not in html
+    assert html.count('data-needs') == 1

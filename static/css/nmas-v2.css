@@ -539,6 +539,24 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .doc-acts { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .doc-summary { font-size: 19px; line-height: 28px; margin: 10px 0 6px; max-width: 46em; color: var(--ink); }
 .doc-summary strong { font-weight: 600; }
+/* A section that opens (`_doc.html`'s `doc_section`): a hairline above, its title at the
+   document's section size, a one-line gist, its state on the right. */
+.doc-sec { border-top: 1px solid var(--line); margin-top: 6px; }
+.doc-sec > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 12px;
+  padding: 14px 0 10px; }
+.doc-sec > summary::-webkit-details-marker { display: none; }
+.doc-sec > summary::before { content: "\25B8"; color: var(--ink-3); font-size: 13px; width: 12px; flex: none; }
+.doc-sec[open] > summary::before { content: "\25BE"; }
+.doc-sec > summary h2 { margin: 0; font-size: 19px; font-weight: 700; line-height: 1.25; flex: none; }
+.doc-gist { color: var(--ink-2); font-size: 14.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.doc-st { margin-left: auto; flex: none; }
+.doc-body { padding: 0 0 16px 24px; }
+@media (max-width: 720px) {
+  .doc-sec > summary { flex-wrap: wrap; }
+  .doc-gist { flex-basis: 100%; white-space: normal; order: 3; }
+  .doc-body { padding-left: 0; }
+}
 /* The outline goes where there is no room beside the text. */
 @media (max-width: 1100px) {
   .doc-page-outlined { grid-template-columns: minmax(0, 1fr); }
@@ -3911,14 +3929,15 @@ h1.simple-title { font-size: 22px; }
 /* The incident's story at a glance (the GUI redesign brief §4.1, 2026-11-18;
    templates/v2/_inc_story.html; the mockup design/incident-detail.html). */
 .inc-story { margin: 0 0 16px; }
-.inc-life { list-style: none; margin: 0 0 14px; padding: 12px 8px 10px; display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr)); background: var(--surface);
-  border: 1px solid var(--line); border-radius: var(--r-card); }
-.inc-life-node { position: relative; text-align: center; padding: 0 4px; min-width: 0; }
-.inc-life-node::before { content: ""; position: absolute; top: 10px; left: -50%; width: 100%;
-  height: 3px; background: var(--line); }
-.inc-life-node:first-child::before { display: none; }
-.inc-life-done::before, .inc-life-now::before, .inc-life-skip::before { background: var(--ok); }
+/* As C's document (Stage 5 step 4): the facts with no box, then sections. The lifecycle, in its
+   Timeline section, runs down at every width, as an operation's stages do (B's timeline). */
+.inc-facts { padding: 12px 0 10px; border-top: 1px solid var(--line); }
+.inc-needs-line { margin: 0 0 8px; }
+.inc-life { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr; }
+.inc-life-node { position: relative; display: grid; grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center; gap: 2px 10px; padding: 4px 0; text-align: left; min-width: 0; }
+.inc-life-node .inc-life-name { margin: 0; }
+.inc-life-node .inc-life-words { grid-column: 2 / -1; }
 .inc-life-dot { position: relative; display: inline-block; width: 22px; height: 22px;
   border-radius: 50%; border: 3px solid var(--line); background: var(--surface); }
 .inc-life-done .inc-life-dot { background: var(--ok); border-color: var(--ok); }
@@ -3973,12 +3992,6 @@ h1.simple-title { font-size: 22px; }
   /* The bottom line and its one button lead on a phone (board R2): the story follows the
      incident's card (`.inc` is a flex column). */
   .inc-story { order: 1; }
-  .inc-life { grid-template-columns: 1fr; padding: 8px 12px; }
-  .inc-life-node { display: grid; grid-template-columns: 26px 1fr auto; text-align: left;
-    align-items: center; gap: 2px 10px; padding: 4px 0; }
-  .inc-life-node::before { display: none; }
-  .inc-life-name { margin: 0; }
-  .inc-life-words { grid-column: 2 / -1; }
   .inc-story-cols { grid-template-columns: 1fr; }
   .inc-sum-lines { grid-template-columns: 1fr; gap: 2px; font-size: 15px; }
   .inc-sum-lines dt { margin-top: 6px; }

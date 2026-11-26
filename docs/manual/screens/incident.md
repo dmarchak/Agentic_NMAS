@@ -28,23 +28,26 @@ SDN incident are on [Needs attention](needs-attention) until theirs are built.
 
 ## At a glance {#at-a-glance}
 
-The top of the page tells the incident's story before any detail:
+The top of the page tells the incident's story before any detail, as a document: its facts
+first, then sections that open, each one line until opened.
 
-- **The lifecycle bar:** eight stages, Detected, Self-heal tried, Diagnosing, Fix proposed,
-  Approved, Applying, Verifying and Healed, each with the time its own record gives. The stage
-  the incident is at now is marked; one it skipped (a self-heal that needed no AI skips
-  Diagnosing, Fix proposed and Approved) is drawn faint, and a failed verify is drawn red,
-  never Healed.
-- **Summary:** four lines. What happened; the likely cause (the AI's first hypothesis,
+- **The facts:** four lines. What happened; the likely cause (the AI's first hypothesis,
   "Inconclusive" with its reason when the AI ended without a fix, or else the kind of what
   opened the incident, such as a configuration change from outside Mercury); the evidence, four lines
   each opening to its raw text, with the rest counted; and what to do next. The next step is
-  said here only: the incident's card below holds its action, not the sentence again.
-- **Hypotheses:** what the AI considered, the one its plan acts on first, each with what it
-  cites and the read that would confirm it.
-- **The right rail:** confidence, severity and risk, which Mercury does not record yet (each
-  says what it needs), and the AI call: its model, prompt, tokens, cost and latency, from the
-  record of AI calls, with a link to History.
+  said here only: the incident's card below holds its action, not the sentence again. Under
+  them, one line says what Mercury does not score yet (confidence, severity and risk) and what
+  each needs, rather than print a number it cannot stand behind.
+- **Why Mercury thinks so** (open): what the AI considered, the one its plan acts on first,
+  each with what it cites and the read that would confirm it. Its line is the chosen one.
+- **Timeline:** its line is the stages reached so far ("Detected → Self-heal tried →
+  Applying → Verifying → Healed"), with how many of the eight are done. Opened, the eight
+  stages, Detected, Self-heal tried, Diagnosing, Fix proposed, Approved, Applying, Verifying and
+  Healed, run down, each with the time its own record gives. The stage the incident is at now is
+  marked; one it skipped (a self-heal that needed no AI skips Diagnosing, Fix proposed and
+  Approved) is drawn faint, and a failed verify is drawn red, never Healed.
+- **AI call:** its line is the model, the number of calls and the latency; opened, its model,
+  prompt, tokens, cost and latency, from the record of AI calls, with a link to History.
 
 ## The header {#header}
 

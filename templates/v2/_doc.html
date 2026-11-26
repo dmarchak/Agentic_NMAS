@@ -11,8 +11,12 @@
       caller).
     - `doc_summary()`: the one sentence that answers the page's question (the caller), built
       from the same data as the sections under it.
+    - `doc_section(key, title, gist, state, state_kind, open, attrs)`: a section that opens, its
+      title, its one-line gist and its state on the right; its body the caller. Its open state
+      is kept across the page's own updates by its `data-keep` (nmas_v2.js).
 
     No cards: rules, whitespace and type carry the structure (nmas-v2.css, "the document"). -#}
+{%- from "v2/_macros.html" import badge -%}
 
 {%- macro doc_page(outline=none, label='On this page', wide=False) %}
 <div class="doc-page{% if outline %} doc-page-outlined{% endif %}{% if wide %} doc-page-wide{% endif %}">
@@ -38,3 +42,10 @@
 {%- endmacro %}
 
 {%- macro doc_summary() %}<p class="doc-summary">{{ caller() }}</p>{%- endmacro %}
+
+{%- macro doc_section(key, title, gist='', state='', state_kind='neutral', open=False, keep='') %}
+<details class="doc-sec" id="{{ key }}" data-keep="{{ keep or 'doc-' ~ key }}"{% if open %} open{% endif %}>
+  <summary><h2>{{ title }}</h2>{% if gist %}<span class="doc-gist" title="{{ gist }}">{{ gist }}</span>{% endif %}{% if state %}<span class="doc-st">{{ badge(state, state_kind) }}</span>{% endif %}</summary>
+  <div class="doc-body">{{ caller() }}</div>
+</details>
+{%- endmacro %}
