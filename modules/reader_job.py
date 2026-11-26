@@ -539,7 +539,7 @@ def _read_from_database(name: str) -> dict:
                         f"({type(cause).__name__}: {first})")}
     if doc is None:
         return {"state": "absent", "doc": None,
-                "why": f"no reader has stored {name} in the records database"}
+                "why": "its reader has not run yet"}
     return {"state": "ok", "doc": doc, "why": ""}
 
 
@@ -557,7 +557,7 @@ def read_cached(name: str) -> dict:
         return _read_from_database(name)
     path = store_path(name)
     if not os.path.exists(path):
-        return {"state": "absent", "doc": None, "why": f"no reader has written {path}"}
+        return {"state": "absent", "doc": None, "why": "its reader has not run yet"}
     try:
         with open(path, encoding="utf-8") as fh:
             doc = json.load(fh)

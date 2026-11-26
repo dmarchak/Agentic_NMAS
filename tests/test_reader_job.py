@@ -350,6 +350,17 @@ class TestLiveness:
         open(path, "w").write("[")
         assert one_row(r, time.time())["state"] == "unknown"
 
+    def test_a_value_never_stored_says_so_in_words_never_its_file(self):
+        """Stage 5 step 6: the absent reason is drawn on five pages ("not read yet: <why>"),
+        and it named the store's file path ("no reader has written /…/readers/<name>.json"); a
+        value never stored says its reader has not run yet, with no path, from either store."""
+        path = R.store_path("t-never")
+        assert not os.path.exists(path)
+        got = R.read_cached("t-never")
+        assert (got["state"], got["doc"]) == ("absent", None)
+        assert got["why"] == "its reader has not run yet"
+        assert path not in got["why"] and os.sep not in got["why"]
+
     def test_job_health_carries_the_rows_and_the_page_has_words_for_each_state(self):
         from modules import attention, job_health
         R.register(make(lambda: {}))
