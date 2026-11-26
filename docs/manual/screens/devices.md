@@ -1,8 +1,9 @@
 # Devices
 
 Every device in the network, searchable and filterable: a box searches by name or address,
-and two menus filter by intent state (each state with its count) and by platform. Under a
-search or a filter, the list says "Showing N of M".
+and two menus filter by intent state (each state with its count) and by platform (each named
+in words, such as IOS-XE; hover a row's platform for its key). Under a search or a filter,
+the list says "Showing N of M".
 
 ## The list {#the-list}
 

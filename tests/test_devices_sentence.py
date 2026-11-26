@@ -61,3 +61,21 @@ def test_the_list_opens_with_the_sentence_of_its_rows(lab):  # noqa: F811
         d = v2._devices_ctx(request)["d"]
     assert d["rows"] and said, html[:800]
     assert (said.group(1), said.group(2) or "") == tuple(DL.sentence(d).values())
+
+
+def test_the_platform_column_says_the_platform_in_words_its_key_on_hover(lab):  # noqa: F811
+    """Stage 5 step 6: the Platform column drew the dialect's key ("cisco_iosxe") where the
+    device's own title says it in words ("IOS-XE", `platform.FACT_WORDS`); the column says the
+    words with the key on hover, and a key the table has no words for is drawn as itself."""
+    import app as A
+    from modules.nsot.platform import FACT_WORDS
+    from routes import v2
+    _r_, html = _get(lab, "/v2/devices/table")
+    with A.app.test_request_context("/v2/devices/table"):
+        from flask import request
+        d = v2._devices_ctx(request)["d"]
+    keyed = [r for r in d["rows"] if r.get("platform")]
+    assert keyed, "the fixture's devices name a platform"
+    for r in keyed:
+        words = FACT_WORDS.get(r["platform"], r["platform"])
+        assert f'<td title="{r["platform"]}">{words}</td>' in html, (r["platform"], words)

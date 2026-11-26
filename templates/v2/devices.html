@@ -28,7 +28,7 @@
   <label class="sr" for="dev-platform">Platform</label>
   <select id="dev-platform" name="platform">
     <option value="">Every platform</option>
-    {%- for p in d.platforms %}<option value="{{ p }}"{% if p == d.platform %} selected{% endif %}>{{ p }}</option>{% endfor %}
+    {%- for p in d.platforms %}<option value="{{ p }}"{% if p == d.platform %} selected{% endif %}>{{ p | platform_words }}</option>{% endfor %}
   </select>
 </form>
 {% include "v2/_devices.html" %}

@@ -8,7 +8,22 @@ and the next session unblocks the item and moves the entry to Answered.
 
 ## Open
 
+### lab-down
+
+- **Asked (2026-11-26 06:55 UTC, 23:55 Denver):** the lab's routers and switches have not run
+  since 2026-11-25 03:25 UTC, when the lab host booted a new kernel (an unattended upgrade's
+  reboot, most likely); r1 to r8 and s1 to s5 exited and stayed down, the hosts came back
+  (C4282). The s1 walk below cannot run until s1 does. lab/REDEPLOY.md's pre-flight says
+  "0 of 12 pass" (each "the last drift run did not read it"), and the runbook redeploys only on
+  N of N, so the agent did not redeploy.
+- **Options:** (a) your word to redeploy with the runbook's window, setting aside the pre-flight's
+  drift condition for this one start (every golden is at its intent; nothing could drift while
+  down); (b) you bring the lab back yourself; (c) leave it down. **Recommendation:** (a), then
+  the s1 walk; later, whether the lab host may reboot itself for upgrades.
+
 ### s1-walk
+
+**BLOCKED → #lab-down** (2026-11-26): s1 is not running.
 
 **The s1 walk for C4090's records (about 15 min, tonight).** Two of the three missing records
 come from it: `P.reads` (a Fixed incident whose proof is a command-plan run with its reads) and
