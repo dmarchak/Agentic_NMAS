@@ -120,7 +120,10 @@ def test_intent_against_what_it_runs_is_its_own_section_under_the_sentence(lab):
     dev = next(d for d in load_saved_devices(ref.csv_path) if d["hostname"] == "r3")
     with A.app.test_request_context("/"):
         ctx = device_v2._overview_ctx(ref, dev)
+    # The model is unchanged: one Intent check among the checks, with its state and words.
+    assert [c["name"] for c in ctx["checks"]].count("Intent") == 1, ctx["checks"]
     intent = next(c for c in ctx["checks"] if c["name"] == "Intent")
+    assert intent["state"] in ("ok", "warn", "danger", "unknown") and intent["text"], intent
     sec = re.search(r'<section class="card overview-intent" data-intent-section>(.*?)</section>',
                     html, re.S)
     assert sec, "the section is drawn"
