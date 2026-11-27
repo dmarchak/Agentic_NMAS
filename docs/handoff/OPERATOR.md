@@ -8,6 +8,38 @@ and the next session unblocks the item and moves the entry to Answered.
 
 ## Open
 
+### outage-cleanup
+
+- **Triaged (2026-11-27 18:15 UTC, read-only):** the 12 open incidents are one per device, opened
+  2026-11-25 03:26 to 03:30 by the outage (each: heartbeat missing, SNMP unreachable; r1 to r4
+  and r6 to r8 also telemetry streams 101 and 102 lost), all decided can't-fix by the grace
+  while the devices could not be read, all standing. Some took in boot-time triggers on
+  2026-11-27 (OSPF adjacencies to s3 at 17:43, r2 to r8 at 17:47, critical syslog at 17:48).
+
+  | Incident | Device | Still true now? | What clears it |
+  |---|---|---|---|
+  | hi-ed08deccc3a5, hi-f7e8d3b16ffe, hi-0c9fc885c6f5 | r1, r3, r4 | no: no alert fires, streams back, every adjacency up | nothing in Mercury (C4289) |
+  | hi-f19e5999288c, hi-c084ebb2fb2c | r6, r7 | no: the same | nothing in Mercury (C4289) |
+  | hi-08fa12d33834, hi-e3f2c2f602ec, hi-5aa885b09b8b, hi-21b0c7199408 | s1, s2, s3, s4 | no: no alert fires; s3's adjacencies up | nothing in Mercury (C4289) |
+  | hi-4eefc86ca154 | r2 | partly: r2's OSPF and OSPFv3 to r8 are down | wait for r8 |
+  | hi-363505d6bd12, hi-e9e3ec028af5 | r8, s5 | yes: unreachable, no heartbeat, r8's streams | wait for r8 (#r8-s5-configless) |
+
+  No re-subscribe is needed: r1 to r7's streams came back by themselves. **There is no click
+  list:** Mercury has no action that closes a standing can't-fix, and the clean read that
+  should end these (the drift run at 18:11Z read the ten at their goldens) cannot, because a
+  decision taken while the device was unreadable records no departure (C4289, B). Off closes
+  nothing (C3880).
+- **The walk:** s1's hi-08fa12d33834 would take in the walk's BPDU as one more symptom, so no
+  incident of the walk's own opens: "go 1" is held until this is answered.
+- **Options:** (a) the fix (a decision on an unreadable device ends at its first clean read at
+  its golden; a few lines in `modules/heal/incidents.py`, its test red first) deployed as a
+  one-time exception from a sha whose only red is C4090's loop scan, which the walk itself
+  lands; the ten close at the next drift run (every 30 min), then the walk; (b) walk anyway
+  into s1's standing incident: whether its card then offers the saved fix is not measured, and
+  record 2 needs a second incident; (c) wait: nothing clears them until the fix deploys, and
+  the fix waits for C4090, which waits for the walk. **Recommendation:** (a): without it the walk
+  and the fix wait on each other. It needs your word because main is red when it deploys.
+
 ### r8-s5-configless
 
 - **Asked (2026-11-27 17:55 UTC, 10:55 Denver):** after the redeploy, r8 and s5 do not answer.
@@ -75,6 +107,12 @@ Fixed proof ever holds such lines. **Options:** (a) your words to declare that l
 from `_inc_proof.html` (the words stay, the lines go; a board record compared again).
 **Recommendation:** (a): the card keeps drawing the lines if a future runner ever keeps a
 differing run.
+**Answered 2026-11-27, the operator's words:** "s1-walk third record: (b). Remove the
+P.net_zero.lines loop from _inc_proof.html (keep the words), and compare the board record
+again. No EMPTY_IN_FIXTURE entry for it. After the walk, once both records are captured, change
+"BPDU guard recovery (any port)" from Automatic to manual. An err-disable on an uplink is a loop
+or a rogue switch and must never be re-enabled automatically. Note it in decisions." The loop
+removed (the words kept) and docs/fidelity/incident.md compared again, 2026-11-27.
 
 ### ci-ten-gate-memory
 
@@ -90,6 +128,7 @@ differing run.
   counting the waves, and all ten at once only at 1 worker a shard until a ten-shard gate is
   measured (nmas-workers' GATE_PEAK); (b) CI ten and the gate five, dropping C349's parity;
   (c) CI stays at five. **Recommendation:** (a). The edits wait as `~/mercury-runs/ci-ten-shards.patch`.
+- **Answered 2026-11-27, the operator's words (for the commit's Approved-By):** "ci-ten-gate-memory: (a). I authorise changing scripts/nmas-gate and scripts/nmas-workers for ten shards: three waves of about 8 to 10 GiB at 2 workers a shard under today's memory cap, the gate's wave words counting the waves, and all ten at once only at 1 worker a shard until a ten-shard gate peak is measured. No other change to either file." Moved to Answered once landed.
 
 ### ratchet-no-screen
 
@@ -99,6 +138,7 @@ differing run.
   `NO_SCREEN` a ratchet ("shrinks") is a line in tests/ratchet_lists.py, which needs your words.
   **Options:** (a) your words for that one RATCHETS line; (b) leave the test's exact set as the
   guard. **Recommendation:** (a), so the weakening check refuses a new gap on its own.
+- **Answered 2026-11-27, the operator's words (for the commit's Approved-By):** "ratchet-no-screen: (a). I authorise adding one RATCHETS line to tests/ratchet_lists.py declaring modules/settings_index.py's NO_SCREEN a shrinking list. No other change to that file." Moved to Answered once landed.
 
 ### claude-md-0230
 
