@@ -83,6 +83,11 @@ def test_the_field_is_stacked_and_draft_waits_on_an_export(ui, monkeypatch):
                       form, re.S)
     assert label and '<textarea id="pol-words"' in label.group(1), form[:600]
     assert 'rows="4"' in label.group(1)
+    # C4286: the label's words and the AI mark are one line, the mark beside the words; as the
+    # stacked label's own child it stretched to the field's whole width.
+    words = re.match(r'<span class="pol-label">(.*?)</span>\s*<textarea', label.group(1), re.S)
+    assert words and "The policy, as you would say it" in words.group(1) and \
+        "ai-mark" in words.group(1), label.group(1)[:400]
     assert (form.index('class="faint small pol-help"') < form.index('data-op="sdn-policy"')
             < form.index('data-manual="sdn-policy'))
     from modules.nsot import export as X

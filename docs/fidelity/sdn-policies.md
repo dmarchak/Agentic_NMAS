@@ -39,7 +39,9 @@ hover, the field still editable. The same card and its regions, laid out as the 
 described; compared by the template's diff and tests/test_sdn_policies_v2.py, not by new shots
 (the boards are not on this machine). Templates sha256 before:
 `22f2f4f4dd4dea5c1cbbf8a53bbe6b4660cd5d624b3df0e0d1c3ebc0174bb295`.
-Templates sha256: `54e15dcf4b61f9331c94abf2afb54230ef9793a0d00992c9899be34e99531f1e`
+Compared again 2026-11-27 (C4286): the policy field's words and its AI mark are one line, the mark beside the words at its own size; as the stacked label's own child it had stretched to the field's whole width (a full-width teal bar). Shot at 1366 in the suite's world; no other region moves. Templates sha256 before:
+`54e15dcf4b61f9331c94abf2afb54230ef9793a0d00992c9899be34e99531f1e`.
+Templates sha256: `a78c07864a27b4fced227f9256aafcd3938febab7d5ee5590317f76d4f449bae`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the template's diff against the
 regions below, not from new shots. In `_sdn_policies.html`, the policies table's "by" column
