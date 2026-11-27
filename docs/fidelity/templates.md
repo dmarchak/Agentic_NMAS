@@ -28,7 +28,9 @@ Shots: the operator's captures above; the boards `TemplatesApprove` and `C566Tem
 Compared 2026-10-17. The Coverage tab (`_template_coverage.html`) was not opened in either
 walk and is not compared here (row "Coverage tab").
 Templates compared: templates/v2/templates.html, templates/v2/_templates_lib.html, templates/v2/_templates_table.html, templates/v2/_template_op.html, templates/v2/_template_result.html, templates/v2/_template_edit.html, templates/v2/_template_check.html, templates/v2/_template_bindings.html
-Templates sha256: `fa311b66d6ec0ab7c314c7b84405fc660ff49bcced44a16b19e4777467cd0256`
+Compared again 2026-11-27 (Stage 5 step 6): the subtitle says "an approved template", in plain words, not "an APPROVED template". Templates sha256 before:
+`fa311b66d6ec0ab7c314c7b84405fc660ff49bcced44a16b19e4777467cd0256`.
+Templates sha256: `416d4b05df3c1871fe3f43cc13cf358b337c9f12e322226211698e153c7e3186`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_templates_table.html`, `_template_op.html`,

@@ -70,6 +70,9 @@ class TestThePage:
         r, html = _get(tl, "/v2/templates?list=Lab")
         assert r.status_code == 200 and r.headers["Content-Security-Policy"] == csp.STRICT_POLICY
         assert "Templates · Lab" in html and REL in html and "IOS-XE" in html
+        # Stage 5 step 6 (plain words): the subtitle says "approved", never in capitals.
+        sub = html.split('<p class="sub">', 1)[1].split("</p>", 1)[0]
+        assert "through an approved template" in sub and "APPROVED" not in sub, sub
         assert re.search(r"not approved <strong>\d+</strong>", html)
         assert "3: " in html and ">s1</a>" in html and ">s3</a>" in html
         assert "never approved" in html
