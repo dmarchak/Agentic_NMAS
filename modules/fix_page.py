@@ -427,7 +427,7 @@ def _list_row(r: dict) -> dict:
 
 def listing(network: str, q: str = "", mode: str = "", kind: str = "") -> dict:
     """Troubleshooting › Fixes for *network*: ``{"network", "total", "saved", "built",
-    "deleted", "saved_counts", "rows", "more", "q", "mode", "kind", "filtered", "shown"}``,
+    "deleted", "saved_counts", "ran", "runs_capped", "rows", "more", "q", "mode", "kind", "filtered", "shown"}``,
     *rows* the one list, at most `LIST_SHOWN`. *q* matches a fix's name, what it fixes, or a
     device its record names; *mode* one of `MODES`; *kind* ``saved``, ``builtin`` or
     ``deleted`` (the deleted saved fixes, shown only by that filter: their record, origin and
@@ -464,8 +464,13 @@ def listing(network: str, q: str = "", mode: str = "", kind: str = "") -> dict:
     # The groups choose the rows and count them (``shown``); the page draws the one list,
     # never the groups, so they are not carried; nor are a row's devices (searched, above)
     # or its record's rows (drawn on its own page), `_list_row`.
+    # Stage 5 step 6 (the survey's Fixes line: "Add the state to the count line"): how many
+    # of the fixes have run, from the same run records; past the records read (``capped``) a
+    # count of none is never claimed.
+    ran = sum(1 for r in saved + built if (r["record"].get("runs") or 0) > 0)
     return {"network": network, "total": len(saved) + len(built), "saved": len(saved),
             "built": len(built), "deleted": len(gone), "saved_counts": counts,
+            "ran": ran, "runs_capped": capped,
             "rows": [_list_row(r) for r in every[:LIST_SHOWN]],
             "more": max(0, len(every) - LIST_SHOWN),
             "mode_rank": MODE_RANK, "source_words": SOURCE_WORDS, "q": q or "",

@@ -11,7 +11,8 @@ Each test holds one purpose:
 - the list counts the saved and built-in fixes, shows a deleted one only under the Deleted
   filter and counts it, and a search keeps the fixes it names;
 - a check says what its module declares for the fix's own cause, every cause labelled for a fix
-  that takes more than one, and a check its module declares nothing of says its own read.
+  that takes more than one, and a check its module declares nothing of says its own read;
+- the count line says whether any fix has run, "none has run yet" before any run record.
 """
 from modules import fix_page as FP
 from modules.heal import errdisable as ED
@@ -90,3 +91,28 @@ def test_a_condition_is_said_in_words_never_its_key_spliced_in():
     assert FP._cond_words({"condition": "err_disabled", "cause": "BPDU guard",
                            "port_role": "access"}) == \
         "a switch port err-disabled by BPDU guard, on an access port"
+
+
+def test_the_count_line_says_whether_any_fix_has_run(store):  # noqa: F811
+    """Stage 5 step 6 (the survey's Fixes line: "Add the state to the count line ('none has
+    run yet')"): with no run record the listing counts no fix as run and the count line says
+    "none has run yet"; once a verified run is saved as a fix, that fix counts as run and the
+    line names how many have."""
+    import re
+
+    import app as A
+
+    def line():
+        r = A.app.test_client().get(f"/v2/fixes?list={NET}")
+        assert r.status_code == 200, r.status_code
+        html = r.get_data(as_text=True)
+        return re.sub(r"\s+", " ", html.split('class="inc-list-sum"', 1)[1].split("</p>", 1)[0])
+    before = FP.listing(NET)
+    assert "none has run yet" in line(), line()
+    assert (before.get("ran"), before.get("runs_capped")) == (0, False), before
+    script(store)
+    after = FP.listing(NET)
+    assert after["ran"] >= 1 and after["ran"] <= after["total"], after
+    said = line()
+    assert f"{after['ran']} {'has' if after['ran'] == 1 else 'have'} run" in said, said
+    assert "none has run yet" not in said

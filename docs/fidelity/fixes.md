@@ -21,7 +21,9 @@ Compared again 2026-11-26 (Stage 5 step 6): the logs not read yet are said in th
 `2acf1d18db8a27e15c53bc3179eaa56bc97fe49d6534a8dbb399746047f4c157`.
 Compared again 2026-11-26 (Stage 5 step 6): where the page says something is not set up, it links the network's own Integrations tab (`integrations_link`: "Settings › <network> › Integrations"), where it said "(Settings › Integrations › Kea)" or similar in plain text. Every verdict unchanged. Templates sha256 before:
 `154dfc9cfaa8cb28dbd29f593ba191c6d1ba0fe2da3200bc7e3ef535c1368ee6`.
-Templates sha256: `68a8f81016dea7e9111826b6cacc16215823901ccb4740fa3e4c56fe36dfa9a6`
+Compared again 2026-11-27 (Stage 5 step 6): the count line ends with whether any fix has run ("none has run yet", or "N have run"), from the run records the list already reads. Templates sha256 before:
+`68a8f81016dea7e9111826b6cacc16215823901ccb4740fa3e4c56fe36dfa9a6`.
+Templates sha256: `c6953fd7afa8cb97d5e44392ad88d539f59ec62f35c1ae26685bfeaf7a2ea112`
 
 `_macros.html` is folded in here (a61bb071 changed it for this page; it was in no record); every
 page draws it, so a change to it asks for this page to be compared again.
