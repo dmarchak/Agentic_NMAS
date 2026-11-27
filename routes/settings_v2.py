@@ -207,7 +207,10 @@ def scope():
         return _fragment("v2/_settings_scope.html", v=v)
     words = ""
     if not listref.exists(at):
-        words = "deleted: it has left every page"
+        from modules import network_admin
+        # The page's own rule (Stage 5 step 6): deleted only when a deletion is held.
+        words = ("deleted: it has left every page" if network_admin.deletion(at) else
+                 "not a network")
     elif not L.is_default(at):
         try:
             words = L.MODE_WORDS[L.load(at)["mode"]]
@@ -1201,9 +1204,12 @@ def network(list_name):
         # it was deleted and where its data is, and offers nothing: every write naming it is
         # refused before its view. It drew every card with Save and Preview, live.
         gone = network_admin.deletion(list_name)
+        # One statement (Stage 5 step 6, the survey's Settings line): deleted when a deletion
+        # is held, never a network otherwise, in the strip as in the notice.
         v = {"network": list_name, "deleted": gone,
              "scope": settings_page.scope_bar(list_name),
-             "mode_words": "deleted: it has left every page"}
+             "mode_words": ("deleted: it has left every page" if gone else
+                            "not a network")}
         return _strict(render_template("v2/settings.html", who=_who(), active_nav="settings",
                                        v=v), 410)
     v = settings_page.network_view(list_name, request.args.get("tab") or "integrations")

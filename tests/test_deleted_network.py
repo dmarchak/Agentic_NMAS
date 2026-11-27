@@ -90,6 +90,29 @@ class TestTheDeletedNetwork_sPage:
             assert absent not in main, absent
         assert "<b>Branch</b><small>deleted: it has left every page</small>" in main
 
+    def test_a_name_that_never_was_a_network_is_said_one_way(self, networks, monkeypatch):  # noqa: F811
+        """Stage 5 step 6 (the survey's Settings line: "One statement (deleted, or never
+        existed), not both"): a page whose network is no network and was never deleted says so
+        in its subtitle, its notice and the strip alike, never "no longer" or "deleted"; it
+        writes nothing."""
+        from types import SimpleNamespace
+
+        from modules import network_admin
+        from modules.nsot import listref
+        # A name in the address that is no network is refused before the page (list_param's
+        # guard); the page meets one as the active network, which Settings opens on.
+        monkeypatch.setattr(listref, "exists", lambda name: name != "Ghost")
+        monkeypatch.setattr(listref, "active", lambda: SimpleNamespace(name="Ghost"))
+        assert network_admin.deletion("Ghost") == {}
+        before = sorted(p.name for p in (networks["dir"] / "lists").iterdir())
+        r = networks["client"].get("/v2/settings")
+        main = _main(_flat(r))
+        assert "Ghost is not a network: it has no settings to show or change." in main, main
+        assert "<strong>Ghost is not a network.</strong>" in main
+        assert "<b>Ghost</b><small>not a network</small>" in main, main
+        assert "no longer" not in main and "deleted: it has left every page" not in main
+        assert sorted(p.name for p in (networks["dir"] / "lists").iterdir()) == before
+
     def test_another_network_s_query_still_draws_the_deleted_page(self, gone):
         """The picker reloaded the path with Default's name (W2): the path's network is the
         page's, and it is deleted."""

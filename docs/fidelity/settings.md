@@ -104,7 +104,9 @@ Compared again 2026-11-25 (Stage 5 step 2, slice 4; C's toggles): `_settings_car
 `a40e645b57b519bd42d5be43ddea0e3a1f890facaf093de04ec39a0d8fea63f4`.
 Compared again 2026-11-26 (Stage 5 step 6): a reason drawn right after a bold sentence's full stop starts with a capital (the `capital` filter, `words.capital`: a plain first word only, a file name or key left as it is), where it started lowercase ("... have not been read yet. its reader has not run yet"). No region moves; every verdict is unchanged. Templates sha256 before:
 `82dec3be200b0c71ad2ffcfcf07e2b85f5d8e6976aa1ff0d2b42a90d6ae6867e`.
-Templates sha256: `877e9ac07be363d599c2ff210e6a32b63a5147f3025cab83151a7cc644bae5d6`
+Compared again 2026-11-27 (Stage 5 step 6, the survey's Settings line, "One statement (deleted, or never existed), not both"): a network that was never one and was not deleted is said so in the subtitle ("is not a network"), the notice and the strip ("not a network") alike, where the subtitle and the strip said "no longer" and "deleted"; a deleted network's page is unchanged. Templates sha256 before:
+`877e9ac07be363d599c2ff210e6a32b63a5147f3025cab83151a7cc644bae5d6`.
+Templates sha256: `581d810e863b3cf8e42a7e6d1a84d5369cfdc5b14f1e3e8f29625a65ae01f6ad`
 
 **Compared again 2026-11-13 (C3290's last gap):** in `_ai_classes.html`, Device state's line
 "turned on by <person> at <instant>: “<reason>”" is drawn through `times`, so its instant is
