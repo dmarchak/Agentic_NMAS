@@ -1550,6 +1550,12 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
   padding: 14px 0 10px; }
 #cred-profiles > section.card:not(.set-card) > .card-head h2,
 section.card[aria-labelledby="cr-h"] > .card-head h2 { font-size: 19px; font-weight: 700; }
+/* SDN › Apps as C's document (Stage 5 step 6): the NSOT export and Add an app at rest are
+   sections, no boxes; a preview or a form opened in their place keeps its box. */
+section.card.sdn-export:not(.sdn-op), section.card.apps-draft-rest {
+  background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0;
+  padding: 14px 0 10px; }
+section.card.sdn-export:not(.sdn-op) .sdn-ctl-hd h2 { font-size: 19px; font-weight: 700; }
 /* Monitoring › Coverage as C draws a fleet (Stage 5 step 6): its counts, then the table, no box. */
 #coverage.card.coverage { background: none; border: 0; border-radius: 0; padding: 0; }
 /* Fixes' list as C draws a table (Stage 5 step 6): under its counts, no box. */

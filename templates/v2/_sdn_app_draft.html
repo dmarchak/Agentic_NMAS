@@ -23,7 +23,9 @@
     {%- else %}
     <button class="btn" type="button" disabled aria-disabled="true" data-op="draft-write" title="{{ d.why }}" data-refused="Not available: {{ d.why }}">Add an app as a Draft…</button>{{ how('draft-write') }}
     {%- endif %}
-    <span class="faint small">{% if d.location %}to <span class="mono">{{ d.location }}</span>{% if d.branch %}, branch {{ d.branch }}{% endif %}{% else %}{{ d.why }}{% endif %}</span>
+    {#- Where it goes; with no location, why it cannot is the disabled button's own words
+        (each fact once, Stage 5 step 6). -#}
+    {%- if d.location %}<span class="faint small">to <span class="mono">{{ d.location }}</span>{% if d.branch %}, branch {{ d.branch }}{% endif %}</span>{% endif %}
   </div>
 </section>
 

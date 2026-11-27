@@ -38,7 +38,12 @@
     <dt>Read by</dt><dd>this tab's controller hosts and the expected switches and links of every controller app deploy; never NetBox live</dd>
   </dl>
   {%- endif %}
+  {#- Each fact once (Stage 5 step 6): where nothing is committed and the devices are not
+      NetBox's, the notice above already says why no export can be made, so the disabled
+      button would only say it again. -#}
+  {%- if x.netbox or x.state != 'none' or (x.netbox is not defined) %}
   {{ preview_form(primary=(x.state != 'ok')) }}
+  {%- endif %}
 </section>
 
 {%- elif x.state_card in ('preview', 'nothing') %}

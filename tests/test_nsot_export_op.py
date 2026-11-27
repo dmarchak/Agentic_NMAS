@@ -233,6 +233,28 @@ def _client():
     return A.app.test_client()
 
 
+def test_a_network_with_its_own_list_says_why_once_in_settings_words(lab, monkeypatch):
+    """Stage 5 step 6 (each fact once, plain words): on a network whose devices are its own
+    list, the card's notice says why no export can be made, in Settings' words ("its own
+    list"), never the source's key, and no disabled Export from NetBox… says it again."""
+    import re
+    from html import unescape
+
+    monkeypatch.setattr("modules.inventory.source_config.load",
+                        lambda name: {"source": "local"})
+    rest = OP.last(NET)
+    assert rest["netbox"] is False and rest["state"] == "none", rest
+    assert rest["source_words"] == (f"{NET}'s devices come from its own list, not NetBox: an "
+                                    "NSOT export is NetBox's view of a network"), rest
+    html = _client().get(f"/v2/sdn/apps?list={NET}").get_data(as_text=True)
+    card = html.split('id="nsot-export"', 1)[1].split("</section>", 1)[0]
+    text = unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", card)))
+    assert text.count("an NSOT export is NetBox's view of a network") == 1, text
+    assert "'local'" not in unescape(card) and 'data-op="nsot-export"' not in card, card
+    # Drawing it changed nothing: still none committed, nothing announced.
+    assert OP.last(NET)["state"] == "none" and lab["announced"] == []
+
+
 def test_sdn_apps_draws_the_card_none_committed_and_its_preview_commits_nothing(lab):
     c = _client()
     html = c.get(f"/v2/sdn/apps?list={NET}").get_data(as_text=True)

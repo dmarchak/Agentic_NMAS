@@ -63,9 +63,11 @@ def last(network: str) -> dict:
     else:
         src_error = ""
     netbox = src == source_config.SOURCE_NETBOX
+    # The source in Settings' own words (`_network_source.html`: "its own list"), never its key.
+    said = "its own list" if src == source_config.SOURCE_LOCAL else repr(src)
     out = {"network": network, "netbox": netbox,
            "source_words": src_error or ("" if netbox else
-                                         f"{network}'s devices come from {src!r}, not NetBox: "
+                                         f"{network}'s devices come from {said}, not NetBox: "
                                          "an NSOT export is NetBox's view of a network")}
     # The export as the tab's readers take it (`export.read`, HEAD), so the card says what they
     # read; a file there that does not read is unreadable, never none.

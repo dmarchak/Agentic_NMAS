@@ -224,7 +224,8 @@ the controller, so every switch drops and reconnects. How a deploy works, step b
   and every deploy's expected switches and links from (its hash, its commit, who and when,
   NetBox's version and what it holds), or that none is committed, so no controller host is
   listed until one is (said once, by this card; an export that can't be read is said in red
-  under the cards, naming why). **Export from NetBox…**
+  under the cards, naming why). On a network whose devices are its own list rather than
+  NetBox's, the card says so once and offers no export. **Export from NetBox…**
   reads NetBox now and opens the preview in the card's place: the export's hash beside the
   committed one and what changes, by kind; **Commit the export** commits it as you, bound to
   that hash. Step by step: [Commit a network's NSOT export](nsot-export).
