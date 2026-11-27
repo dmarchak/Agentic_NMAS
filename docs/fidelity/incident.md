@@ -220,7 +220,9 @@ Compared again 2026-11-27 (Stage 5 step 4, C's order; the board design/proposals
 `b0e996fd9cc5a0fee24e151a78f9e97ff3aeae109aa073259737140d1ffad8ad`.
 Compared again 2026-11-27 (the operator's decision, C4090's third record, (b): "Remove the P.net_zero.lines loop from _inc_proof.html (keep the words)"): a Fixed incident's proof draws the net-zero check's words alone, without the lines a run changed; a run whose configuration after differs from before is rolled back and refused, so no Fixed proof holds such lines. Compared by the template's diff, not a new shot: no other region moves. Templates sha256 before:
 `39b0f10e93fd1ecffaf2bceb61c0b785d207c5f38515f7b0efee69c57d6d1e31`.
-Templates sha256: `2686965697cc597836be378b65846c2b41a982809b7d826ecf9e01fe3ebb17ab`
+Compared again 2026-11-27: a device's raw syslog line drawn as evidence (kind "log", the port's own lines that an err-disable keeps) is marked data-verbatim in the incident's Evidence list and its evidence chip, a quotation as Logs draws it; nothing else drawn changes. Templates sha256 before:
+`2686965697cc597836be378b65846c2b41a982809b7d826ecf9e01fe3ebb17ab`.
+Templates sha256: `b05d1163f40ab3e14305fcd4764989891569da44f703fc77d44ad1e3130edb0c`
 Templates sha256 before the saved plans card said a right's holders unset (2026-11-15, Gate 1b's review, item 7; the row "Rights not set" below): `770515ac382839dde54d1ae789920a7578375acf87fe6fb9d221961273361976`
 Templates sha256 before C3725's session moved from a press to the proposal's record (2026-11-15, the operator; the session row below): `90974cd13f0f0f2aece5e005c3cc5e3c2c21726aa22192e6535bce1ca4953909`
 Templates sha256 before the verify-speed gate's page fixes (2026-11-14, C3725, C3727, C3728, C3729, below): `b8969275f9560c0d423e154d881391989736eb6548a35bb27ab4020fa5542a6c`

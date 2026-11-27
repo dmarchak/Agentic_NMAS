@@ -249,7 +249,7 @@
 <details class="bluf-evidence inc-evidence" id="inc-evidence" data-keep="bluf-evidence-{{ x.id }}">
   <summary>Evidence ({{ (B.evidence or []) | length }})</summary>
   <ul class="set-list small">
-    {%- for ev in B.evidence or [] %}<li data-kind="{{ ev.kind }}">{{ ev.words | times }}{% if ev.at %} <span class="muted">{{ clock(ev.at) }}</span>{% endif %}</li>{% endfor %}
+    {%- for ev in B.evidence or [] %}<li data-kind="{{ ev.kind }}">{% if ev.kind == 'log' %}<span data-verbatim="the device's log line">{{ ev.words }}</span>{% else %}{{ ev.words | times }}{% endif %}{% if ev.at %} <span class="muted">{{ clock(ev.at) }}</span>{% endif %}</li>{% endfor %}
     {%- if K_more %}<li class="muted" data-kept="seen">{{ K.triggers }} trigger{{ '' if K.triggers == 1 else 's' }} kept of {{ K.seen }} seen; the rest are counted in the record.</li>{% endif %}
     {%- if K.reads %}<li data-kept="reads">{{ K.reads }} read{{ '' if K.reads == 1 else 's' }} of {{ x.device or 'the device' }} kept by the detect pass (their state and time; never configuration text).</li>{% endif %}
     {%- if K.members %}<li data-kept="members">Devices attached: {% for m in K.members %}<a href="{{ url_for('device_v2.device', name=m.device, list=x.network) }}">{{ m.device }}</a>: {{ m.why }}{{ '; ' if not loop.last }}{% endfor %}{% if K.more_members %}; and {{ K.more_members }} more, counted in the record{% endif %}.</li>{% endif %}

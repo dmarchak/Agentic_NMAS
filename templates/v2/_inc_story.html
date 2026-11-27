@@ -18,7 +18,7 @@
     <dt>Likely cause</dt><dd{% if s.summary.inconclusive %} class="inc-sum-inconclusive"{% endif %}>{{ s.summary.cause or 'Not named yet.' }}</dd>
     <dt>Evidence</dt><dd>
       {%- for e in s.summary.evidence %}
-      <details class="inc-chip" data-keep="inc-chip-{{ loop.index }}"><summary><span class="inc-chip-kind">{{ e.kind }}</span>{% if e.at %} {{ clock(e.at, 'seconds') }}{% endif %}</summary><p class="inc-chip-raw">{{ e.words }}</p></details>
+      <details class="inc-chip" data-keep="inc-chip-{{ loop.index }}"><summary><span class="inc-chip-kind">{{ e.kind }}</span>{% if e.at %} {{ clock(e.at, 'seconds') }}{% endif %}</summary><p class="inc-chip-raw"{% if e.kind == 'log' %} data-verbatim="the device's log line"{% endif %}>{{ e.words }}</p></details>
       {%- else %}<span class="muted">None recorded.</span>
       {%- endfor %}
       {%- if s.summary.evidence_more %} <span class="muted small">and {{ s.summary.evidence_more }} more under Details</span>{% endif %}</dd>
