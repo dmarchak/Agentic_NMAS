@@ -1,0 +1,68 @@
+{
+ "P": {
+  "checks": [
+   {
+    "name": "The port reads connected",
+    "read": "show interfaces status",
+    "result": "pass",
+    "took_s": 0.8,
+    "words": "Gi1/0 reads connected after 0.8 s"
+   },
+   {
+    "name": "No new err-disable",
+    "read": "show interfaces status err-disabled",
+    "result": "pass",
+    "took_s": 11.5,
+    "words": "Gi1/0 did not trip again"
+   }
+  ],
+  "line": "Verified: connected, no re-trip, config unchanged",
+  "net_zero": {
+   "lines": [],
+   "words": "the configuration of GigabitEthernet1/0 read before the send and again after: identical"
+  },
+  "reads": [
+   {
+    "answer": "\nPort      Name               Status       Reason               Err-disabled Vlans\nGi1/0     edge-h1 - VLAN 10  err-disabled bpduguard",
+    "at": "2026-11-27T21:39:38Z",
+    "command": "show interfaces status err-disabled",
+    "cut": false,
+    "offset_s": 13,
+    "read": "20261127T213937766869Z-4a3c23c3250246cc91e9036b78745ec7",
+    "said": "Gi1/0 edge-h1 - VLAN 10 err-disabled bpduguard"
+   },
+   {
+    "answer": "ErrDisable Reason            Timer Status\n-----------------            --------------\narp-inspection               Disabled\nbpduguard                    Disabled\nchannel-misconfig (STP)      Disabled\ndhcp-rate-limit              Disabled\ndtp-flap                     Disabled\ngbic-invalid                 Disabled\ninline-power                 Disabled\nl2ptguard                    Disabled\nlink-flap                    Disabled\nmac-limit                    Disabled\nlink-monitor-failure         Disabled\nloopback                     Disabled\noam-remote-failure           Disabled\npagp-flap                    Disabled\nport-mode-failure            Disabled\npppoe-ia-rate-limit          Disabled\npsecure-violation            Disabled\nsecurity-violation           Disabled\nsfp-config-mismatch          Disabled\nstorm-control                Disabled\nudld                         Disabled\nunicast-flood                Disabled\nvmps                         Disabled\npsp                          Disabled\ndual-active-recovery         Disabled\nevc-lite input mapping fa    Disabled\nRecovery command: \"clear     Disabled\n\nTimer interval: 300 seconds\n\nInterfaces that will be enabled at the next timeout:",
+    "at": "2026-11-27T21:39:40Z",
+    "command": "show errdisable recovery",
+    "cut": false,
+    "offset_s": 15,
+    "read": "20261127T213937766869Z-4a3c23c3250246cc91e9036b78745ec7",
+    "said": ""
+   },
+   {
+    "answer": "\nPort      Name               Status       Vlan       Duplex  Speed Type \nGi0/0     clab-mgmt          connected    routed     a-full   auto RJ45\nGi0/1                        connected    1          a-full   auto RJ45\nGi0/2     P2P to r1 Gi3 - RI connected    routed     a-full   auto RJ45\nGi0/3     trunk to s2 Gi0/3  connected    trunk      a-full   auto RJ45\nGi1/0     edge-h1 - VLAN 10  connected    10         a-full   auto RJ45\nGi1/1     edge-h2 - VLAN 20  connected    20         a-full   auto RJ45",
+    "at": "2026-11-27T21:39:49Z",
+    "command": "show interfaces status",
+    "cut": false,
+    "offset_s": 24,
+    "read": "20261127T213948479827Z-ddd1d180be1a4d0b90905f7412427a6b",
+    "said": "Gi1/0 edge-h1 - VLAN 10 connected 10 a-full auto RJ45"
+   },
+   {
+    "answer": "",
+    "at": "2026-11-27T21:40:00Z",
+    "command": "show interfaces status err-disabled",
+    "cut": false,
+    "offset_s": 35,
+    "read": "20261127T213959310297Z-b8222149006e40929f3edc1f3d49f392",
+    "said": "Gi1/0 not listed"
+   }
+  ],
+  "verify_s": 12
+ },
+ "captured_by": "fixit.proof.of_run on the NMAS host, 2026-11-27",
+ "device": "s1",
+ "incident": "hi-f90c700a7d45",
+ "run": "20261127T213925619998Z-0aded4b92f7e496d8a14e5e2303ef507"
+}

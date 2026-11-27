@@ -1,0 +1,19 @@
+{
+ "F": {
+  "hash": "4e2c8c6a22d02405",
+  "key": "script-bpdu-guard-recovery-access-ports",
+  "kind": "button",
+  "label": "Fix with saved script: BPDU guard recovery (access ports)",
+  "more": [
+   {
+    "hash": "62a826b397429a1c",
+    "key": "fix-bpdu-guard-recovery-any-port",
+    "label": "Fix with saved script: BPDU guard recovery (any port)"
+   }
+  ],
+  "script": true
+ },
+ "captured_by": "fixit.section.view on the NMAS host, 2026-11-27, both saved fixes offered",
+ "device": "s1",
+ "incident": "hi-ebc220c86c8f"
+}

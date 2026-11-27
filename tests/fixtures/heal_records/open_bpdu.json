@@ -1,0 +1,312 @@
+{
+ "decisions": [
+  {
+   "at": "2026-11-27T22:05:50Z",
+   "cause": null,
+   "departure": "",
+   "device": "s1",
+   "epoch": 1795817150.6444376,
+   "guard": null,
+   "headline": "s1 shows a symptom. s1's config is as intended; the port's state is the problem (err-disabled)",
+   "id": "hd-65105db372a9",
+   "incident": "hi-ebc220c86c8f",
+   "kind": "physical",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "outcome_words": "s1 is at its golden, which matches its intent, so no configuration fix on s1 can cure this (configuration cannot fix a cable, an optic or a far end): Mercury fixes nothing by itself, and a person decides (Tier 3)",
+   "person": {},
+   "policy": {
+    "by": "alex@example.com",
+    "fingerprint": "763471bae879d219",
+    "reason": "the Self-healing toggle on Troubleshoot \u203a Incidents's control strip, turned off"
+   },
+   "problem": {
+    "condition": "err_disabled",
+    "object": "Gi1/0"
+   },
+   "program": [],
+   "program_hash": "",
+   "removal_ids": [],
+   "row": "decision",
+   "settled": "confirmed",
+   "tier": 3,
+   "triggers": [
+    "%SPANTREE-2-BLOCK_BPDUGUARD on s1 at 2026-11-27T22:05:32Z: Received BPDU on port Gi1/0 with BPDU Guard enabled. Disabling port.",
+    "%PM-4-ERR_DISABLE on s1 at 2026-11-27T22:05:33Z: bpduguard error detected on Gi1/0, putting Gi1/0 in err-disable state"
+   ],
+   "units": [],
+   "until": null,
+   "words": "s1 is at its golden, which matches its intent, so no configuration fix on s1 can cure this (configuration cannot fix a cable, an optic or a far end): Mercury fixes nothing by itself, and a person decides (Tier 3)"
+  }
+ ],
+ "incidents": [
+  {
+   "attached": [],
+   "cause": "symptom",
+   "claimed": null,
+   "device": "s1",
+   "errdisable": {
+    "at": "2026-11-27T22:05:33Z",
+    "cause": "bpduguard",
+    "checked_epoch": 1795817146.4713135,
+    "classified_at": "2026-11-27T22:05:46Z",
+    "cleared": "true",
+    "cleared_at": "2026-11-27T22:05:46Z",
+    "confirmed": {
+     "agrees": true,
+     "at": "2026-11-27T22:05:46Z",
+     "epoch": 1795817146.4713135,
+     "found": {
+      "port": "Gi1/0",
+      "reason": "bpduguard"
+     },
+     "run": "20261127T220546655235Z-3ac9b1876c0842b88f82e85a0b86a63a",
+     "why": ""
+    },
+    "epoch": 1795817133.374639,
+    "host": "edge-h1",
+    "lines": [
+     {
+      "at": "2026-11-27T22:05:32Z",
+      "line": "Nov 27 22:05:32 s1 113: s1: *Nov 27 21:40:32.632 UTC: %SPANTREE-2-BLOCK_BPDUGUARD: Received BPDU on port Gi1/0 with BPDU Guard enabled. Disabling port."
+     },
+     {
+      "at": "2026-11-27T22:05:33Z",
+      "line": "Nov 27 22:05:33 s1 114: s1: *Nov 27 21:40:32.634 UTC: %PM-4-ERR_DISABLE: bpduguard error detected on Gi1/0, putting Gi1/0 in err-disable state"
+     },
+     {
+      "at": "2026-11-27T22:05:35Z",
+      "line": "Nov 27 22:05:35 s1 116: s1: *Nov 27 21:40:34.643 UTC: %LINK-3-UPDOWN: Interface GigabitEthernet1/0, changed state to down"
+     }
+    ],
+    "mac": "",
+    "port": "GigabitEthernet1/0",
+    "port_role": "access",
+    "seen": 2,
+    "short": "Gi1/0",
+    "state": "classified",
+    "vlan": "10"
+   },
+   "fold": {
+    "state": "not_folded",
+    "why": "a port event on s1 folds only into a change on the far end of its port's link in the network model, and no open incident's device is"
+   },
+   "id": "hi-ebc220c86c8f",
+   "network": "Default",
+   "opened_at": "2026-11-27T22:05:46Z",
+   "opened_epoch": 1795817146.1305077,
+   "reads": [],
+   "related": [],
+   "settled": {
+    "at": "2026-11-27T22:05:46Z",
+    "first": null,
+    "how": "confirmed",
+    "operands": {
+     "port": "GigabitEthernet1/0",
+     "run": "20261127T220546655235Z-3ac9b1876c0842b88f82e85a0b86a63a"
+    },
+    "second": null,
+    "words": "show interfaces status err-disabled on s1 at 2026-11-27T22:05:46Z: Gi1/0 err-disabled by bpduguard, as classified"
+   },
+   "standing": {
+    "at": "2026-11-27T22:05:50Z",
+    "decision": "hd-65105db372a9",
+    "departure": "",
+    "epoch": 1795817150.6444376,
+    "guard": null,
+    "mode": "dry_run",
+    "on": "symptom",
+    "outcome": "cant_fix",
+    "words": "s1 is at its golden, which matches its intent, so no configuration fix on s1 can cure this (configuration cannot fix a cable, an optic or a far end): Mercury fixes nothing by itself, and a person decides (Tier 3)"
+   },
+   "state": "standing",
+   "stood": null,
+   "triggers": [
+    {
+     "at": "2026-11-27T22:05:32Z",
+     "cause": "bpduguard",
+     "epoch": 1795817132.3714643,
+     "interface": "Gi1/0",
+     "key": "errdis:61d451290a890d62",
+     "kind": "errdisable",
+     "related": [],
+     "source": "heal-detect",
+     "words": "%SPANTREE-2-BLOCK_BPDUGUARD on s1 at 2026-11-27T22:05:32Z: Received BPDU on port Gi1/0 with BPDU Guard enabled. Disabling port."
+    },
+    {
+     "at": "2026-11-27T22:05:33Z",
+     "cause": "bpduguard",
+     "epoch": 1795817133.374639,
+     "interface": "Gi1/0",
+     "key": "errdis:9a83c818925cd611",
+     "kind": "errdisable",
+     "related": [],
+     "source": "heal-detect",
+     "words": "%PM-4-ERR_DISABLE on s1 at 2026-11-27T22:05:33Z: bpduguard error detected on Gi1/0, putting Gi1/0 in err-disable state"
+    },
+    {
+     "at": "2026-11-27T22:05:50Z",
+     "epoch": 1795817150.0,
+     "interface": "",
+     "key": "alert:d8c553a72a5342ca7853",
+     "kind": "alert",
+     "related": [],
+     "rule": "Critical syslog received",
+     "source": "grafana-alerts",
+     "words": "the alert Critical syslog received fired on s1"
+    },
+    {
+     "address": "192.0.2.121",
+     "at": "2026-11-27T22:07:50Z",
+     "epoch": 1795817270.0,
+     "interface": "GigabitEthernet1/0",
+     "key": "alert:b591ee8be2b955117728",
+     "kind": "alert",
+     "related": [],
+     "rule": "Interface down",
+     "source": "grafana-alerts",
+     "words": "the alert Interface down fired on s1 on GigabitEthernet1/0"
+    }
+   ],
+   "triggers_seen": 4,
+   "updated_at": "2026-11-27T22:08:25Z"
+  }
+ ],
+ "page": "hi-ebc220c86c8f",
+ "steps": [
+  {
+   "at": "2026-11-27T22:05:50Z",
+   "cause": null,
+   "decision": "hd-65105db372a9",
+   "device": "s1",
+   "epoch": 1795817150.6444376,
+   "guard": {},
+   "headline": "s1 shows a symptom. s1's config is as intended; the port's state is the problem (err-disabled)",
+   "id": "hs-f428de5b42a7",
+   "incident": "hi-ebc220c86c8f",
+   "kind": "physical",
+   "mode": "dry_run",
+   "network": "Default",
+   "outcome": "cant_fix",
+   "outcome_words": "s1 is at its golden, which matches its intent, so no configuration fix on s1 can cure this (configuration cannot fix a cable, an optic or a far end): Mercury fixes nothing by itself, and a person decides (Tier 3)",
+   "person": "",
+   "policy": {
+    "by": "alex@example.com",
+    "fingerprint": "763471bae879d219",
+    "reason": "the Self-healing toggle on Troubleshoot \u203a Incidents's control strip, turned off"
+   },
+   "program": [],
+   "program_hash": "",
+   "row": "decision",
+   "steps": [
+    {
+     "result": "ok",
+     "step": "claim",
+     "words": "the incident on s1 taken"
+    },
+    {
+     "result": "ok",
+     "step": "stops",
+     "words": "no kill switch, watching only (dry run), no halt, no planned work"
+    },
+    {
+     "result": "ok",
+     "step": "approved",
+     "words": "the golden a1fffbcb24 is the approved state: at intent"
+    },
+    {
+     "result": "ok",
+     "step": "guards",
+     "words": "nothing holds it"
+    },
+    {
+     "result": "cant_fix",
+     "step": "decide",
+     "words": "s1 is at its golden, which matches its intent, so no configuration fix on s1 can cure this (configuration cannot fix a cable, an optic or a far end): Mercury fixes nothing by itself, and a person decides (Tier 3)"
+    },
+    {
+     "result": "ok",
+     "step": "record",
+     "words": "the decision recorded"
+    }
+   ],
+   "tier": 3,
+   "triggers": [
+    "%SPANTREE-2-BLOCK_BPDUGUARD on s1 at 2026-11-27T22:05:32Z: Received BPDU on port Gi1/0 with BPDU Guard enabled. Disabling port.",
+    "%PM-4-ERR_DISABLE on s1 at 2026-11-27T22:05:33Z: bpduguard error detected on Gi1/0, putting Gi1/0 in err-disable state"
+   ],
+   "units": [],
+   "words": "s1 is at its golden, which matches its intent, so no configuration fix on s1 can cure this (configuration cannot fix a cable, an optic or a far end): Mercury fixes nothing by itself, and a person decides (Tier 3)"
+  },
+  {
+   "at": "2026-11-27T22:05:52Z",
+   "decision": "",
+   "device": "s1",
+   "diagnosis": {
+    "actor": "Mercury (self-healing)",
+    "cap": 70,
+    "commands": 0,
+    "devices": [
+     "s1"
+    ],
+    "finished_at": "2026-11-27T22:05:52Z",
+    "hops": null,
+    "hypotheses": [],
+    "id": "dg-f78f5892d5844b29",
+    "incident": "hi-ebc220c86c8f",
+    "more": 0,
+    "not_checked": [],
+    "ruled_out": [],
+    "runbook": "",
+    "runbook_words": "",
+    "runs": [],
+    "started_at": "2026-11-27T22:05:52Z",
+    "state": "refused",
+    "steps": [
+     {
+      "result": "refused",
+      "step": "plan",
+      "words": "not diagnosed: no runbook fits what raised it (errdisable): the runbooks read an adjacency, an interface, a device not reached or a telemetry stream lost"
+     }
+    ],
+    "stopped": "",
+    "target": {
+     "device": "s1"
+    },
+    "words": "not diagnosed: no runbook fits what raised it (errdisable): the runbooks read an adjacency, an interface, a device not reached or a telemetry stream lost"
+   },
+   "epoch": 1795817152.2574415,
+   "id": "hs-3828e7f43ff7",
+   "incident": "hi-ebc220c86c8f",
+   "network": "Default",
+   "row": "diagnosis"
+  },
+  {
+   "advisory": {
+    "calls": [
+     "ai-127554c9e19b4cb7"
+    ],
+    "loop": "",
+    "pass": 0,
+    "state": "off",
+    "steps": [
+     {
+      "result": "failed",
+      "step": "pass 1",
+      "words": "not run: feature_off: the background feature heal_analysis is off for the network default: an admin turns it on in Settings \u203a AI, after its estimate; nothing was sent"
+     }
+    ],
+    "words": "AI analysis: not run: feature_off: the background feature heal_analysis is off for the network default: an admin turns it on in Settings \u203a AI, after its estimate; nothing was sent"
+   },
+   "at": "2026-11-27T22:05:55Z",
+   "decision": "",
+   "device": "s1",
+   "epoch": 1795817155.1048646,
+   "id": "hs-1ec397e23b03",
+   "incident": "hi-ebc220c86c8f",
+   "network": "Default",
+   "row": "advisory"
+  }
+ ]
+}

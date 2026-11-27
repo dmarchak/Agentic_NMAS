@@ -5961,6 +5961,91 @@ def _fixit_captured(client, _lab, _mp):
                 _os.rmdir(d)
 
 
+def _fixit_walk_records(client, _lab, _mp):
+    """C4090's last two records, captured on the installation during the s1 walk of 2026-11-27
+    (tests/fixtures/heal_records/README.md, "The s1 walk's records"): the proof of a person's
+    press of a saved fix (`fixit.proof.of_run` on its run: its verify checks and the four reads
+    the run made, masked as the proof module masks them), which draws `_inc_proof.html`
+    `P.reads`; and the card's next fix while two saved fixes match one open incident
+    (`fixit.section.view`'s ``bluf.fix``: BPDU guard recovery for access ports, Automatic, and
+    for any port, Manual, in ``more``), which draws `_fixit_section.html` `(F.more or ())`.
+    The open incident is the walk's own (hi-ebc220c86c8f, s1 Gi1/0 err-disabled by BPDU guard,
+    standing, its decision and step-log rows), captured whole while both fixes were offered: a
+    closed incident's page draws no next fix (`incident_page.with_item`). Stood in for this
+    provider alone, each its captured value: each device's identity (the captured one, as
+    `_fixit_captured` stands it in), the fixed incident's proof (`section._proof_of`) on the r3
+    heal `_fixit_captured` draws, and the open incident's next fix (`section.view`'s
+    ``bluf.fix``); Lab's three heal stores are written for it alone and put back."""
+    import json as _json
+    import os as _os
+
+    import pytest
+
+    from modules.fixit import section as FS
+    from modules.heal import decisions as HD
+    from modules.heal import incidents as HI
+    from modules.heal import steplog as SL
+
+    def fixture(name):
+        with open(_os.path.join(ROOT, "tests", "fixtures", "heal_records", f"{name}.json"),
+                  encoding="utf-8") as fh:
+            return _json.load(fh)
+
+    healed, errdisable = fixture("healed_tail"), fixture("plan_errdisable")
+    opened = fixture("open_bpdu")
+    proof, offers = fixture("proof_reads")["P"], fixture("fix_offers")["F"]
+    paths = {"incidents": HI.path("Lab"), "decisions": HD.path("Lab"), "steps": SL._path("Lab")}
+    kept = {p: (open(p, "rb").read() if _os.path.exists(p) else None) for p in paths.values()}
+    made = [d for d in {_os.path.dirname(p) for p in paths.values()} if not _os.path.isdir(d)]
+    mp = pytest.MonkeyPatch()
+    real_view = FS.view
+
+    def view(network, found, **kw):
+        out = real_view(network, found, **kw)
+        if (found.get("id") or "") != opened["page"]:
+            return out
+        return dict(out, bluf=dict(out.get("bluf") or {}, fix=offers))
+
+    def get(incident):
+        r = client.get(f"/v2/incident/{incident}?list=Lab")
+        assert r.status_code == 200, (incident, r.status_code)
+        return r.get_data(as_text=True)
+
+    try:
+        for p in paths.values():
+            _os.makedirs(_os.path.dirname(p), exist_ok=True)
+        with open(paths["incidents"], "w", encoding="utf-8") as fh:
+            _json.dump({"version": HI.VERSION,
+                        "incidents": healed["incidents"] + opened["incidents"]}, fh)
+        for key in ("decisions", "steps"):
+            with open(paths[key], "w", encoding="utf-8") as fh:
+                fh.writelines(_json.dumps(row) + "\n" for row in healed[key] + opened[key])
+        mp.setattr(FS, "_identity", lambda net, dev: errdisable["device"]["id"]
+                   if dev == errdisable["device"]["name"] else "nb:3")
+        mp.setattr(FS, "_proof_of", lambda *a, **k: proof)
+        fixed = get(healed["page"])
+        assert "Verified: connected, no re-trip, config unchanged · show proof" in fixed, \
+            fixed[:400]
+        assert "show errdisable recovery" in fixed and "Gi1/0 not listed" in fixed, fixed[:400]
+        mp.setattr(FS, "view", view)
+        both = get(opened["page"])
+        assert "Fix with saved script: BPDU guard recovery (access ports)" in both, \
+            both[both.find('data-bluf="fix"'):][:700]
+        assert "Fix with saved script: BPDU guard recovery (any port)" in both, both[:400]
+    finally:
+        mp.undo()
+        for p, data in kept.items():
+            if data is None:
+                if _os.path.exists(p):
+                    _os.remove(p)
+            else:
+                with open(p, "wb") as fh:
+                    fh.write(data)
+        for d in made:
+            if _os.path.isdir(d) and not _os.listdir(d):
+                _os.rmdir(d)
+
+
 def _incidents_list(client, _lab, _mp):
     """Troubleshooting › Incidents (board T; provisional, operator review pending) on Lab, its
     two tabs with rows, a search and a device filter, and the top bar's Self-healing chip, from the
@@ -6039,7 +6124,7 @@ PROVIDERS: list = [_reveal, _intent_check, _intent_deploy_offer, _reload_effects
                    _ai_spend, _assistant, _plans, _oob_onboard, _sdn, _sdn_apps,
                    _nsot_export_and_code_repo, _dhcp_steering, _heal_and_notify,
                    _heal_proposal, _resubscribe, _heal_run, _incident_page, _fixit_section,
-                   _fixit_captured, _saved_plans,
+                   _fixit_captured, _fixit_walk_records, _saved_plans,
                    _fixes, _incidents_list,
                    _sdn_no_topology, _sdn_evidence, _sdn_trace, _sdn_switches, _sdn_analyse,
                    _sdn_policies, _sdn_links_and_caps,

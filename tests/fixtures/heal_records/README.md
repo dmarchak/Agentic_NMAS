@@ -17,6 +17,22 @@ each loop drawn from a real captured record of its kind).
 
 | `held_decisions.jsonl` | Three decision rows held by a guard a person resolves, the newest of each guard on Default with no `until` (from the same capture, 2026-11-24): guard 4 on r7 (2026-11-14, its golden departs from its intent), guard 6 on r6 (2026-11-17, many devices at once), guard 9 on r4 (2026-11-08, healed past its rate), one JSON line each as `decisions.jsonl` keeps them | tests/test_human_readable.py's Needs attention, History and device surfaces (`_plant_held`: the held rows, C2820's survey item 4) |
 
+## The s1 walk's records (2026-11-27)
+
+Captured on the installation during the operator's s1 walk (one BPDU from the end host into s1
+Gi1/0, err-disabled by BPDU guard, twice), read by `_fixit_walk_records` in tests/v2_context.py:
+
+| File | What it holds | Loops it draws |
+|---|---|---|
+| `proof_reads.json` | The proof the card draws for incident `hi-f90c700a7d45`, fixed by the operator's press of BPDU guard recovery (access ports): `fixit.proof.of_run` on its run, its two verify checks, its net-zero words and the four reads the run made, each answer masked by the proof module itself, captured at 21:43 UTC | `templates/v2/_inc_proof.html` `P.reads` |
+| `fix_offers.json` | The card's next fix (`fixit.section.view`'s `bluf.fix`) for incident `hi-ebc220c86c8f` while two saved fixes matched it: BPDU guard recovery (access ports), Automatic, and (any port), Manual, in `more`; captured at 22:06 UTC before either was pressed | `templates/v2/_fixit_section.html` `(F.more or ())` |
+| `open_bpdu.json` | Incident `hi-ebc220c86c8f` itself, standing, with its one decision row and its three step-log rows, whole, by `nmas-config-read --records` at 22:13 UTC: the open incident `fix_offers.json`'s fix is drawn on (a closed one's page draws no next fix) | the page `fix_offers.json` draws on |
+
+Their edits, and nothing else: in `proof_reads.json` the end hosts h1 and h2 in the interface
+descriptions renamed `edge-h1` and `edge-h2`; in `open_bpdu.json` 10.255.1.21 replaced by
+192.0.2.121, the person's email by `alex@example.com`, and h1 renamed `edge-h1`.
+`fix_offers.json` is as captured.
+
 The stores' layout is tests/fixtures/incident_page/'s: `incidents`, `decisions` and `steps` as
 the stores hold them; `page` the incident drawn; `line` one fix-it record line as kept.
 
@@ -34,7 +50,11 @@ the stores hold them; `page` the incident drawn; `line` one fix-it record line a
 - No internal URL, domain or path was in them (`/usr/bin/ss`, in the collector's dry run, is the
   system's own).
 
-## What these captures cannot draw
+## What the first captures could not draw (answered 2026-11-27)
+
+`P.reads` and `(F.more or ())` are drawn from the s1 walk's records above; `P.net_zero.lines`
+was removed from `_inc_proof.html` by the operator's decision of 2026-11-27 (a net-zero run that
+differs is rolled back and refused, so no Fixed proof holds such lines). As first written:
 
 Three loops still need a record these four captures do not hold:
 
