@@ -22,7 +22,12 @@
   --warn: #9A4B00; --warn-mark: #D97706; --warn-soft: #FDF1E2;
   --danger: #B42318; --danger-soft: #FDECEA;
   --muted-soft: #E9EBE7;
-  --side: #FFFFFF; --side-ink: #4A5260; --side-ink-2: #626A78; --side-on: #E6EFF6; --side-rule: #EEF0EC;
+  /* The sidebar's (and the phone's top bar's) colours as before Stage 5 (the operator,
+     2026-11-27: "Revert their colours, light and dark themes, to what they were before Stage 5
+     (before 5cd8683f). Keep the new layout and type"): dark in both themes, its strongest words
+     white (--side-strong). */
+  --side: #14202B; --side-ink: #C9D2DB; --side-ink-2: #8FA1B2; --side-on: #22384A; --side-rule: #2A3B4B;
+  --side-strong: #FFFFFF;
   --on-warn: #15191E;
   --brand: #1D9E75; --brand-hi: #9FE1CB;
   --sans: 'IBM Plex Sans', system-ui, sans-serif;
@@ -58,7 +63,8 @@
     --warn: #F0A450; --warn-mark: #F59E0B; --warn-soft: #362410;
     --danger: #F2766B; --danger-soft: #3A1815;
     --muted-soft: #252D36;
-    --side: #161C23; --side-ink: #A9B3BE; --side-ink-2: #8E98A4; --side-on: #17324A; --side-rule: #232C35;
+    --side: #0A0F14; --side-ink: #C9D2DB; --side-ink-2: #8FA1B2; --side-on: #1B2B39; --side-rule: #22303D;
+    --side-strong: #FFFFFF;
     --on-warn: #0A0F14;
     --brand: #1D9E75; --brand-hi: #9FE1CB;
     --shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
@@ -84,7 +90,8 @@
   --warn: #F0A450; --warn-mark: #F59E0B; --warn-soft: #362410;
   --danger: #F2766B; --danger-soft: #3A1815;
   --muted-soft: #252D36;
-  --side: #161C23; --side-ink: #A9B3BE; --side-ink-2: #8E98A4; --side-on: #17324A; --side-rule: #232C35;
+  --side: #0A0F14; --side-ink: #C9D2DB; --side-ink-2: #8FA1B2; --side-on: #1B2B39; --side-rule: #22303D;
+  --side-strong: #FFFFFF;
   --on-warn: #0A0F14;
   --brand: #1D9E75; --brand-hi: #9FE1CB;
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
@@ -162,14 +169,12 @@ a { color: var(--accent); }
 .product-name { font-size: 20px; }
 .faint { color: var(--ink-3); }
 .brand-words { display: flex; flex-direction: column; flex-grow: 1; line-height: 1.2; }
-.brand-name { color: var(--ink); font-weight: 700; font-size: 16px; }
+.brand-name { color: var(--side-strong); font-weight: 700; font-size: 16px; }
 .brand-sub { font-size: 11px; color: var(--side-ink-2); white-space: nowrap; }
 .nav-item { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 0 var(--r) var(--r) 0;
   text-decoration: none; color: var(--side-ink); font-size: 14px; line-height: 1.45; box-shadow: inset 2px 0 0 transparent; }
-.nav-item .ico { color: var(--side-ink-2); }
-.nav-item:hover { background: var(--hover); color: var(--ink); }
-.nav-item.active { background: var(--side-on); color: var(--ink); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
-.nav-item.active .ico { color: var(--accent); }
+.nav-item:hover { background: var(--side-on); color: var(--side-strong); }
+.nav-item.active { background: var(--side-on); color: var(--side-strong); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
 .nav-todays { margin-left: auto; font-size: 11px; color: var(--side-ink-2); white-space: nowrap; }  /* C569: a sidebar item that opens today's page says so */
 .nav-off { opacity: .6; cursor: default; }  /* C633: a screen not built yet says so, and goes nowhere */
 .v2-failure { max-width: 720px; margin: 48px auto; padding: 0 16px; }
@@ -822,12 +827,15 @@ th[aria-sort="descending"] .th-sort::after { content: " \25BC"; font-size: 10px;
   .icon-btn.menu-btn { display: inline-flex; }
   .brand-sub { display: none; }   /* at phone width, the mark plus the short name */
   .topbar-brand { display: inline-flex; }
-  /* The page's own ground and words, as on a desk (C's frame; a dark bar until 2026-11-25). */
-  .topbar { padding: 0 12px; gap: 10px; height: 52px; }
+  /* The sidebar's dark ground and white words, as before Stage 5 (restored 2026-11-27). */
+  .topbar { padding: 0 12px; gap: 10px; height: 52px; background: var(--side); color: var(--side-strong); border-bottom: none; }
   .net-label, .who-name, .live-word, .jump kbd { display: none; }
-  .topbar-brand + .net { border-left: 1px solid var(--line); padding-left: 10px; }   /* the brand, then the network: two things */
-  .jump { width: auto; flex: 1 1 0; min-width: 0; }
+  .net { color: var(--side-strong); }
+  .topbar-brand + .net { border-left: 1px solid var(--side-rule); padding-left: 10px; }   /* the brand, then the network: two things */
+  .jump { width: auto; flex: 1 1 0; min-width: 0; background: var(--side-on); border-color: var(--side-on); color: var(--side-ink); }
+  .jump input { color: var(--side-strong); }
   .topbar > .grow { display: none; }
+  .strip { color: var(--side-ink); }
   .strip-item span, .strip-item { font-size: 12px; }
   .main { padding: 14px 16px 32px; }
   .page-head { flex-direction: column; gap: 10px; }

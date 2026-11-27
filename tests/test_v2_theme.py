@@ -212,7 +212,8 @@ GROUNDS = ("--ground", "--surface", "--surface-2", "--hover", "--muted-soft", "-
 #: A word drawn on a filled control or a dark panel, with the fill it is drawn on.
 ON_FILLS = (("--on-accent", "--accent"), ("--on-danger", "--danger"), ("--side-ink", "--side"),
             ("--side-ink", "--side-on"), ("--code-ink", "--code-bg"), ("--mark-ink", "--mark"),
-            ("--on-warn", "--warn-mark"), ("--side-ink-2", "--side"), ("--side-ink-2", "--side-on"))
+            ("--on-warn", "--warn-mark"), ("--side-ink-2", "--side"), ("--side-ink-2", "--side-on"),
+            ("--side-strong", "--side"), ("--side-strong", "--side-on"))
 
 
 class TestContrast:
@@ -247,6 +248,23 @@ class TestContrast:
         low = [f"{w} on {g}: {contrast(t[w].strip(), t[g].strip()):.2f}" for w, g in ON_FILLS
                if contrast(t[w].strip(), t[g].strip()) < 4.5]
         assert low == [], low
+
+    @pytest.mark.parametrize("theme", ["light", "dark"])
+    def test_the_sidebar_and_the_phones_top_bar_are_dark_in_both_themes(self, theme):
+        """The operator, 2026-11-27: "Revert their colours, light and dark themes, to what they
+        were before Stage 5 (before 5cd8683f). Keep the new layout and type." Before it the
+        sidebar's ground was dark in both themes (#14202B light, #0A0F14 dark), its strongest
+        words white, and the phone's top bar drew on it. Measured as a property: the ground's
+        luminance is a dark one's, its words light, and the phone's top bar and the sidebar both
+        draw on `--side`."""
+        css, light, media, _forced = _blocks()
+        t = _tokens(light if theme == "light" else media)
+        assert _luminance(t["--side"].strip()) < 0.05, (theme, t["--side"])
+        for w in ("--side-ink", "--side-strong"):
+            assert _luminance(t[w].strip()) > 0.5, (theme, w, t[w])
+        assert re.search(r"^\.sidebar \{[^}]*background: var\(--side\)", css, re.M)
+        phone = re.search(r"^  \.topbar \{ padding: 0 12px;[^}]*\}", css, re.M)
+        assert phone and "background: var(--side)" in phone.group(0), phone
 
     def test_every_word_colour_of_the_stylesheet_is_held(self):
         """The population, by property: each token a rule draws words in (`color: var(--x)`).
