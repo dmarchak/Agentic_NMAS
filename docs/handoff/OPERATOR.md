@@ -8,6 +8,39 @@ and the next session unblocks the item and moves the entry to Answered.
 
 ## Open
 
+### back-to-working
+
+- **Where it stands (2026-11-27 19:13 UTC, 12:13 Denver), read on the hosts:**
+  - **Healthy:** Mercury runs f77075d0 (the one exception deploy at 19:05Z, SMOKE OK; the
+    updater's copy re-installed, its check ok). Ten of the twelve devices answer, each new SSH
+    key kept under the window: r1 to r4, r6, r7, s1 to s4; their syslog reaches Loki and r1 to
+    r7's telemetry streams came back by themselves. Nine of the outage's incidents closed at
+    19:12:06Z on C4289's fix ("every symptom the incident named has cleared by itself"), s3's
+    already at 18:33Z; no alert fires on the ten. The host's startup and heartbeat checks pass
+    (C4280, C4281 closed); coverage-nightly's only red is C4090's (C4279).
+  - **Not yet:** r8 and s5 (C4288). Their nodes run (up since 17:39Z, healthy) but boot
+    configless, and Mercury's ZTP serves only devices still being onboarded, so starting or
+    redeploying their nodes brings them back blank again: not done. Everything still open waits
+    on them: r2's incident (it stands on its OSPF and OSPFv3 to r8, rightly), r8's and s5's
+    incidents, the six alerts (both unreachable, no heartbeat, r8's two streams), and nine Needs
+    attention rows (the r2 to r8 adjacencies, both alert groups, reachability, the startup
+    check, the adjacencies not judged, r8's and s5's drift).
+- **The click list, only yours:**
+  1. **r8 and s5:** answer #r8-s5-configless ((a) recommended: startup files from their goldens,
+     then a redeploy of those two). Why yours: it changes the lab's design for two nodes. Once
+     both answer, their nine rows, three incidents and six alerts clear by themselves.
+  2. **The break-glass record:** Credentials › Export (r8, s1, s5 rotated since the last
+     export, 2026-11-21). Why yours: the passphrase is a person's.
+  3. **"The last command_plan to r7: failed" (2026-11-17):** it clears when a later deploy or
+     restore to r7 finishes clean; r7's streams are back. Why yours: r7's collector case is the
+     one you kept for the AI's first live press; say if a plain restore of r7 should clear it.
+  4. **"No stored baseline can be re-applied":** Save All, once r8 and s5 answer. Why yours: it
+     writes every device's startup, s3 included, and the agent never touches s3.
+  - **Clears by itself:** "Self-healing did not scan configuration changes on Default from
+    2026-11-26T06:29:51Z to 2026-11-26T18:30:42Z" goes at 2026-11-28 18:30Z (detection reads
+    again normally; the span is the outage, when no device could log; why its cursor stood
+    still is C4292, UNKNOWN).
+
 ### outage-cleanup
 
 - **Triaged (2026-11-27 18:15 UTC, read-only):** the 12 open incidents are one per device, opened
@@ -47,6 +80,14 @@ and the next session unblocks the item and moves the entry to Answered.
   FAST_LANE_DEBT.md. This one deploy only; every later deploy is on fully green CI. Before it: an
   independent review of 0f7a3d70 (heal path). After it: confirm the smoke check passed and the ten
   incidents close at the next drift run, then tell me "ready for go 1"."
+- **Done 2026-11-27:** the review of 0f7a3d70 found a defect (it would have closed an incident
+  whose symptom still stood); fixed forward in 05965024 (a clean read re-stands it on its
+  symptoms, and detect's step closes it once they read gone), and a second review found it safe
+  (C4290 and C4291 recorded). f77075d0 deployed at 19:05Z, its only red in CI #2338 and the
+  local full suite C4090's two-record loop scan; SMOKE OK; the mode file deleted at 19:06:21Z.
+  The drift run at 19:11:52Z read the ten clean: nine closed at 19:12:06Z, s1's
+  hi-08fa12d33834 among them, and r2's stands on its symptom (its OSPF to r8 is down). Moved to
+  Answered at the session's end.
 
 ### r8-s5-configless
 
@@ -65,6 +106,12 @@ and the next session unblocks the item and moves the entry to Answered.
   changes the lab's design for two nodes.
 
 ### s1-walk
+
+**READY FOR GO 1 (2026-11-27 19:13 UTC, 12:13 Denver):** s1's outage incident hi-08fa12d33834
+is closed, not re-stood (19:12:06Z: "nothing to heal: every symptom the incident named has
+cleared by itself ... s1 is at its golden"); s1 has no open incident, no alert fires on it,
+Grafana's window silence ended 18:13:33Z, and Mercury runs f77075d0. Write "go 1" in chat when
+you start; the agent sends no frame before it.
 
 **Re-checked against the lab as it is now (2026-11-27, 17:45 to 17:55 UTC), after the redeploy
 (#lab-down, Answered):** s1 runs and answers Mercury (its new SSH key kept under the window,
