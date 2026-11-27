@@ -920,3 +920,26 @@ class TestADisabledBoxLooksDisabled:
             finally:
                 b.go("about:blank")
                 browser.close_socketio_sessions()
+
+
+def test_a_network_mercury_does_not_hold_is_said_once_in_words(lab, monkeypatch):
+    """Stage 5 step 6 (the survey's IP SLA line: two boxes each saying "no list named 'Lab'"):
+    for an active network Mercury holds no list of, the page says so once, in words, under its
+    tabs, and draws neither section, so no box and no code words; nothing is written by drawing
+    it. (A network named in the address that does not exist is refused before the page, by
+    routes/list_param's guard; the page meets this only through the active network, the shape
+    the survey's world drew.)"""
+    from modules.nsot import listref
+    name = listref.active().name
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda n: False)
+    before = _head(lab)
+    r = lab["client"].get("/v2/monitoring/ip-sla")
+    page = r.get_data(as_text=True)
+    assert r.status_code == 200, page[:300]
+    said = re.findall(r'<p class="doc-summary" data-missing>(.*?)</p>', page, re.S)
+    assert [html_mod.unescape(s) for s in said] == [
+        f"IP SLA probes can't be shown for {name}: Mercury holds no network by that name, so "
+        "it has no policy or probe to read."], said
+    assert "no list named" not in page
+    assert 'id="ipsla-policy"' not in page and 'id="ipsla-suggestions"' not in page
+    assert _head(lab) == before, "drawing it wrote nothing"

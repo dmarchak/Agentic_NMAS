@@ -2982,7 +2982,11 @@ def _ip_sla_ctx(req) -> dict:
            "policies": [(p, ip_sla_policy.POLICY_WORDS[p]) for p in profile.IP_SLA_POLICIES],
            "default_frequency": ip_sla_policy.DEFAULT_FREQUENCY}
     if ref is None:
+        # Said once, under the title, in words (Stage 5 step 6: the survey's IP SLA line, two
+        # boxes each saying "no list named 'Lab'"); the two sections are not drawn.
         ctx["error"] = f"no list named {name!r}"
+        ctx["missing"] = (f"IP SLA probes can't be shown for {name}: Mercury holds no network "
+                          "by that name, so it has no policy or probe to read.")
         return ctx
     ctx["policy"] = ip_sla_policy.policy_view(ref)
     # C1499: probes committed and not on their device (a send that failed after the batch
