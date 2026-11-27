@@ -285,39 +285,68 @@ UNREADABLE_STANDING = {"decision": "hd-4399b7aa42cc", "outcome": "cant_fix", "de
                        "words": "At 03:27 UTC, the alert NMAS heartbeat missing: s1 fired on s1"}
 
 
-def test_an_unreadable_devices_cant_fix_ends_at_its_first_clean_read(fold, monkeypatch):  # noqa: F811
-    """C4289: a can't-fix the grace decided because the device could not be read stands on
-    that, and nothing else; the drift run's read of the device at its golden (its golden at its
-    intent) shows it read and at its golden, so the incident ends, the run named. Before, it
-    stood forever: a clean read ended only a standing incident with a departure."""
+def _unreadable_cant_fix(fold, at):  # noqa: F811
+    """core-b's alert incident standing on the host's record (`UNREADABLE_STANDING`), decided
+    at *at*."""
     assert alerted("core-b", T0)["incidents"][0]["action"] == "opened"
     iid = the("core-b")["id"]
 
     def stand(doc):
         inc = next(i for i in doc["incidents"] if i["id"] == iid)
-        inc.update(state="standing", standing=dict(UNREADABLE_STANDING, at=iso(T0 + 100),
-                                                   epoch=T0 + 100))
+        inc.update(state="standing", standing=dict(UNREADABLE_STANDING, at=iso(at), epoch=at))
     I._mutate("Default", stand)
+    return iid
+
+
+def test_the_grace_writes_the_unreadable_record(lab):  # noqa: F811
+    """The record's shape comes from the decision itself: an incident the grace settled
+    ``unreadable`` is decided can't-fix by guard 8 and stands ``on: departure`` with no
+    departure, the shape the host held on all twelve (`incidents.unreadable_stand`)."""
     from modules.heal import incidents as INC
-    assert INC.ends_at_golden(the("core-b")["standing"])
+    settle(GOLDEN, how="unreadable", claim=False)
+    (d,) = DC.run("Default", now=T0, sources=Fake(GOLDEN))["decided"]
+    assert d["outcome"] == "cant_fix", d
+    s = I.read("Default")["incidents"][0]["standing"]
+    assert (s["on"], s["departure"], s["guard"]) == ("departure", "", 8), s
+    assert INC.unreadable_stand(s) and not INC.ends_at_golden(s)
+
+
+def test_an_unreadable_devices_cant_fix_ends_once_read_and_its_symptoms_gone(  # noqa: F811
+        fold, monkeypatch):
+    """C4289: a can't-fix the grace decided because the device could not be read stood
+    forever (a clean read ended only a standing incident with a departure, and the symptom step
+    only one ``on: symptom``). The drift run's read of it at its golden now stands it on its
+    symptoms, and the detect pass ends it once every symptom reads gone."""
+    iid = _unreadable_cant_fix(fold, T0 + 100)
     golden_now(monkeypatch, "at_intent")
     got = _clean_read(T0 + 3600)
-    assert len(got.get("ended") or []) == 1, got
-    assert not [i for i in I.read("Default")["incidents"]
-                if i["id"] == iid and i["state"] in I.OPEN_STATES], "the incident ended"
+    assert (got.get("ended") or []) == [], "the clean read alone ends nothing"
+    inc = the("core-b")
+    assert inc["state"] == "standing" and inc["standing"]["on"] == "symptom", inc["standing"]
+    assert inc["standing"]["decision"] == UNREADABLE_STANDING["decision"]
+    got = pass_at(T0 + 3660, read_as("clean"), symptom=lambda d, tr: "gone")
+    assert [c["incident"] for c in got["cleared"]] == [iid], got["cleared"]
 
 
-def test_an_unreadable_devices_cant_fix_is_not_ended_by_a_read_before_it(fold, monkeypatch):  # noqa: F811
-    """The same record, read clean BEFORE its decision: ends nothing (`clean_ended` keeps a
+def test_an_unreadable_devices_cant_fix_with_a_symptom_still_there_stands(  # noqa: F811
+        fold, monkeypatch):
+    """The independent review's case: the device read again at its golden while its symptom
+    (an adjacency, say) is still there: the incident stands, on its symptom, never closed."""
+    iid = _unreadable_cant_fix(fold, T0 + 100)
+    golden_now(monkeypatch, "at_intent")
+    _clean_read(T0 + 3600)
+    got = pass_at(T0 + 3660, read_as("clean"), symptom=lambda d, tr: "present")
+    assert got["cleared"] == [], got["cleared"]
+    inc = the("core-b")
+    assert inc["id"] == iid and inc["state"] == "standing" and \
+        inc["standing"]["on"] == "symptom", inc
+
+
+def test_an_unreadable_devices_cant_fix_is_not_moved_by_a_read_before_it(fold, monkeypatch):  # noqa: F811
+    """The same record, read clean BEFORE its decision: nothing moves (`clean_ended` keeps a
     read only when it came after the decision)."""
-    alerted("core-b", T0)
-    iid = the("core-b")["id"]
-
-    def stand(doc):
-        inc = next(i for i in doc["incidents"] if i["id"] == iid)
-        inc.update(state="standing", standing=dict(UNREADABLE_STANDING, at=iso(T0 + 5000),
-                                                   epoch=T0 + 5000))
-    I._mutate("Default", stand)
+    _unreadable_cant_fix(fold, T0 + 5000)
     golden_now(monkeypatch, "at_intent")
     assert (_clean_read(T0 + 3600).get("ended") or []) == []
-    assert the("core-b")["state"] == "standing"
+    inc = the("core-b")
+    assert inc["state"] == "standing" and inc["standing"]["on"] == "departure"

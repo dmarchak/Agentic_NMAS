@@ -858,8 +858,16 @@ def clean_ended(network: str, result: dict, now: float) -> list:
         try:
             inc = incidents.standing_of(network, host) if host else {}
             s = inc.get("standing") or {}
-            if not inc or not at or at <= float(s.get("epoch") or 0) \
-                    or not incidents.ends_at_golden(s):
+            if not inc or not at or at <= float(s.get("epoch") or 0):
+                continue
+            if incidents.unreadable_stand(s):
+                # C4289: decided while the device could not be read; read now at its golden,
+                # it stands on its symptoms, which `detect._standing` judges (never closed
+                # here: a symptom still there keeps it).
+                incidents.stand_on_symptoms(network, inc["id"], (
+                    f"the drift check ({by}) read {host} at its golden at {_iso(at)}"), now=now)
+                continue
+            if not incidents.ends_at_golden(s):
                 continue
             from modules.heal.incidents import needs_proof
             if needs_proof(s):
