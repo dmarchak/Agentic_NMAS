@@ -910,9 +910,13 @@ def ends_at_golden(standing: dict) -> bool:
     decision that judged a departure from the golden (a would-heal, a can't-fix, a hold of many
     devices or of the rate), never one at its golden with a symptom (the symptom is its cause,
     `detect`'s standing step reads it) and never guard 4's (its cause is a golden that departs
-    from intent, which a device at that golden does not end)."""
+    from intent, which a device at that golden does not end). C4289: a can't-fix the grace
+    (guard 8) decided while the device could not be read records no departure; it stands on the
+    device not being readable, which a read of it at its golden ends."""
     s = standing or {}
-    return s.get("on") == "departure" and bool(s.get("departure")) and s.get("guard") != 4
+    if s.get("on") != "departure" or s.get("guard") == 4:
+        return False
+    return bool(s.get("departure")) or s.get("guard") == 8
 
 
 #: How many symptoms a drift's words name; the rest are counted.

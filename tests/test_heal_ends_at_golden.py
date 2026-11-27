@@ -23,7 +23,7 @@ from tests.test_heal_decide import DC, DS, GOLDEN, I, settle
 from tests.test_heal_decide import Fake, lab  # noqa: F401 (the fixture `fold` builds on)
 from tests.test_heal_policy import T0, iso
 from tests.test_heal_standing import R8, change, decide, fold, golden_now, the  # noqa: F401
-from tests.test_heal_standing import adj, pass_at, read_as
+from tests.test_heal_standing import adj, alerted, pass_at, read_as
 from tests.test_heal_triggers import T
 from tests.test_sdn_connections import networks  # noqa: F401 (the fixture `lab` builds on)
 
@@ -273,3 +273,51 @@ def test_a_scripts_save_neither_counts_nor_sends_back_the_interim(lab, state):  
     assert prob.condition, prob
     got = retry.would_run("Default", {"condition": prob.condition}, now=T0 + 1)
     assert got["error"] == "" and got["incidents"] == [], got
+
+
+# ── C4289: a decision taken while the device could not be read ──────────────────────────────
+
+#: The standing record the outage of 2026-11-25 left on each of the twelve devices, as read on
+#: the host (2026-11-27, s1's hi-08fa12d33834): decided can't-fix by the grace (guard 8) while
+#: the device could not be read, so it recorded no departure.
+UNREADABLE_STANDING = {"decision": "hd-4399b7aa42cc", "outcome": "cant_fix", "departure": "",
+                       "guard": 8, "mode": "dry_run", "on": "departure",
+                       "words": "At 03:27 UTC, the alert NMAS heartbeat missing: s1 fired on s1"}
+
+
+def test_an_unreadable_devices_cant_fix_ends_at_its_first_clean_read(fold, monkeypatch):  # noqa: F811
+    """C4289: a can't-fix the grace decided because the device could not be read stands on
+    that, and nothing else; the drift run's read of the device at its golden (its golden at its
+    intent) shows it read and at its golden, so the incident ends, the run named. Before, it
+    stood forever: a clean read ended only a standing incident with a departure."""
+    assert alerted("core-b", T0)["incidents"][0]["action"] == "opened"
+    iid = the("core-b")["id"]
+
+    def stand(doc):
+        inc = next(i for i in doc["incidents"] if i["id"] == iid)
+        inc.update(state="standing", standing=dict(UNREADABLE_STANDING, at=iso(T0 + 100),
+                                                   epoch=T0 + 100))
+    I._mutate("Default", stand)
+    from modules.heal import incidents as INC
+    assert INC.ends_at_golden(the("core-b")["standing"])
+    golden_now(monkeypatch, "at_intent")
+    got = _clean_read(T0 + 3600)
+    assert len(got.get("ended") or []) == 1, got
+    assert not [i for i in I.read("Default")["incidents"]
+                if i["id"] == iid and i["state"] in I.OPEN_STATES], "the incident ended"
+
+
+def test_an_unreadable_devices_cant_fix_is_not_ended_by_a_read_before_it(fold, monkeypatch):  # noqa: F811
+    """The same record, read clean BEFORE its decision: ends nothing (`clean_ended` keeps a
+    read only when it came after the decision)."""
+    alerted("core-b", T0)
+    iid = the("core-b")["id"]
+
+    def stand(doc):
+        inc = next(i for i in doc["incidents"] if i["id"] == iid)
+        inc.update(state="standing", standing=dict(UNREADABLE_STANDING, at=iso(T0 + 5000),
+                                                   epoch=T0 + 5000))
+    I._mutate("Default", stand)
+    golden_now(monkeypatch, "at_intent")
+    assert (_clean_read(T0 + 3600).get("ended") or []) == []
+    assert the("core-b")["state"] == "standing"
