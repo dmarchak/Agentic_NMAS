@@ -80,7 +80,9 @@ self-healing decisions), so a new decision is drawn while the page is open; mark
 trigger, nothing drawn moves. Templates sha256 before: `19a7ad0f6c6093c97fdd336698e697200603ba799875afdbf2daf1050edbcc03`.
 Compared again 2026-11-26 (Stage 5 step 6): the repository's header (what is uncommitted, the remote's sentence, Verify and Push now) is drawn on Timeline, Baselines and Export only; History's Query pages open on their tabs and their question, where the header repeated above every one. Every region's verdict is unchanged but the header's on a Query page, a deviation logged (Stage 5 step 6: History's Query pages without the repository header). Templates sha256 before:
 `f3db73ab062f4b1d18fb74a46de1babe8792de42eb865788b2becde178de6cca`.
-Templates sha256: `e9dd363872fb8d76b12a8b6797dad28f51505ee0def025fb8e5472c4fb6de7ea`
+Compared again 2026-11-27 (Stage 5 step 6): History's header counts uncommitted paths in words ("1 path is not committed", "2 paths are not committed"), not "path(s)". Templates sha256 before:
+`e9dd363872fb8d76b12a8b6797dad28f51505ee0def025fb8e5472c4fb6de7ea`.
+Templates sha256: `60224873f70c49be05dd20b0920b343e75b70e8b65980ba686af82af4757e21f`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_timeline.html` and `_history_remote.html`, each place

@@ -477,3 +477,21 @@ class TestYourOwnQuery:
             H.metric_ask({"lang": "logql", "q": "{a=\"b\"}", "range": "180d"}, "ask")
         assert "a LogQL query spans at most 30 days" in str(err.value)
         assert "this range is 180 days" in str(err.value)
+
+
+@pytest.mark.parametrize("dirty,want", [(1, "1 path is not committed:"),
+                                        (2, "2 paths are not committed:")])
+def test_the_header_counts_uncommitted_paths_in_words(web, dirty, want):  # noqa: F811
+    """Stage 5 step 6 (plain words): History's header says "1 path is not committed" or "2 paths
+    are not committed", never the code-shaped "1 path(s) are not committed"."""
+    import app as A
+    from flask import render_template
+    paths = ["templates/", "host_vars/"][:dirty]
+    remote = {"d": {"state": "uncommitted", "level": "warning"}, "dirty": dirty,
+              "dirty_paths": paths, "no_repository": False, "unreadable": ""}
+    with A.app.test_request_context("/v2/history"):
+        html = render_template("v2/_history_remote.html", remote=remote)
+    text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", html))
+    assert want in text, text
+    assert "path(s)" not in text
+    assert remote["dirty"] == dirty and remote["dirty_paths"] == paths, "drawing changed nothing"
