@@ -216,7 +216,10 @@ class TestTheVerifyView:
         about = [n for n in notes if "NSOT export" in n or "controller" in n]
         assert len(about) == 1 and "data-sdn-unset" in about[0], about
         text = re.sub(r"<[^>]+>", "", about[0])
-        assert "No switch is listed:" in text and "add one on SDN › Controllers" in text, text
+        # Where a controller is added: Settings › Integrations (the Controllers tab's own link).
+        assert "No switch is listed:" in text and "add one in Settings › Integrations" in text, \
+            text
+        assert f"/v2/settings/network/{LIST}?tab=integrations#sdn-card" in about[0], about[0]
         assert "nothing is set for it there" not in html
         assert _groups(html) == {} and tab["opened"] == []
 

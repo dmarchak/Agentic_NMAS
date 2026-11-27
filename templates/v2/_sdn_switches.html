@@ -23,14 +23,14 @@
     it there, and it takes nothing from Default". -#}
 {%- set no_controller = g.listed.state == 'not_configured' %}
 {%- if g.export.state == 'none' and no_controller %}
-<div class="notice notice-warn" role="status" data-sdn-unset>{{ icon('info', 16) }}<p>No switch is listed: {{ net }} has no committed NSOT export, which a switch's OpenFlow values are read from (<a href="{{ url_for('sdn_v2.apps', list=net) }}#nsot-export">export it from NetBox on SDN › Apps</a>), and no SDN controller is set for it (<a href="{{ url_for('sdn_v2.page', list=net) }}">add one on SDN › Controllers</a>).</p></div>
+<div class="notice notice-warn" role="status" data-sdn-unset>{{ icon('info', 16) }}<p>No switch is listed: {{ net }} has no committed NSOT export, which a switch's OpenFlow values are read from (<a href="{{ url_for('sdn_v2.apps', list=net) }}#nsot-export">export it from NetBox on SDN › Apps</a>), and no SDN controller is connected to it (<a href="{{ url_for('settings_v2.network', list_name=net, tab='integrations') }}#sdn-card">add one in Settings › Integrations</a>).</p></div>
 {%- elif g.export.state == 'none' %}
 <div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ net }} has no committed NSOT export, and a switch's OpenFlow values are read from it, so no switch is listed. <a href="{{ url_for('sdn_v2.apps', list=net) }}#nsot-export">Export it from NetBox on SDN › Apps</a>.</p></div>
 {%- elif g.export.state == 'unreadable' %}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ net }}'s committed NSOT export can't be read: {{ g.export.error }}. No switch is drawn rather than one that may be wrong. <a href="{{ url_for('sdn_v2.apps', list=net) }}#nsot-export">Export again on SDN › Apps</a>.</p></div>
 {%- endif %}
 {%- if no_controller and g.export.state != 'none' %}
-<div class="notice notice-muted" role="status">{{ icon('info', 16) }}<p>No SDN controller is set for {{ net }}, so no switch is drawn as connected. <a href="{{ url_for('sdn_v2.page', list=net) }}">Add one on SDN › Controllers</a>.</p></div>
+<div class="notice notice-muted" role="status">{{ icon('info', 16) }}<p>No SDN controller is connected to {{ net }}, so no switch is drawn as connected. <a href="{{ url_for('settings_v2.network', list_name=net, tab='integrations') }}#sdn-card">Add one in Settings › Integrations</a>.</p></div>
 {%- elif g.listed.state not in ('ok', 'not_configured') %}
 <div class="notice notice-muted" role="status">{{ icon('info', 16) }}<p>The controller's switch list has not been read{% if g.listed.why %}: {{ g.listed.why }}{% endif %}, so no switch is drawn as connected.</p></div>
 {%- endif %}

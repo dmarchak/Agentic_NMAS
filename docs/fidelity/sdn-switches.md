@@ -18,7 +18,9 @@ Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes t
 `4f6a00b2616bd5592c1c9cfacb3beb85b721ded541ff959fc9598712c5417431`.
 Compared again 2026-11-27 (Stage 5 step 6, the survey's Switches line, "merge the banners"): with no committed export and no SDN controller set, SDN › Switches says both in one notice, each with where to make it ("No switch is listed: Lab has no committed NSOT export, … (export it from NetBox on SDN › Apps), and no SDN controller is set for it (add one on SDN › Controllers)"); a controller not set is said in those short words, never the shared reader's "is not configured for … nothing is set for it there". Shot at 1366. Templates sha256 before:
 `69caafafa78ee64dc64ef6215cdd5c00b9be5669fb1c1832a4742cea078774ac`.
-Templates sha256: `00197ca7868cc26c5435d2b0c0ac9ebcfdba41d90edf605e00269822fb549306`
+Compared again 2026-11-27, the same day: the controller's link corrected to Settings › Integrations (the network's SDN card), where the Controllers tab itself says a controller is added, in place of SDN › Controllers; its words "connected to", as the Controllers tab's. Templates sha256 before:
+`00197ca7868cc26c5435d2b0c0ac9ebcfdba41d90edf605e00269822fb549306`.
+Templates sha256: `838b5ea57d02794eca9fe4da3b35cd1b9a21f6d2f85a053c45706f2d77a150e3`
 
 **Compared again 2026-11-11 (board E2a, display names):** by the templates' diff against the
 regions below, not from new shots. In `_sdn_switches.html` and `_sdn_of_template.html`, each
