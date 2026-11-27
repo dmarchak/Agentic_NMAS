@@ -263,3 +263,23 @@ class TestTheThreeEntryPointsAndOneClient:
         assert r.status_code == 302
         assert r.headers["Location"].endswith(f"/v2/credentials?open=export&list={name}"), (
             r.headers["Location"])
+
+
+def test_a_network_that_is_not_one_is_said_in_network_words(lab, monkeypatch):
+    """Stage 5 step 6 (plain words): Credentials opened on an active network that is no
+    network says "No network is named …", as the other pages do, never the internal "list" or
+    "Open Credentials from the list's own page"; it reads and creates nothing. (A name in the
+    address that is no network is refused before the page, by routes/list_param's guard.)"""
+    import re
+    from types import SimpleNamespace
+
+    from modules.nsot import listref
+    monkeypatch.setattr(listref, "exists", lambda name: name != "Ghost")
+    monkeypatch.setattr(listref, "active", lambda: SimpleNamespace(name="Ghost"))
+    before = sorted(p.name for p in lab["dir"].iterdir())
+    html = lab["client"].get("/v2/credentials").get_data(as_text=True)
+    note = re.search(r'<div class="notice notice-warn">.*?<p>(.*?)</p></div>', html, re.S)
+    assert note and note.group(1) == ("No network is named Ghost: there is no record to show. "
+                                      "Nothing was read and nothing was created."), note
+    assert "list's own page" not in html and "No list is named" not in html
+    assert sorted(p.name for p in lab["dir"].iterdir()) == before, "nothing was created"

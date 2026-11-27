@@ -1578,6 +1578,10 @@ section.card.apply.apply-empty > .cov-head { font-size: 16px; font-weight: 400; 
    no box. */
 #tab-body > #history.card { background: none; border: 0; border-top: 1px solid var(--line);
   border-radius: 0; padding: 10px 0 0; }
+/* The Ask tab likewise (Stage 5 step 6, the survey's Ask line: "Unbox the tab body as
+   Overview does"): the command, its reads and Recent reads, no box. */
+#tab-body > #ask.card.ask { background: none; border: 0; border-top: 1px solid var(--line);
+  border-radius: 0; padding: 10px 0 0; }
 /* The Neighbours tab likewise (Stage 5 step 6): its answer, then the table, no box. */
 #tab-body > #neighbours.card.neighbours { background: none; border: 0;
   border-top: 1px solid var(--line); border-radius: 0; padding: 10px 0 0; }

@@ -95,6 +95,20 @@ class TestTheTab:
                'command policy: reads and diagnostics, send log included">A read or ' \
                'diagnostic command</label>' in html
 
+    def test_the_tab_is_a_section_with_no_box(self, ask):
+        """Stage 5 step 6 (the survey's Ask line: "Unbox the tab body as Overview does"): the
+        tab's section is the tab body's own, which the stylesheet draws with no box, as the
+        Overview, History, Intent and Neighbours tabs; opening it sends nothing to the device."""
+        import re
+        _r, html = _get(ask, "/v2/device/r3?tab=ask")
+        body = html.split('<div id="tab-body" class="tab-body">', 1)[1]
+        assert re.match(r'\s*(<p class="op-reopened">.*?</p>\s*)?<section class="card ask" '
+                        r'id="ask"', body, re.S), body[:300]
+        css = open("static/css/nmas-v2.css", encoding="utf-8").read()
+        rule = re.search(r"#tab-body > #ask\.card\.ask \{([^}]*)\}", css)
+        assert rule and "background: none" in rule.group(1) and "border: 0" in rule.group(1)
+        assert ask["device"].sent == [], "opening the tab sent nothing"
+
     def test_a_picked_command_is_filled_and_checked(self, ask):
         _r, html = _get(ask, "/v2/device/r3/ask?command=show ip route")
         assert 'value="show ip route"' in html and "read-only" in html

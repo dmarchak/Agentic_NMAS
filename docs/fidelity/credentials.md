@@ -29,7 +29,9 @@ export, the check and the result at 1440 and 390. Compared 2026-10-16.
 Templates compared: templates/v2/credentials.html, templates/v2/_breakglass_record.html, templates/v2/_breakglass_export.html, templates/v2/_breakglass_check.html, templates/v2/_breakglass_done.html, templates/v2/_breakglass_drill.html, templates/v2/_credential_read_account.html
 Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
 `e6cd87d9a4d141d685bc342a3a9a8533d719929f75b4c78650239a87a62f774a`.
-Templates sha256: `a0f0a61e3cbe20bb6853932852b1248d3d52d4399ef1c08b591b2b0e8f635d8c`
+Compared again 2026-11-27 (Stage 5 step 6): Credentials on a network that is not one says "No network is named <network>: there is no record to show. Nothing was read and nothing was created.", the other pages' words, where it said "No list is named … Open Credentials from the list's own page"; the device's Ask tab is a section with no box, as the other tabs. Shot at 1366. Templates sha256 before:
+`a0f0a61e3cbe20bb6853932852b1248d3d52d4399ef1c08b591b2b0e8f635d8c`.
+Templates sha256: `ddc60af190df7eb09797e14f617a7f5e3245cddde4ca205a7392a9d884418cbc`
 
 **Compared again 2026-11-14 (the operator's change of approach, C3661: the AI's device reads
 sign in as Mercury's account by default):** by the template's diff against the regions below,
