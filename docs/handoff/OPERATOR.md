@@ -195,6 +195,30 @@ removed (the words kept) and docs/fidelity/incident.md compared again, 2026-11-2
   guard. **Recommendation:** (a), so the weakening check refuses a new gap on its own.
 - **Answered 2026-11-27, the operator's words (for the commit's Approved-By):** "ratchet-no-screen: (a). I authorise adding one RATCHETS line to tests/ratchet_lists.py declaring modules/settings_index.py's NO_SCREEN a shrinking list. No other change to that file." Moved to Answered once landed.
 
+### claude-md-ten-shards
+
+- **Asked (2026-11-27):** the gate now runs ten shards (your ci-ten-gate-memory words), so
+  CLAUDE.md's "When the laptop's free memory…" rule names the five shards and two waves. In it,
+  replace
+
+  ```
+  from 18.5 GiB the gate runs its five shards
+    at once, from 11.7 GiB in two waves capped at 10.7 GiB (browser1, browser2, a; then browser3,
+    b; a failed wave stops the next)
+  ```
+
+  with
+
+  ```
+  from 29.0 GiB the gate runs its ten shards
+    at once at 1 worker each (the operator, 2026-11-27, until a ten-shard peak is measured),
+    from 11.7 GiB in three waves capped at 11.1 GiB (f, browser2, b; then g, a, e; then d,
+    browser1, browser3, c; a failed wave stops the next)
+  ```
+
+  (checked: tests/test_claude_md.py's `unenforced` finds none, before and after). After you
+  paste, the agent commits CLAUDE.md as you left it.
+
 ### claude-md-0230
 
 - **Asked:** CLAUDE.md is yours (the `claude-no-claude-md-edits` hook refuses the agent's edits), so

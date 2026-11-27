@@ -115,7 +115,11 @@ CI_WORKERS = 4
 #: CI runs it as five jobs at once (2026-10-03; four since C614, five since 2026-10-24, C1637),
 #: each its shard of the files (`scripts/nmas-shards`): the gate runs the SAME commands, at once, each with CI's
 #: workers, so each job's company in a worker is the one CI's has (C349).
-SHARDS = ("browser1", "browser2", "browser3", "a", "b")
+#: Ten since 2026-11-27 (the operator, 2026-11-25: "CI's test matrix to 10 shards"; the gate's
+#: change, 2026-11-27: "three waves of about 8 to 10 GiB at 2 workers a shard under today's
+#: memory cap ... and all ten at once only at 1 worker a shard until a ten-shard gate peak is
+#: measured"), as scripts/nmas-shards names them.
+SHARDS = ("browser1", "browser2", "browser3", "a", "b", "c", "d", "e", "f", "g")
 #: Each shard measures by tier into its own data file and records its tiers in one folder, as
 #: CI's tests step does (NMAS_COVERAGE_TIERS=1, C773), so step 4b can run CI's ratchet.
 SUITE = ("{py} -c 0 && PYTHON={py} COVERAGE_CORE=sysmon NMAS_COVERAGE_TIERS=1 "
@@ -148,18 +152,34 @@ GIB = 1024 ** 3
 #: 20.6 GiB from tonight's measurement."): the five shards' peaks measured alone on 41130b02
 #: sum to 18.54 GiB, plus 2 GiB for the rest of the laptop (a gate started at 20.9 GiB free fell
 #: to 2.4 GiB, 2026-11-14 01:06 UTC). It was 18.5 GiB (C3567).
-ALL_AT_ONCE_FROM = 206 * GIB // 10
+#: With ten shards (2026-11-27): all ten at once only at ALL_AT_ONCE_WORKERS (1) a shard, from
+#: the ten shards' summed peaks at 2 workers (27.0 GiB, measured 2026-11-25, below) plus 2 GiB
+#: for the rest of the laptop: an upper bound until a ten-shard gate peak at 1 worker is
+#: measured, which then lowers it (it was 20.6 GiB for the five).
+ALL_AT_ONCE_FROM = 290 * GIB // 10
+ALL_AT_ONCE_WORKERS = 1
 WAVES_FROM = 117 * GIB // 10
-WAVES = (("browser1", "browser2", "a"), ("browser3", "b"))
-#: Each wave's cap: the larger wave's measured peak plus 1 GiB (the gate's cap rule, its worker
-#: count's measured peak + 1 GiB, scripts/nmas-workers CAP_OVER_PEAK). Measured again
-#: 2026-11-14 on 41130b02 (the operator, 2026-11-13: "WAVE_CAP set from a fresh peak
-#: measurement (peak + 1 GiB)"), each shard alone at 2 workers in its own scope, memory.peak:
-#: browser1 4.09, browser2 3.26, a 2.73 GiB (wave 1: 10.08 GiB); browser3 3.99, b 4.47 GiB
-#: (wave 2: 8.46 GiB); all five 18.54 GiB. It was 10.7 GiB (wave 1's 9.7 GiB, 2026-11-12).
+#: Three waves (2026-11-27), each about 8 to 10 GiB at 2 workers a shard, from the ten shards'
+#: peaks measured alone at 2 workers, each in its own scope, memory.peak (2026-11-25 23:50 to
+#: 00:28 UTC): browser1 2.21, browser2 2.45, browser3 1.94, a 2.30, b 1.93, c 2.05, d 3.87,
+#: e 1.78, f 4.40, g 4.09 GiB. Wave 1 (f, browser2, b) 8.78, wave 2 (g, a, e) 8.17, wave 3 (d,
+#: browser1, browser3, c) 10.07 GiB.
+WAVES = (("f", "browser2", "b"), ("g", "a", "e"), ("d", "browser1", "browser3", "c"))
+#: Each wave's cap: the largest wave's measured peak plus 1 GiB (the gate's cap rule, its worker
+#: count's measured peak + 1 GiB, scripts/nmas-workers CAP_OVER_PEAK): wave 3's 10.07 GiB plus
+#: 1 GiB. (With five shards it was the same 11.1 GiB, from wave 1's 10.08 GiB, 2026-11-14.)
 WAVE_CAP = 111 * GIB // 10
 #: The waves' workers a shard: the count they were measured at.
 WAVE_WORKERS = 2
+
+
+#: How a wave count is said ("two waves", "three waves"); a larger count in figures.
+_COUNT_WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five"}
+
+
+def wave_count(waves) -> str:
+    """*waves*' count in words, as the gate's step 4 says it ("in three waves")."""
+    return _COUNT_WORDS.get(len(waves), str(len(waves)))
 
 
 def waves_partition_shards(waves=WAVES, shards=SHARDS) -> str:
@@ -1259,11 +1279,18 @@ def _tested(a, repo, snap, gitdir, tree, head, branch, first_line):
                 if why:
                     refuse("the waves' cap", why)
                 n, waves = WAVE_WORKERS, plan
-                words = (f"{n} worker(s) per shard in two waves ("
+                words = (f"{n} worker(s) per shard in {wave_count(plan)} waves ("
                          + "; then ".join(", ".join(w) for w in plan)
                          + f"), each capped at {WAVE_CAP / GIB:.1f} GiB on {wave_unit}: "
                          f"MemAvailable {available / GIB:.1f} GiB, from "
                          f"{WAVES_FROM / GIB:.1f} and under {ALL_AT_ONCE_FROM / GIB:.1f} GiB")
+            if mode == "all":
+                # All ten at once at ALL_AT_ONCE_WORKERS a shard until a ten-shard gate peak is
+                # measured (the operator, 2026-11-27).
+                n = min(n, ALL_AT_ONCE_WORKERS)
+                words = (f"{n} worker(s) per shard, all {len(SHARDS)} shards at once: "
+                         f"MemAvailable {available / GIB:.1f} GiB, from "
+                         f"{ALL_AT_ONCE_FROM / GIB:.1f} GiB")
         say(f"4. workers, from the memory available now: {words}; each shard bound at "
             f"{suite_bound(n)} s")
         workers = n

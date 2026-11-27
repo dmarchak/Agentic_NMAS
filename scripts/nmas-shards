@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""Which test files a CI job runs: `nmas-shards <browser1|browser2|browser3|a|b>` prints
-them, space-separated.
+"""Which test files a CI job runs: `nmas-shards <browser1|browser2|browser3|a|b|c|d|e|f|g>`
+prints them, space-separated.
 
 CI runs the suite as five jobs at once (the operator, 2026-10-03: a run took 6.5 to 9
 minutes, 93% of it the tests; four since C614, 2026-10-09: the files that start a real
 browser weighed 40% of the suite, so one job holding them all was the long pole; five since
 2026-10-24, the operator's trial of a third browser job, C1637, kept only if the median to
-verdict falls by a minute). The BROWSER jobs share every file that starts a real browser
-(`= browser.available()`, the population tests/test_nmas_gate.py reads), and then all five
+verdict falls by a minute; ten since 2026-11-25, the operator's words: "CI's test matrix to
+10 shards", three browser jobs and seven others, each about a tenth of the work by the
+weights). The BROWSER jobs share every file that starts a real browser
+(`= browser.available()`, the population tests/test_nmas_gate.py reads), and then all ten
 share the rest; each by the
 files' measured seconds (tests/shard_weights.json), the heaviest first, each to the lightest
 job. A file the weights do not know weighs their median, so a new file is placed the moment
-it exists and the same way every time. The gate runs the same five commands (C349: argument
+it exists and the same way every time. The gate runs the same ten commands (C349: argument
 for argument).
 """
 
@@ -30,7 +32,7 @@ adopt(__name__)
 
 ROOT = os.path.dirname(HERE)
 TESTS = os.path.join(ROOT, "tests")
-SHARDS = ("browser1", "browser2", "browser3", "a", "b")
+SHARDS = ("browser1", "browser2", "browser3", "a", "b", "c", "d", "e", "f", "g")
 BROWSER_SHARDS = ("browser1", "browser2", "browser3")
 _BROWSER = re.compile(r"=\s*browser\.available\(\)")
 
@@ -67,8 +69,8 @@ def assign() -> dict:
         load[shard] += w.get(f, median)
 
     browser = [f for f in files if uses_a_browser(f)]
-    # The browser jobs share their files first, then all four jobs share the rest, so the
-    # four end near the same time.
+    # The browser jobs share their files first, then all the jobs share the rest, so they
+    # end near the same time.
     for f in heaviest_first(browser):
         place(f, BROWSER_SHARDS)
     for f in heaviest_first(f for f in files if f not in browser):
@@ -76,7 +78,7 @@ def assign() -> dict:
     return {k: sorted(v) for k, v in out.items()}
 
 
-#: The job a commit touching only docs/ runs instead of the five (the operator, 2026-10-25):
+#: The job a commit touching only docs/ runs instead of the ten (the operator, 2026-10-25):
 #: the doc set (tests/doc_tests.py), and job a's range checks.
 DOCS = "docs"
 
@@ -102,7 +104,7 @@ def changed_paths(before: str, after: str) -> list:
 
 def matrix(paths) -> list:
     """The jobs a change of *paths* runs: the doc job alone when every path is under docs/,
-    else the five (None, an unreadable range, runs the five)."""
+    else the ten (None, an unreadable range, runs the ten)."""
     return [DOCS] if paths is not None and _doc_tests().docs_only(paths) else list(SHARDS)
 
 

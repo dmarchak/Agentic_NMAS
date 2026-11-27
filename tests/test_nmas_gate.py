@@ -626,8 +626,8 @@ def test_the_four_jobs_run_at_once_and_each_is_judged(repo, tmp_path, monkeypatc
     codes = gate.run_all_to_files(runs, str(repo), dict(os.environ))
     assert set(codes) == set(gate.SHARDS)
     whys = {s: gate.verdict(path, codes[s]) for s, (_c, path) in runs.items()}
-    assert gate.SHARDS == ("browser1", "browser2", "browser3", "a", "b")
-    assert not any(whys[s] for s in ("browser1", "browser2", "browser3", "a")) and whys["b"]
+    assert gate.SHARDS == ("browser1", "browser2", "browser3", "a", "b", "c", "d", "e", "f", "g")
+    assert not any(whys[s] for s in gate.SHARDS if s != "b") and whys["b"]
 
 
 def test_a_browser_test_skipped_in_the_suite_refuses(repo, tmp_path):
@@ -669,17 +669,26 @@ class TestTheAdaptiveWaves:
     def test_the_plan_follows_the_memory_free(self):
         gate = _gate_module()
         at = lambda tenths: gate.suite_plan(tenths * self.GIB // 10)  # noqa: E731
-        # All at once from 20.6 GiB (the operator, 2026-11-14: "Approved: ALL_AT_ONCE_FROM 20.6
-        # GiB from tonight's measurement."; it was 18.5, C3567).
-        assert at(300) == ("all", (gate.SHARDS,)) and at(206) == ("all", (gate.SHARDS,))
-        assert at(205) == ("waves", (("browser1", "browser2", "a"), ("browser3", "b")))
-        assert at(185) == ("waves", (("browser1", "browser2", "a"), ("browser3", "b")))
+        # Ten shards (the operator, 2026-11-27): all ten at once only at 1 worker a shard, from
+        # their summed 2-worker peaks (27.0 GiB) plus 2 GiB until a ten-shard peak is measured;
+        # else the three waves from 11.7 GiB (it was 20.6 GiB and two waves for the five).
+        three = (("f", "browser2", "b"), ("g", "a", "e"), ("d", "browser1", "browser3", "c"))
+        assert at(300) == ("all", (gate.SHARDS,)) and at(290) == ("all", (gate.SHARDS,))
+        assert gate.ALL_AT_ONCE_WORKERS == 1
+        assert at(289) == ("waves", three) and at(185) == ("waves", three)
         assert at(117)[0] == "waves" and at(116) == ("ci-path", ()) and at(0)[0] == "ci-path"
-        # The two waves are the five shards, each once.
+        # The three waves are the ten shards, each once.
         assert sorted(s for w in gate.WAVES for s in w) == sorted(gate.SHARDS)
-        # The cap measured again (the operator, 2026-11-13: "WAVE_CAP set from a fresh peak
-        # measurement (peak + 1 GiB)"): wave 1's peak 10.08 GiB on 41130b02, plus 1 GiB.
+        # Each wave's measured peak (2026-11-25, each shard alone at 2 workers): about 8 to 10
+        # GiB, under the cap, the largest wave's 10.07 GiB plus 1 GiB.
+        peak = {"browser1": 2.21, "browser2": 2.45, "browser3": 1.94, "a": 2.30, "b": 1.93,
+                "c": 2.05, "d": 3.87, "e": 1.78, "f": 4.40, "g": 4.09}
+        waves = [round(sum(peak[s] for s in w), 2) for w in gate.WAVES]
+        assert waves == [8.78, 8.17, 10.07], waves
+        assert all(w + 1 <= gate.WAVE_CAP / self.GIB + 0.05 for w in waves), waves
         assert gate.WAVE_CAP == 111 * self.GIB // 10 and gate.WAVE_WORKERS == 2
+        assert gate.wave_count(gate.WAVES) == "three" and gate.wave_count((("a",), ("b",))) == \
+            "two"
 
     def test_each_wave_runs_at_once_and_the_next_only_after_it(self, repo, tmp_path):
         gate = _gate_module()
@@ -692,12 +701,13 @@ class TestTheAdaptiveWaves:
         assert codes == {s: 0 for s in gate.SHARDS}, codes
         assert put_back == "no scope was capped" and not_run == "", (put_back, not_run)
         read = lambda s, e: float((t / f"{s}.{e}").read_text())  # noqa: E731
-        one, two = gate.WAVES
+        assert len(gate.WAVES) == 3, gate.WAVES
         # Each wave's shards overlap (all started before any ended) ...
-        for wave in (one, two):
+        for wave in gate.WAVES:
             assert max(read(s, "start") for s in wave) < min(read(s, "end") for s in wave), wave
-        # ... and the second starts only once every shard of the first has ended.
-        assert min(read(s, "start") for s in two) >= max(read(s, "end") for s in one)
+        # ... and each starts only once every shard of the one before has ended.
+        for before, after in zip(gate.WAVES, gate.WAVES[1:]):
+            assert min(read(s, "start") for s in after) >= max(read(s, "end") for s in before)
 
     def test_a_wave_s_shards_start_as_the_gate_starts_them_ctrl_c_and_all(self, repo, tmp_path):
         """Started through `&` in a non-interactive shell, a shard ignores SIGINT, and the
@@ -727,16 +737,18 @@ class TestTheAdaptiveWaves:
         said = gate.waves_partition_shards((("browser1", "browser2", "a"), ("a", "browser3", "b")),
                                            five)
         assert "in more than one wave: a" in said, said
-        said = gate.waves_partition_shards(gate.WAVES + (("c",),), five)
-        assert "in a wave but not a shard: c" in said, said
+        said = gate.waves_partition_shards((("browser1", "browser2", "a"), ("browser3", "b"),
+                                            ("c",)), five)
+        assert said.endswith("in a wave but not a shard: c"), said
 
     def test_a_gate_whose_waves_and_shards_differ_refuses_at_its_start(self, repo, tmp_path):
         """Checked at the gate's start: nothing is staged, snapshotted or run."""
         text = open(GATE, encoding="utf-8").read()
-        line = 'WAVES = (("browser1", "browser2", "a"), ("browser3", "b"))\n'
+        line = 'WAVES = (("f", "browser2", "b"), ("g", "a", "e"), ("d", "browser1", "browser3", "c"))\n'
         assert text.count(line) == 1
         bad = tmp_path / "nmas-gate"
-        bad.write_text(text.replace(line, 'WAVES = (("browser1", "a"), ("browser3", "b"))\n'))
+        bad.write_text(text.replace(line, 'WAVES = (("f", "b"), ("g", "a", "e"), '
+                                          '("d", "browser1", "browser3", "c"))\n'))
         msg = tmp_path / "msg.txt"
         msg.write_text("Docs: two\n")
         r = subprocess.run([sys.executable, str(bad), "--repo", str(repo), "--message",
@@ -751,24 +763,24 @@ class TestTheAdaptiveWaves:
         """The operator, 2026-11-13: "If a wave fails, the next wave doesn't start; the verdict
         says "wave 2 not run: wave 1 failed"."""
         gate = _gate_module()
-        runs = {s: (f"echo '{'1 failed, ' if s == 'a' else ''}3 passed in 0.10s';"
-                    f" exit {1 if s == 'a' else 0}", str(tmp_path / f"{s}.out"))
+        runs = {s: (f"echo '{'1 failed, ' if s == 'b' else ''}3 passed in 0.10s';"
+                    f" exit {1 if s == 'b' else 0}", str(tmp_path / f"{s}.out"))
                 for s in gate.SHARDS}
         codes, _w, not_run = gate.run_in_waves(runs, gate.WAVES, str(repo), dict(os.environ))
-        assert set(codes) == {"browser1", "browser2", "a"} and codes["a"] == 1, codes
-        assert not (tmp_path / "browser3.out").exists() and not (tmp_path / "b.out").exists()
-        assert not_run == "wave 2 not run: wave 1 failed (a)", not_run
+        assert set(codes) == {"f", "browser2", "b"} and codes["b"] == 1, codes
+        assert not (tmp_path / "g.out").exists() and not (tmp_path / "d.out").exists()
+        assert not_run == "waves 2, 3 not run: wave 1 failed (b)", not_run
         line, refusal, out = gate.suite_verdict(runs, codes, not_run)
-        assert "browser3: not run" in line and "b: not run" in line, line
-        assert refusal.startswith("job a: ") and refusal.endswith(
-            "; wave 2 not run: wave 1 failed (a)"), refusal
-        assert out == str(tmp_path / "a.out")
+        assert "g: not run" in line and "d: not run" in line, line
+        assert refusal.startswith("job b: ") and refusal.endswith(
+            "; waves 2, 3 not run: wave 1 failed (b)"), refusal
+        assert out == str(tmp_path / "b.out")
         # A last wave's failure has no wave after it to name; every wave passing, no refusal.
-        last = dict(runs, b=("echo '1 failed in 0.1s'; exit 1", str(tmp_path / "b.out")),
-                    a=("echo '3 passed in 0.10s'", str(tmp_path / "a.out")))
+        last = dict(runs, c=("echo '1 failed in 0.1s'; exit 1", str(tmp_path / "c.out")),
+                    b=("echo '3 passed in 0.10s'", str(tmp_path / "b.out")))
         codes, _w, not_run = gate.run_in_waves(last, gate.WAVES, str(repo), dict(os.environ))
-        assert not_run == "" and set(codes) == set(gate.SHARDS) and codes["b"] == 1
-        assert gate.suite_verdict(last, codes, not_run)[1].startswith("job b: ")
+        assert not_run == "" and set(codes) == set(gate.SHARDS) and codes["c"] == 1
+        assert gate.suite_verdict(last, codes, not_run)[1].startswith("job c: ")
         ok = {s: ("echo '3 passed in 0.10s'", str(tmp_path / f"{s}.out")) for s in gate.SHARDS}
         codes, _w, not_run = gate.run_in_waves(ok, gate.WAVES, str(repo), dict(os.environ))
         assert gate.suite_verdict(ok, codes, not_run)[1] == ""
@@ -885,14 +897,18 @@ class TestTheAdaptiveWaves:
         assert "REFUSED at the waves' cap: this gate runs in no systemd user scope" in r.stdout
         assert "4. workers" not in r.stdout and _commits(repo) == 2
 
-    def test_from_the_all_at_once_floor_the_five_start_together_as_today(self, repo, tmp_path):
-        """21 GiB free (over the 20.6 GiB all-at-once floor, the operator, 2026-11-14): no waves,
-        no cap asked; the five shards start at once (here each fails at once, the stand-in
-        repository holding no scripts/nmas-test)."""
-        r = self._gate_at(repo, tmp_path, 21, self.SESSION)
-        assert "4. workers, from the memory available now: 2 worker(s) per run" in r.stdout, \
-            r.stdout + r.stderr
-        assert "two waves" not in r.stdout and "waves' cap" not in r.stdout
+    def test_from_the_all_at_once_floor_the_ten_start_together_at_one_worker(self, repo,
+                                                                            tmp_path):
+        """30 GiB free (over the 29.0 GiB all-at-once floor for ten shards, the operator,
+        2026-11-27: "all ten at once only at 1 worker a shard until a ten-shard gate peak is
+        measured"): no waves, no cap asked; the ten shards start at once at 1 worker each (here
+        each fails at once, the stand-in repository holding no scripts/nmas-test). At 21 GiB,
+        all at once for the five, the ten take the waves (the test above's band)."""
+        r = self._gate_at(repo, tmp_path, 30, self.SESSION)
+        assert ("4. workers, from the memory available now: 1 worker(s) per shard, all 10 "
+                "shards at once") in r.stdout, r.stdout + r.stderr
+        assert "waves" not in r.stdout.split("4. workers", 1)[1].split("\n", 1)[0]
+        assert "waves' cap" not in r.stdout
         assert "REFUSED at the suite" in r.stdout and _commits(repo) == 2
 
 
@@ -902,7 +918,8 @@ def test_the_browser_shards_and_only_they_require_a_browser():
     gate = _gate_module()
     assert "NMAS_REQUIRE_BROWSER={req}" in gate.SUITE
     assert {s: gate.browser_required(s) for s in gate.SHARDS} == {
-        "browser1": "1", "browser2": "1", "browser3": "1", "a": "''", "b": "''"}
+        "browser1": "1", "browser2": "1", "browser3": "1", "a": "''", "b": "''", "c": "''",
+        "d": "''", "e": "''", "f": "''", "g": "''"}
 
 
 def test_a_skip_the_list_does_not_declare_refuses_the_gate(repo, tmp_path):
