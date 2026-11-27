@@ -527,6 +527,21 @@ class TestThePage:
         assert len(page.asked) == 4 and not any("device=" in q for q in page.asked)
         assert "by Mercury's adjacencies reader, every 60 s" in html
 
+    def test_how_they_are_read_is_one_level_down_closed(self, page):
+        """Stage 5 step 6 (the survey's Neighbours line: "Shorten the method paragraph"): when
+        the adjacencies were read stays in view, as the as-of line; how each protocol is read is
+        under a closed "How these are read"; and the page still asked Prometheus nothing."""
+        _r, html = page("/v2/device/r3/neighbours")
+        asof = re.search(r'<p class="doc-asof nb-limits">(.*?)</p>', html, re.S)
+        assert asof and "by Mercury's adjacencies reader, every 60 s." in asof.group(1), asof
+        assert "Expected from committed intent" not in asof.group(1)
+        how = re.search(r'<details class="small nb-how"([^>]*)><summary>How these are read'
+                        r'</summary>(.*?)</details>', html, re.S)
+        assert how and " open" not in how.group(1), "closed by default"
+        assert "Expected from committed intent" in how.group(2)
+        assert "Opening this tab opens no session to the device" in how.group(2)
+        assert page.page_asked == []
+
     def test_a_last_good_report_says_as_of_and_a_current_one_does_not(self, page, monkeypatch):
         """C690's caveat on the tab: the capture's samples are hours old, so r3's OSPF is its
         last good report, said as of its time; read 30 s after its newest sample, it is not."""
