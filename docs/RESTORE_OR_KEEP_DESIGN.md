@@ -63,7 +63,7 @@ would send.
    written to startup, then the Reload operation with its gates (its first gate changes for this
    operation alone: running differs from startup on purpose, and the preview says so), the
    planned-restart window declared first. Unknowns, each a measurement on a real device before
-   building (CLAUDE.md, "measure first on a real device"): the file transfer (SCP into flash, or
+   building (a device-facing feature starts from what a real device does): the file transfer (SCP into flash, or
    Mercury's TFTP), `configure replace`'s behaviour on vIOS-L2, and whether a replace keeps the
    SSH host key and the management path (it is a change to the path the tool reaches the device
    on, so it needs the independent repair route that rule names, or the reload revert's own).
