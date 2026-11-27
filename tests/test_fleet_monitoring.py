@@ -192,6 +192,9 @@ class TestThePageCarriesItsNetwork:
         assert "shown=Branch" in label, "the picker is told the network the page shows"
         assert re.findall(r'data-what="the \w+ network"', html) == []
         assert "Monitoring · Branch" in html
+        # Showing Branch by its address chooses nothing: the active network stays Lab.
+        from modules.nsot import listref
+        assert listref.active().name == "Lab", listref.active().name
         # The control: with no network in the address, the label names the active one.
         _r, html = _get(lab, "/v2/monitoring")
         label = html.split('class="net net-pick', 1)[1].split("</summary>", 1)[0]

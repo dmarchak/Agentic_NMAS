@@ -370,7 +370,6 @@ PRESENCE_ONLY = frozenset({
     "tests/test_fleet_monitoring.py::TestTheFleetPage::test_the_fragment_redraws_on_the_dashboards_key",
     "tests/test_fleet_monitoring.py::TestTheFleetPage::test_with_no_fleet_dashboard_set_it_says_so_and_offers_every_dashboard",
     "tests/test_fleet_monitoring.py::TestThePageCarriesItsNetwork::test_a_network_nobody_has_is_refused_naming_it",
-    "tests/test_fleet_monitoring.py::TestThePageCarriesItsNetwork::test_the_menu_opens_each_network",
     "tests/test_fleet_monitoring.py::TestThePageCarriesItsNetwork::test_the_title_and_every_link_name_the_network",
     "tests/test_fleet_monitoring.py::TestTheTabsAndTheSidebar::test_a_range_past_the_limit_is_refused_at_the_control",
     "tests/test_fleet_monitoring.py::TestTheTabsAndTheSidebar::test_coverage_is_the_other_tab_and_keeps_monitoring_active",

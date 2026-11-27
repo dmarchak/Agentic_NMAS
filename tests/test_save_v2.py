@@ -257,6 +257,7 @@ class TestThePage:
         assert re.sub(r"\s+", " ", h1).strip().startswith("Save: to startup, and as golden"), h1
         assert "0 device" not in h1 and "No device chosen" in html
         assert "op-confirm" not in html
+        assert lab["sent"] == [] and lab["records"] == [], "nothing was asked of a device"
 
     def test_an_unknown_network_is_said(self, lab):
         r = lab["client"].get("/v2/devices/save?list=Elsewhere&device=r2")
