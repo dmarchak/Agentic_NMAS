@@ -39,6 +39,14 @@ and the next session unblocks the item and moves the entry to Answered.
   record 2 needs a second incident; (c) wait: nothing clears them until the fix deploys, and
   the fix waits for C4090, which waits for the walk. **Recommendation:** (a): without it the walk
   and the fix wait on each other. It needs your word because main is red when it deploys.
+- **Answered 2026-11-27, the operator's words:** "outage-cleanup: (a). I authorise one deploy, via
+  nmas-deploy using whatever flag it needs to pass a red CI (the fast-lane mode file included,
+  scoped to this one deploy and deleted right after), from a sha that contains 0f7a3d70 and whose
+  only red, in CI and the local full suite, is C4090's loop scan, listing exactly the two records
+  the s1 walk makes. Any other red means no deploy. Record the exception in decisions and
+  FAST_LANE_DEBT.md. This one deploy only; every later deploy is on fully green CI. Before it: an
+  independent review of 0f7a3d70 (heal path). After it: confirm the smoke check passed and the ten
+  incidents close at the next drift run, then tell me "ready for go 1"."
 
 ### r8-s5-configless
 

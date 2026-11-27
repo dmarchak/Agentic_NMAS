@@ -138,3 +138,16 @@ belong to the device page's Monitoring tab, `tab:monitoring`, which tests/test_b
 holds on UNCHECKED: folding them needs that tab's own record and the test's RECORDS and
 UNCHECKED changed (a test change), and the collector sessions fold has no board. `fix.html` and
 `fixes.html` need RECORDS entries in the same test before it checks their records.
+
+## One exception, 2026-11-27 (the operator's decision, OPERATOR.md#outage-cleanup)
+
+One deploy through `nmas-deploy --fast-lane`, its mode file written for this deploy alone and
+deleted right after, from f77075d0 (containing 0f7a3d70, C4289's fix, and 05965024, its fix
+after the first independent review found a defect; the second review: safe). The operator's words: "one
+deploy ... from a sha that contains 0f7a3d70 and whose only red, in CI and the local full suite,
+is C4090's loop scan, listing exactly the two records the s1 walk makes. Any other red means no
+deploy ... This one deploy only; every later deploy is on fully green CI."
+
+| What it skipped | What still held | Paid by |
+|---|---|---|
+| a fully green CI on the sha (C4090's loop scan red, naming `v2/_fixit_section.html (F.more or ())` and `v2/_inc_proof.html P.reads`) | every other CI job and the local full suite green on the same sha; an independent review of 0f7a3d70; nmas-deploy's smoke check with its automatic revert | C4090 landed from the s1 walk's records, and the next deploy on a fully green CI |
