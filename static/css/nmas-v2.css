@@ -1578,6 +1578,10 @@ section.card.apply.apply-empty > .cov-head { font-size: 16px; font-weight: 400; 
    no box. */
 #tab-body > #history.card { background: none; border: 0; border-top: 1px solid var(--line);
   border-radius: 0; padding: 10px 0 0; }
+/* The Intent tab likewise (Stage 5 step 6): its sentence, then the document, no box; the
+   editor opened in its place (`_intent_edit.html`) keeps its own. */
+#tab-body > #intent.card.intent { background: none; border: 0; border-top: 1px solid var(--line);
+  border-radius: 0; padding: 10px 0 0; }
 /* Source of truth › NetBox as C's document (Stage 5 step 6): its sentence, then Connection and
    Networks as sections, no box. */
 #netbox-state.card, #netbox-networks.card { background: none; border: 0; border-top: 1px solid var(--line);

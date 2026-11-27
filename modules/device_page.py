@@ -1333,7 +1333,10 @@ def intent_view(ref, dev: dict) -> dict:
     from modules.nsot.intent_normalise import offered
     out["normalise"] = offered(text)
     change = hostvars.intent_change(ref.repo_dir, host)
-    out["commit"] = {"sha": change.get("sha", ""), "subject": change.get("subject", "")}
+    out["commit"] = {"sha": change.get("sha", ""), "subject": change.get("subject", ""),
+                     # When, for the tab's sentence (Stage 5 step 6: "Intent last changed 2 min
+                     # ago by extraction").
+                     "at": change.get("date", "")}
     try:
         doc = hostvars.read_committed(ref.repo_dir, host) or {}
         out["bootstrap"] = bool(hostvars.is_bootstrap_only(doc))

@@ -57,7 +57,10 @@ class TestNoLayer:
     def test_the_tab_is_todays_and_reads_no_inventory(self, page, row):
         r, html = page("r2")
         assert r.status_code == 200
-        assert "data-intent-layers" not in html and "Last changed by <code>" in html
+        # Premise corrected (Stage 5 step 6, the Intent tab's sentence): with no layer the tab
+        # says "r2's intent last changed <when>, in <commit>".
+        assert "data-intent-layers" not in html and 'data-intent-said' in html
+        assert "r2&#39;s intent last changed" in html or "r2's intent last changed" in html
         assert row["asked"] == 0, "a network with no layer reads no inventory for its Intent tab"
 
 
@@ -70,8 +73,10 @@ class TestATagLayer:
         assert f"tag blind-lab</strong> <code>{sha[:10]}</code>" in html, "the layer commit drawn"
         assert '<tr data-from="tag blind-lab"><td>users › lab</td>' in html, html
         assert "privilege 15 · secret_ref user_lab_secret" in html
-        assert "r2&#39;s own document last changed by" in html \
-            or "r2's own document last changed by" in html
+        # Premise corrected (Stage 5 step 6): the sentence says when (the age, its instant on
+        # hover), then the commit.
+        assert "r2&#39;s own document last changed <time" in html \
+            or "r2's own document last changed <time" in html
 
     def test_a_tag_the_device_does_not_carry_adds_nothing(self, lab, page, row):
         _commit_layer(lab["repo"], "tag-other.yml", LAB_USER)
