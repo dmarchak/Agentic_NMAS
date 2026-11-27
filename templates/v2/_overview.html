@@ -1,4 +1,23 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, STATE_KIND, INTENT_KIND, info -%}
+{#- One check's row: drawn by Checks, and by Intent against what it runs for the Intent check. -#}
+{%- macro check_row(c) %}
+      <li class="check check-{{ STATE_KIND.get(c.state, 'muted') }}{{ ' check-unreadable' if c.unreadable }}">
+        <span class="check-ico">{% if c.state == 'ok' %}{{ icon('check', 16) }}{% elif c.state in ('warn', 'danger') %}{{ icon('warn', 16) }}{% elif c.unreadable %}{{ icon('warn', 16) }}{% else %}{{ icon('dot', 16) }}{% endif %}</span>
+        <span class="check-body"><strong>{{ c.name }}</strong>: {% if c.unreadable %}<span class="check-unread">unreadable</span> {% endif %}{{ c.text }}
+          {%- if c.on_device %}<span class="check-lines"><span class="muted">on the device, not in intent:</span>{% for l in c.on_device %} <code>{{ l }}</code>{% endfor %}</span>{% endif %}
+          {%- if c.in_intent %}<span class="check-lines"><span class="muted">in intent, not on the device:</span>{% for l in c.in_intent %} <code>{{ l }}</code>{% endfor %}</span>{% endif %}
+          {#- C342 (board C342Drift): a drifted row opens, in place, onto the lines the drift run
+              kept (masked), the device's own log about the change, and the three choices.
+              Asked once when opened (`device_v2.drift`, a read); kept open across a redraw. -#}
+          {%- if c.open %}
+          <details class="drift-open" data-keep="drift" hx-get="{{ url_for('device_v2.drift', name=device.hostname) }}" hx-trigger="toggle once" hx-target="find .drift-detail" hx-swap="innerHTML" data-what="the lines, the log and the choices">
+            <summary>The lines, what {{ device.hostname }}'s log says, and what to do</summary>
+            <div class="drift-detail"><p class="muted small">Reading the lines the drift run kept and {{ device.hostname }}'s log…</p></div>
+          </details>
+          {%- endif %}</span>
+        {% if c.at %}<span class="check-at">{{ stamp(c.at) }}</span>{% endif %}
+      </li>
+{%- endmacro %}
 {#- Re-fetched whenever a reader it draws from announces (nmas_v2.js), and when a golden,
     intent or the template library moves its intent state (C532). -#}
 {#- As C's document (the operator's GUI pick, 2026-11-25; Stage 5 step 5): the device's one
@@ -12,6 +31,17 @@
     row below draws. -#}
 <p class="doc-asof overview-asof" data-asof>reachability {% if answer.checked_at %}checked {{ stamp(answer.checked_at) }}{% else %}not probed yet{% endif %} · what it runs {% if records.measured %}measured {{ stamp(records.measured.iso, note='measurement ' ~ records.measured.sha) }}{% else %}not measured yet{% endif %}</p>{% endif %}
 <p class="tab-help">{{ info('device-page', 'overview', 'About this tab') }}</p>
+  {#- C's "Intent against what it runs" (Stage 5 step 5; design/proposals/C-document/
+      device.html): the Intent check as a section of its own, across the page under the
+      sentence, its answer in the heading's badge; the lines, and the drift's three choices,
+      open under it as they did in Checks. -#}
+  {%- set ic = (checks or []) | selectattr('name', 'equalto', 'Intent') | list | first %}
+  {%- if ic %}
+  <section class="card overview-intent" data-intent-section>
+    <div class="card-head"><h2>Intent against what it runs</h2>{{ badge({'ok': 'matches', 'warn': 'departs', 'danger': 'departs'}.get(ic.state, 'not known'), STATE_KIND.get(ic.state, 'muted')) }}</div>
+    <ul class="checks">{{ check_row(ic) }}</ul>
+  </section>
+  {%- endif %}
   <section class="card">
     <div class="card-head"><h2>Around this device</h2></div>
     <dl class="facts">
@@ -50,12 +80,12 @@
       {%- set now_state = {'ok': 'at_intent', 'warn': 'departs'}.get(live.state) if live else none %}
       {%- if now_state and now_state != ist.state %}
       <div><dt>Intent state</dt><dd>{{ badge('at its intent' if now_state == 'at_intent' else 'departs from its intent', INTENT_KIND[now_state], title=live.text) }}
-        <span class="muted">· compared now, as the Intent check below; the Devices list shows “{{ ist.words }}” from its last measurement until a capture or Save All measures it again</span>
+        <span class="muted">· compared now, as Intent against what it runs, above; the Devices list shows “{{ ist.words }}” from its last measurement until a capture or Save All measures it again</span>
       </dd></div>
       {%- else %}
       <div><dt>Intent state</dt><dd>{{ badge(ist.words, INTENT_KIND.get(ist.state, 'muted'), title=ist.why) }}
         {%- if ist.since %} <span class="muted">· {{ stamp(ist.since) }}; its last measurement read {{ ist.recorded.words }}</span>{% endif %}
-        <span class="muted">· the state the Devices list shows, from its last measurement; the Intent check compares it now</span>
+        <span class="muted">· the state the Devices list shows, from its last measurement; Intent against what it runs, above, compares it now</span>
       </dd></div>
       {%- endif %}
       <div><dt>Address</dt><dd><span class="mono">{{ device.ip }}</span></dd></div>
@@ -67,24 +97,9 @@
   <section class="card">
     <div class="card-head"><h2>Checks</h2></div>
     <ul class="checks">
-      {% for c in checks %}
-      <li class="check check-{{ STATE_KIND.get(c.state, 'muted') }}{{ ' check-unreadable' if c.unreadable }}">
-        <span class="check-ico">{% if c.state == 'ok' %}{{ icon('check', 16) }}{% elif c.state in ('warn', 'danger') %}{{ icon('warn', 16) }}{% elif c.unreadable %}{{ icon('warn', 16) }}{% else %}{{ icon('dot', 16) }}{% endif %}</span>
-        <span class="check-body"><strong>{{ c.name }}</strong>: {% if c.unreadable %}<span class="check-unread">unreadable</span> {% endif %}{{ c.text }}
-          {%- if c.on_device %}<span class="check-lines"><span class="muted">on the device, not in intent:</span>{% for l in c.on_device %} <code>{{ l }}</code>{% endfor %}</span>{% endif %}
-          {%- if c.in_intent %}<span class="check-lines"><span class="muted">in intent, not on the device:</span>{% for l in c.in_intent %} <code>{{ l }}</code>{% endfor %}</span>{% endif %}
-          {#- C342 (board C342Drift): a drifted row opens, in place, onto the lines the drift run
-              kept (masked), the device's own log about the change, and the three choices.
-              Asked once when opened (`device_v2.drift`, a read); kept open across a redraw. -#}
-          {%- if c.open %}
-          <details class="drift-open" data-keep="drift" hx-get="{{ url_for('device_v2.drift', name=device.hostname) }}" hx-trigger="toggle once" hx-target="find .drift-detail" hx-swap="innerHTML" data-what="the lines, the log and the choices">
-            <summary>The lines, what {{ device.hostname }}'s log says, and what to do</summary>
-            <div class="drift-detail"><p class="muted small">Reading the lines the drift run kept and {{ device.hostname }}'s log…</p></div>
-          </details>
-          {%- endif %}</span>
-        {% if c.at %}<span class="check-at">{{ stamp(c.at) }}</span>{% endif %}
-      </li>
-      {% endfor %}
+      {#- The Intent check is drawn once, in its own section above (C's "Intent against what it
+          runs"); the rest here. -#}
+      {% for c in checks if c.name != 'Intent' %}{{ check_row(c) }}{% endfor %}
     </ul>
     <p class="card-foot">Each check is the stored result of its own job; the time beside it is when that result was taken.</p>
   </section>

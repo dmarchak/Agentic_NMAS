@@ -633,6 +633,10 @@ h1 { margin: 0; font-size: 30px; font-weight: 700; line-height: 1.25; letter-spa
 /* C's as-of line under a sentence: the age of what it stands on, quiet. */
 .doc-asof { font-size: 13px; color: var(--ink-3); margin: 0 0 14px; }
 .overview-doc > .overview-asof { grid-column: 1 / -1; margin-top: -6px; }
+/* C's "Intent against what it runs": across the page under the sentence, its row unruled. */
+.overview-doc > .overview-intent { grid-column: 1 / -1; }
+.overview-intent > .card-head h2 { flex-grow: 0; }
+.overview-intent .check { border-bottom: 0; }
 .overview-doc > .card { background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0;
   padding: 14px 0 0; }
 .overview-doc > .card > .card-head h2 { font-size: 19px; font-weight: 700; }

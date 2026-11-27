@@ -640,7 +640,10 @@ class TestOneIntentState:
         # Intent check's, and names the Devices list's measured state as the list's.
         state = html[html.index("<dt>Intent state</dt>"):]
         state = state[:state.index("</dd>")]
-        assert "at its intent" in state and "compared now, as the Intent check below" in state
+        # Premise corrected (Stage 5 step 5, C's "Intent against what it runs"): the Intent
+        # check is its own section above the facts now, so the row points up to it.
+        assert "at its intent" in state and \
+            "compared now, as Intent against what it runs, above" in state
         assert "the Devices list shows “intent changed since measured”" in state, state
         assert "its last measurement read" not in state, "no second answer beside the first"
         assert "<strong>Intent</strong>: matches its committed intent" in html

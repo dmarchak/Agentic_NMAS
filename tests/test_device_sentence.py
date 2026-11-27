@@ -104,3 +104,33 @@ def test_under_the_sentence_the_age_of_what_it_stands_on(lab):  # noqa: F811
     assert words.startswith("reachability not probed yet" if not ctx["answer"].get("checked_at")
                             else "reachability checked "), words
     assert " · what it runs measured " in words, words
+
+
+def test_intent_against_what_it_runs_is_its_own_section_under_the_sentence(lab):  # noqa: F811
+    """C's "Intent against what it runs" (Stage 5 step 5; design/proposals/C-document/
+    device.html): the Intent check is a section of its own across the Overview, under the
+    sentence and before Around this device, its answer a badge beside the heading; Checks no
+    longer draws it, so the comparison is said once."""
+    import app as A
+    from modules.device import load_saved_devices
+    from modules.nsot import listref
+    from routes import device_v2
+    _r, html = _get(lab, "/v2/device/r3/overview")
+    ref = listref.resolve("Lab")
+    dev = next(d for d in load_saved_devices(ref.csv_path) if d["hostname"] == "r3")
+    with A.app.test_request_context("/"):
+        ctx = device_v2._overview_ctx(ref, dev)
+    intent = next(c for c in ctx["checks"] if c["name"] == "Intent")
+    sec = re.search(r'<section class="card overview-intent" data-intent-section>(.*?)</section>',
+                    html, re.S)
+    assert sec, "the section is drawn"
+    head = re.sub(r"<[^>]+>", " ", sec.group(1).split("</div>", 1)[0])
+    want = {"ok": "matches", "warn": "departs", "danger": "departs"}.get(intent["state"],
+                                                                         "not known")
+    assert " ".join(head.split()) == f"Intent against what it runs {want}", head
+    assert f"<strong>Intent</strong>: {intent['text']}" in sec.group(1), sec.group(1)
+    assert html.index("data-sentence") < sec.start() < html.index("<h2>Around this device</h2>")
+    checks = html.split("<h2>Checks</h2>", 1)[1].split("</section>", 1)[0]
+    assert "<strong>Intent</strong>" not in checks, "said once, in its own section"
+    assert [c["name"] for c in ctx["checks"] if c["name"] != "Intent"] == \
+        re.findall(r"<strong>([^<]+)</strong>:", checks), checks

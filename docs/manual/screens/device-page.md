@@ -75,6 +75,11 @@ when each says so). It moves with them. Under it, one quiet line says how old it
 are: when reachability was last checked and when what the device runs was last measured (or
 that neither has happened yet); hover either for its exact time.
 
+Under them, across the tab, **Intent against what it runs**: the **Intent** check (below) as a
+section of its own, its answer beside the heading (**matches**, **departs** or **not known**),
+then the check's words, the lines that differ, and, for a drifted device, what to do. It is drawn
+there once; the other checks follow under **Checks**.
+
 What the tool knows about the device, each fact with where it came from: its last golden, its
 intent state (the state the Devices list shows for it, from its last measurement, or "intent
 changed since measured" when its intent, the profile or the template library has moved since),
