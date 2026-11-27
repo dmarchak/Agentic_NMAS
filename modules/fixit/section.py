@@ -828,6 +828,11 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
             log.error("fixit: %s's saved-script offer could not be read: %s", iid, exc)
     offer = offers[0] if offers else {}
     out["script"] = offer
+    # Fixes for this problem (C4301 to C4304, the operator, 2026-11-27): one row per matching
+    # saved fix, each with its Run bound to the hash its preview drew, the one recommended by
+    # its rule, and the failure of the newest run among them stated above them.
+    out["fixes"] = _fixes_of(network, offers, inc, found) if offers else {"rows": [],
+                                                                          "failed": {}}
     if offer and out["ai_answer"]:
         out["ai_answer"]["outdated"] = f"outdated: a saved script now fixes this ({offer['name']})"
     if done or state == "passed":
@@ -838,12 +843,12 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
         nxt = {"kind": "none", "label": ""}
     elif offer:
         held_now = bool(_held_of(found))
+        # The next action is the list, Fixes for this problem (`fixes`): each fix its own row
+        # and Run, never a row of buttons (C4301 to C4304).
         nxt = {"kind": "button", "script": True,
                "label": (f"Fix now with saved script {offer['name']}" if held_now
                          else f"Fix with saved script: {offer['name']}"),
-               "key": offer["key"], "hash": offer["hash"],
-               "more": [{"key": o["key"], "hash": o["hash"],
-                         "label": f"Fix with saved script: {o['name']}"} for o in offers[1:]]}
+               "key": offer["key"], "hash": offer["hash"]}
     elif actions["approve"]["offered"] or proposed:
         nxt = {"kind": "approve", "label": "Approve the plan" if plan["approvable"] else
                "Modify or deny the plan", "href": actions["approve"]["href"]}
@@ -868,7 +873,7 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     else:
         nxt = {"kind": "hand_over", "label": "Hand over", "href": actions["hand_over"]["href"]}
     out["why_person"] = ("" if state == "passed" else
-                         _why_person(nxt, offer, found, out.get("ai_answer"), network))
+                         _why_person(nxt, offers, found, out.get("ai_answer"), network))
     out["bluf"] = {k: v for k, v in B.bluf(B.model_of(found, nxt)).items()
                    if k in ("what", "impact", "fix", "severity", "title", "since", "evidence",
                             "problem", "kept")}
@@ -883,7 +888,7 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
                             approved=_approved(state, rec, out.get("stop") or {}),
                             planned=any("proposal" in ln and ln.get("source") == "ai"
                                         and ln.get("operation") for ln in rec["lines"]))
-    out["status"] = _best_status(out["status"], offer, done, found, starts, newest_ai,
+    out["status"] = _best_status(out["status"], offers, done, found, starts, newest_ai,
                                  proposed and plan.get("approvable"))
     # A troubleshoot that failed (its job's error, a bound passed, a request the provider
     # refused) is the incident's best current knowledge, said with its action: never replaced
@@ -924,6 +929,7 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
     # While Mercury works on it, said so with what it is doing now, a spinner beside it
     # (`working`): a saved script's run, or an AI investigation's live step.
     out["working"], out["working_step"], out["investigating"] = "", "", False
+    out["fix_running"] = {}
     if not done:
         from modules import incident_page
         from modules import troubleshoot_job
@@ -933,9 +939,15 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
         # row and Needs attention read too (`incident_page.fix_running`).
         heal = {} if run else incident_page.fix_running(network, found)
         if run:
-            out["working"] = (f"Self-healing: fixing with saved script "
-                              f"{offer.get('name') or 'a saved script'}")
+            # The fix that runs, by the key its job's page names (C4302), never another offer
+            # (the review of C4302): its offer's name, else its own (`saved_plans.run_name`).
+            key = run.get("key") or ""
+            ran = next((o for o in offers if key and o["key"] == key), {})
+            name = ran.get("name") or saved_plans.run_name(network, key)
+            out["working"] = (f"Running {name}" if run.get("by") == "person"
+                              else f"Self-healing: fixing with saved script {name}")
             out["working_step"] = run["step"]
+            out["fix_running"] = {"key": run.get("key") or "", "name": name}
             out["status"], out["status_source"] = out["working"], ""
         elif heal:
             out["working"], out["working_step"] = heal["words"], heal["step"]
@@ -1049,6 +1061,44 @@ def finding_words(answer) -> str:
     return said if said.endswith(("…", ".")) else said + "."
 
 
+def _fixes_of(network: str, offers: list, inc, found: dict) -> dict:
+    """Fixes for this problem (`fix_page.offered`) for *offers*, on the incident's device
+    since it opened; a model that cannot be built draws each offer's name, mode and Run alone,
+    said in the log, so a fix is never withheld by its record's read."""
+    from modules import fix_page
+
+    record = (found or {}).get("incident") or {}
+    try:
+        return fix_page.offered(network, offers, device=getattr(inc, "device", "") or "",
+                                since=str(record.get("opened_at") or ""))
+    except Exception as exc:                          # noqa: BLE001 (drawn without its record)
+        log.error("fixit: the fixes for %s could not be read in full: %s", record.get("id"),
+                  exc)
+        words = {k: v[:2] for k, v in fix_page.HOW.items()}
+        return {"rows": [{"key": o["key"], "hash": o["hash"], "name": o.get("name") or o["key"],
+                          "how": o.get("how") or "", "mode": words.get(o.get("how"), ("", ""))[0],
+                          "badge": words.get(o.get("how"), ("", "muted"))[1],
+                          "does": o.get("name") or o["key"], "fixes": "",
+                          "lines": list(o.get("program") or []), "checks": [], "verify": [],
+                          "runs": 0, "verified": 0, "last": {}, "recommended": False,
+                          "why": "", "auto": {}} for o in offers], "failed": {}}
+
+
+def offers_words(offers) -> str:
+    """What the card's status line says of the fixes offered (C4303, the operator,
+    2026-11-27: "'A saved script can fix this: …' must name every matching fix, or say '2
+    saved fixes can fix this'"): one named, or how many, pointing at the list that names each
+    (each fact once); ``""`` for none. *offers*: `saved_plans.fix_offers`'s list, or one
+    offer."""
+    got = [offers] if isinstance(offers, dict) else list(offers or [])
+    got = [o for o in got if o]
+    if not got:
+        return ""
+    if len(got) == 1:
+        return f"A saved script can fix this: {got[0]['name']}"
+    return f"{len(got)} saved fixes can fix this: choose one under Fixes for this problem"
+
+
 def _and_words(items: list) -> str:
     return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
 
@@ -1079,8 +1129,8 @@ def _why_person(nxt: dict, offer: dict, found: dict, answer: dict = None,
         said = _standing_words(found)
         if said:
             return said
-    if offer:
-        return f"A saved script can fix this: {offer['name']}"
+    if offers_words(offer):
+        return offers_words(offer)
     kind = (nxt or {}).get("kind")
     if kind == "approve":
         return "The AI's plan is ready: needs your approval"
@@ -1174,8 +1224,8 @@ def _best_status(status: str, offer: dict, done: bool, found: dict, starts: list
         how = incident_page.fixed_how((found or {}).get("network") or "",
                                       (found or {}).get("incident") or {})
         return f"{how['label']}: {how['words']}." if how else status
-    if offer:
-        return f"A saved script can fix this: {offer['name']}."
+    if offers_words(offer):
+        return offers_words(offer) + "."
     if plan_ready:
         return "The AI's plan is ready."
     last = starts[-1] if starts else {}
@@ -1463,6 +1513,16 @@ def card_of(out: dict, found: dict) -> dict:
             # A saved fix closed it (`saved_plans.close_fixed`): its own page (C3849 piece 3).
             card["how"]["fix"] = {"key": fixed["script"],
                                   "name": fixed.get("name") or "the saved fix"}
+            # C4304: the saved fix that ran is never offered for saving again; making it
+            # automatic is its own action, offered here by its rule (`fix_page.automatic_offer`;
+            # its words and line read where the card is drawn, `fix_page.with_automatic`).
+            from modules import fix_page
+            try:
+                card["how"]["fix"]["auto"] = fix_page.automatic_offer(network, fixed["script"])
+            except Exception as exc:                  # noqa: BLE001 (drawn without it)
+                log.error("fixit: %s's Make this fix automatic? could not be read: %s",
+                          fixed["script"], exc)
+                card["how"]["fix"]["auto"] = {}
         # "Fixed" shows its proof (the operator, 2026-11-16): the verify's reads, one line by
         # default, the output on expand (`fixit.proof`).
         card["proof"] = _proof_of(network, a, record, found)
@@ -1616,6 +1676,8 @@ def drawn(network: str, found: dict, *, resolved: float = None, ended: str = "",
 
     out = view(network, found, resolved=resolved, ended=ended, now=now)
     out.pop("why_person", None)
+    # The first offer whole (`script`) is the list's first row (`fixes`), drawn there.
+    out.pop("script", None)
     if isinstance(out.get("ai_answer"), dict):
         out["ai_answer"] = {k: v for k, v in out["ai_answer"].items() if k != "overlooked"}
     return display_names.people_payload(steplog.masked(_without(out, NOT_DRAWN)))

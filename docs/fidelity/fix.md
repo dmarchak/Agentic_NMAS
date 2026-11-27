@@ -35,7 +35,16 @@ shots. Templates sha256 before:
 `6846e56e47df66e3f90eced5797956d98cca3ae1b43c660c784a527e2e96095e`.
 Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
 `b44713e5451132ece10d4766ab9d922f9de525739b0abde295d00a0a8a383e07`.
-Templates sha256: `239a207f452d8a6ba63ca4fa3be3f6ba434e58da467d5dd76bca83bbb6285f3f`
+Compared again 2026-11-27 (C4304, the fix choice, board docs/boards/fix-choice.html): How it
+runs draws one muted line where Set Automatic… is never offered, "Set Automatic… is not
+offered: <name> matches any port (its match names no port role), so it stays Manual: …" (a
+deviation from board fix-bpdu-guard, logged: "A fix's page says why Set Automatic… is not
+offered for a fix matching any port"); and Set Automatic's verified-run line says what the fix
+would then do by itself in the incident card's words (`fix_page.automatic_form`'s *then*), the
+same fact, one wording. No other region moves. Compared by the template's diff and
+tests/test_fix_choice.py, not by new shots. Templates sha256 before:
+`239a207f452d8a6ba63ca4fa3be3f6ba434e58da467d5dd76bca83bbb6285f3f`.
+Templates sha256: `ba0a17635648de11b61f1395be13684dab7a011e2faadfa10060ae335c504a69`
 
 Compared again 2026-11-18 (the skip-mode debt's carried-fields pass, 67b90db3): in
 `_fix_run.html` the Run button posts to `c.post.url`, which `fix_page.run_card` builds with

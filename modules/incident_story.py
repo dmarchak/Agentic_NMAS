@@ -126,6 +126,11 @@ def lifecycle(model: dict, lines: list) -> list:
     # Diagnosing "now" with nothing diagnosing it): a run in progress at its first undone
     # stage, a proposal waiting for its approval, or the AI investigating.
     running = bool((model.get("done") or {}).get("running")) and not resolved
+    # C4302 (the operator, 2026-11-27: "The Timeline section moves with the run's steps"): a
+    # saved fix running on the incident (`section`'s *fix_running*) is its Applying and
+    # Verifying, from the card's live stepper (`progress.of`), never "Detected · 1 of 8".
+    fixing = bool(fixit.get("fix_running")) and not resolved
+    live = [s for s in ((fixit.get("card") or {}).get("live") or []) if isinstance(s, dict)]
     if resolved:
         now_at = ""
     elif running:
@@ -136,12 +141,25 @@ def lifecycle(model: dict, lines: list) -> list:
         now_at = "Diagnosing"
     else:
         now_at = ""
+    if fixing:
+        # The run's own steps: Applying from its first step until its verify starts, then
+        # Verifying; the stage "now" says the run's current step (the stepper's words).
+        check = next((s for s in live if s.get("key") == "verify"), {})
+        current = next((s for s in live if s.get("state") == "running"), {})
+        checking = check.get("state") in ("running", "done")
+        now_at = "Verifying" if checking else "Applying"
+        ran = {"Applying": ((live[0].get("since") if live else None) if checking else None),
+               "Verifying": check.get("since") if check.get("state") == "done" else None}
+        nodes = [(n, ran[n] if n in ran else at,
+                  (current.get("words") or "starting") if n == now_at else w)
+                 for n, at, w in nodes]
     out, now_set = [], False
     for name, at, words in nodes:
         if name in ("Diagnosing", "Fix proposed", "Approved") and not ai and (
-                resolved or fixed.get("at") or failed or running):
+                resolved or fixed.get("at") or failed or running or fixing):
             state = "skip"
-            words = words or "not needed: self-healing's own fix"
+            words = words or ("not needed: a saved fix runs" if fixing else
+                              "not needed: self-healing's own fix")
         elif name == "Healed" and failed:
             state = "failed"
         elif name == "Verifying" and at and verified.get("state") == "failed":

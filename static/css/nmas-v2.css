@@ -3801,6 +3801,26 @@ details.simple-step[open] > summary { margin-bottom: 4px; }
   border-radius: 0; padding: 8px 0 0; margin: 8px 0 0; background: none; }
 .simple-details > .fixit { display: flex; flex-direction: column; margin-top: 8px; }
 .inc-plan .bluf-refused { margin: 0; }
+/* Fixes for this problem (C4301 to C4304; board docs/boards/fix-choice.html): one list, every
+   row drawn alike, its Run a small plain button (a recommendation is a label, never a colour). */
+.fix-choice { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 0; }
+.fix-choice-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink-2); }
+.fix-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column;
+  border: 1px solid var(--line); border-radius: var(--r); }
+.fix-row { padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fix-row + .fix-row { border-top: 1px solid var(--line-2); }
+.fix-row-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.fix-row-name { flex: 1 1 16em; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.fix-row-rec { font-weight: 400; }
+.fix-row-runs { flex: 0 1 auto; }
+.fix-row-run { margin-left: auto; }
+.fix-row-does > summary { cursor: pointer; font-size: 13px; color: var(--ink-2);
+  overflow-wrap: anywhere; }
+.fix-row-does[open] > summary { margin-bottom: 4px; }
+.fix-auto > summary { font-size: 13px; }
+@media (max-width: 640px) {
+  .fix-row-run { margin-left: 0; }
+}
 /* What a plan step sends, per device, as a code block (the operator, 2026-11-16). */
 .plan-sent { margin: 2px 0 4px; padding: 8px 12px; border-radius: var(--r); background: var(--code-bg);
   color: var(--code-ink); font-family: var(--mono); font-size: 13px; line-height: 1.5;

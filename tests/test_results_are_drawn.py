@@ -94,8 +94,11 @@ PAGE_RECORD = {
     # Gate 1b's saved plans (board saved-plans S): each answer drawn in place above the card,
     # the card holding still while it is read; the scripts, their fires and the waiting shapes
     # read again on the incident's page.
+    # Premise corrected (C4301 to C4304, the operator, 2026-11-27: the scripts this problem
+    # matches are the incident card's own list, Fixes for this problem, never this card's):
+    # the card's saved line (`c.saved`) is read again in its place.
     **{f"saved_plans_v2.{name}": ("templates/v2/_saved_plans_saves.html",
-                                  ('data-holds-live="review"', "c.said.words", "c.scripts",
+                                  ('data-holds-live="review"', "c.said.words", "c.saved",
                                    "c.shapes"), "incident_v2.incident")
        for name in ("save_script", "save_action", "promote", "approve_shape")},
     # A saved action run on a device's interface (board saved-plans D): its state in place from

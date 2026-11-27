@@ -4607,11 +4607,13 @@ def _saved_plans(client, _lab, _mp):
         assert "Save this fix so Mercury handles it automatically?" in body, body[:400]
         drawn = re.search(r'name="drawn" value="([0-9a-f]*)"', body)
         # The line as its redraw draws it for these choices (C4050), as the browser sends it.
-        line = client.get(f"{base}/runs-on?list=Lab&keep_cause=1&dry_run=1",
+        # Its port role kept (C4304: a fix whose match leaves the role unset is never promoted).
+        line = client.get(f"{base}/runs-on?list=Lab&keep_cause=1&keep_port_role=1&dry_run=1",
                           headers=hx).get_data(as_text=True)
         runs_on = re.search(r'name="runs_on" value="([0-9a-f]*)"', line)
         r = client.post(f"{base}/save-script?list=Lab", headers=hx,
-                        data={"name": "BPDU guard recovery", "keep_cause": "1", "dry_run": "1",
+                        data={"name": "BPDU guard recovery", "keep_cause": "1",
+                              "keep_port_role": "1", "dry_run": "1",
                               "drawn": drawn.group(1) if drawn else "",
                               "runs_on": runs_on.group(1) if runs_on else ""})
         saved_card = r.get_data(as_text=True)
@@ -5966,25 +5968,34 @@ def _fixit_walk_records(client, _lab, _mp):
     (tests/fixtures/heal_records/README.md, "The s1 walk's records"): the proof of a person's
     press of a saved fix (`fixit.proof.of_run` on its run: its verify checks and the four reads
     the run made, masked as the proof module masks them), which draws `_inc_proof.html`
-    `P.reads`; and the card's next fix while two saved fixes match one open incident
-    (`fixit.section.view`'s ``bluf.fix``: BPDU guard recovery for access ports, Automatic, and
-    for any port, Manual, in ``more``), which draws `_fixit_section.html` `(F.more or ())`.
-    The open incident is the walk's own (hi-ebc220c86c8f, s1 Gi1/0 err-disabled by BPDU guard,
-    standing, its decision and step-log rows), captured whole while both fixes were offered: a
-    closed incident's page draws no next fix (`incident_page.with_item`). Stood in for this
-    provider alone, each its captured value: each device's identity (the captured one, as
-    `_fixit_captured` stands it in), the fixed incident's proof (`section._proof_of`) on the r3
-    heal `_fixit_captured` draws, and the open incident's next fix (`section.view`'s
-    ``bluf.fix``); Lab's three heal stores are written for it alone and put back."""
+    `P.reads`; and the card's Fixes for this problem while two saved fixes match one open
+    incident (C4301 to C4304: BPDU guard recovery for access ports, Automatic, and for any
+    port, Manual only, the captured offer's keys and names, `fix_offers.json`, their matches
+    and modes as the walk read them), which draws `_fixit_section.html`'s `FX.rows`, each
+    row's `r.lines`, `r.checks` and `r.verify`. The open incident is the walk's own
+    (hi-ebc220c86c8f, s1 Gi1/0 err-disabled by BPDU guard, standing, its decision and step-log
+    rows), captured whole while both fixes were offered: a closed incident's page draws no next
+    fix (`incident_page.with_item`). Stood in for this provider alone: each device's identity
+    (the captured one, as `_fixit_captured` stands it in), the fixed incident's proof
+    (`section._proof_of`) on the r3 heal `_fixit_captured` draws, the runner's preview's
+    sources (Mercury's model of s1, tests/test_command_plan.py's `Model`: s1's committed intent
+    and golden, real captures), and the two saved fixes in the saved plans' store, each the
+    built-in recovery saved under the captured key and name (`saved_plans._template_doc`, as a
+    save makes it); Lab's three heal stores and the saved plans' store are written for it
+    alone and put back."""
     import json as _json
     import os as _os
 
     import pytest
 
+    from modules import plan_engine as PE
     from modules.fixit import section as FS
     from modules.heal import decisions as HD
     from modules.heal import incidents as HI
     from modules.heal import steplog as SL
+    from modules.nsot import command_plan as CP
+    from modules.nsot import saved_plans as SP
+    from tests.test_command_plan import Model
 
     def fixture(name):
         with open(_os.path.join(ROOT, "tests", "fixtures", "heal_records", f"{name}.json"),
@@ -5994,17 +6005,33 @@ def _fixit_walk_records(client, _lab, _mp):
     healed, errdisable = fixture("healed_tail"), fixture("plan_errdisable")
     opened = fixture("open_bpdu")
     proof, offers = fixture("proof_reads")["P"], fixture("fix_offers")["F"]
-    paths = {"incidents": HI.path("Lab"), "decisions": HD.path("Lab"), "steps": SL._path("Lab")}
+    paths = {"incidents": HI.path("Lab"), "decisions": HD.path("Lab"), "steps": SL._path("Lab"),
+             "saved": SP._path()}
     kept = {p: (open(p, "rb").read() if _os.path.exists(p) else None) for p in paths.values()}
     made = [d for d in {_os.path.dirname(p) for p in paths.values()} if not _os.path.isdir(d)]
     mp = pytest.MonkeyPatch()
-    real_view = FS.view
+    # The walk's two saved fixes, by the captured offer's keys and names.
+    names = {offers["key"]: offers["label"].split(": ", 1)[1]}
+    names.update({o["key"]: o["label"].split(": ", 1)[1] for o in offers["more"]})
+    fills = {"device": "device", "interface": "object", "cause": {"BPDU guard": "bpduguard"}}
+    plan = CP.template_of("errdisable-recover")
 
-    def view(network, found, **kw):
-        out = real_view(network, found, **kw)
-        if (found.get("id") or "") != opened["page"]:
-            return out
-        return dict(out, bluf=dict(out.get("bluf") or {}, fix=offers))
+    def saved(key, kind, match, mode):
+        e = {"key": key, "kind": kind, "network": "Lab", "shared": False, "name": names[key],
+             "template": SP._template_doc(plan, key, names[key], ""), "match": match,
+             "fills": fills, "saved_by": "alex@example.com", "saved_at": "2026-11-27T21:00:00Z",
+             "mode": mode, "track": []}
+        if mode == "auto":
+            e.update(promoted_by="alex@example.com", promoted_at=e["saved_at"],
+                     digest=CP.parse(e["template"]).digest)
+        return e
+    access, anyport = offers["key"], offers["more"][0]["key"]
+    store = {"plans": {
+        access: saved(access, "script", {"condition": "err_disabled", "cause": "BPDU guard",
+                                         "port_role": "access"}, "auto"),
+        anyport: saved(anyport, "fix", {"condition": "err_disabled", "cause": "BPDU guard"},
+                       SP.MANUAL)}}
+    real_preview = CP.preview
 
     def get(incident):
         r = client.get(f"/v2/incident/{incident}?list=Lab")
@@ -6027,11 +6054,17 @@ def _fixit_walk_records(client, _lab, _mp):
         assert "Verified: connected, no re-trip, config unchanged · show proof" in fixed, \
             fixed[:400]
         assert "show errdisable recovery" in fixed and "Gi1/0 not listed" in fixed, fixed[:400]
-        mp.setattr(FS, "view", view)
+        with open(paths["saved"], "w", encoding="utf-8") as fh:
+            _json.dump(store, fh)
+        SP._CACHE.update(mtime=None, templates={})
+        SP._READ.clear()
+        mp.setattr(CP, "preview", lambda network, key, values, **kw: real_preview(
+            network, key, values, **dict(kw, sources=kw.get("sources") or Model(
+                network="Lab"))))
         both = get(opened["page"])
-        assert "Fix with saved script: BPDU guard recovery (access ports)" in both, \
-            both[both.find('data-bluf="fix"'):][:700]
-        assert "Fix with saved script: BPDU guard recovery (any port)" in both, both[:400]
+        rows = re.findall(r'<li class="fix-row" data-fix="([^"]+)"', both)
+        assert rows == [access, anyport], both[both.find('data-bluf="fix"') - 3000:][:700]
+        assert "Fixes for this problem" in both and names[anyport] in both, both[:400]
     finally:
         mp.undo()
         for p, data in kept.items():
@@ -6044,6 +6077,10 @@ def _fixit_walk_records(client, _lab, _mp):
         for d in made:
             if _os.path.isdir(d) and not _os.listdir(d):
                 _os.rmdir(d)
+        # The saved plans' store as it was, and no step kind or catalog entry left behind.
+        SP._CACHE.update(mtime=None, templates={})
+        SP._READ.clear()
+        PE.refresh_saved_kinds()
 
 
 def _incidents_list(client, _lab, _mp):

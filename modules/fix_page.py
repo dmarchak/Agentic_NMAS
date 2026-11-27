@@ -622,6 +622,118 @@ def _page_record(rec: dict) -> dict:
     return {k: v for k, v in rec.items() if k not in ("runs", "verified")}
 
 
+#: The net-zero plan's last verify, in words (`contents_of`).
+NET_ZERO_WORDS = ("The running configuration after equals the one before, line for line, or it "
+                  "is rolled back")
+
+
+def contents_of(f, t, by_run: bool = True) -> tuple:
+    """``(contents, checks, verify)``: a fix's Contents (``{"program", "params", "checks",
+    "verify"}``, *verify* its checks' names and the net-zero line), and its checks and verify
+    as `_check` says each. THE one home: a fix's page and the incident card's Fixes for this
+    problem (`offered`) draw what a fix checks and verifies from it."""
+    checks = [_check(f, t, i) for i in t.preconditions]
+    verify = [_check(f, t, i) for i in t.verify]
+    return ({"program": list(t.commands), "params": _params(f, t, by_run), "checks": checks,
+             "verify": [v["name"] for v in verify] + ([NET_ZERO_WORDS] if t.net_zero else [])},
+            checks, verify)
+
+
+#: Why Fixes for this problem recommends a fix (`offered`), its rule from the data (the
+#: operator, 2026-11-27: "If Mercury recommends one, mark it with a 'Recommended' label and
+#: why"): the fix self-healing itself runs on this problem, the first Automatic one in
+#: `saved_plans.fire_matching`'s order, which `fix_offers` keeps; with none Automatic, none.
+RECOMMENDED_WHY = "self-healing runs this one on this problem when it is in Auto"
+#: What Make this fix automatic? names its press as (`saved_plans.promote_line`'s *press*).
+AUTOMATIC_PRESS = "Making it automatic"
+
+
+def _does(o: dict, f: dict, t) -> str:
+    """What the offered fix *o* does on this incident, in one line: its words' first clause
+    (the fix's own words, else its plan's) on the device and port its preview filled, and which
+    ports its match runs on (`_scope`): "Recover an err-disabled interface on s1 Gi1/0, a fix
+    for access ports". A saved fix's plan title is the name it was saved
+    under (`saved_plans._template_doc`), so it says nothing the row's name does not."""
+    clause = str((f or {}).get("words") or (t.words if t is not None else "") or "")
+    clause = clause.split(":")[0].strip() or fixes_words(f or {}, t)
+    values = o.get("values") or {}
+    where = " ".join(x for x in (str(values.get("device") or ""),
+                                 _short(str(values.get("interface") or ""))) if x)
+    said = f"{clause} on {where}" if where else clause
+    return said + _scope(f)
+
+
+def _scope(f: dict) -> str:
+    """Which ports a fix runs on, from its own match, for a condition whose problem names the
+    port's role (`problem.PORT_ROLE_CONDITIONS`): ", a fix for access ports" or ", a fix for
+    any port"; ``""`` otherwise. Two fixes for one problem then read apart on the incident's
+    card (the review of C4301 to C4304)."""
+    from modules import problem as P
+
+    m = (f or {}).get("match") or {}
+    if m.get("condition") not in P.PORT_ROLE_CONDITIONS:
+        return ""
+    role = str(m.get("port_role") or "")
+    return f", a fix for {role} ports" if role else ", a fix for any port"
+
+
+def offered(network: str, offers: list, *, device: str = "", since: str = "") -> dict:
+    """The incident card's Fixes for this problem (C4301 to C4304, the operator, 2026-11-27:
+    "one list ... One row per matching saved fix, all styled the same"): ``{"rows",
+    "failed"}``, one row per offer of `saved_plans.fix_offers` (its key, the hash its Run is
+    bound to, its name, mode, and the runner's preview's program for this incident), in its
+    order, each ``{"key", "hash", "name", "how", "mode", "badge", "does", "fixes", "lines",
+    "checks", "verify", "runs", "verified", "last", "recommended", "why", "auto"}``: *mode*
+    and *badge* `HOW`'s; *does* `_does`'s line; *fixes* what its match fixes (`fixes_words`);
+    *checks* and *verify* `contents_of`'s; *runs*, *verified* and *last* its record's
+    (`record_of`, the network's run records read once for every row); *recommended* by
+    `RECOMMENDED_WHY`'s rule, *why* that rule's words; *auto* whether Make this fix
+    automatic? is offered (`automatic_offer`; `with_automatic` reads the rest). *failed* the newest run of an offered fix on *device* since
+    *since* (the incident's opening), when it did not verify: ``{"name", "words", "at", "run",
+    "device"}``, else ``{}``. A read."""
+    from modules.nsot import saved_plans as S
+
+    runs, capped = _runs(network)
+    every, temps = S.fixes(network), S.templates()
+    pick = next((o["key"] for o in offers if o.get("mode") == "auto"), "")
+    rows, newest = [], None
+    for o in offers:
+        f = every.get(o["key"]) or {}
+        t = temps.get(o["key"])
+        how = o.get("how") or f.get("how") or "manual"
+        words, badge, _said = HOW.get(how, HOW["manual"])
+        rec = record_of(network, [o["key"]], f.get("track") or (), runs=runs, capped=capped)
+        contents = contents_of(f, t)[0] if t is not None else {"checks": [], "verify": []}
+        last = rec["rows"][0] if rec["rows"] else {}
+        rows.append({"key": o["key"], "hash": o["hash"], "name": o.get("name") or o["key"],
+                     "how": how, "mode": words, "badge": badge,
+                     "does": _does(o, f, t),
+                     "fixes": fixes_words(f, t) if f else "",
+                     "lines": list(o.get("program") or []),
+                     "checks": [c["name"] for c in contents["checks"]],
+                     "verify": list(contents["verify"]), "runs": rec["runs"],
+                     "verified": rec["verified"],
+                     "last": {"at": last.get("at") or "", "ok": bool(last.get("ok")),
+                              "dry": bool(last.get("dry")), "words": last.get("words") or "",
+                              "run": last.get("run") or ""} if last else {},
+                     "recommended": o["key"] == pick,
+                     "why": RECOMMENDED_WHY if o["key"] == pick else "",
+                     "auto": automatic_offer(network, o["key"])})
+        for r in rec["rows"]:
+            # A refused run is a failed press too (nothing sent, its reason its words).
+            if (r.get("dry") or (device and r.get("device") != device)
+                    or (since and str(r.get("at") or "") < since)):
+                continue
+            if newest is None or str(r.get("at") or "") > str(newest[1].get("at") or ""):
+                newest = (rows[-1]["name"], r)
+    failed = {}
+    if newest is not None and not newest[1].get("ok"):
+        failed = {"name": newest[0], "words": newest[1].get("words") or "its verify did not "
+                  "pass", "at": newest[1].get("at") or "", "run": newest[1].get("run") or "",
+                  "device": newest[1].get("device") or device}
+    return {"rows": rows, "failed": failed}
+
+
 def page(network: str, key: str) -> dict:
     """A fix's page (the module docstring): ``{"kind", "key", "network", "name", "fixes",
     "how", "badge", "words", "said", "hover", "heal_now", "from", "contents", "origin",
@@ -656,12 +768,7 @@ def page(network: str, key: str) -> dict:
     by_run = got["kind"] == "plan" or (got["kind"] == "saved" and (
         bool(f.get("match")) or key in S.port_actions(network)))
     if t is not None:
-        checks = [_check(f, t, i) for i in t.preconditions]
-        verify = [_check(f, t, i) for i in t.verify]
-        out["contents"] = {"program": list(t.commands), "params": _params(f, t, by_run),
-                           "checks": checks, "verify": [v["name"] for v in verify]
-                           + (["The running configuration after equals the one before, line "
-                               "for line, or it is rolled back"] if t.net_zero else [])}
+        out["contents"], checks, verify = contents_of(f, t, by_run)
         out["limits"] = [{"name": c["name"], **lim} for c in checks + verify
                          for lim in c["limits"]]
     if got["kind"] == "plan":
@@ -758,23 +865,65 @@ def page(network: str, key: str) -> dict:
     return out
 
 
-def automatic_form(network: str, key: str, who: dict) -> dict:
-    """Set Automatic… for a matched fix held Manual only or in Dry run (the operator,
-    2026-11-16: "can be set Automatic after its first verified run"): ``{"offer", "right",
-    "ran", "why", "version"}``, *offer* whether it is drawn, *right* the viewer's refusal for
-    the self-healing right (the AI none), *ran* the verified run of its version now
-    (`saved_plans.verified_run`) or ``{}`` with *why*. A read."""
-    from modules import identity
+def automatic_offer(network: str, key: str) -> dict:
+    """Whether Set Automatic… (Make this fix automatic? on an incident's card) is drawn for the
+    saved fix *key* at all: ``{"offer", "never"}``, *offer* for a matched fix of *network* not
+    in Auto whose match may be Automatic, *never* why not when its match leaves the port's role
+    unset (`saved_plans.automatic_refusal`). The first half of `automatic_form`, read with no
+    other record: the incident's card (modules/fixit/, which reaches no device or job, not even
+    by a read's reference, tests/test_fixit_incident.py) carries this; `with_automatic` adds
+    the rest where the card is drawn. A read."""
     from modules.nsot import saved_plans as S
 
     f = S.fixes(network).get(key) or {}
     if not f or not f.get("match") or f.get("mode") == "auto" or f.get("network") != network:
-        return {"offer": False, "right": "", "ran": {}, "why": "", "version": 0}
+        return {"offer": False, "never": ""}
+    never = S.automatic_refusal(f)
+    return {"offer": not never, "never": never}
+
+
+def with_automatic(network: str, x: dict, who: dict) -> dict:
+    """The incident card's model *x* (`fixit.section.drawn`) with each Make this fix
+    automatic? it offers (`automatic_offer`: its Fixes for this problem rows, and the saved fix
+    that fixed it) read in full (`automatic_form`, its press's words `AUTOMATIC_PRESS`): what
+    the fix would then do by itself and what it runs on now, said before the press and bound
+    to it. THE one home for both places the card is drawn (the incident's page,
+    `incident_page.page`, and each post drawing it again, routes/fixit_v2.py `_section`). A
+    read; *x* is changed in place and returned."""
+    for row in ((x or {}).get("fixes") or {}).get("rows") or []:
+        if (row.get("auto") or {}).get("offer"):
+            row["auto"] = automatic_form(network, row["key"], who, press=AUTOMATIC_PRESS)
+    fix = (((x or {}).get("card") or {}).get("how") or {}).get("fix") or {}
+    if (fix.get("auto") or {}).get("offer"):
+        fix["auto"] = automatic_form(network, fix["key"], who, press=AUTOMATIC_PRESS)
+    return x
+
+
+def automatic_form(network: str, key: str, who: dict, *, press: str = "") -> dict:
+    """Set Automatic… for a matched fix held Manual only or in Dry run (the operator,
+    2026-11-16: "can be set Automatic after its first verified run"), and the incident card's
+    Make this fix automatic? (C4304, *press* its words): ``{"offer", "right", "ran", "why",
+    "version", "never", "then"}``, *offer* whether it is drawn, *right* the viewer's refusal
+    for the self-healing right (the AI none), *ran* the verified run of its version now
+    (`saved_plans.verified_run`) or ``{}`` with *why*; *never* why it is never offered
+    (`saved_plans.automatic_refusal`: a match on any port), *offer* then False; *then* what
+    the fix would do by itself once Automatic, in words. A read."""
+    from modules import identity
+    from modules.nsot import saved_plans as S
+
+    first = automatic_offer(network, key)
+    if not first["offer"]:
+        return {"offer": False, "right": "", "ran": {}, "why": "", "version": 0,
+                "never": first["never"], "then": ""}
+    f = S.fixes(network).get(key) or {}
     n = S.versions(f)[-1]["version"]
     ran = S.verified_run(network, f)
+    then = (f"Then it runs by itself, with no one pressing Run, on every incident it matches "
+            f"({fixes_words(f)}) while {network}'s self-healing is in Auto")
     # What it runs on now, said before the press and bound to it (C4261): *runs_on* the
     # digest the form sends, *runs_on_words* the line.
-    return {"offer": True, "version": n, "ran": ran, **S.promote_line(network, key),
+    return {"offer": True, "version": n, "ran": ran, "never": "", "then": then,
+            **S.promote_line(network, key, press=press),
             "right": (identity.ai_acting_refusal("set a fix Automatic")
                       or identity.right_refusal("self_healing", **who)),
             "why": "" if ran else (f"version {n} has no verified run yet: press Run… once, on a "

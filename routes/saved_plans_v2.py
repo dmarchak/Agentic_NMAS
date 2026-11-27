@@ -4,9 +4,11 @@ incident's AI troubleshooting section includes and asks for in place.
 
 - ``card`` (GET): what the incident offers: after a command plan that ran and passed its own
   verify, Save as a self-heal script (its R4 match, previewed on the open incidents, and its
-  open parameters) and Save as a reusable action (its name and parameters); the scripts whose
-  match its problem holds, each with Promote; the network's provisional shapes, each with
-  Approve. A read.
+  open parameters) and Save as a reusable action (its name and parameters); the network's
+  provisional shapes, each with Approve. The saved fixes its problem matches are the incident
+  card's own list, Fixes for this problem, each with Make this fix automatic? (C4301 to
+  C4304), never listed here again; after a saved fix's run nothing is offered for saving. A
+  read.
 - ``save_script``, ``save_action``, ``promote``, ``approve_shape`` (POST): each as the
   verified person, through the one chokepoint (`identity.right_refusal`): the self-healing
   right for a fix with a match and its promotion, the admin right for a fix with none and a
@@ -40,17 +42,15 @@ def _list_name() -> str:
 def _who() -> dict:
     from modules import identity
 
-    actor = identity.request_actor()
-    ident = identity.verified_identity()
-    return {"actor": actor, "actor_verified": identity.actor_verification(actor),
-            "person": bool(ident is not None and ident.kind == "person")}
+    return identity.pressing()
 
 
 def _line(on: dict) -> dict:
     """What the Save's line draws of `saved_plans.runs_on` (C4050): its words, count and
     devices, and the digest its press is bound to; the ids it binds stay the route's."""
     return {"count": on.get("count", 0), "devices": on.get("devices") or [],
-            "words": on.get("words") or "", "digest": on.get("digest") or ""}
+            "words": on.get("words") or "", "digest": on.get("digest") or "",
+            "manual": bool(on.get("manual"))}
 
 
 def _draw(network: str, incident: str, code: int = 200, *, show: bool = False, **said):
@@ -60,7 +60,7 @@ def _draw(network: str, incident: str, code: int = 200, *, show: bool = False, *
     # What the card draws, and nothing it does not (the run's id and the problem stay the
     # offer's: a save reads them again).
     c = {k: got[k] for k in ("state", "why", "plan", "match", "optional", "fills", "rights",
-                             "scripts", "unset", "saved", "name", "dismissed", "runs_on")}
+                             "unset", "saved", "name", "dismissed", "runs_on")}
     # What a Save is bound to (C4057): the run, match and fills as drawn, never their values.
     c["drawn"] = got.get("drawn") or ""
     c["runs_on"] = _line(got.get("runs_on") or {})
@@ -185,6 +185,10 @@ def save_script(incident):
         retry.run_soon(network, "script_saved", script=e["key"],
                        instance=f"{e['key']}:{e.get('saved_at') or ''}", how="saved",
                        by=_who()["actor"], only=on["ids"])
+    kept = S.automatic_refusal(e) if e.get("mode") == S.MANUAL else ""
+    if kept:
+        # C4306: saved, but Manual only, said in place (its line said so before the press).
+        return _draw(network, incident, level="ok", words=f"Saved Manual only: {kept}")
     return _draw(network, incident)
 
 
@@ -215,17 +219,40 @@ def save_action(incident):
 
 @bp.route("/<incident>/promote", methods=["POST"])
 def promote(incident):
-    """Promote a saved script from Dry run to Auto (self-healing rights)."""
+    """Promote a saved script from Dry run to Auto (self-healing rights). Pressed as Make this
+    fix automatic? on the incident's card (``view=fixit``, C4304: Fixes for this problem's row,
+    or the Fixed card's saved fix), the same promotion answers on that card, drawn again in
+    place (`fixit_v2._section`): one promote path, two places it answers."""
     from modules.nsot import saved_plans as S
 
-    network, form = _list_name(), request.form
+    network, form = _list_name(), request.values
+    on_card = form.get("view") == "fixit"
     try:
         e = promote_bound(network, (form.get("key") or "").strip(),
                           (form.get("runs_on") or "").strip(), incident)
     except S.Refused as exc:
+        if on_card:
+            return _on_card(network, incident, 403 if "does not hold" in str(exc)
+                            or "verified person" in str(exc) else 409,
+                            refused=f"Not made automatic: {exc}")
         return _refused(network, incident, exc, lead="Not promoted")
+    if on_card:
+        return _on_card(network, incident, done=(
+            f"Made automatic: {e['name']} now runs by itself on every incident it matches, "
+            "while self-healing is in Auto"))
     return _draw(network, incident, level="ok", words=(
         f"Promoted {e['name']}: when its match holds it runs, while self-healing is in Auto"))
+
+
+def _on_card(network: str, incident: str, code: int = 200, **answer):
+    """The incident's card drawn again with *answer* (`fixit_v2._section`), its page's own."""
+    from modules import incident_page
+    from routes.fixit_v2 import _missing, _section
+
+    found = incident_page.resolve(network, incident)
+    if found.get("found") != "page":
+        return _missing(incident, found)
+    return _section(network, found, code, **answer)
 
 
 def promote_bound(network: str, key: str, posted: str, incident: str = ""):

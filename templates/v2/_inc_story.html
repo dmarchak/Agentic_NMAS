@@ -3,7 +3,8 @@
     the likely cause, the evidence, what is next); then sections that open, each one line until
     opened: Why Mercury thinks so (the hypotheses, open), the Timeline (the chain of events, its
     line the stages reached, opened as one vertical list) and the AI call. What Mercury cannot
-    score yet (confidence, severity, risk) is one line saying what each needs. `modules/
+    score yet (confidence, severity, risk) is one line under the incident card's Details
+    (templates/v2/incident.html's `page_notes`, Stage 5 step 7), never here. `modules/
     incident_story.py` builds it from the page's model and the troubleshooting record. Display
     only. -#}
 {%- from "v2/_macros.html" import clock, how -%}
@@ -23,7 +24,6 @@
       {%- endfor %}
       {%- if s.summary.evidence_more %} <span class="muted small">and {{ s.summary.evidence_more }} more under Details</span>{% endif %}</dd>
   </dl>
-  <p class="inc-needs-line small muted" data-needs>Not scored yet, so no number is drawn: confidence (needs: {{ s.needs.confidence }}), severity (needs: {{ s.needs.severity }}) and risk (needs: {{ s.needs.risk }}).</p>
   {%- if s.hypotheses %}
   {%- set chosen = s.hypotheses | selectattr('chosen') | list %}
   {% call doc_section('inc-why-' ~ p.id, 'Why Mercury thinks so', (chosen[0].claim if chosen else s.hypotheses[0].claim) | times | striptags, (s.hypotheses | length) ~ ' hypothes' ~ ('is' if s.hypotheses | length == 1 else 'es'), open=True) %}

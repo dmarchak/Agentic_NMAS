@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1320">
+<title>Fix choice board</title>
+<!-- Board: the fix choice on an incident's card (Stage 5 step 7; the operator, 2026-11-27; rows
+     C4301 to C4304). The card's row of fix buttons becomes one list, "Fixes for this problem":
+     one row per matching saved fix, all drawn alike (name, mode, record, one small Run), its
+     second line what it does, opening to the lines it sends, its checks and its verify; one row
+     Recommended, with why, by a stated rule (the fix self-healing itself runs on this problem in
+     Auto), never by a button's colour; Hand over… separate, under the list; Make this fix
+     automatic? a Manual row's own action, never for a fix matching any port. Four artboards:
+     (A) two fixes offered, one Recommended; (B) a run in progress, the stepper alone; (C) a
+     failed run, the failure above the list; (D) fixed, its saved fix named, nothing offered for
+     saving. On the product's real stylesheet, linked relatively; inline CSS only for the
+     board's chrome (board R5's part (1)). Example names only: s1, edge-h1, incident hi-0412; a
+     person is "Sam". Signed off under the Phase 7 mode (docs/STANDING_APPROVAL_LOG.md, "Board
+     fix-choice"). -->
+<link rel="stylesheet" href="../../static/css/nmas-v2.css">
+<style>
+/* Board chrome only, outside the product (board R5's part (1), unchanged). */
+body.board { margin: 0; background: #D9DCD6; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #15191E; }
+.boardhead { width: 1040px; margin: 0 auto; padding: 22px 0 8px; font-size: 13px; color: #333; }
+.boardhead h1 { font-size: 18px; margin: 0 0 4px; }
+.artlabel { width: 1040px; margin: 28px auto 8px; font-size: 13px; color: #333; box-sizing: border-box; }
+.art { width: 1040px; margin: 0 auto 40px; box-shadow: 0 2px 14px rgba(0,0,0,.18); background: var(--ground); padding: 24px 32px; box-sizing: border-box; }
+.mock-cap { background: #FFFBEA; color: #1B1F24; border-bottom: 3px solid #8A6A00; padding: 10px 24px 12px; font-size: 12.5px; line-height: 1.45; }
+.mock-cap p { margin: 2px 0; }
+</style>
+</head>
+<body class="board">
+<div class="boardhead">
+<h1>The fix choice on an incident's card (signed off under the Phase 7 mode)</h1>
+<div>One list, "Fixes for this problem", in place of a row of buttons. Each row: the fix's name (its page), its mode, how often it ran and its last result, one small Run bound to the hash its preview drew; its second line, closed, says what it does here and opens to what it sends, checks and verifies. Hand over… stays separate, under the list.</div>
+</div>
+
+<!-- ============================================================ A -->
+<div class="artlabel mock-cap"><p><strong>A. Two saved fixes match: one list, one Recommended (with why), every Run alike</strong></p>
+<p>The status line counts them and points at the list; the story's Next line does too, never "no configuration fix can cure this". The Manual row matches any port: Make this fix automatic? is not offered (its mode's hover says why).</p></div>
+<div class="art"><section class="card inc-bluf simple" data-card="incident">
+  <h1 class="simple-title">s1 Gi1/0 err-disabled by BPDU guard: edge-h1 is offline</h1>
+  <section class="fix-choice" data-fixes="2">
+    <h2 class="fix-choice-title">Fixes for this problem</h2>
+    <ul class="fix-rows">
+      <li class="fix-row" data-recommended>
+        <div class="fix-row-head">
+          <span class="fix-row-name"><a href="#">BPDU guard recovery (access ports)</a> <span class="fix-row-rec"><span class="badge badge-info">Recommended</span> <span class="small muted">self-healing runs this one on this problem when it is in Auto</span></span></span>
+          <span class="fix-row-mode"><span class="badge badge-ok">Automatic</span></span>
+          <span class="fix-row-runs small muted">Ran 3 times, all verified · last: verified 15:10</span>
+          <span class="fix-row-run"><span class="op-act"><button type="button" class="btn btn-small">Run</button></span></span>
+        </div>
+        <details class="fix-row-does"><summary>Recover an err-disabled interface on s1 Gi1/0, a fix for access ports</summary></details>
+      </li>
+      <li class="fix-row">
+        <div class="fix-row-head">
+          <span class="fix-row-name"><a href="#">BPDU guard recovery (any port)</a></span>
+          <span class="fix-row-mode"><span class="badge badge-muted" title="matches any port, so it stays Manual: an uplink's err-disable is never re-enabled automatically">Manual only</span></span>
+          <span class="fix-row-runs small muted">Not run yet</span>
+          <span class="fix-row-run"><span class="op-act"><button type="button" class="btn btn-small">Run</button></span></span>
+        </div>
+        <details class="fix-row-does" open><summary>Recover an err-disabled interface on s1 Gi1/0, a fix for any port</summary>
+          <p class="small plan-sent-label">Sent to s1, in order:</p>
+          <pre class="plan-sent"><code>interface GigabitEthernet1/0
+ shutdown
+ no shutdown</code></pre>
+          <p class="small">Checks first: The port is err-disabled by the cause now · The switch does not recover the cause itself · The cause has cleared · The port is not administratively down</p>
+          <p class="small">Then verifies: The port reads connected · Then re-checks for 10 s: does it trip again? · The running configuration after equals the one before, line for line, or it is rolled back</p>
+          <p class="small muted">It matches a switch port err-disabled by BPDU guard.</p>
+        </details>
+      </li>
+    </ul>
+  </section>
+  <div class="bluf-acts simple-acts"><span class="op-act"><button type="button" class="bluf-link">Hand over…</button></span></div>
+  <p class="simple-impact"><span class="badge badge-warn">Warning</span> edge-h1 has no network until the port is recovered; the rest of the network is unaffected</p>
+  <div class="simple-status fixit-status">2 saved fixes can fix this: choose one under Fixes for this problem</div>
+  <p class="small muted">Next (the story): It needs a person: choose one of the 2 saved fixes under Fixes for this problem.</p>
+</section></div>
+
+<!-- ============================================================ B -->
+<div class="artlabel mock-cap"><p><strong>B. A fix runs: its stepper alone</strong></p>
+<p>No row, no Run, no Hand over… while it runs; no banner beside the stepper. The Timeline (in the story) says Applying, now, with the stepper's current step; the page redraws on each step.</p></div>
+<div class="art"><section class="card inc-bluf simple" data-card="incident">
+  <h1 class="simple-title">s1 Gi1/0 err-disabled by BPDU guard: edge-h1 is offline</h1>
+  <div class="bluf-acts simple-acts"></div>
+  <p class="simple-impact"><span class="badge badge-warn">Warning</span> edge-h1 has no network until the port is recovered; the rest of the network is unaffected</p>
+  <div class="simple-status fixit-status"><span class="inc-live"><span class="inc-stepper">
+    <span class="inc-stepper-step inc-stepper-done"><span aria-hidden="true">✓</span> Check hash <span class="muted">0 s</span></span>
+    <span class="inc-stepper-step inc-stepper-done"><span aria-hidden="true">✓</span> Hold s1 <span class="muted">0 s</span></span>
+    <span class="inc-stepper-step inc-stepper-done"><span aria-hidden="true">✓</span> Read before <span class="muted">2 s</span></span>
+    <span aria-current="step" class="inc-stepper-step inc-stepper-running working-now">Check preconditions <span class="muted">4 s</span></span>
+    <span class="inc-stepper-step inc-stepper-waiting">Send</span>
+    <span class="inc-stepper-step inc-stepper-waiting">Verify</span>
+    <span class="inc-stepper-step inc-stepper-waiting">Record</span>
+  </span></span></div>
+  <p class="small muted">Timeline (the story): Detected → Self-heal tried → Applying (now) · 2 of 8 done</p>
+</section></div>
+
+<!-- ============================================================ C -->
+<div class="artlabel mock-cap"><p><strong>C. The run did not verify: the list comes back, the failure above it</strong></p>
+<p>The failure in the run record's own words, its record linked; every Run and Hand over… back.</p></div>
+<div class="art"><section class="card inc-bluf simple" data-card="incident">
+  <h1 class="simple-title">s1 Gi1/0 err-disabled by BPDU guard: edge-h1 is offline</h1>
+  <section class="fix-choice" data-fixes="2">
+    <h2 class="fix-choice-title">Fixes for this problem</h2>
+    <div class="notice notice-danger" role="alert"><div><strong>BPDU guard recovery (any port) did not fix it:</strong> did not verify, and was rolled back <span class="muted">15:10</span> · <a href="#">Open the run</a></div></div>
+    <ul class="fix-rows">
+      <li class="fix-row" data-recommended>
+        <div class="fix-row-head">
+          <span class="fix-row-name"><a href="#">BPDU guard recovery (access ports)</a> <span class="fix-row-rec"><span class="badge badge-info">Recommended</span> <span class="small muted">self-healing runs this one on this problem when it is in Auto</span></span></span>
+          <span class="fix-row-mode"><span class="badge badge-ok">Automatic</span></span>
+          <span class="fix-row-runs small muted">Ran 3 times, all verified · last: verified 14:02</span>
+          <span class="fix-row-run"><span class="op-act"><button type="button" class="btn btn-small">Run</button></span></span>
+        </div>
+        <details class="fix-row-does"><summary>Recover an err-disabled interface on s1 Gi1/0, a fix for access ports</summary></details>
+      </li>
+      <li class="fix-row">
+        <div class="fix-row-head">
+          <span class="fix-row-name"><a href="#">BPDU guard recovery (any port)</a></span>
+          <span class="fix-row-mode"><span class="badge badge-muted">Manual only</span></span>
+          <span class="fix-row-runs small muted">Ran 1 time, 0 verified · last: did not verify, and was rolled back 15:10</span>
+          <span class="fix-row-run"><span class="op-act"><button type="button" class="btn btn-small">Run</button></span></span>
+        </div>
+        <details class="fix-row-does"><summary>Recover an err-disabled interface on s1 Gi1/0, a fix for any port</summary></details>
+      </li>
+    </ul>
+  </section>
+  <div class="bluf-acts simple-acts"><span class="op-act"><button type="button" class="bluf-link">Hand over…</button></span></div>
+</section></div>
+
+<!-- ============================================================ D -->
+<div class="artlabel mock-cap"><p><strong>D. Fixed by a saved fix: named, and never offered for saving again</strong></p>
+<p>The save card offers nothing (its hover: "Nothing to save: the fix that ran, … is a saved fix already."). A Manual fix whose match names the port's role offers Make this fix automatic? beside it, opened here: what it would then do by itself, what it runs on now, and its press, Make it automatic, answering on the card.</p></div>
+<div class="art"><section class="card inc-bluf simple" data-card="incident">
+  <h1 class="simple-title">s1 Gi1/0 err-disabled by BPDU guard: edge-h1 is offline</h1>
+  <p class="simple-status simple-ok fixit-status">✓ Fixed at 15:12, verified; edge-h1 is back online.</p>
+  <p class="simple-impact">How it was fixed: <a href="#">Run by Sam</a> · <a href="#">BPDU guard recovery (access, by hand)</a></p>
+  <details class="simple-menu menu-wrap fix-auto" open><summary role="button">Make this fix automatic?</summary>
+    <div class="menu simple-promote" role="group">
+      <p class="small">Then it runs by itself, with no one pressing Run, on every incident it matches (a switch port err-disabled by BPDU guard, on an access port) while Lab's self-healing is in Auto.</p>
+      <p class="small">Making it automatic runs it now on 1 open incident, on s3.</p>
+      <span class="op-act"><button type="button" class="btn btn-small btn-primary">Make it automatic</button></span>
+    </div>
+  </details>
+</section></div>
+</body>
+</html>

@@ -38,9 +38,12 @@ then its story: its facts, then sections that open, each one line until opened.
   "Inconclusive" with its reason when the AI ended without a fix, or else the kind of what
   opened the incident, such as a configuration change from outside Mercury); and the evidence,
   four lines each opening to its raw text, with the rest counted. The next step is
-  said here only: the incident's card below holds its action, not the sentence again. Under
-  them, one line says what Mercury does not score yet (confidence, severity and risk) and what
-  each needs, rather than print a number it cannot stand behind.
+  said here only: the incident's card below holds its action, not the sentence again. While
+  saved fixes match the incident, the next step points at the card's **Fixes for this
+  problem** ("It needs a person: choose one of the 2 saved fixes under Fixes for this
+  problem."), never at a reason no configuration fix can cure it. What Mercury does not score
+  yet (confidence, severity and risk) and what each needs is one line under the card's
+  **Details**, rather than a number it cannot stand behind.
 - **Why Mercury thinks so** (open): what the AI considered, the one its plan acts on first,
   each with what it cites and the read that would confirm it. Its line is the chosen one.
 - **Timeline:** its line is the stages reached so far ("Detected → Self-heal tried →
@@ -48,7 +51,9 @@ then its story: its facts, then sections that open, each one line until opened.
   stages, Detected, Self-heal tried, Diagnosing, Fix proposed, Approved, Applying, Verifying and
   Healed, run down, each with the time its own record gives. The stage the incident is at now is
   marked; one it skipped (a self-heal that needed no AI skips Diagnosing, Fix proposed and
-  Approved) is drawn faint, and a failed verify is drawn red, never Healed.
+  Approved) is drawn faint, and a failed verify is drawn red, never Healed. While a saved fix
+  runs, the Timeline moves with its steps: Applying is the stage now, then Verifying once its
+  verify starts, each saying the run's current step.
 - **AI call:** its line is the model, the number of calls and the latency; opened, its model,
   prompt, tokens, cost and latency, from the record of AI calls, with a link to History.
 
@@ -115,7 +120,7 @@ long it has been open:
 
 | Where the incident stands | The next action |
 |---|---|
-| A saved fix's match holds for the incident's problem (an Automatic one first) | **Fix with saved script: <fix>**, run once as you (below), with **What this fix does**, its page on [Fixes](fixes); each other matching fix is its own button beside it. While a guard holds the incident it reads **Fix now with saved script <fix>** |
+| A saved fix's match holds for the incident's problem | **Fixes for this problem**: one list, a row per matching fix, each with its own **Run** (below) |
 | The AI proposes a plan | **Approve**, **Modify…** and **Deny…** (below) |
 | Mercury's fix failed, and the AI was not started by itself (its background feature was off for the network then, or the fix failed before it was turned on) | **Start AI troubleshooting**: one investigation, its cost beside it |
 | You denied the AI's plan | **Ask the AI again**: a new investigation, told what you denied and why |
@@ -130,12 +135,39 @@ here that did not fix it is listed under Fixing it's **Attempts**, with its reco
 **Other actions**, never as the button. **Hand over…** is beside every next action while the
 incident is open, as a link: it opens its modal over the page ([Hand over](fixit-troubleshoot#hand-over)).
 
-**Fix with saved script: <fix>** runs that saved fix once, as the verified person who pressed,
-bound to the hash its preview drew from the incident's own values, with no AI: the runner holds
-the device, reads its checks again, sends, verifies (rolling back a failed verify) and records,
-as a job under **In progress**. A verified run closes the incident Fixed, unless the run fixed
-one port and the incident holds more than that port's events ([Self-healing](heal#detect),
-step 8). A press refused says why in place, naming what it compared.
+**Fixes for this problem** lists every saved fix whose match the incident's problem
+holds, one row each, all drawn alike: its name (its page on [Fixes](fixes)), its mode
+(Automatic, Dry run or Manual only), how often it ran and how many runs verified, its last
+result, and one small **Run**. The row's second line, closed, says what it does here and which
+ports its match covers ("Recover an err-disabled interface on s1 Gi1/0, a fix for access
+ports", or "…, a fix for any port"); opened, the lines it sends to the device, in order,
+the checks it reads first and what it verifies after. Where Mercury recommends one, its row
+says **Recommended** and why: the rule is the fix self-healing itself runs on this problem when
+it is in Auto (the first Automatic fix, in the order self-healing fires them); with no
+Automatic fix none is recommended, and a recommendation is never a different button. **Hand
+over…** stays separate, under the list.
+
+**Run** runs that saved fix once, as the verified person who pressed, bound to the hash its
+preview drew from the incident's own values, with no AI: the runner holds the device, reads its
+checks again, sends, verifies (rolling back a failed verify) and records, as a job under **In
+progress**. While it runs the list and Hand over… are not drawn: the card's status line is the
+run's stepper, its current step marked, and no other note beside it. A verified run closes the
+incident Fixed, unless the run fixed one port and the incident holds more than that port's
+events ([Self-healing](heal#detect), step 8). A run that did not verify brings the list back,
+with what failed stated above it and its run's record linked. A press refused says why in
+place, naming what it compared.
+
+**Make this fix automatic?** is a Manual only or Dry run fix's own action,
+in its row (and, once a saved fix has fixed the incident, beside "How it was fixed"): opened,
+it says what the fix would then do by itself ("Then it runs by itself, with no one pressing
+Run, on every incident it matches (…) while <network>'s self-healing is in Auto") and which
+open incidents it would run on now, and **Make it automatic** promotes it, bound to that list,
+through the same path as a fix page's Set Automatic…; its answer is drawn on the card. It needs
+a verified run of the fix's current version first (until then it says so), and the
+self-healing right. It is never offered for a fix whose match leaves the port's role unset
+(any port), and Mercury refuses it too, naming why: an uplink's err-disable is never
+re-enabled automatically. A saved fix that ran is saved already: nothing offers to save it
+again.
 
 **Approve** runs the plan exactly as drawn, held to the plan's hash: a step that moved since it
 was drawn is refused, naming what moved. Everything that hash binds is drawn before you press:
@@ -160,8 +192,9 @@ the answer is drawn under the buttons, in place.
 
 What to do and AI troubleshooting are this one card, under the bottom line. It starts with one
 status line: the incident's best current knowledge, never merely its latest event, in one
-sentence. A fix available comes first ("A saved script can fix this: <fix>.", "The AI's plan is
-ready."); then the AI's latest finding, in an engineer's words with an **AI** label beside it
+sentence. A fix available comes first ("A saved script can fix this: <fix>.", or, with more
+than one, "2 saved fixes can fix this: choose one under Fixes for this problem."; "The AI's
+plan is ready."); then the AI's latest finding, in an engineer's words with an **AI** label beside it
 (never "The AI found:" inside it), Mercury's note in the same sentence where its catalogue has
 a step the AI did not try ("…; Mercury notes errdisable-recover (Recover an err-disabled
 interface) exists and is not yet tried here."); and a failed attempt only when nothing else
@@ -170,7 +203,8 @@ it needs a person, the line is why, beside its one action (the same reasons the
 [Incidents](incidents#row) row gives). While Mercury works on it, the line says what it is
 doing now with a spinner, its live step moving as the run records it, while the header says
 **Mercury working**: a heal's ("Self-healing: restoring <device> · Apply"), a saved fix's
-("Self-healing: fixing with saved script <fix> · verifying") or the AI's ("The AI is
+("Self-healing: fixing with saved script <fix> · verifying", or "Running <fix>"
+for a person's Run) or the AI's ("The AI is
 investigating" and the step it is on); a plan still drawn from before is greyed and cannot be
 pressed until the new answer comes.
 An AI plan whose step Mercury refuses reads "<the AI's finding>; Mercury refuses its fix as

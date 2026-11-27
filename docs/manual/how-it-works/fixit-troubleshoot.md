@@ -73,6 +73,28 @@ over…** as its next actions. **Keep the plan** closes the confirm with nothing
 After a denial, **Ask the AI again** runs a new investigation, told what was denied and why,
 under the same caps as the first. Its plan is drawn with Approve, Modify… and Deny… again.
 
+## Fixes for this problem {#fixes}
+
+Every saved fix whose match the incident's problem holds is one row of **Fixes for this
+problem**, at the top of the incident's card, all rows drawn alike: the fix's name, its mode,
+how often it ran and its last result, and one **Run**. Each row's Run is bound to the hash the
+runner's own preview drew for this incident (its device and port filled from the problem,
+asking no device), so what you press is what runs. A press runs the fix once, as you: the device
+held, its checks read again, its lines sent, its verify read, a failed verify rolled back, and
+the run recorded, with no AI. One fix may be labelled **Recommended**, with why: the one
+self-healing itself runs on this problem when it is in Auto. While a fix runs, the card shows
+its stepper alone; a run that did not verify brings the list back, its failure above it.
+
+## Make this fix automatic? {#automatic-fix}
+
+A Manual only or Dry run fix's row offers **Make this fix automatic?**: what the fix would then
+do by itself, which open incidents it would run on now, and **Make it automatic**, which binds
+those incidents (a list that moved since it was drawn is refused, naming both) and promotes the
+fix through the one promotion path a fix page's Set Automatic… takes. It waits for a verified
+run of the fix's current version, takes the self-healing right, and is never offered for a fix
+whose match leaves the port's role unset: Mercury refuses that promotion itself, since an
+uplink's err-disable must never be re-enabled automatically.
+
 ## Start AI troubleshooting {#start}
 
 On Needs attention, the row about such an incident offers the same:

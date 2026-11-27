@@ -1288,6 +1288,15 @@ def _todo(st: dict, device: str, tl: dict, fixit: dict, item: dict) -> dict:
         "handed_over": "It needs a person: it was handed over, and the incident stays open "
                        "until its symptom clears.",
     }[why]
+    # C4301 (the operator, 2026-11-27): while saved fixes match the incident, the next step is
+    # the card's list of them, never a reason no configuration can cure it ("cable, optic, far
+    # end": a can't-fix decision's words, made before any fix matched).
+    rows = (fixit.get("fixes") or {}).get("rows") or []
+    if rows:
+        words = ("It needs a person: run the saved fix under Fixes for this problem."
+                 if len(rows) == 1 else
+                 f"It needs a person: choose one of the {len(rows)} saved fixes under Fixes "
+                 "for this problem.")
     label = str((row.get("action") or {}).get("label") or "").strip()
     if item["state"] == "stands":
         more = (label[:1].upper() + label[1:] + ("" if label.endswith((".", "…")) else ".")
@@ -1668,6 +1677,10 @@ def _page(network: str, incident_id: str, attention, laps: list) -> dict:
     model["item"] = item
     model["fixit"] = with_item(fixit, item, st["needs"]) if "bluf" in fixit else dict(
         fixit, **composed(model, fixit, item, st["needs"], found=found))
+    # Each Make this fix automatic? the card offers, read in full for this viewer (C4304), as
+    # a post drawing the card again reads it (routes/fixit_v2.py `_section`).
+    from modules import fix_page, identity
+    fix_page.with_automatic(network, model["fixit"], identity.pressing())
     # The story at a glance (the redesign brief §4.1): the lifecycle bar, the four-line summary,
     # the hypotheses and the AI call, from this model and the troubleshooting record; masked
     # and its people named as the model is.

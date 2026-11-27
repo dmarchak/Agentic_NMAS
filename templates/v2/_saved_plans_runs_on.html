@@ -1,4 +1,6 @@
 {#- What Save runs on, for the match the Customize… ticks keep (C4205): the card's line, and
     its redraw when a tick changes (`saved_plans_v2.runs_on`). Its `runs_on` field rides with
-    Save (C4050): the incidents it named, as a digest, so a list that moved is refused. -#}
-<span id="runs-on-{{ incident }}" data-runs-on="{{ on.count }}" data-devices="{{ on.devices | join(' ') }}"><input type="hidden" name="runs_on" value="{{ on.digest }}">{{ on.words }}</span>
+    Save (C4050): the incidents it named, as a digest, so a list that moved is refused. A match
+    on any port is saved Manual only (`on.manual`, C4306): the whole line says so, never that
+    Mercury will handle it automatically. -#}
+<span id="runs-on-{{ incident }}" data-runs-on="{{ on.count }}" data-devices="{{ on.devices | join(' ') }}"{% if on.manual %} data-manual{% endif %}><input type="hidden" name="runs_on" value="{{ on.digest }}">{% if on.manual %}{{ on.words }}{% else %}Mercury will handle this automatically when self-healing is on{% if on.words %}. {{ on.words }}{% endif %}{% endif %}</span>

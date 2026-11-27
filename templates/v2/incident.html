@@ -62,7 +62,7 @@
 <div class="page-head"><div class="page-title"><h1>Incident {{ p.id }} {{ info('incident') }}</h1></div></div>
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>This incident's record couldn't be read:</strong> {{ p.unreadable | join('; ') }}. Whether {{ p.id }} is recorded, and whether it is open, is not known: nothing that could be read holds it. <a href="{{ url_for('incident_v2.incident', incident_id=p.id) }}">Read again</a></div></div>
 {%- else %}
-<div id="incident-live" class="inc" hx-disinherit="*" hx-get="{{ url_for('incident_v2.incident', incident_id=p.id) }}" hx-select="#incident-live" hx-trigger="nmas:drift from:body, nmas:privileged from:body{% if p.done.running %}, nmas:in_progress from:body, nmas:device_progress from:body{% endif %}" hx-swap="outerHTML">
+<div id="incident-live" class="inc" hx-disinherit="*" hx-get="{{ url_for('incident_v2.incident', incident_id=p.id) }}" hx-select="#incident-live" hx-trigger="nmas:drift from:body, nmas:privileged from:body{% if p.done.running or (p.fixit or {}).fix_running %}, nmas:in_progress from:body, nmas:device_progress from:body{% endif %}" hx-swap="outerHTML">
 {%- if p.unreadable %}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>Part of this incident's record couldn't be read:</strong> {{ p.unreadable | join('; ') }}. Whether {{ p.id }} is open is not known; what could be read is drawn below. <a href="{{ url_for('incident_v2.incident', incident_id=p.id) }}">Read again</a></div></div>
 {%- endif %}
@@ -76,6 +76,11 @@
     Mercury has done, Seen before and The record (`page_parts`) are the page's own sections
     after the story (Stage 5 step 4, slice 3; C). Nothing is removed. -#}
 {%- set page_notes %}
+{#- What Mercury cannot score yet, under the card's Details (the operator, 2026-11-27, Stage 5
+    step 7: "Move the 'Not scored yet…' paragraph under Details"): the story's `needs`. -#}
+{%- if p.story is defined and p.story and p.story.needs %}
+<p class="inc-needs-line small muted" data-needs>Not scored yet, so no number is drawn: confidence (needs: {{ p.story.needs.confidence }}), severity (needs: {{ p.story.needs.severity }}) and risk (needs: {{ p.story.needs.risk }}).</p>
+{%- endif %}
 {%- if p.only_log and not p.unreadable %}
 <div class="notice notice-muted" role="status">{{ icon('info', 16) }}<div>This incident is past the newest {{ p.kept }} closed incidents self-healing keeps for {{ p.network }}, so this page is drawn from its step log alone: its triggers and their times are no longer kept.</div></div>
 {%- endif %}

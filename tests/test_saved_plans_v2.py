@@ -114,15 +114,18 @@ class TestTheCard:
         assert 'data-rights="unset"' not in _html(_get(card))
         card["rights"].clear()
         # Pressed where it is drawn (its own hx-post), the script is saved as drawn: the match
-        # the ticks kept and the fills the card named.
+        # the ticks kept and the fills the card named. Premise corrected (C4306: a match on any
+        # port is saved Manual only): its port role kept, so the Save is Automatic.
         url = re.search(r'hx-post="([^"]*save-script[^"]*)"', html).group(1)
         r = card["client"].post(url.replace("&amp;", "&"), headers={"HX-Request": "true"},
                                 data={"name": "BPDU guard recovery", "keep_cause": "1",
+                                      "keep_port_role": "1",
                                       "drawn": drawn_of(html), "runs_on": re.search(
                                           r'name="runs_on" value="([0-9a-f]*)"', html).group(1)})
         assert r.status_code == 200
         e = S.scripts(NET)["fix-bpdu-guard-recovery"]                     # 3a659d6b's key
-        assert e["match"] == {"condition": "err_disabled", "cause": "BPDU guard"}
+        assert e["match"] == {"condition": "err_disabled", "cause": "BPDU guard",
+                              "port_role": "access"}
         assert e["mode"] == "auto" and e["promoted_by"] == PERSON, "Save is the approval"
 
     def test_save_names_the_count_and_the_devices_it_will_run_on(self, card, monkeypatch):
@@ -174,15 +177,17 @@ class TestTheCard:
         html = _get(card).get_data(as_text=True)
         drawn = re.search(r'name="runs_on" value="([0-9a-f]{16})"', html).group(1)
         hits.append({"incident": "hi-edge2", "device": "edge2"})
+        # Its port role kept (C4306: a match on any port is saved Manual only, retrying nothing).
         r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1",
-                  runs_on=drawn)
+                  keep_port_role="1", runs_on=drawn)
         said = _html(r)
         assert r.status_code == 409, r.status_code
         assert f"moved since its line was drawn (drawn {drawn}, now " in said, said[:600]
         assert "Save runs it now on 2 other open incidents, on edge1 and edge2" in said
         assert S.scripts(NET) == {} and started == []
         # Pressed again from the line as it reads now, it saves and starts the retry.
-        r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1")
+        r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1",
+                  keep_port_role="1")
         assert r.status_code == 200 and S.scripts(NET) and len(started) == 1, _html(r)[:600]
         # The retry it starts runs only on what the line named (`retry.run`'s *only*).
         assert sorted(started[0][1]["only"]) == ["hi-edge1", "hi-edge2"], started
@@ -197,7 +202,9 @@ class TestTheCard:
         monkeypatch.setattr(retry, "would_run", unread)
         started = []
         monkeypatch.setattr(retry, "run_soon", lambda *a, **kw: started.append((a, kw)))
-        r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1")
+        # Its port role kept (C4306: a match on any port saves Manual only, naming nothing).
+        r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1",
+                  keep_port_role="1")
         assert r.status_code == 409 and "cannot name what it would run on" in _html(r), \
             _html(r)[:600]
         assert S.scripts(NET) == {} and started == []
@@ -208,9 +215,11 @@ class TestTheCard:
     def test_promote_names_what_it_runs_on_and_is_bound_to_it(self, card, monkeypatch):
         """C4261: Promote's line names the other open incidents it runs on now, its press is
         bound to them (refused, nothing changed, when they moved), and the retry it starts
-        runs only on those named (`retry.run`'s *only*)."""
+        runs only on those named (`retry.run`'s *only*). Premise corrected (C4304: a fix whose
+        match leaves the port's role unset is never made Automatic): its port role kept."""
         from modules.heal import retry
-        r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1", dry_run="1")
+        r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1",
+                  keep_port_role="1", dry_run="1")
         key = S.scripts(NET)["fix-bpdu-guard-recovery"]["key"]
         hits = [{"incident": "hi-edge1", "device": "edge1"}]
         asked = []
@@ -258,17 +267,22 @@ class TestTheCard:
         assert f'hx-target="#runs-on-{INC}"' in form, form
         assert f'id="runs-on-{INC}"' in html
         # The cause unticked: the match Save sends has no cause, and the line counts its two.
-        got = _html(card["client"].get(f"/v2/saved-plans/{INC}/runs-on?list={NET}"))
+        # Premise corrected (C4306): the port role ticked throughout, since a match on any port
+        # saves Manual only and runs on nothing by itself (tests/test_fix_choice.py).
+        got = _html(card["client"].get(
+            f"/v2/saved-plans/{INC}/runs-on?list={NET}&keep_port_role=1"))
         assert "cause" not in asked[-1] and asked[-1]["condition"] == "err_disabled", asked
         assert "Save runs it now on 2 other open incidents, on s3 and s5" in got, got
         assert f'id="runs-on-{INC}"' in got and 'data-runs-on="2"' in got, got
         # Ticked again, the narrower match and its one incident.
-        got = _html(card["client"].get(f"/v2/saved-plans/{INC}/runs-on?list={NET}&keep_cause=1"))
+        got = _html(card["client"].get(
+            f"/v2/saved-plans/{INC}/runs-on?list={NET}&keep_cause=1&keep_port_role=1"))
         assert asked[-1]["cause"] == "BPDU guard", asked
         assert "Save runs it now on 1 other open incident, on s5" in got, got
         # Dry run: it records what it would do there and changes nothing.
         got = _html(card["client"].get(
-            f"/v2/saved-plans/{INC}/runs-on?list={NET}&keep_cause=1&dry_run=1"))
+            f"/v2/saved-plans/{INC}/runs-on?list={NET}&keep_cause=1&keep_port_role=1"
+            "&dry_run=1"))
         assert "In Dry run it changes nothing: it records what it would do on 1 other open " \
                "incident, on s5, each when it is next decided" in got, got
 
@@ -304,13 +318,17 @@ class TestSaving:
 
     def test_saved_as_a_script_in_dry_run_then_promoted(self, card):
         """Customize's Dry run (6b91dc45: a plain Save is Automatic): saved, it is board R5's
-        one line, "Saved: <name>, Dry run.", with Promote… opening the promote in place."""
-        r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1", dry_run="1")
+        one line, "Saved: <name>, Dry run.", with Promote… opening the promote in place.
+        Premise corrected (C4304, the operator, 2026-11-27: a fix whose match leaves the port's
+        role unset is never made Automatic): the port role is kept, so the promotion stands."""
+        r = _post(card, "save-script", name="BPDU guard recovery", keep_cause="1",
+                  keep_port_role="1", dry_run="1")
         html = _html(r)
         assert r.status_code == 200 and 'data-saved="script"' in html
         assert "BPDU guard recovery</a>, Dry run." in html, html[:600]
         e = S.scripts(NET)["fix-bpdu-guard-recovery"]
-        assert e["match"] == {"condition": "err_disabled", "cause": "BPDU guard"}
+        assert e["match"] == {"condition": "err_disabled", "cause": "BPDU guard",
+                              "port_role": "access"}
         assert e["fills"]["cause"] == {"BPDU guard": "bpduguard"}
         assert "Promote BPDU guard recovery" in html
         r = _post(card, "promote", key=e["key"])

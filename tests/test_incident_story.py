@@ -202,8 +202,13 @@ def test_the_partial_draws_every_part_and_its_needs(monkeypatch):
     assert html.count('data-state="done"') == 8
     assert "Unauthorised MAC aabb.cc00.8099" in html
     from markupsafe import escape
-    for key in S.NEEDS:
+    # Premise corrected (Stage 5 step 7, the operator, 2026-11-27: "Move the 'Not scored
+    # yet…' paragraph under Details"): confidence, severity and risk are said under the
+    # incident card's Details (tests/test_fix_choice.py), the hypotheses' ruled-out here.
+    for key in ("ruled_out",):
         assert "needs: " + str(escape(S.NEEDS[key])) in html
+    for key in ("confidence", "severity", "risk"):
+        assert "needs: " + str(escape(S.NEEDS[key])) not in html
     assert "The record of AI calls holds no row for ai-32c642bea0ba4e30" in html
 
 
@@ -257,7 +262,9 @@ def test_the_timeline_is_a_section_whose_line_is_the_stages_reached(monkeypatch)
     assert f'<span class="doc-gist" title="{" → ".join(reached)}">' in sec.group(1)
     assert f">{done} of {len(life)} done<" in sec.group(1)
     assert '<dl class="inc-sum-lines inc-facts' in html and 'class="card inc-sum' not in html
-    assert html.count('data-needs') == 1
+    # Premise corrected (Stage 5 step 7, the operator, 2026-11-27): the one line of what
+    # Mercury does not score is under the incident card's Details, never in the story.
+    assert html.count('data-needs') == 0
 
 
 def test_what_happened_is_said_once_when_it_is_the_title(monkeypatch):

@@ -79,6 +79,9 @@ def _section(network: str, found: dict, status: int = 200, **answer):
     # A can't-fix's AI analysis in full (C3488), as the incident's page draws it.
     from routes.v2 import with_heal_analysis
     with_heal_analysis(x)
+    # Each Make this fix automatic? the card offers, read in full (C4304), as the page does.
+    from modules import fix_page, identity
+    fix_page.with_automatic(network, x, identity.pressing())
     return _strict(render_template("v2/_fixit_section.html", x=x, answer=answer), status)
 
 
@@ -96,10 +99,7 @@ def _person() -> dict:
     (`identity.verified_identity`, which fails closed)."""
     from modules import identity
 
-    actor = identity.request_actor()
-    ident = identity.verified_identity()
-    return {"actor": actor, "actor_verified": identity.actor_verification(actor),
-            "person": bool(ident is not None and ident.kind == "person")}
+    return identity.pressing()
 
 
 def _not_a_person(who: dict, what: str) -> str:
@@ -235,13 +235,21 @@ def fix_with_script(incident_id):
         return {"run": rec.get("id"), "state": rec.get("state"),
                 "words": CR.OUTCOME_WORDS.get(rec.get("outcome") or "", "")
                 or str(rec.get("why") or "")}
+    # The job's page names the fix that runs (``fix``), so the card draws its stepper alone
+    # and names it (`saved_plans.running_on`, C4302).
     capture_job.start(network, f"{offer['name']} on {incident_id}", who["actor"], work,
                       kind="saved script", announce_keys=CR.ANNOUNCE_KEYS,
                       announcer=CR.ANNOUNCER,
-                      page=f"/v2/incident/{incident_id}?list={quote(network)}")
-    return answer(done=(
-        f"Running {offer['name']} on {offer['values'].get('device')}: held, checked, sent, "
-        "verified and recorded; the incident closes Fixed when it verifies"))
+                      page=f"/v2/incident/{incident_id}?list={quote(network)}"
+                           f"&fix={quote(key)}")
+    if request.values.get("view") == "fix":
+        return answer(done=(
+            f"Running {offer['name']} on {offer['values'].get('device')}: held, checked, "
+            "sent, verified and recorded; the incident closes Fixed when it verifies"))
+    # On the incident's card the answer is the run's own stepper, its current step and no
+    # banner beside it (C4302, the operator, 2026-11-27: "The 'Running …' banner states the
+    # current step and disappears when the run ends").
+    return answer()
 
 
 @bp.route("/<incident_id>/fixit/approve", methods=["POST"])

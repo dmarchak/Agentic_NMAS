@@ -91,6 +91,12 @@ CONDITIONS = {
 #: confirming read, so no fix is offered, or fires in Auto, on an unconfirmed classification.
 UNCONFIRMED = ("err_disable_reported",)
 MATCHABLE = tuple(c for c in CONDITIONS if c not in UNCONFIRMED)
+#: The conditions whose classification names the port's role (``port_role``, from the port's
+#: mode: `heal.errdisable.problem_fields`). A saved fix for one of them is made Automatic only
+#: when its match names that role (C4304, the operator, 2026-11-27: "never offered for a fix
+#: whose port role is unset (any port), since an uplink err-disable must never be re-enabled
+#: automatically"; `saved_plans.automatic_refusal`).
+PORT_ROLE_CONDITIONS = ("err_disabled",)
 
 #: Every signal kind Mercury raises, to its problem's condition: the heal's trigger kinds, the
 #: lost stream, and the fix kinds the decision classifies a departure as.

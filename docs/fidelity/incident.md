@@ -222,7 +222,7 @@ Compared again 2026-11-27 (the operator's decision, C4090's third record, (b): "
 `39b0f10e93fd1ecffaf2bceb61c0b785d207c5f38515f7b0efee69c57d6d1e31`.
 Compared again 2026-11-27: a device's raw syslog line drawn as evidence (kind "log", the port's own lines that an err-disable keeps) is marked data-verbatim in the incident's Evidence list and its evidence chip, a quotation as Logs draws it; nothing else drawn changes. Templates sha256 before:
 `2686965697cc597836be378b65846c2b41a982809b7d826ecf9e01fe3ebb17ab`.
-Templates sha256: `b05d1163f40ab3e14305fcd4764989891569da44f703fc77d44ad1e3130edb0c`
+Templates sha256: `c4572cb55f74da8d6e649ae002510e01c9ef24043ae0ee9095fa0c538a241cd1`
 Templates sha256 before the saved plans card said a right's holders unset (2026-11-15, Gate 1b's review, item 7; the row "Rights not set" below): `770515ac382839dde54d1ae789920a7578375acf87fe6fb9d221961273361976`
 Templates sha256 before C3725's session moved from a press to the proposal's record (2026-11-15, the operator; the session row below): `90974cd13f0f0f2aece5e005c3cc5e3c2c21726aa22192e6535bce1ca4953909`
 Templates sha256 before the verify-speed gate's page fixes (2026-11-14, C3725, C3727, C3728, C3729, below): `b8969275f9560c0d423e154d881391989736eb6548a35bb27ab4020fa5542a6c`
@@ -381,3 +381,40 @@ plan" draws for a refused one. No other region moves.
 |---|---|---|---|
 | A repeated step (C3919) | board R5's plan card: each step, its preflight, Approve, Modify…, Deny… | the step drawn passed with its risk under it, Approve offered | **same** (the plan card's regions; the refusal R2 drew is withdrawn by the operator's C3919) |
 | The record's repeats (C3919) | not drawn | "The plan's repeats" beside the plan's hash, for an approvable plan | **same** (The record's plan hash row above, one more line of it) |
+
+**Compared 2026-11-27 (Stage 5 step 7, the fix choice; C4301 to C4304; board
+docs/boards/fix-choice.html, signed off under the Phase 7 mode, its four artboards A to D).**
+Compared from shots at 1366x768, light, of the s1 walk's open incident with its two saved fixes
+(tests/fixtures/heal_records/open_bpdu.json and fix_offers.json), before and after
+(`before-v2-incident-hi-ebc220c86c8f-list-Lab-light-1366.png` and
+`after-v2-incident-hi-ebc220c86c8f-list-Lab-light-1366.png`, kept with the operator's reports),
+read beside the board's artboard A; artboards B to D read beside the HTML tests/test_fix_choice.py
+draws for each state (a fix running, a failed run, a saved fix's run). These rows supersede the
+rows above for the one next action where saved fixes match, the saved plans' scripts and
+Promote, and the story's line of what is not scored. Templates sha256 before:
+`b05d1163f40ab3e14305fcd4764989891569da44f703fc77d44ad1e3130edb0c`.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| Fixes for this problem (A) | one list under the title, a row per matching saved fix, drawn alike | the same, in fix_offers' order (Automatic first), each row's name its page's link | **same** |
+| A row (A) | name; mode; runs and last result; one small Run | the same: Mode a badge from the Fixes list's table, "Ran N times, all verified · last: …" or "Not run yet", Run a plain small button bound to its preview's hash, busy on itself | **same** |
+| What a fix does (A) | a closed line opening to its lines, checks and verify, naming its scope | the same: "Recover an err-disabled interface on s1 Gi1/0, a fix for access ports" (or "…, a fix for any port", from the fix's match), opening to "Sent to s1, in order:", Checks first, Then verifies, It matches | **same** |
+| Save of a match on any port (the review of C4304, C4306) | board saved-plans S: Save is Automatic | the save card's title "Save this fix?" and its line "Saved Manual only: a fix for any port is never automatic, …" before the press; saved Manual only, said in place; its saved line "Manual only" with why, no Promote… | **deviation** (log: Board saved-plans S changed: a Save of a match on any port saves Manual only) |
+| Recommended (A) | a label with why on one row, never a button's colour | "Recommended" and "self-healing runs this one on this problem when it is in Auto" on the first Automatic fix's row; none with no Automatic fix | **same** |
+| Hand over… (A) | separate, under the list | the same, in the action row under the list | **same** |
+| The status and Next lines (A) | the count, pointing at the list; never a reason no configuration can cure it | "2 saved fixes can fix this: choose one under Fixes for this problem"; Next "It needs a person: choose one of the 2 saved fixes under Fixes for this problem." | **same** |
+| A fix running (B) | the stepper alone; no rows, Run or Hand over…; no banner | the same; the Timeline's stage now Applying (then Verifying) with the stepper's current step; the page's live region redraws on each step | **same** |
+| A failed run (C) | the failure above the list, its record linked; the list and Hand over… back | the same, the run record's own words | **same** |
+| Fixed by a saved fix (D) | named beside How it was fixed; nothing offered to save | the same; the save card draws nothing, its hover saying the fix is saved already | **same** |
+| Make this fix automatic? (A, D) | a Manual row's own action: what it then does by itself, what it runs on now, Make it automatic | the same, in the row and beside How it was fixed; its answer drawn under the card's controls; never drawn for a fix matching any port (its mode's hover says why) | **same** |
+| The saved plans' scripts and Promote | board saved-plans S: the scripts this problem matches, each with Promote | removed from that card: each fix appears once, in Fixes for this problem | **deviation** (log: Board saved-plans S changed: the scripts this problem matches leave the saved-plans card) |
+| Not scored yet | the story's facts, one line | under the card's Details (the operator's step 7) | **same** (the operator's words, Stage 5 step 7) |
+
+Compared again 2026-11-27 (the independent review of the fix choice): each row's line names
+its scope from its match, Make it automatic is drawn disabled with the refusal as its title
+for a viewer without the self-healing right, the saved-plans card's Save of a match on any port
+says Manual only before and after the press (its line now drawn whole by
+`_saved_plans_runs_on.html`), and a running fix is named by its own name. The rows "What a fix
+does" and "Save of a match on any port" above say so; compared by the templates' diff and the
+HTML tests/test_fix_choice.py draws, not new shots. Templates sha256 before:
+`849a9ae6bb17c3fe370aa0b87fa8e97768bdb5c15dbbd5a73a66c4af95a92809`.

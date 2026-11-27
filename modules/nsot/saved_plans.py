@@ -708,7 +708,13 @@ def save_fix(network: str, *, run_id: str, name: str, actor: str, actor_verified
                       **({"incident": str(incident)[:64]} if incident else {})}, "track": []}
     if match:
         e["mode"] = "dry_run"
-        if not dry_run:
+        if not dry_run and automatic_refusal(e):
+            # C4306 (the review of C4304): a match on any port is never saved Automatic: it is
+            # saved Manual only, and the card said so before the press (`runs_on`'s *manual*).
+            # A save of a run already saved (`_again`) takes this entry's mode, so it never
+            # raises such a fix to Automatic either.
+            e["mode"] = MANUAL
+        elif not dry_run:
             # As `promote` binds it: the person, when, and the plan's digest.
             e.update(mode="auto", promoted_by=actor, promoted_at=_iso(), digest=t.digest)
     got = _store(e)
@@ -727,6 +733,26 @@ def save_script(network: str, *, run_id: str, name: str, match: dict, fills: dic
     return save_fix(network, run_id=run_id, name=name, match=match, fills=fills,
                     dry_run=dry_run, shared=shared, actor=actor,
                     actor_verified=actor_verified, person=person, incident=incident)
+
+
+def automatic_refusal(e: dict) -> str:
+    """Why the saved fix *e* may never be made Automatic as it is matched, or ``""`` (C4304,
+    the operator, 2026-11-27: "never offered for a fix whose port role is unset (any port),
+    since an uplink err-disable must never be re-enabled automatically"): a match on a
+    condition whose problem names its port's role (`problem.PORT_ROLE_CONDITIONS`) that names
+    no role runs on any port, an uplink's too. THE one rule: `promote` refuses by it, `save_fix`
+    saves such a fix Manual only, `authority_refusal` refuses its automatic run at fire time,
+    and the incident card and a fix's page offer no Make this fix automatic? or Set Automatic…
+    by it (`fix_page.automatic_form`). PURE."""
+    from modules import problem as P
+
+    m = (e or {}).get("match") or {}
+    if m.get("condition") in P.PORT_ROLE_CONDITIONS and not str(m.get("port_role") or ""):
+        return (f"{(e or {}).get('name') or (e or {}).get('key') or 'this fix'} matches any "
+                "port (its match names no port role), so it stays Manual: an uplink's "
+                "err-disable is never re-enabled automatically; a fix whose match names the "
+                "port's role can be made automatic")
+    return ""
 
 
 def promote(key: str, *, actor: str, actor_verified: str, person: bool,
@@ -754,6 +780,12 @@ def promote(key: str, *, actor: str, actor_verified: str, person: bool,
             raise Refused(f"{key} is a self-heal script of {e.get('network')}, not of {network}")
         if e.get("mode") == "auto":
             raise Refused(f"{key} is in Auto already, promoted by {e.get('promoted_by')}")
+        # C4304: a fix whose match leaves the port's role unset is never made Automatic, by
+        # any press (the incident card's Make this fix automatic?, a fix page's Set
+        # Automatic…): both come here, under the store's lock.
+        why = automatic_refusal(e)
+        if why:
+            raise Refused(why)
         n = versions(e)[-1]["version"]
         # Read under the store's lock (C2): an edit that lands meanwhile, a new version or a
         # match-only one (``held_manual``), is the entry judged here, never a copy read before.
@@ -1035,6 +1067,12 @@ def authority_refusal(key: str, authority, network: str = "") -> str:
                 'recorded'} at {r.get('at') or 'an unrecorded time'}")
     if not _is_matched(e) or e.get("mode") != "auto":
         return f"{key} is not a saved script in Auto"
+    # C4306 (the review of C4304): an Automatic entry whose match runs on any port (stored
+    # before the rule, or written past it) authorises no run by itself, in every fire: the
+    # decision's, a batch's and the retry's all come here.
+    why = automatic_refusal(e)
+    if why:
+        return f"its automatic run is refused: {why}"
     if e.get("network") != network:
         return (f"{key} is a self-heal script of {e.get('network') or 'no network'}, and this "
                 f"run is on {network or 'no network'}")
@@ -1282,16 +1320,19 @@ def _previewed(network: str, e: dict, prob, person: bool = False) -> dict:
             "mode": e.get("mode") or "", "how": how_of(e)}
 
 
-#: What an incident's offer of one fix carries (`fix_offers`).
-OFFER_FIELDS = ("key", "name", "hash", "values", "mode", "how")
+#: What an incident's offer of one fix carries (`fix_offers`): *program* the runner's
+#: preview's, masked (``drawn``), what the card's Fixes for this problem says the fix sends on
+#: this incident (C4301 to C4304), never a second preview.
+OFFER_FIELDS = ("key", "name", "hash", "values", "mode", "how", "program")
 
 
 def fix_offers(network: str, found: dict) -> list:
     """Every fix of *network* whose match the incident *found*'s classified problem holds
     (C3849, the operator, 2026-11-16: "any matching fix is offered as a button"), Automatic
     ones first, then by key, each filled and previewed by the runner's own preview (no device;
-    `_previewed`): ``[{"key", "name", "hash", "values", "mode", "how"}]``; one whose preview is
-    refused is left out. Each is run once by the person who presses it
+    `_previewed`): ``[{"key", "name", "hash", "values", "mode", "how", "program"}]``
+    (`OFFER_FIELDS`), each a row of the incident card's Fixes for this problem since C4301;
+    one whose preview is refused is left out. Each is run once by the person who presses it
     (`routes/fixit_v2.fix_with_script`); an Automatic one also runs by itself (`fire_matching`).
     A read."""
     from modules import problem as P
@@ -1403,9 +1444,28 @@ def actor_words(e: dict) -> str:
             + (f" (approved by {display_names.people(by)} at save)" if by else ""))
 
 
+def run_name(network: str, key: str) -> str:
+    """The name a running fix of *key* is said by (`running_on`'s ``key``): its saved fix's
+    name, else a built-in plan's own words (its first clause, as Fixes lists it), else the key
+    itself; "a saved fix" with no key. A read."""
+    from modules.nsot import command_plan as CP
+
+    if not key:
+        return "a saved fix"
+    f = fixes(network, deleted=True).get(key)
+    if f:
+        return str(f.get("name") or key)
+    t = CP.builtin().get(key)
+    return (str(t.words or "").split(":")[0].strip() or key) if t is not None else key
+
+
 def running_on(network: str, incident_id: str) -> dict:
     """The saved script's run on *incident_id* still running in this process (its job's page is
-    the incident's), ``{"job", "step"}`` with what it is doing now, or ``{}``. A read."""
+    the incident's), ``{"job", "step"}`` with what it is doing now, or ``{}``; with ``key``
+    (the fix that runs, its job's page naming it: ``fix=``) and ``by`` (``policy`` for
+    self-healing's own run, else ``person``) where its page names the fix. A read."""
+    from urllib.parse import parse_qs, urlsplit
+
     from modules import op_progress
     from modules.nsot import capture_job
 
@@ -1414,8 +1474,13 @@ def running_on(network: str, incident_id: str) -> dict:
                 and f"/v2/incident/{incident_id}?" in (j.get("page") or "")):
             own = op_progress.run_of(j["job"]) or {}
             done = [s.get("step") for s in own.get("steps") or []]
-            return {"job": j["job"],
-                    "step": NOW_DOING.get(done[-1], "starting") if done else "starting"}
+            out = {"job": j["job"],
+                   "step": NOW_DOING.get(done[-1], "starting") if done else "starting"}
+            key = (parse_qs(urlsplit(j.get("page") or "").query).get("fix") or [""])[0]
+            if key:
+                out.update(key=key, by="policy" if j.get("actor_kind") == "policy"
+                           else "person")
+            return out
     return {}
 
 
@@ -1456,7 +1521,8 @@ def _run_as_job(network: str, e: dict, values: dict, confirmed: str, incident: s
         return {"state": out.get("state"), "words": out.get("why") or ""}
     job = capture_job.start(network, actor_words(e), e.get("promoted_by") or "", work,
                             kind=JOB_KIND, actor_kind="policy",
-                            page=f"/v2/incident/{incident}?list={quote(network)}")
+                            page=f"/v2/incident/{incident}?list={quote(network)}"
+                                 f"&fix={quote(e['key'])}")
     capture_job.wait(job, 900)
     return out
 
@@ -1590,11 +1656,13 @@ def offer(network: str, incident_id: str, *, actor: str, actor_verified: str,
           person: bool) -> dict:
     """What the incident's card offers to save and promote, read from records only:
     ``{"state", "why", "run", "plan", "problem", "match", "optional", "fills", "preview",
-    "rights", "scripts", "actions"}``. *state* ``ready`` when the incident's newest command-plan
-    attempt passed its own verify (its *run*), else ``none`` with why. *rights* the viewer's,
-    ``{"script", "action"}``, each ``""`` or the refusal (`identity.right_refusal`); *scripts*
-    the network's scripts whose match the problem holds (each Promote's), *actions* the saved
-    reusable actions, *unset* the rights `access_rights` names no one for (every verified
+    "rights", "actions"}``. *state* ``ready`` when the incident's newest command-plan attempt
+    passed its own verify (its *run*); ``saved`` when the fix that ran is a saved fix already
+    (C4304: never offered for saving again); else ``none`` with why. *rights* the viewer's,
+    ``{"script", "action"}``, each ``""`` or the refusal (`identity.right_refusal`). The fixes
+    this problem matches are the incident card's own list, Fixes for this problem, each with
+    Make this fix automatic? (`fix_page.offered`), never listed here again (C4301 to C4304).
+    *actions* the saved reusable actions, *unset* the rights `access_rights` names no one for (every verified
     person holds each, and the card says so), *saved* what is saved from the run already
     (`saved_from`), *name* the name Save gives it by default (`default_name`) and *dismissed*
     whether Not now put the offer off (`put_off`), *runs_on* what the default Save runs on
@@ -1609,7 +1677,7 @@ def offer(network: str, incident_id: str, *, actor: str, actor_verified: str,
 
     who = dict(actor=actor, actor_verified=actor_verified, person=person)
     out = {"state": "none", "why": "", "run": "", "plan": "", "problem": {}, "match": {},
-           "optional": list(OPTIONAL_MATCH), "fills": {}, "preview": {}, "scripts": [],
+           "optional": list(OPTIONAL_MATCH), "fills": {}, "preview": {},
            "rights": {"script": identity.right_refusal("self_healing", **who),
                       "action": identity.right_refusal("admin", **who)},
            "unset": identity.rights_unset(), "actions": sorted(actions(network)),
@@ -1620,19 +1688,18 @@ def offer(network: str, incident_id: str, *, actor: str, actor_verified: str,
         return dict(out, why=f"{incident_id} has no page")
     prob = P.classify(found)
     out["problem"] = prob.as_dict()
-    out["scripts"] = [{"key": k, "name": e.get("name"), "mode": e.get("mode"),
-                       "promoted_by": e.get("promoted_by") or "",
-                       "fired": len(e.get("track") or []), "match": e.get("match") or {}}
-                      for k, e in sorted(scripts(network).items())
-                      if prob.condition and matches(e.get("match") or {}, prob)]
-    for s in out["scripts"]:
-        if s["mode"] != "auto":
-            s.update(promote_line(network, s["key"], incident_id))
     inc = section.incident_of(network, found).get("incident")
     if inc is None:
         return dict(out, why=f"{incident_id}'s record could not be read")
-    tried = [a for a in F.attempts(inc).get("attempts") or []
-             if catalog.is_command_plan(a.get("operation")) and a.get("passed")]
+    passed = [a for a in F.attempts(inc).get("attempts") or [] if a.get("passed")]
+    # C4304 and C4299: a saved fix that ran is saved already, never offered for saving again:
+    # the incident's close names it (`close_fixed`'s ``fixed.script``, whoever ran it), or the
+    # newest passed attempt is a saved fix's run (a fix of the catalog is a command plan too).
+    saved_fix = _ran_saved(network, found, passed[-1] if passed else {})
+    if saved_fix:
+        return dict(out, state="saved", why=f"the fix that ran, {saved_fix}, is a saved fix "
+                                             "already")
+    tried = [a for a in passed if catalog.is_command_plan(a.get("operation"))]
     if not tried:
         return dict(out, why="no command plan ran and passed its own verify on this incident")
     run_id = tried[-1]["run"]
@@ -1652,6 +1719,21 @@ def offer(network: str, incident_id: str, *, actor: str, actor_verified: str,
                name=default_name(prob, rec.get("title") or t.title),
                dismissed=put_off(inc), runs_on=runs_on(network, match, incident_id))
     return out
+
+
+def _ran_saved(network: str, found: dict, newest: dict) -> str:
+    """The name of the saved fix whose run fixed the incident *found* (its close's
+    ``fixed.script``, `close_fixed`), else of the one whose run is its *newest* passed attempt
+    (its operation a saved fix's key), or ``""``. A read."""
+    fixed = ((found or {}).get("incident") or {}).get("fixed") or {}
+    every = fixes(network)
+    key = str(fixed.get("script") or "")
+    if key in every:
+        # Only a saved fix: a built-in plan pressed through Run… closes with its own key here
+        # (`fixit_v2.fix_with_script`), and it is never saved (the review of C4304).
+        return str(every[key].get("name") or fixed.get("name") or key)
+    op = str((newest or {}).get("operation") or "")
+    return str((every.get(op) or {}).get("name") or op) if op in every else ""
 
 
 def drawn_digest(run_id: str, match: dict, fills: dict) -> str:
@@ -1678,25 +1760,30 @@ def drawn_refusal(offered: dict, posted: str) -> str:
             "card again and save what it draws; nothing was saved")
 
 
-def promote_line(network: str, key: str, incident_id: str = "") -> dict:
+def promote_line(network: str, key: str, incident_id: str = "", *, press: str = "") -> dict:
     """What Promote (Set Automatic… on a fix's page) runs on now, said before the press
     (C4261, as Save's line, C4050): ``{"runs_on", "runs_on_words"}``, the digest its press is
     bound to and the line's words, for the saved script *key*'s match. *incident_id* (the card
     it is pressed on) names the press only: the card's own incident is counted, as the retry
     has always sent it back too when it stands (the review of C4261), unlike Save's line, whose
-    own incident is the one just fixed. A read."""
+    own incident is the one just fixed. *press*, the words naming the press where they are
+    not those (the incident card's "Making it automatic", C4304). A read."""
     f = scripts(network).get(key) or {}
     on = runs_on(network, f.get("match") or {"condition": ""}, "",
-                 press="Set Automatic" if not incident_id else "Promote")
+                 press=press or ("Set Automatic" if not incident_id else "Promote"))
     return {"runs_on": on["digest"], "runs_on_words": on["words"]}
 
 
 def _with_promote_line(network: str, saved: dict, incident_id: str) -> dict:
-    """*saved* (`saved_from`) with its script's Promote line when it is not Automatic yet."""
+    """*saved* (`saved_from`) with its script's Promote line when it is not Automatic yet, or,
+    when its match may never be (`automatic_refusal`, C4306), why (*never*) and no line."""
     s = (saved or {}).get("script")
     if not s or s.get("mode") == "auto":
         return saved
-    return dict(saved, script=dict(s, **promote_line(network, s["key"], incident_id)))
+    never = automatic_refusal(scripts(network).get(s["key"]) or {})
+    if never:
+        return dict(saved, script=dict(s, never=never))
+    return dict(saved, script=dict(s, never="", **promote_line(network, s["key"], incident_id)))
 
 
 #: The most devices Save's line names; the rest are counted ("and 3 more").
@@ -1717,19 +1804,32 @@ def runs_on(network: str, match: dict, incident_id: str, dry_run: bool = False, 
     *incident_id* ("" for none: a fix's own page), said before the press (*press* names it:
     Save, Promote or Set Automatic, C4261) (ruling 3, the operator, 2026-11-18: "Save names the
     count and the devices it will run on. No new confirm"; C4205: the match the ticks keep,
-    redrawn as they change): ``{"count", "devices", "words"}``, read from the script-saved
-    retry's own selection (`heal.retry.would_run`), never a second matching. A read."""
+    redrawn as they change): ``{"count", "devices", "words", "manual"}``, read from the
+    script-saved retry's own selection (`heal.retry.would_run`), never a second matching;
+    *manual* when Save saves this match Manual only (`automatic_refusal`, C4306), its words
+    saying so and naming nothing it runs on. A read."""
     from modules.heal import retry
 
-    try:
-        got = retry.would_run(network, match, exclude=(incident_id,))
-    except Exception as exc:                            # noqa: BLE001 (said on the card)
-        log.error("saved plans: what %s's %s runs on could not be read: %s", incident_id,
-                  press, exc)
-        got = {"auto": False, "incidents": [], "devices": [], "error": str(exc)}
+    # C4306: a Save (not Dry run) of a match on any port saves Manual only (`save_fix`), so it
+    # runs on nothing by itself, said so before the press (*manual*).
+    manual = (press == "Save" and not dry_run
+              and bool(automatic_refusal({"match": match or {}, "name": "this fix"})))
+    if manual:
+        got = {"auto": False, "incidents": [], "devices": [], "error": ""}
+    else:
+        try:
+            got = retry.would_run(network, match, exclude=(incident_id,))
+        except Exception as exc:                        # noqa: BLE001 (said on the card)
+            log.error("saved plans: what %s's %s runs on could not be read: %s", incident_id,
+                      press, exc)
+            got = {"auto": False, "incidents": [], "devices": [], "error": str(exc)}
     n, devices = len(got["incidents"]), got["devices"]
     other = "other " if incident_id else ""
-    if got["error"]:
+    if manual:
+        words = ("Saved Manual only: a fix for any port is never automatic, so it runs only "
+                 "when a person presses Run (tick the port role under Customize… for one that "
+                 "can be)")
+    elif got["error"]:
         words = (f"Which {other}open incidents {press} runs it on could not be read "
                  f"({got['error']})")
     elif not n:
@@ -1756,7 +1856,7 @@ def runs_on(network: str, match: dict, incident_id: str, dry_run: bool = False, 
     # *only*); *unread* when the list could not be read, so nothing can be named.
     return {"count": n, "devices": devices, "words": words, "ids": ids,
             "unread": bool(got["error"]), "auto": bool(got["auto"]) and not dry_run,
-            "digest": hashlib.sha256(body.encode()).hexdigest()[:16]}
+            "manual": manual, "digest": hashlib.sha256(body.encode()).hexdigest()[:16]}
 
 
 def default_name(problem, plan_title: str) -> str:

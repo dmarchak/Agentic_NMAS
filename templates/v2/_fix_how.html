@@ -46,7 +46,7 @@
     <details class="small" data-keep="fx-auto-{{ p.key }}"{% if said and said.level == 'danger' and 'Automatic' in said.words %} open{% endif %}><summary>Set Automatic…</summary>
       <form class="simple-form" hx-post="{{ url_for('fixes_v2.automatic', key=p.key, list=p.network) }}" hx-target="#fix-how" hx-swap="outerHTML">
         {%- if auto.ran %}
-        <p>Version {{ auto.version }} verified on run <span class="mono">{{ auto.ran.id[-8:] }}</span>{% if auto.ran.at %}, {{ clock(auto.ran.at, 'date') }}{% endif %}. Automatic, it runs by itself on a matching incident while {{ p.network }}'s self-healing is in Auto, on your standing approval of this version's plan.</p>
+        <p>Version {{ auto.version }} verified on run <span class="mono">{{ auto.ran.id[-8:] }}</span>{% if auto.ran.at %}, {{ clock(auto.ran.at, 'date') }}{% endif %}. {{ auto.then }}, on your standing approval of this version's plan.</p>
         <p class="small" data-runs-on="automatic"><input type="hidden" name="runs_on" value="{{ auto.runs_on }}">{{ auto.runs_on_words }}.</p>
         {%- else %}
         <p>Not yet: {{ auto.why }}.</p>
@@ -55,6 +55,9 @@
         <span class="op-act"><button type="submit" class="btn btn-small" data-op="plans" hx-disabled-elt="this"{% if auto.right or not auto.ran %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">Set Automatic</span><span class="op-busy">Setting…</span></button>{{ how('plans', compact=True, op='setting a fix Automatic') }}</span>
       </form>
     </details>
+  {%- elif auto is defined and auto and auto.never and not p.deleted %}
+    {#- C4304: never offered for a fix whose match leaves the port's role unset, said why. -#}
+    <p class="small muted" data-never-automatic>Set Automatic… is not offered: {{ auto.never }}.</p>
   {%- endif %}
   </details>
   {#- Delete… (or Restore…) as a visible secondary control, outside the fold (C3859, the

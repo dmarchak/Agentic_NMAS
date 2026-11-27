@@ -689,8 +689,9 @@ class TestUnderSelfHealingsMode:
                             **kw: {"id": "run-9", "kind": "command_plan", "state": state,
                                    "outcome": outcome, "why": f"the run {outcome}"})
         got = S.fire(NET, e["key"], BPDU, iid)
+        # The page names the fix that runs (C4302: the card names it and draws its stepper).
         assert [(j["kind"], j["page"]) for j in jobs] == [
-            (S.JOB_KIND, f"/v2/incident/{iid}?list={NET}")], jobs
+            (S.JOB_KIND, f"/v2/incident/{iid}?list={NET}&fix={e['key']}")], jobs
         assert got["ok"] is closes and got["run"] == "run-9", got
         inc = next(i for i in I.read(NET)["incidents"] if i["id"] == iid)
         if closes:

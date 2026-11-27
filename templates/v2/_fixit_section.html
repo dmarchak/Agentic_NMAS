@@ -50,8 +50,9 @@
 {%- macro ai_cost(A) -%}<span title="{{ A.basis }}">{% if A.measured %}about {{ A.estimate }}{% else %}not measured yet{% endif %} (one investigation: each call held to the spending limits, stopped at one)</span>{%- endmacro -%}
 {#- A press that posts, from the button itself (busy on itself until its answer: `op-idle`,
     `op-busy`), the hidden fields beside it and *know*'s optional box included. -#}
-{%- macro press(href, words, busy, section, op, title, primary=False, aiv=none, name='', value='', know=False, pid='', kind='configure', include='') -%}
-<span class="bluf-form">{% if name %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}{% if pid %}<input type="hidden" name="proposal" value="{{ pid }}">{% endif %}<input type="hidden" name="drawn_spent" value="{{ R.drawn_spent }}"><input type="hidden" name="drawn_cap" value="{{ R.drawn_cap }}"><span class="op-act">{% if aiv %}{{ ai.mark(aiv) }} {% endif %}<button type="button" class="btn btn-small{{ ' btn-primary' if primary }}" data-op="fixit-troubleshoot" hx-post="{{ href }}" hx-include="closest .bluf-form{{ ', ' ~ include if include }}" hx-target="#inc-fixit" hx-swap="outerHTML" hx-disabled-elt="this" title="{{ title }}"{% if aiv %}{{ ai.attrs(aiv, 'configure') }}{% else %}{{ gate(kind) }}{% endif %}><span class="op-idle">{{ words }}</span><span class="op-busy">{{ busy }}</span></button>{{ how('fixit-troubleshoot', section, compact=True, op=op) }}</span>
+{%- macro press(href, words, busy, section, op, title, primary=False, aiv=none, name='', value='', know=False, pid='', kind='configure', include='', off='') -%}
+{#- *off*: a right the viewer lacks, the button drawn disabled with it as its title. -#}
+<span class="bluf-form">{% if name %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}{% if pid %}<input type="hidden" name="proposal" value="{{ pid }}">{% endif %}<input type="hidden" name="drawn_spent" value="{{ R.drawn_spent }}"><input type="hidden" name="drawn_cap" value="{{ R.drawn_cap }}"><span class="op-act">{% if aiv %}{{ ai.mark(aiv) }} {% endif %}<button type="button" class="btn btn-small{{ ' btn-primary' if primary }}" data-op="fixit-troubleshoot" hx-post="{{ href }}" hx-include="closest .bluf-form{{ ', ' ~ include if include }}" hx-target="#inc-fixit" hx-swap="outerHTML" hx-disabled-elt="this" title="{{ (off | people) if off else title }}"{% if off %} disabled{% endif %}{% if aiv %}{{ ai.attrs(aiv, 'configure') }}{% else %}{{ gate(kind) }}{% endif %}><span class="op-idle">{{ words }}</span><span class="op-busy">{{ busy }}</span></button>{{ how('fixit-troubleshoot', section, compact=True, op=op) }}</span>
 {%- if know %}{{ know_box(aiv) }}{% endif %}</span>
 {%- endmacro -%}
 {#- What a person knows that Mercury doesn't, sent with Start (R5: a form field is never in the
@@ -119,6 +120,69 @@
 {%- endmacro -%}
 {%- set ct = ai_control('fixit_troubleshoot') -%}
 {%- set acting = S not in ('none', 'resolved') -%}
+{#- Fixes for this problem (C4301 to C4304, the operator, 2026-11-27; board
+    docs/boards/fix-choice.html): every saved fix the incident's problem matches, one row each,
+    all drawn alike (`fix_page.offered`): its name (its page), its mode, how often it ran and its
+    last result, one small Run (THE saved fix's press, `fixit_v2.fix_with_script`, bound to the
+    hash its preview drew, busy on itself) and, expanded, what it sends and checks; the one
+    recommended by its rule labelled so with why, never a different button. While a fix runs
+    (`busy`) the list and Hand over… are not drawn: the card's stepper is the view; they come
+    back when the run ends, a failure stated above them (`FX.failed`). -#}
+{%- set FX = x.fixes or {} -%}
+{%- set busy = (x.fix_running or {}) or S == 'running' or (x.working and not x.investigating) -%}
+{#- Make this fix automatic? (C4304): its own action, what the fix would then do by itself and
+    what it runs on now said before the press (`fix_page.with_automatic`, where the card is
+    drawn), posted to the one promote path (`saved_plans_v2.promote`, ``view=fixit``: its
+    answer drawn on this card). Never drawn for
+    a fix whose match leaves the port's role unset (`saved_plans.automatic_refusal`, which the
+    store refuses by too). -#}
+{%- macro make_auto(key, a) -%}
+{%- if a and a.offer and a.then %}
+<details class="simple-menu menu-wrap fix-auto" data-keep="fix-auto-{{ x.id }}-{{ key }}" data-auto="{{ key }}"><summary role="button" title="Opens what this fix would then do by itself, and Make it automatic">Make this fix automatic?</summary>
+  <div class="menu simple-promote" role="group" aria-label="Make this fix automatic">
+    <p class="small">{{ a.then }}.</p>
+    <p class="small" data-runs-on="{{ key }}">{{ a.runs_on_words }}.</p>
+    {%- if a.ran %}
+    {{ press(url_for('saved_plans_v2.promote', incident=x.id, list=x.network, key=key, runs_on=a.runs_on, view='fixit'), 'Make it automatic', 'Making it automatic…', 'automatic-fix', 'Make this fix automatic', a.then ~ "; nothing is sent to a device by this press itself", primary=True, kind='approve', off=a.right) }}
+    {%- else %}
+    <p class="small muted" data-auto-why>Not yet: {{ a.why }}.</p>
+    {%- endif %}
+    {%- if a.right %}<p class="small bluf-refused" data-refused="automatic">{{ a.right | people }}</p>{% endif %}
+  </div>
+</details>
+{%- endif %}
+{%- endmacro -%}
+{%- macro fix_list() -%}
+<section class="fix-choice" aria-labelledby="fix-choice-{{ x.id }}" data-fixes="{{ FX.rows | length }}">
+  <h2 class="fix-choice-title" id="fix-choice-{{ x.id }}">Fixes for this problem</h2>
+  {%- if FX.failed %}
+  <div class="notice notice-danger" role="alert" data-fix-failed>{{ icon('warn', 16) }}<div><strong>{{ FX.failed.name }} did not fix it:</strong> {{ FX.failed.words | times }}{% if FX.failed.at %} <span class="muted">{{ clock(FX.failed.at) }}</span>{% endif %}{% if FX.failed.run %} · <a href="{{ run_href(FX.failed.device or x.device, x.network, FX.failed.run) }}">Open the run</a>{% endif %}</div></div>
+  {%- endif %}
+  <ul class="fix-rows">
+  {%- for r in FX.rows %}
+    <li class="fix-row" data-fix="{{ r.key }}" data-mode="{{ r.how }}"{% if r.recommended %} data-recommended{% endif %}>
+      <div class="fix-row-head">
+        <span class="fix-row-name"><a data-fix-page="{{ r.key }}" href="{{ url_for('fixes_v2.fix', key=r.key, list=x.network) }}">{{ r.name }}</a>{% if r.recommended %} <span class="fix-row-rec" data-why="{{ r.why }}">{{ badge('Recommended', 'info') }} <span class="small muted">{{ r.why }}</span></span>{% endif %}</span>
+        {#- Why it is never offered as automatic, on its mode's hover (a match on any port). -#}
+        <span class="fix-row-mode"{% if (r.auto or {}).never %} data-never-automatic{% endif %}>{{ badge(r.mode, r.badge, title=(r.auto or {}).never or none) }}</span>
+        <span class="fix-row-runs small muted" data-runs="{{ r.runs }}">{% if r.runs %}Ran {{ r.runs }} time{{ '' if r.runs == 1 else 's' }}, {{ 'all' if r.verified == r.runs else r.verified }} verified{% else %}Not run yet{% endif %}{% if r.last %} · last: {% if r.last.ok %}verified{% elif r.last.dry %}a dry run, nothing changed{% else %}{{ r.last.words or 'not verified' }}{% endif %}{% if r.last.at %} <span>{{ clock(r.last.at) }}</span>{% endif %}{% endif %}</span>
+        <span class="fix-row-run">{{ press(url_for('fixit_v2.fix_with_script', incident_id=x.id, list=x.network, key=r.key, hash=r.hash), 'Run', 'Running…', 'fixes', 'Run ' ~ r.name, "Runs " ~ r.name ~ " once as you: the device held, its checks read again, sent, verified and recorded; no AI", kind='approve') }}</span>
+      </div>
+      <details class="fix-row-does" data-keep="fix-does-{{ x.id }}-{{ r.key }}"><summary>{{ r.does }}</summary>
+        {%- if r.lines %}
+        <p class="small plan-sent-label">Sent to {{ x.device }}, in order:</p>
+        <pre class="plan-sent" data-fix-lines="{{ r.key }}"><code>{% for l in r.lines %}{{ l }}{% if not loop.last %}&#10;{% endif %}{% endfor %}</code></pre>
+        {%- endif %}
+        {%- if r.checks %}<p class="small">Checks first: {% for c in r.checks %}<span data-fix-check>{{ c }}</span>{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
+        {%- if r.verify %}<p class="small">Then verifies: {% for v in r.verify %}<span data-fix-verify>{{ v }}</span>{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
+        {%- if r.fixes %}<p class="small muted">It matches {{ r.fixes }}.</p>{% endif %}
+      </details>
+      {%- if r.how != 'automatic' %}{{ make_auto(r.key, r.auto) }}{% endif %}
+    </li>
+  {%- endfor %}
+  </ul>
+</section>
+{%- endmacro -%}
 {#- `data-live-part` (item 2, the operator, 2026-11-15): every press here answers by drawing this
     part again in place (`hx-target="#inc-fixit"`), inside the page's live region; marked so, the
     answer is remembered as the server's drawing of it (static/js/nmas_v2.js, `captureSwapped`),
@@ -154,6 +218,7 @@
           plan to approve is its own card, below, Approve on it. -#}
       {%- set again = (ACT.ask_again or {}) %}
       {%- set is_again = F.kind == 'button' and again.offered and (F.href == u_again or F.label == 'Ask the AI again') %}
+      {%- if F.kind == 'button' and F.script and FX.rows and not busy %}{{ fix_list() }}{% endif %}
       <div class="bluf-acts simple-acts" data-bluf="fix" role="group" aria-label="The next action">
       {%- if F.kind == 'approve' and NP %}
       {%- elif F.kind == 'start' %}
@@ -165,15 +230,8 @@
       {%- elif is_again %}
         {{ press(u_again, 'Ask the AI again', 'Asking the AI…', 'ask-again', 'Ask the AI again', "A new investigation, told what was denied and why: its AI calls held to the spending limits, stopped at one", primary=True, aiv=ct) }}
       {%- elif F.kind == 'button' and F.script %}
-        {#- C3805: the matching Automatic saved script, run once as the person who presses, bound
-            to the hash its preview drew; no AI. -#}
-        {{ press(url_for('fixit_v2.fix_with_script', incident_id=x.id, list=x.network, key=F.key, hash=F.hash), F.label, 'Fixing…', 'start', F.label, "Runs the saved script once as you: the device held, its checks read again, sent, verified and recorded; no AI", primary=True, kind='approve') }}
-        {#- C3849 piece 3: the fix's own page, what it sends and checks, its origin and record. -#}
-        <a class="bluf-link" data-fix-page="{{ F.key }}" href="{{ url_for('fixes_v2.fix', key=F.key, list=x.network) }}">What this fix does</a>
-        {#- C3849: every other matching saved fix, its own button. -#}
-        {%- for o in F.more or [] %}
-        {{ press(url_for('fixit_v2.fix_with_script', incident_id=x.id, list=x.network, key=o.key, hash=o.hash), o.label, 'Fixing…', 'start', o.label, "Runs this saved fix once as you: the device held, its checks read again, sent, verified and recorded; no AI", kind='approve') }}
-        {%- endfor %}
+        {#- C3805, C3849, C4301 to C4304: the matching saved fixes are the list above, Fixes for
+            this problem, each its own row and Run; nothing more in this row but Hand over…. -#}
       {%- elif F.kind == 'button' and F.read and F.href %}
         {#- C3797: the read the AI said would settle it, which its read set lacks: a person's
             read in Show commands, its row filled in; nothing runs until Run is pressed there. -#}
@@ -184,7 +242,8 @@
       {%- if again.offered and not is_again and F.kind not in ('start', 'approve') %}
         {{ press(u_again, 'Ask the AI again', 'Asking the AI…', 'ask-again', 'Ask the AI again', "A new investigation, told what was denied and why: its AI calls held to the spending limits, stopped at one", primary=(F.kind == 'none' and not F.label), aiv=ct) }}
       {%- endif %}
-      {%- if acting and F.kind != 'hand_over' and (ACT.hand_over or {}).get('offered', True) %}
+      {#- Hand over… stays separate, under the fixes (C4302: not drawn while a fix runs). -#}
+      {%- if acting and F.kind != 'hand_over' and (ACT.hand_over or {}).get('offered', True) and not busy %}
         {{ opener(hand_mid, 'Hand over…', 'hand-over', 'a hand-over', "Opens Hand over: the write-up, your note and the teams to send it to; nothing is kept or sent until you press Send the hand-over", cls='bluf-link') }}
       {%- endif %}
       {#- A finding that waits for a person (an answer with no plan): what the AI saw and said
@@ -211,6 +270,9 @@
   {%- if C.kind == 'ok' %}
   <p class="simple-status simple-ok fixit-status" role="status" data-bluf="status" data-status data-fixed="{{ C.fixed_at }}">{% if page_drill is defined and page_drill %}<span class="inc-sev" data-state="{{ page_state_word if page_state_word is defined else x.page_state }}"></span><span class="inc-drill" data-drill="{{ page_drill.id }}">{{ badge('Drill', 'info', title=page_drill.hover) }}</span> {% endif %}{{ icon('tick', 16) }} {{ C.status | times }}</p>
   {%- if C.how %}<p class="simple-impact" data-bluf="how" data-how>How it was fixed: {% if C.how.run %}<a href="{{ run_href(C.how.device or x.device, x.network, C.how.run, page=C.how.page or none) }}">{{ C.how.words }}</a>{% else %}{{ C.how.words }}{% endif %}{% if C.how.fix %} · <a data-fix-page="{{ C.how.fix.key }}" href="{{ url_for('fixes_v2.fix', key=C.how.fix.key, list=x.network) }}">{{ C.how.fix.name }}</a>{% endif %}</p>{% endif %}
+  {#- C4304: the saved fix that fixed it is saved already (never "Save this fix"); making it
+      automatic is its own action, offered by its rule. -#}
+  {%- if C.how and C.how.fix %}{{ make_auto(C.how.fix.key, C.how.fix.auto) }}{% endif %}
   {%- if C.run %}{{ ended_run(x, C.run) }}{% endif %}
   {%- if C.proof %}{% with P=C.proof, iid=x.id %}{% include "v2/_inc_proof.html" %}{% endwith %}{% endif %}
   {#- After Fixed (decisions (a) and (b), 2026-11-16): the heal's save, golden commit and read

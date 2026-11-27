@@ -2,9 +2,11 @@
 {#- Saved plans on the incident card (Gate 1b; board saved-plans, artboard S; routes/saved_plans_v2.py,
     modules/nsot/saved_plans.py): after a command plan that ran and passed its own verify, Save
     as a self-heal script (its R4 match only, previewed on the open incidents, its open
-    parameters) and Save as a reusable action (an admin's); the scripts whose match this
-    problem holds, each with Promote (self-healing rights); the network's provisional shapes,
-    each with Approve (an admin's). Each control is busy on itself, its answer drawn in place;
+    parameters) and Save as a reusable action (an admin's); the network's provisional shapes,
+    each with Approve (an admin's). The saved fixes this problem matches are the incident
+    card's own list, Fixes for this problem, each with Make this fix automatic? there
+    (`_fixit_section.html`, C4301 to C4304): each fix appears once. After a saved fix's run
+    (`offer`'s state ``saved``) nothing is offered for saving: it is saved already (C4304). Each control is busy on itself, its answer drawn in place;
     a right the viewer lacks is said beside its control, which is drawn disabled.
 
     R5, simple by default (board R5, approved 2026-11-15, screens 5, 5b and 6): the offer is its
@@ -20,19 +22,10 @@
 {%- set SV = c.saved or {} %}
 {%- set dismissed = c.dismissed and not c.show %}
 {%- set offering = c.state == 'ready' and not SV.script and not dismissed %}
-{%- set more = c.scripts or c.shapes %}
-{#- The lists the card holds besides its offer: the scripts this problem matches, each with
-    Promote, and the line shapes waiting on an admin, each with Approve. -#}
+{%- set more = c.shapes %}
+{#- The list the card holds besides its offer: the line shapes waiting on an admin, each with
+    Approve. -#}
 {%- macro lists() -%}
-{%- if c.scripts %}
-  <p class="small"><strong>Saved self-heal scripts this problem matches</strong></p>
-  <ul class="small tl-record">
-  {%- for s in c.scripts %}
-    <li data-script="{{ s.key }}">{{ s.name }}: {{ 'Auto, promoted by ' ~ (s.promoted_by | people) if s.mode == 'auto' else 'Dry run' }}; fired {{ s.fired }} time{{ 's' if s.fired != 1 }}
-    {%- if s.mode != 'auto' %} <span class="small" data-runs-on="{{ s.key }}">{{ s.runs_on_words }}.</span> <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-post="{{ url_for('saved_plans_v2.promote', incident=c.incident, list=c.list) }}" hx-vals='{{ {"key": s.key, "list": c.list, "runs_on": s.runs_on} | tojson }}' hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this"{% if c.rights.script %} disabled title="{{ c.rights.script | people }}"{% endif %}{{ gate('approve') }}><span class="op-idle">Promote {{ s.name }}</span><span class="op-busy">Promoting…</span></button>{{ how('plans', compact=True, op='a saved plan') }}</span>{% endif %}</li>
-  {%- endfor %}
-  </ul>
-{%- endif %}
 {%- if c.shapes %}
   <p class="small"><strong>Line shapes waiting on an admin</strong></p>
   <ul class="small tl-record">
@@ -63,14 +56,15 @@
 {%- endmacro -%}
 {%- set said = c.said and c.said.words %}
 {%- set draws = offering or (c.state == 'ready' and SV.script) or dismissed or more or said %}
-<div class="saved-plans{{ ' card simple' if draws }}" id="saved-plans-{{ c.incident }}" hx-get="{{ url_for('saved_plans_v2.card', incident=c.incident, list=c.list) }}" hx-trigger="nmas:saved_plans from:body" hx-swap="outerHTML" hx-select="unset"{% if draws %} data-card="save"{% endif %}{% if c.state != 'ready' and c.why %} data-offer="none" title="Nothing to save yet: {{ c.why }}."{% endif %}{% if said %} data-holds-live="review"{% endif %}>
+<div class="saved-plans{{ ' card simple' if draws }}" id="saved-plans-{{ c.incident }}" hx-get="{{ url_for('saved_plans_v2.card', incident=c.incident, list=c.list) }}" hx-trigger="nmas:saved_plans from:body" hx-swap="outerHTML" hx-select="unset"{% if draws %} data-card="save"{% endif %}{% if c.state != 'ready' and c.why %} data-offer="{{ 'saved' if c.state == 'saved' else 'none' }}" title="Nothing to save{{ '' if c.state == 'saved' else ' yet' }}: {{ c.why }}."{% endif %}{% if said %} data-holds-live="review"{% endif %}>
 {%- if c.said and c.said.words %}
   <div class="notice notice-{{ 'muted' if c.said.level == 'ok' else 'danger' }} set-result" role="{{ 'status' if c.said.level == 'ok' else 'alert' }}">{{ icon('tick' if c.said.level == 'ok' else 'warn', 16) }}<p>{{ c.said.words | people }}</p></div>
 {%- endif %}
 {%- if offering %}
   {#- Screen 5: the question, what Save does, Save and Not now; Customize… the one Details. -#}
-  <h2 class="simple-title" id="save-title-{{ c.incident }}">Save this fix so Mercury handles it automatically?</h2>
-  <p class="simple-impact">Mercury will handle this automatically when self-healing is on{% if c.runs_on.words %}. {% with incident=c.incident, on=c.runs_on %}{% include "v2/_saved_plans_runs_on.html" %}{% endwith %}{% endif %}</p>
+  {#- C4306: a match on any port saves Manual only, said in the title and the line. -#}
+  <h2 class="simple-title" id="save-title-{{ c.incident }}">{{ 'Save this fix?' if c.runs_on.manual else 'Save this fix so Mercury handles it automatically?' }}</h2>
+  <p class="simple-impact">{% with incident=c.incident, on=c.runs_on %}{% include "v2/_saved_plans_runs_on.html" %}{% endwith %}</p>
   <div class="simple-acts">
     <span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="plans" data-save="default" hx-post="{{ url_for('saved_plans_v2.save_script', incident=c.incident, list=c.list) }}" hx-include="#saved-script-{{ c.incident }}, #runs-on-{{ c.incident }}" hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Saves {{ c.plan }} as a self-heal script named {{ c.name }}, running automatically when self-healing is on (Dry run under Customize…), matching the problem's fields ticked there{% if c.runs_on.words %}. With every field ticked: {{ c.runs_on.words }}{% endif %}"{% if c.rights.script %} disabled{% endif %}{{ gate('approve') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('plans', compact=True, op='saving a fix') }}</span>
     <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-post="{{ url_for('saved_plans_v2.not_now', incident=c.incident, list=c.list) }}" hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Puts the offer off for this incident: nothing is saved; Save this fix… stays on this card"{{ gate('configure') }}><span class="op-idle">Not now</span><span class="op-busy">Recording…</span></button>{{ how('plans', compact=True, op='Not now') }}</span>
@@ -107,8 +101,11 @@
   {#- Screen 5b: one line, Promote… the only way to Auto: one link opening the existing
       promote, said and pressed in place (a disclosure, as the plan card's Modify or deny…). -#}
   <div class="simple-acts simple-saved">
-    <p class="simple-status" role="status" data-saved="script">{{ icon('tick', 14) }} Saved: <a data-fix-page="{{ SV.script.key }}" href="{{ url_for('fixes_v2.fix', key=SV.script.key, list=c.list) }}">{{ SV.script.name }}</a>, {{ 'Automatic when self-healing is on' if SV.script.mode == 'auto' else 'Dry run' }}.</p>
-    {%- if SV.script.mode != 'auto' %}
+    <p class="simple-status" role="status" data-saved="script">{{ icon('tick', 14) }} Saved: <a data-fix-page="{{ SV.script.key }}" href="{{ url_for('fixes_v2.fix', key=SV.script.key, list=c.list) }}">{{ SV.script.name }}</a>, {{ 'Automatic when self-healing is on' if SV.script.mode == 'auto' else 'Manual only' if SV.script.mode == 'manual' else 'Dry run' }}.</p>
+    {#- C4306: a fix whose match runs on any port is never promoted: why, in place of Promote…. -#}
+    {%- if SV.script.never %}
+    <p class="small muted" data-never-automatic>{{ SV.script.never }}.</p>
+    {%- elif SV.script.mode != 'auto' %}
     <details class="simple-menu menu-wrap" data-keep="saved-promote-{{ c.incident }}"><summary role="button" title="Opens Promote: the script then runs, verified and recorded, when its match holds, while self-healing is in Auto">Promote…</summary>
       <div class="menu simple-promote" role="group" aria-label="Promote {{ SV.script.name }}">
         <p class="small">From Dry run to Auto: when its match holds it runs, its own preview, verify and rollback, recorded, while self-healing is in Auto.</p>
@@ -118,7 +115,7 @@
     </details>
     {%- endif %}
   </div>
-  {%- if c.rights.script and SV.script.mode != 'auto' %}<p class="small bluf-refused" data-refused="script">{{ c.rights.script | people }}</p>{% endif %}
+  {%- if c.rights.script and SV.script.mode != 'auto' and not SV.script.never %}<p class="small bluf-refused" data-refused="script">{{ c.rights.script | people }}</p>{% endif %}
   {%- if not SV.action or more %}
   <details class="simple-details" data-card-details data-keep="saved-more-{{ c.incident }}"><summary>Details</summary>
     {{ action_part() }}
@@ -129,7 +126,7 @@
   {#- Not now: the offer put off for this incident, said in one line, reachable again. -#}
   <p class="simple-status" role="status" data-offer="dismissed">Not saved: put off{% if c.dismissed.by %} by {{ c.dismissed.by | people }}{% endif %}. <button type="button" class="bluf-link" data-op="plans" hx-get="{{ url_for('saved_plans_v2.card', incident=c.incident, list=c.list, show=1) }}" hx-target="#saved-plans-{{ c.incident }}" hx-swap="outerHTML" title="Shows the offer to save this fix again">Save this fix…</button>{{ how('plans', compact=True, op='saving a fix') }}</p>
 {%- elif more %}
-  <h2 class="simple-title">Saved fixes for this problem</h2>
+  <h2 class="simple-title">Waiting on an admin</h2>
   <details class="simple-details" data-card-details data-keep="saved-more-{{ c.incident }}"><summary>Details</summary>
     {%- if c.why %}<p class="faint small" data-offer="none">Nothing to save yet: {{ c.why }}.</p>{% endif %}
     {{ lists() }}

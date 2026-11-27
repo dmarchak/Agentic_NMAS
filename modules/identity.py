@@ -886,6 +886,18 @@ def request_actor() -> str:
     return UNVERIFIED
 
 
+def pressing() -> dict:
+    """The request's verified actor as a right is asked of it (`right_refusal`'s keywords):
+    ``{"actor", "actor_verified", "person"}``, *person* whether the verified identity is a
+    person's (`verified_identity`, which fails closed). THE one reading of it for a press and
+    for a control drawn for one (routes/saved_plans_v2.py's presses, the incident card's Make
+    this fix automatic?); outside a request it names nobody verified."""
+    actor = request_actor()
+    ident = verified_identity()
+    return {"actor": actor, "actor_verified": actor_verification(actor),
+            "person": bool(ident is not None and ident.kind == "person")}
+
+
 #: How Mercury names itself as the actor of what it does with nobody's request behind it.
 MERCURY_ACTOR = "Mercury: {job}"
 

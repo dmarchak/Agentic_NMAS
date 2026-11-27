@@ -222,6 +222,20 @@ again. No EMPTY_IN_FIXTURE entry for it. After the walk, once both records are c
 or a rogue switch and must never be re-enabled automatically. Note it in decisions." The loop
 removed (the words kept) and docs/fidelity/incident.md compared again, 2026-11-27.
 
+### automatic-port-roles
+
+- **Asked (2026-11-27 23:56 UTC, 16:56 Denver):** the fix-choice change makes a saved fix whose
+  match leaves the port role UNSET (any port) never Automatic, by every path, as you ordered. The
+  second independent review found that a fix whose match names `port_role: trunk` can still be
+  Automatic: a fix saved from a trunk port's err-disable keeps the problem's role, and would
+  re-enable every trunk (uplink) err-disable by itself, against your reason ("An err-disable on an
+  uplink is a loop or a rogue switch and must never be re-enabled automatically"). Default holds
+  no trunk fix today (C4312).
+- **Options:** (a) only an access-port match (`port_role: access`) may be Automatic: any-port and
+  trunk both refused, by the same one guard every path passes; (b) keep the rule as written
+  (only an unset role refused), trunk fixes allowed Automatic.
+  **Recommendation:** (a): it is what your reason says, and it is one line in the guard.
+
 ### ci-ten-gate-memory
 
 - **Asked (2026-11-25):** the ten shards alone at 2 workers (`memory.peak`, each in its own scope,

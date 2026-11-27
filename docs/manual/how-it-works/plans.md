@@ -110,7 +110,11 @@ names how many other open incidents Save runs it on and their devices ("Save run
 other open incidents, on edge1 and edge2"; "once self-healing is on" while it is not in Auto), read
 from the same selection the retry below makes. **Customize…** holds the same form
 with **Dry run** as a choice; untick a field of the match, or tick Dry run, and that line is
-redrawn at once for what Save will then send. **Not now** puts the offer off for this incident, saving nothing,
+redrawn at once for what Save will then send. A match for an err-disabled port that leaves
+the port role unticked runs on any port, an uplink's too, so Save saves it **Manual only**,
+never Automatic, and the line says so before you press ("Saved Manual only: a fix for any port
+is never automatic, so it runs only when a person presses Run"); an Automatic fix stored with
+such a match runs nothing by itself either: its run is refused, naming why. **Not now** puts the offer off for this incident, saving nothing,
 and the card then says so in one line with **Save this fix…**, which shows the offer again.
 Save saves what the card drew: if another fix verified on the incident, its problem's match
 moved, or the other open incidents its line names changed, between the card being drawn and

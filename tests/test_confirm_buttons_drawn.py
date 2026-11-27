@@ -2588,8 +2588,11 @@ class TestSavedPlansCards(_Cards):
                    "data: the viewer lacks self-healing rights"),
         "action": ("_saved_plans_saves.html", "Save as a reusable action",
                    r"Save as a reusable action", "data: the viewer is no admin"),
-        "promote": ("_saved_plans_saves.html", "Promote {{ s.name }}",
-                    r"Promote BPDU guard recovery", "data: no saved script matches"),
+        # The scripts list's Promote is gone from this card (C4301 to C4304, the operator,
+        # 2026-11-27: "Merge the 'Saved fixes for this problem' box into this list ... Promote
+        # moves into its row"): its Make this fix automatic? is the incident card's row's,
+        # pressed through the section's `press` (tests/test_fix_choice.py,
+        # `TestMakeThisFixAutomatic`).
         # Board R5's screen 5b: once this incident's fix is saved in Dry run (Customize's
         # choice), the card's one line opens Promote in place.
         "promote_saved": ("_saved_plans_saves.html", "Promote {{ SV.script.name }}",
@@ -2646,17 +2649,6 @@ class TestSavedPlansCards(_Cards):
         assert 'data-refused="action"' in html, "floor: the refusal is drawn beside it"
         return html
 
-    def drawn_promote(self, request):
-        from modules.nsot import saved_plans as S
-        c = request.getfixturevalue("card")
-        # Saved with Customize's Dry run (a plain Save is Automatic since 6b91dc45, with no
-        # Promote), keyed fix- (3a659d6b): Promote is drawn in the script's list.
-        S.save_script("Lab", run_id=c["run"](), name="BPDU guard recovery",
-                      match=self._sp.MATCH, fills=self._sp.FILLS, dry_run=True, **self._sp.WHO)
-        html = self._get(request)[1]
-        assert 'data-script="fix-bpdu-guard-recovery"' in html, "floor: the script is drawn"
-        return html
-
     def blocked_promote(self, request, monkeypatch):
         html = self._get(request)[1]
         assert "ran and passed its own verify" in html, "floor: the card is drawn"
@@ -2678,12 +2670,15 @@ class TestSavedPlansCards(_Cards):
         """The card after its own Save, in Dry run (Customize's choice: a plain Save is
         Automatic, with no Promote, 6b91dc45), pressed as the card's form sends it."""
         c, html = self._get(request)
+        # Its port role kept (C4306: a match on any port is never promoted, so draws no
+        # Promote…).
         r = c["client"].post(f"/v2/saved-plans/{self._spv.INC}/save-script?list=Lab",
                              data={"name": "BPDU guard recovery", "keep_cause": "1",
+                                   "keep_port_role": "1",
                                    "dry_run": "1", "drawn": self._spv.drawn_of(html),
                                    "runs_on": self._spv.runs_on_of(
                                        c["client"], self._spv.INC, "Lab", keep_cause="1",
-                                       dry_run="1")},
+                                       keep_port_role="1", dry_run="1")},
                              headers={"HX-Request": "true"})
         assert r.status_code == 200, "floor: the save in Dry run is kept"
         return c
@@ -2945,9 +2940,12 @@ class TestThePopulation:
         same day; 105 until Lab 9 A's Watch its ports…, on a watched High packet rate and a
         flood incident, one site, 2026-11-20, and a response's other actions, each Preview the
         <action> instead…, the same day; both joined here when the Lab 9 kit's hotfix branch
-        merged forward onto overnight/gui)."""
+        merged forward onto overnight/gui); 107 until the saved-plans card's scripts list and
+        its Promote <script> moved onto the incident card's Fixes for this problem as each
+        row's Make this fix automatic? (C4301 to C4304, the operator, 2026-11-27), pressed
+        through the section's `press`, outside this population)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 107, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 106, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """
