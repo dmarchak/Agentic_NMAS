@@ -81,9 +81,15 @@ class TestThePreview:
         assert not lab["written"].exists()
 
     def test_no_loki_is_refused_by_name(self, lab, monkeypatch):
+        # Premise corrected (Stage 5 step 6, the survey's Heartbeat line): the refusal is its
+        # own kind (`NoLogStore`, a `Refused`), in words with no product's name, so the page
+        # draws it as a setup step with its link.
         monkeypatch.setattr(lab["H"], "_loki_url", lambda arg: "")
-        with pytest.raises(lab["HW"].Refused, match="no Loki to measure from"):
+        with pytest.raises(lab["HW"].NoLogStore,
+                           match="no log store is connected to measure from") as got:
             _plan(lab)
+        assert isinstance(got.value, lab["HW"].Refused) and "Loki" not in str(got.value)
+        assert not lab["written"].exists()
 
     @pytest.mark.usefixtures("syslog_job_measured")
     def test_the_job_is_measured_from_loki_and_every_query_and_rule_takes_it(self, lab,
@@ -160,6 +166,23 @@ class TestThePage:
         assert 'class="tabs"' not in page and 'aria-label="Monitoring"' not in page
         assert re.search(r'class="nav-item active" href="/v2/\?list=Default"', page), \
             "drawn under Needs attention, where it is reached"
+
+    def test_no_log_store_is_a_setup_step_with_its_link_not_a_red_failure(self, lab,
+                                                                          monkeypatch):
+        """Stage 5 step 6 (the survey's Heartbeat line: "Lead with 'Not measured: no log store
+        is connected', with a link"): with no log store the page says so as a warning, in
+        words, linking Default's Integrations, never the red "Nothing was measured: no Loki"."""
+        import app as A
+        monkeypatch.setattr(lab["H"], "_loki_url", lambda arg: "")
+        page = A.app.test_client().get("/v2/monitoring/heartbeat").get_data(as_text=True)
+        note = re.search(r'<div class="notice notice-warn" data-no-store>(.*?)</div>', page, re.S)
+        assert note, page[:2000]
+        assert "Not measured:" in note.group(1) and "no log store is connected" in note.group(1)
+        assert "/v2/settings/network/Default" in note.group(1) and "tab=integrations" in \
+            note.group(1), note.group(1)
+        assert "Loki" not in note.group(1) and "notice-danger" not in page.split(
+            'id="hb-windows"', 1)[1].split("</section>", 1)[0]
+        assert not lab["written"].exists(), "drawing it wrote nothing"
 
     def test_after_the_confirm_the_page_names_the_host_step_with_real_values(self, lab):
         import app as A

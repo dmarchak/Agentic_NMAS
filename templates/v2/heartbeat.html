@@ -1,5 +1,5 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon, badge, info, how -%}
+{%- from "v2/_macros.html" import icon, badge, info, how, integrations_link -%}
 {#- The heartbeat re-measure (NSOT_PLAN P.7; routes/v2._heartbeat_ctx), reached
     ONLY from the heartbeat check's Needs attention row, never a tab: every
     device's heartbeat window, installed against measured now, with what each
@@ -23,7 +23,11 @@
 </section>
 {%- endif %}
 <section class="card" id="hb-windows">
-  {%- if error %}
+  {%- if error and no_store %}
+  {#- A setup step, not a failure (Stage 5 step 6, the survey's Heartbeat line): said first, in
+      words, with where to make it. -#}
+  <div class="notice notice-warn" data-no-store>{{ icon('info') }}<p><strong>Not measured:</strong> no log store is connected to measure from (a window without a measurement is a guess). Connect one on {{ integrations_link('Default') }}.</p></div>
+  {%- elif error %}
   <div class="notice notice-danger">{{ icon('warn') }}<p>Nothing was measured: {{ error }}</p></div>
   {%- else %}
   <div x-data="ipslaPost" data-url="{{ url_for('v2.heartbeat_apply') }}"

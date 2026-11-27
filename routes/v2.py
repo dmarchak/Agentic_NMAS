@@ -3105,9 +3105,13 @@ def ip_sla():
 
 def _heartbeat_ctx() -> dict:
     from modules import heartbeat_windows as HW
-    ctx = {"plan": None, "error": "", "state": {}, "last": HW.last_written(), "host_step": ""}
+    ctx = {"plan": None, "error": "", "state": {}, "last": HW.last_written(), "host_step": "",
+           "no_store": False}
     try:
         ctx["plan"] = HW.plan()
+    except HW.NoLogStore as exc:
+        # A setup step, said as one with its link (Stage 5 step 6), never a red failure.
+        ctx["error"], ctx["no_store"] = str(exc), True
     except HW.Refused as exc:
         ctx["error"] = str(exc)
     except Exception as exc:                              # noqa: BLE001

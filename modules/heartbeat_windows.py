@@ -40,6 +40,11 @@ class Refused(Exception):
     """Nothing written; the message names why."""
 
 
+class NoLogStore(Refused):
+    """No log store is connected to measure from (Default's Loki integration is unset): a
+    setup step, said as one with where to make it (Stage 5 step 6), never a failure."""
+
+
 def _script():
     import importlib.machinery
     import importlib.util
@@ -103,8 +108,8 @@ def plan(H=None, installed_path: str = "") -> dict:
     H = H or _script()
     loki = H._loki_url("")
     if not loki:
-        raise Refused("no Loki to measure from: set the Loki integration in Settings "
-                      "(a window without a measurement is a guess)")
+        raise NoLogStore("no log store is connected to measure from (a window without a "
+                         "measurement is a guess); connect one on Default's Integrations")
     from modules.list_settings import default_layer   # the Loki it reads is Default's
 
     heartbeat = int(default_layer("syslog_heartbeat_seconds") or 0)
