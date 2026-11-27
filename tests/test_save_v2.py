@@ -248,6 +248,16 @@ class TestThePage:
         assert "Save 4 devices" in html and _form(html)["device"] == ["r2", "r3", "r4", "s9"]
         assert "No device chosen" in _page(lab)
 
+    def test_with_no_device_chosen_the_title_names_the_task_not_a_count(self, lab):
+        """Stage 5 step 6 (the survey's Save line: "Title 'Save 0 devices' reads oddly; name
+        the task, then give the state in the sentence"): nothing chosen, the title names the
+        task alone and the empty state says what to do; nothing is asked of a device."""
+        html = _page(lab)
+        h1 = re.sub(r"<[^>]+>", "", re.search(r"<h1>(.*?)</h1>", html, re.S).group(1))
+        assert re.sub(r"\s+", " ", h1).strip().startswith("Save: to startup, and as golden"), h1
+        assert "0 device" not in h1 and "No device chosen" in html
+        assert "op-confirm" not in html
+
     def test_an_unknown_network_is_said(self, lab):
         r = lab["client"].get("/v2/devices/save?list=Elsewhere&device=r2")
         assert r.status_code == 404 and "There is no device list named 'Elsewhere'" in \

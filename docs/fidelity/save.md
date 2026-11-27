@@ -24,7 +24,9 @@ network's result with its baseline earned (screenshots 41 to 43); read beside th
 draw the same regions.
 Compared 2026-10-18.
 Templates compared: templates/v2/save.html, templates/v2/_save.html
-Templates sha256: `f3dd35c5d98ca6af143c28c00450d72b74dfb79bf47fbd84177e3005f4149ca1`
+Compared again 2026-11-27 (Stage 5 step 6): Save with no device chosen titles the task alone ("Save: to startup, and as golden"), never "Save 0 devices"; with devices chosen it counts them as before. Templates sha256 before:
+`f3dd35c5d98ca6af143c28c00450d72b74dfb79bf47fbd84177e3005f4149ca1`.
+Templates sha256: `705469dcb800d637a5e14be38fa86da70afeaf67f7320ab57f8b90ed8aa4b772`
 
 Compared again 2026-11-24 (C3601), by `save.html`'s diff: opened on a Save's job (In
 progress's link, `job`), the page draws that run's card; when the job carries no count (this
