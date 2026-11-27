@@ -80,7 +80,9 @@ Templates sha256 before: `eac007dc8d20d89e3a3d00d13e3cf8bc0703950f2c379f11a03a2b
 Templates compared: templates/v2/apply.html, templates/v2/_apply_preview.html, templates/v2/_apply_job.html
 Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
 `9acae678008c5400c25916090c63daf5b3dd11d63300a2e768c0b106ff59fd1e`.
-Templates sha256: `6a7f775971c52fb2646c35035b6798c5c5aaacba02b27e081b2971e5cfcbd039`
+Compared again 2026-11-27 (Stage 5 step 6, the survey's Deploy and Apply lines): with no device chosen, the preview's empty state ("No device was chosen. Tick devices on Devices and preview from there.") is the page's sentence under its title, no box, in the sentence's weight; with a device chosen the preview is boxed as before. Shot at 1366 in the survey's world. Templates sha256 before:
+`6a7f775971c52fb2646c35035b6798c5c5aaacba02b27e081b2971e5cfcbd039`.
+Templates sha256: `527d1495f2e39e152e9fa20b2d07ea6950e5890ef97666631d5549bf9b54ae93`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

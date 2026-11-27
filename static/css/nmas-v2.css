@@ -1556,6 +1556,10 @@ section.card.sdn-export:not(.sdn-op), section.card.apps-draft-rest {
   background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0;
   padding: 14px 0 10px; }
 section.card.sdn-export:not(.sdn-op) .sdn-ctl-hd h2 { font-size: 19px; font-weight: 700; }
+/* Deploy and Apply with nothing chosen (Stage 5 step 6): the empty state is the page's sentence,
+   no box, in the sentence's weight. */
+section.card.apply.apply-empty { background: none; border: 0; border-radius: 0; padding: 0; }
+section.card.apply.apply-empty > .cov-head { font-size: 16px; font-weight: 400; color: var(--ink); }
 /* Monitoring › Coverage as C draws a fleet (Stage 5 step 6): its counts, then the table, no box. */
 #coverage.card.coverage { background: none; border: 0; border-radius: 0; padding: 0; }
 /* Fixes' list as C draws a table (Stage 5 step 6): under its counts, no box. */

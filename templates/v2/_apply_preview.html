@@ -19,7 +19,9 @@
 {%- set idle = rows | selectattr('nothing') | list -%}
 {%- set GATE = {'pass': 'passes', 'fail': 'FAILS', 'not_applicable': 'does not apply',
                 'at_apply': 'checked again at apply', 'not_reached': 'not reached'} -%}
-<section class="card apply" id="apply-preview">
+{#- With nothing chosen, the page's one sentence, no box (Stage 5 step 6, the survey's Deploy
+    and Apply lines: "unbox the empty state and make it the sentence"). -#}
+<section class="card apply{{ ' apply-empty' if not order }}" id="apply-preview">
 {%- if not order %}
   <p class="cov-head">{{ icon('info') }} No device was chosen. Tick devices on {% if scope == 'intent' %}<a href="{{ url_for('v2.devices', list=list_name) }}">Devices</a>{% else %}<a href="{{ url_for('v2.coverage') }}">Coverage</a>{% endif %} and preview from there.</p>
 {%- else %}

@@ -183,6 +183,22 @@ class TestThePreview:
         _r, page = _get(ready, "/v2/monitoring/apply?list=Lab")
         assert "No device was chosen" in page and 'id="apply-confirm"' not in page
 
+    def test_no_device_chosen_is_the_page_s_sentence_with_no_box(self, ready):
+        """Stage 5 step 6 (the survey's Deploy and Apply lines: "unbox the empty state and make
+        it the sentence"): with nothing chosen the preview's section is marked empty, which the
+        stylesheet draws with no box in the sentence's weight; with a device chosen it is the
+        boxed preview as before."""
+        import re
+        _r, page = _get(ready, "/v2/monitoring/apply?list=Lab")
+        sec = re.search(r'<section class="([^"]*)" id="apply-preview">', page).group(1)
+        assert sec.split() == ["card", "apply", "apply-empty"], sec
+        _r, page = _get(ready, "/v2/monitoring/apply?list=Lab&device=r6")
+        sec = re.search(r'<section class="([^"]*)" id="apply-preview">', page).group(1)
+        assert sec.split() == ["card", "apply"], sec
+        css = open("static/css/nmas-v2.css", encoding="utf-8").read()
+        rule = re.search(r"section\.card\.apply\.apply-empty \{([^}]*)\}", css)
+        assert rule and "border: 0" in rule.group(1) and "background: none" in rule.group(1)
+
     def test_the_fragment_replans_under_the_strict_policy(self, ready):
         from modules import csp
         for url in ("/v2/monitoring/apply?list=Lab&device=r6",
