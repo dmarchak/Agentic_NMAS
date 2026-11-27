@@ -196,6 +196,30 @@ class TestTheVerifyView:
             in html
         assert _groups(html) == {} and tab["opened"] == []
 
+    def test_no_export_and_no_controller_are_one_sentence_each_with_its_link(self, tab, net,
+                                                                              monkeypatch):
+        """Stage 5 step 6 (the survey's Switches line: "merge the banners"): with no export
+        and no SDN controller set, one notice says both, each with where to make it, never the
+        shared reader's "is not configured for … nothing is set for it there"; no device is
+        opened."""
+        import re
+
+        from modules.nsot.repo import git
+        git(str(net / "config_repo"), "rm", "-q", "nsot/export.json")
+        git(str(net / "config_repo"), "commit", "-q", "-m", "gone")
+        monkeypatch.setattr("modules.sdn_page.stored", lambda network: {
+            "state": "not_configured", "value": None, "value_at": "", "failed": "",
+            "why": (f"SDN controllers is not configured for {network}: nothing is set for it "
+                    "there, and it takes nothing from Default, so there is nothing to read")})
+        html = unescape(tab["client"].get(f"{BASE}?list={LIST}").get_data(as_text=True))
+        notes = re.findall(r'<div class="notice[^"]*"[^>]*>.*?</div>', html, re.S)
+        about = [n for n in notes if "NSOT export" in n or "controller" in n]
+        assert len(about) == 1 and "data-sdn-unset" in about[0], about
+        text = re.sub(r"<[^>]+>", "", about[0])
+        assert "No switch is listed:" in text and "add one on SDN › Controllers" in text, text
+        assert "nothing is set for it there" not in html
+        assert _groups(html) == {} and tab["opened"] == []
+
 
 class TestWhatNetBoxChanged:
     """`netbox_moved`: the two exports' values compared, never the switch; an IPv6 controller
