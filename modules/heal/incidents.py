@@ -926,19 +926,23 @@ def unreadable_stand(standing: dict) -> bool:
     return s.get("on") == "departure" and not s.get("departure") and s.get("guard") == 8
 
 
-def stand_on_symptoms(network: str, incident_id: str, why: str, now: float = None) -> dict:
+def stand_on_symptoms(network: str, incident_id: str, why: str, now: float = None,
+                      decision: str = "") -> dict:
     """C4289: an unreadable device's can't-fix (`unreadable_stand`) whose device has since
     been read at its golden stands on its symptoms from now on (``on: symptom``): what it stood
     on, that the device could not be read, no longer holds, and what is left are the symptoms
     it took in. `detect._standing` then ends it once every one reads gone (its golden at its
-    intent), and a symptom still there keeps it standing, never closed. Returns the incident,
-    or ``{}`` when it no longer stands so."""
+    intent), and a symptom still there keeps it standing, never closed. *decision*: the
+    standing decision the read was judged against (C4291): a record decided again since is
+    left as it is. Returns the incident, or ``{}`` when it no longer stands so."""
     now = time.time() if now is None else float(now)
 
     def change(doc):
         inc = next((i for i in doc["incidents"] if i.get("id") == incident_id), None)
         if inc is None or inc.get("state") != "standing" \
                 or not unreadable_stand(inc.get("standing")):
+            return {}
+        if decision and (inc.get("standing") or {}).get("decision") != decision:
             return {}
         inc["standing"] = dict(inc["standing"], on="symptom", read_at=_iso(now),
                                read_why=why[:300])

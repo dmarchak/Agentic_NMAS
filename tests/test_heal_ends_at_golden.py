@@ -342,6 +342,43 @@ def test_an_unreadable_devices_cant_fix_with_a_symptom_still_there_stands(  # no
         inc["standing"]["on"] == "symptom", inc
 
 
+def test_an_unreadable_devices_cant_fix_with_no_symptom_ends_at_the_clean_read(  # noqa: F811
+        fold, monkeypatch):
+    """C4290 (the second review of C4289's fix): an unreadable device's can't-fix holding no
+    symptom to read (here a configuration change from outside Mercury, which names none, and no
+    classified port) is ended by the drift run's read at its golden, its words saying what it
+    stood on; stood on its symptoms instead, `detect._standing` would read "none" and keep it
+    for ever."""
+    change("core-b", T0)
+    iid = the("core-b")["id"]
+
+    def stand(doc):
+        inc = next(i for i in doc["incidents"] if i["id"] == iid)
+        inc.update(state="standing", standing=dict(UNREADABLE_STANDING, at=iso(T0 + 100),
+                                                   epoch=T0 + 100))
+    I._mutate("Default", stand)
+    golden_now(monkeypatch, "at_intent")
+    got = _clean_read(T0 + 3600)
+    assert len(got.get("ended") or []) == 1, got
+    inc = next(i for i in I.read("Default")["incidents"] if i["id"] == iid)
+    assert inc["state"] == "closed", inc["state"]
+    assert "that the device could not be read, no longer stands" in inc["closed_why"], \
+        inc["closed_why"]
+
+
+def test_a_re_stand_leaves_a_record_decided_again_since_the_read(fold):  # noqa: F811
+    """C4291: the re-stand compares, inside the store's lock, the decision the read was judged
+    against: a record decided again since keeps its own standing."""
+    from modules.heal import incidents as INC
+    iid = _unreadable_cant_fix(fold, T0 + 100)
+    assert INC.stand_on_symptoms("Default", iid, "a read", now=T0 + 200,
+                                 decision="hd-not-this-one") == {}
+    assert the("core-b")["standing"]["on"] == "departure"
+    got = INC.stand_on_symptoms("Default", iid, "a read", now=T0 + 200,
+                                decision=UNREADABLE_STANDING["decision"])
+    assert got["standing"]["on"] == "symptom", got
+
+
 def test_an_unreadable_devices_cant_fix_is_not_moved_by_a_read_before_it(fold, monkeypatch):  # noqa: F811
     """The same record, read clean BEFORE its decision: nothing moves (`clean_ended` keeps a
     read only when it came after the decision)."""

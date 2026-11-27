@@ -861,13 +861,18 @@ def clean_ended(network: str, result: dict, now: float) -> list:
             if not inc or not at or at <= float(s.get("epoch") or 0):
                 continue
             if incidents.unreadable_stand(s):
+                from modules.heal import act, errdisable
                 # C4289: decided while the device could not be read; read now at its golden,
                 # it stands on its symptoms, which `detect._standing` judges (never closed
-                # here: a symptom still there keeps it).
-                incidents.stand_on_symptoms(network, inc["id"], (
-                    f"the drift check ({by}) read {host} at its golden at {_iso(at)}"), now=now)
-                continue
-            if not incidents.ends_at_golden(s):
+                # here: a symptom still there keeps it). C4290: with no symptom to read (no
+                # symptom trigger, no classified port), the read itself ends it, below.
+                if act.symptom_triggers(decide.judged_triggers(inc)) or \
+                        (errdisable.of_record(inc) or {}).get("state") == "classified":
+                    incidents.stand_on_symptoms(network, inc["id"], (
+                        f"the drift check ({by}) read {host} at its golden at {_iso(at)}"),
+                        now=now, decision=s.get("decision") or "")
+                    continue
+            elif not incidents.ends_at_golden(s):
                 continue
             from modules.heal.incidents import needs_proof
             if needs_proof(s):
@@ -888,8 +893,10 @@ def clean_ended(network: str, result: dict, now: float) -> list:
             d = decide.end_standing(
                 network, inc["id"],
                 (f"nothing to heal: the drift check ({by}) read {host} at its golden at "
-                 f"{decide._hhmm(at)} UTC, after its decision {s.get('decision') or '?'}, so the "
-                 "departure it judged no longer stands"),
+                 f"{decide._hhmm(at)} UTC, after its decision {s.get('decision') or '?'}, so "
+                 + ("what it stood on, that the device could not be read, no longer stands"
+                    if incidents.unreadable_stand(s) else
+                    "the departure it judged no longer stands")),
                 now=now, by=f"the drift check ({by})",
                 read_words=(f"{host} read by the drift check ({by}) at {_iso(at)}: at its "
                             "golden"))
