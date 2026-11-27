@@ -593,6 +593,30 @@ class TestTheAnswer:
         assert f"This query answers {len(SERIES)} series at the range" in html
         assert "Only the top 10" in html and not _ranges(web)
 
+    def test_metrics_unreadable_at_the_page_s_load_is_one_line(self, web, monkeypatch):
+        """Stage 5 step 6 (the survey's metrics line: "Make the error one line and keep the
+        builder in the first screen"): when Prometheus's metric names cannot be read as the
+        page loads, one notice says why, when and what it means, with Ask again in it, never a
+        headed block; and no query is sent."""
+        import re
+
+        real = web.prom._get
+
+        def down(path, **params):
+            if path == "api/v1/label/__name__/values":
+                return {"ok": False, "error": "Could not connect to http://192.0.2.9:9090"}
+            return real(path, **params)
+        monkeypatch.setattr(web.prom, "_get", down)
+        html = _page(web)
+        note = re.search(r'<div class="notice notice-danger lq-down" role="alert" data-prom-down>'
+                         r'(.*?)</div>', html, re.S)
+        assert note, html[:3000]
+        assert "Couldn't load:" in note.group(1) and "no query is formed" in note.group(1)
+        assert "Ask again" in note.group(1), "Ask again in the one line"
+        assert "Prometheus not answering" not in html
+        assert not [p for p, _q in web.prom.asked if p.startswith("api/v1/query")], \
+            "no query was sent"
+
     def test_prometheus_not_answering_is_couldn_t_load_in_place(self, web):
         web.prom.fail = "Timed out after 125.0s"
         html = _page(web, ask="1", **BOARD)

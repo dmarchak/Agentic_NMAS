@@ -25,7 +25,9 @@ Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes t
 `afecaecdd181b020caefac8d9d34e75f4cb4334a104c8a67d32c7e457ebfc40e`.
 Compared again 2026-11-26 (Stage 5 step 6): where the page says something is not set up, it links the network's own Integrations tab (`integrations_link`: "Settings › <network> › Integrations"), where it said "(Settings › Integrations › Kea)" or similar in plain text. Every verdict unchanged. Templates sha256 before:
 `53bd175973eabb07379c22184603c63b7f9dfece6dbe1099d90505c122731c1d`.
-Templates sha256: `c1475a9a5d2695ecc97d91974a3d219c8df38e0151fc53bd988d20a2781785f0`
+Compared again 2026-11-27 (Stage 5 step 6, the survey's metrics line): when Prometheus's metric names cannot be read as the page loads, one notice line says "Couldn't load: <why>, asked <time>: no metric or label could be read, so no query is formed." with Ask again in it, in place of a headed block ("PROMETHEUS NOT ANSWERING") of four lines; a query that fails after asking keeps its block. Shot at 1366. Templates sha256 before:
+`c1475a9a5d2695ecc97d91974a3d219c8df38e0151fc53bd988d20a2781785f0`.
+Templates sha256: `59cc0ff46145d6f35677b8cb579db5191d08c0f5a6b3baa9fe9ffd694ebb4652`
 (2026-11-10, Lab 9 B5: `_history_body.html`'s tabs gain Export, its body drawn only on its own
 tab (docs/fidelity/history-export.md); nothing else on this page moved. Before:
 `32bec95dbec13a023b57669e9e328e31b9d2d5bb39da4b1c5253fa8dcdcb2bf3`.)

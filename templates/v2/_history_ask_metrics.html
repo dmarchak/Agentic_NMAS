@@ -34,7 +34,9 @@
 {%- if q.state == 'not_configured' %}
 <div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ q.error | capital }}: there are no metrics to ask here (its Prometheus card, on {{ integrations_link(q.list) }}).</p></div>
 {%- elif q.state == 'error' and not q.answer %}
-{%- call part.state('danger', 'Prometheus not answering') %}<p><strong>Couldn't load: {{ q.error }}</strong>, asked {{ part.when(q.now, 't') }}. The choices below are the address's; Prometheus's metrics and labels could not be read, so no query is formed.</p><div>{{ go(dict(change), 'Ask again', 'btn btn-small') }}</div>{% endcall %}
+{#- One line (Stage 5 step 6, the survey's metrics line: "Make the error one line and keep the
+    builder in the first screen"): why, when, what it means, and Ask again beside it. -#}
+<div class="notice notice-danger lq-down" role="alert" data-prom-down>{{ icon('warn', 16) }}<p><strong>Couldn't load: {{ q.error }}</strong>, asked {{ part.when(q.now, 't') }}: no metric or label could be read, so no query is formed. {{ go(dict(change), 'Ask again', 'btn btn-small') }}</p></div>
 {%- endif %}
 
 <form id="lq-form" class="lq-form" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-disabled-elt="#lq-ask" hx-indicator="#lq-ask">{{ hidden(('op', 'top')) }}<input type="hidden" name="ask" value="1"></form>
