@@ -186,6 +186,9 @@ RATCHETS = (
     # ── No dead identifiers (the charter's "Human-facing means human-readable", rule 2): a
     #    bare identifier on a rendered page, each with its count, only leaves ─────────────────
     ("tests/test_human_readable.py", "KNOWN_BARE_IDENTIFIERS", "shrinks"),
+    # ── The settings no screen sets (C4266; the operator, 2026-11-27, ratchet-no-screen):
+    #    a setting with no screen only leaves ────────────────────────────────────────────────
+    ("modules/settings_index.py", "NO_SCREEN", "shrinks"),
     # ── This registry ───────────────────────────────────────────────────────────────────────
     ("tests/ratchet_lists.py", "RATCHETS", "registry"),
 )
