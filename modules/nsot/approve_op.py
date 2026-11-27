@@ -29,8 +29,9 @@ log = logging.getLogger(__name__)
 
 STEPS = ("check", "approve", "commit", "revoke")
 
-#: A dialect's name in words, for the page (the template's directory is its dialect).
-PLATFORM_WORDS = {"cisco_ios": "IOS", "cisco_iosxe": "IOS-XE"}
+#: A dialect's name in words, for the page (the template's directory is its dialect): the one
+#: table (C4275, `platform.FACT_WORDS`).
+from modules.nsot.platform import FACT_WORDS as PLATFORM_WORDS  # noqa: E402
 
 
 def repo_for(list_name: str) -> str:

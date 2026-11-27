@@ -56,7 +56,8 @@ MEASURED = {
     }
     for dialect in ("cisco_ios", "cisco_iosxe")
 }
-DIALECT_WORDS = {"cisco_ios": "IOS", "cisco_iosxe": "IOS-XE"}
+#: A dialect's name in words: the one table (C4275, `platform.FACT_WORDS`).
+from modules.nsot.platform import FACT_WORDS as DIALECT_WORDS  # noqa: E402
 #: A line beginning with one of these words is refused, negated or not (rule 1).
 REFUSED = ("reload", "erase", "format", "delete", "boot", "username", "aaa", "crypto",
            "line vty", "write", "copy", "do", "end", "exit", "enable secret", "enable password")

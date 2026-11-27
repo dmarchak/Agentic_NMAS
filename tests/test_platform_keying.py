@@ -72,9 +72,8 @@ KEYING = {
     # Coverage words per platform, compared with the manifest's platform
     # (platform_for_device()): the dialect.
     "modules/monitoring_coverage.py":       "dialect",
-    # The Templates page's platform in words, keyed on the template's directory, which is
-    # its dialect (`templates_repo`).
-    "modules/nsot/approve_op.py":           "dialect",
+    # (modules/nsot/approve_op.py left 2026-11-27: its platform words are platform.FACT_WORDS,
+    # C4275, so it holds no platform literal of its own.)
     # C1506: the old text guess's `ios` platform is corrected only for a device whose
     # dialect (platform_for_device()) is not IOS's.
     "modules/netbox_client.py":             "dialect",
@@ -205,3 +204,19 @@ class TestTheBoundaryRefusesTheWrongNamespace:
             if re.search(r'"cisco-ios-xe"\s*:\s*"cisco_iosxe"', text):
                 hits.append(os.path.relpath(path, ROOT))
         assert hits == [os.path.join("modules", "nsot", "platform.py")], hits
+
+
+def test_a_platform_is_named_in_words_by_one_table():
+    """C4275 (one owner per piece of state): the platform's name in words ("IOS", "IOS-XE") is
+    one table, `platform.FACT_WORDS`; the command policy's refusals, the template approval page
+    and Monitoring › Coverage read it, so a platform added there is named in words on every
+    screen, never by its key on some."""
+    from modules import monitoring_coverage
+    from modules.nsot import approve_op, command_policy, platform
+
+    for name, table in (("command_policy.DIALECT_WORDS", command_policy.DIALECT_WORDS),
+                        ("approve_op.PLATFORM_WORDS", approve_op.PLATFORM_WORDS),
+                        ("monitoring_coverage._PLATFORM_WORDS",
+                         monitoring_coverage._PLATFORM_WORDS)):
+        assert table is platform.FACT_WORDS, name
+    assert platform.FACT_WORDS == {"cisco_ios": "IOS", "cisco_iosxe": "IOS-XE"}

@@ -331,7 +331,8 @@ def _not_rendered(ref, host: str, platform: str, role: str, intent: dict, doc: d
     return (f"not rendered — this network's template ({template}) renders none of the "
             f"profile's {_SECTION_WORDS.get(section, section)} section, so Apply cannot send "
             "it: bring in the shipped version on Templates")
-_PLATFORM_WORDS = {"cisco_ios": "IOS", "cisco_iosxe": "IOS-XE"}
+#: A platform's name in words: the one table (C4275, `platform.FACT_WORDS`).
+from modules.nsot.platform import FACT_WORDS as _PLATFORM_WORDS  # noqa: E402
 from modules.nsot.ip_sla_policy import SHORT_WORDS as _IP_SLA_POLICY_WORDS  # noqa: E402
 
 
