@@ -142,6 +142,12 @@ def card(network: str, args, **answer) -> dict:
     if why:
         c["preview"] = {"ok": False, "refused": why, "steps": []}
         return c
+    if not c["plan"]:
+        # The page opened with no plan named (Stage 5 step 6, the survey's plan preview line:
+        # "Refuse in words"): said as the page's sentence, never the engine's list of plan keys
+        # and "'' was named".
+        c["preview"] = {"ok": False, "refused": "", "none_chosen": True, "steps": []}
+        return c
     # What the card draws of the engine's preview (its parameters are the card's own, carried
     # in `params_json`).
     got = E.preview(network, c["plan"], params)

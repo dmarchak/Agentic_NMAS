@@ -711,3 +711,22 @@ class TestTheAssistantProposes:
     def test_no_plan_is_none(self):
         from modules.ai import assistant as A
         assert A.plan_of(self._words(None)) == (None, "")
+
+
+def test_the_page_with_no_plan_named_says_so_in_words(client):
+    """Stage 5 step 6 (the survey's plan preview line: "Refuse in words ('No plan was chosen:
+    start one from …')"): opened with no plan named, the page says so as its sentence and where
+    a plan starts, never the engine's list of plan keys and "'' was named", and asks the engine
+    for nothing."""
+    import re
+
+    from modules.nsot import privileged
+    before = privileged.runs("Default")
+    html = client.get("/v2/plans/preview", query_string={"list": "Default"}).get_data(
+        as_text=True)
+    said = re.findall(r'<p class="doc-summary" data-none-chosen>(.*?)</p>', html, re.S)
+    assert said and said[0].startswith("No plan was chosen: a plan starts from the page it "
+                                       "acts on"), said
+    assert "was named" not in html and "add-ztp-device" not in html
+    assert "This plan is not offered" not in html
+    assert privileged.runs("Default") == before, "drawing it recorded no run"

@@ -57,4 +57,6 @@ the template's diff and tests/test_plan_engine.py, not by new shots; logged once
 (docs/STANDING_APPROVAL_LOG.md, "C3651: a plan whose job is not known"). Templates sha256 before: `d63bddda8507cfe12625a33cfcf12557d3ceae7ba507df48bd3b1ff4f05ca0ff`.
 Compared again 2026-11-26 (C4278): text drawn with a capital first letter goes through `capital` (`words.capital`), never Jinja's `capitalize`, which lowered every letter after the first (a person's reason, a network's or product's name). No region moves; every verdict is unchanged. Templates sha256 before:
 `db48627a1b7ac635d498166de8abd21af87aa3352f9bebe1fcfbfd57e796d317`.
-Templates sha256: `14dfc0c27ffb987d7a4c00c74006d1fac4aa293936e3b6dfa5bfa3c831c214a8`
+Compared again 2026-11-27 (Stage 5 step 6, the survey's plan preview line): opened with no plan named, the card says "No plan was chosen: a plan starts from the page it acts on (a discovered device on Onboard, a link on Topology, a reservation on DHCP, or an incident's fix)." as the page's sentence, in place of the red "This plan is not offered: a plan is one of Mercury's (add-ztp-device, …), and '' was named"; a named plan the engine refuses is drawn as before. Shot at 1366. Templates sha256 before:
+`14dfc0c27ffb987d7a4c00c74006d1fac4aa293936e3b6dfa5bfa3c831c214a8`.
+Templates sha256: `418ca3715a0e5a6be4222f5b8d757b29d63753ec87f7f0db7567f368c1d8c12d`

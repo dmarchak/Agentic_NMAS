@@ -41,6 +41,9 @@
   {%- if c.steps %}{% with iid=c.run, network=c.list, steps=c.steps, said='', static=True %}{% include "v2/_inc_step.html" %}{% endwith %}{% endif %}
   {{ actions_of(c) }}
   <p class="small">Approved by {{ r.actor | people }}, {{ stamp(r.at) }}{% if r.reason %}, with the reason “{{ r.reason }}”{% endif %}; hash {{ r.hash or 'none' }}.</p>
+{%- elif P.none_chosen %}
+  {#- Opened with no plan named: the page's sentence, in words (Stage 5 step 6). -#}
+  <p class="doc-summary" data-none-chosen>No plan was chosen: a plan starts from the page it acts on (a discovered device on Onboard, a link on Topology, a reservation on DHCP, or an incident's fix).</p>
 {%- elif not P.ok %}
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>This plan is not offered:</strong> {{ P.refused }}</p></div>
 {%- else %}
