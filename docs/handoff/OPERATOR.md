@@ -8,22 +8,34 @@ and the next session unblocks the item and moves the entry to Answered.
 
 ## Open
 
-### lab-down
+### r8-s5-configless
 
-- **Asked (2026-11-26 06:55 UTC, 23:55 Denver):** the lab's routers and switches have not run
-  since 2026-11-25 03:25 UTC, when the lab host booted a new kernel (an unattended upgrade's
-  reboot, most likely); r1 to r8 and s1 to s5 exited and stayed down, the hosts came back
-  (C4282). The s1 walk below cannot run until s1 does. lab/REDEPLOY.md's pre-flight says
-  "0 of 12 pass" (each "the last drift run did not read it"), and the runbook redeploys only on
-  N of N, so the agent did not redeploy.
-- **Options:** (a) your word to redeploy with the runbook's window, setting aside the pre-flight's
-  drift condition for this one start (every golden is at its intent; nothing could drift while
-  down); (b) you bring the lab back yourself; (c) leave it down. **Recommendation:** (a), then
-  the s1 walk; later, whether the lab host may reboot itself for upgrades.
+- **Asked (2026-11-27 17:55 UTC, 10:55 Denver):** after the redeploy, r8 and s5 do not answer.
+  The lab boots them configless (Lab 9's design: they arrived by ZTP), and Mercury's ZTP serves a
+  bootstrap only to a device pending onboarding; both were promoted long ago. r8 leased
+  10.255.4.10 and asks every 5 s; the responder refuses: "no pending ZTP device holds the
+  reservation … (promoted, abandoned, or never onboarded as ztp)"; s5's reservation is gone
+  ("holds no reservation the tool wrote"). The other ten answer (C4288).
+- **Options:** (a) give both startup files from their goldens, as the other ten have: add r8 and
+  s5 to the lab's map so the startup sync builds them, set their startup files in the topology,
+  and redeploy (the one command, its window first); (b) retire both and onboard them again by ZTP,
+  as Lab 9 first did (their history archived, two onboardings you approve); (c) leave them down
+  until something needs them. **Recommendation:** (a): every node then comes back from a redeploy
+  by itself, and Lab 9's ZTP pass stays recorded as it was. It needs your word because it
+  changes the lab's design for two nodes.
 
 ### s1-walk
 
-**BLOCKED → #lab-down** (2026-11-26): s1 is not running.
+**Re-checked against the lab as it is now (2026-11-27, 17:45 to 17:55 UTC), after the redeploy
+(#lab-down, Answered):** s1 runs and answers Mercury (its new SSH key kept under the window,
+17:49Z), and boots its golden at intent, whose Gi1/0 has `spanning-tree bpduguard enable`
+(access VLAN 10, portfast edge; read masked); its syslog reaches Loki again; h1 kept its MAC
+(aa:c1:ab:99:f6:e2, so the frame is unchanged), has socat, leased 10.10.10.100 and reaches s1's
+VLAN 10 address; the saved fix **BPDU guard recovery (access ports)** is held for Default
+(Automatic); Default's self-healing is in Dry run. The window's Grafana silence on s1 ends
+18:13:33 UTC (11:13 Denver): the walk starts after it. s1's outage incident (hi-08fa12d33834,
+no heartbeat and SNMP unreachable while it was down) must close first, or the BPDU folds into it
+instead of opening its own; the agent says in chat when it has, and the walk is ready then.
 
 **The s1 walk for C4090's records (about 15 min, tonight).** Two of the three missing records
 come from it: `P.reads` (a Fixed incident whose proof is a command-plan run with its reads) and
@@ -108,6 +120,38 @@ differing run.
   them both. After you paste, the agent commits CLAUDE.md as you left it.
 
 ## Answered
+
+### lab-down
+
+- **Asked (2026-11-26 06:55 UTC, 23:55 Denver):** the lab's routers and switches had not run
+  since 2026-11-25 03:25 UTC (C4282); lab/REDEPLOY.md's pre-flight said "0 of 12 pass" (each
+  "the last drift run did not read it"), so the agent did not redeploy. Options: (a) your word to
+  redeploy, setting aside the drift condition for this one start; (b) you bring it back; (c)
+  leave it down. Recommendation (a).
+- **Answered 2026-11-27, the operator's words:** "lab-down: (a). I allow one lab redeploy that
+  skips the pre-flight drift check. The nodes are down, so nothing on them can drift. Every other
+  pre-flight check still applies. Record it in decisions." Then: redeploy and confirm r1–r8 and
+  s1–s5 answer; find the reboot's cause read-only (if automatic, the one-line change here); a C
+  row for nodes not coming back after a host reboot (C4287); re-check the s1 walk sheet and say
+  it is ready, then carry on with Stage 5; after the walk, capture masked, land C4090, and deploy
+  on a fully green CI, that deploy first over everything else.
+- **Done 2026-11-27:** the pre-flight read at 17:37 UTC: every other check passed on all 12
+  (credentials current, golden after its last rotation, 0 newer goldens, everything Mercury needs
+  carried); the window recorded 17:38:38Z (id 6f91922a67e3214e, 90 minutes, new host keys);
+  `containerlab deploy -t rcn-lab1.clab.yml --reconfigure` exited 0 by 17:39 UTC. Ten of the
+  twelve answer, each one's new SSH key kept under the window (17:44 to 17:49Z, none refused):
+  r1 to r4, r6, r7, s1 to s4. r8 and s5 do not (#r8-s5-configless). The window was ended early
+  at 17:54:33Z, as the runbook ends it once its devices have answered, so it covers nothing more;
+  Grafana's silence now ends 18:13:33Z. Its "new host keys accepted" row on Needs attention is
+  yours to review in History and acknowledge.
+- **The cause:** not an automatic reboot. The hypervisor itself stopped uncleanly (its journal
+  ends 2026-11-24 19:52:34 MST with no shutdown; it booted again at 20:25:14 MST and its start-all
+  started the lab host and the NMAS host). The lab host's unattended upgrades have
+  Automatic-Reboot off (the default; the line is commented out); the new kernel it booted
+  (6.8.0-149) had been installed earlier and was waiting for a reboot, and 6.8.0-151, installed
+  at 06:44 UTC after the boot, waits for one now. So there is no line to change on the lab host. Why the
+  hypervisor stopped is not in its logs (no error before the end): a power cut or a hang, which
+  only you can tell from the machine itself.
 
 ### c4075-smoke
 
