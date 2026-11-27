@@ -13,10 +13,15 @@ this page is the window and the keys around it. Real hosts, users and paths are 
 ## How a lab node restarts: two ways only (the operator, 2026-10-19)
 
 **A lab node is never restarted by containerlab (`restart`, `restart -n`) or by docker
-(`restart`, `start`).** A node restarts in only two ways:
+(`restart`, `start`).** A node restarts in only three ways:
 
 - a reload from its own CLI, which is Mercury's Reload, with its planned window;
-- a full redeploy with the one redeploy command below, in its planned window.
+- **the single-node path (the documented one; the operator, 2026-11-27):** the node's definition
+  changed in the topology, a dry run that plans exactly that node, then a plain
+  `containerlab deploy`, which recreates only that node, in its planned window (below,
+  "Recreating one or two nodes");
+- a full redeploy with the one redeploy command below, in its planned window, only when every
+  node must boot afresh: **it recreates every node, s3 included.**
 
 Why: on 2026-10-19 the agent's `containerlab restart -n r5` moved r5's links into a park
 namespace (`clab-park-<node>`) before it stopped the node, and they were never brought back. r3's
@@ -25,6 +30,13 @@ restart and start were already refused for the configless launch (C478). A link 
 topology reaches a node only through the redeploy.
 
 ## What is redeployed, and what Mercury knows of it
+
+**As of 2026-11-27** (read from the topology and the lab's map): the topology holds thirteen
+network nodes, r1 to r8 and s1 to s5 (and hosts h1 to h7 and web); r6, r7 and r8 joined it for
+Labs 8 and 9 (one topology, LAB_ONE_TOPOLOGY_PLAN), so no separate `clab-r6` lab is redeployed
+any more. Network `Default` holds twelve of them, every one but r5; each of the twelve boots from
+its startup file, r8 and s5 since 2026-11-27 (C4288; until then they booted configless, as Lab
+9's ZTP needed). The bullets below are the 2026-10-16 reading, kept for the window's history.
 
 - The topology `<home>/labs/lab/rcn-lab1.clab.yml` on `<lab-host>` has nine network nodes, r1 to
   r5 and s1 to s4 (and hosts h1 to h4 and web). r6 is a separate lab (`clab-r6`) and is NOT
@@ -92,6 +104,74 @@ restart or a new key up to 15 minutes after its end is still the window's
 Not inside the nightly backup window, 02:30 to 03:30 America/Denver, the hypervisor's own
 local time (08:30 to 09:30 UTC under MDT, 09:30 to 10:30 UTC under MST; C2613): start only
 when the window's start is more than 75 minutes away, or after its end.
+
+## Recreating one or two nodes: the documented path (measured 2026-11-27, containerlab 0.79.0)
+
+**What each command does to a running lab:**
+
+| Command | What it does | How it is known |
+|---|---|---|
+| `containerlab deploy -t rcn-lab1.clab.yml --reconfigure` (the full redeploy, below) | recreates **every** node, s3 included, each from a fresh disk | the redeploy of 2026-11-27 17:38Z: all thirteen nodes' containers restarted |
+| `… --reconfigure --node-filter r8,s5` | **destroys the whole lab** first, then deploys only the named nodes and only the links among them (r8's link to r2 would not exist). **Never run it.** | containerlab's own deploy page: `--reconfigure` "first destroy[s] the lab and all its directories"; node filtering "applies to fresh deployments (including `--reconfigure`) only"; it deploys "only those nodes and links belonging to all selected nodes". Read, not run (it would take the lab down) |
+| `… --node-filter r8` without `--reconfigure` | refused: "Node filter is not supported when reconciling deployed lab … running nodes excluded by the filter would be deleted" | measured on a throwaway three-node lab |
+| plain `containerlab deploy -t rcn-lab1.clab.yml` on a running lab | **reconciles**: recreates only the nodes whose definition changed (env, binds), parks and restores their links, and leaves every other node running; a node that is missing is created with its links | measured on a throwaway three-node lab (a changed node recreated, its neighbours' start times unchanged, every link back), then on r8 and s5 at 21:11Z: r2 and s3 kept their start times, and r2's end of its link to r8 kept its peer and its tap redirects |
+
+**Not measured yet:** whether a change to a node's startup FILE alone (its definition
+unchanged) counts as a change; until it is measured, the dry run says, and a plan that does not
+list the node means the plain deploy will not recreate it.
+
+**The path, on `<lab-host>` as `<user>` unless said:**
+
+1. **The pre-flight** (above), on `<nmas-host>`: every check passes for the nodes to be
+   recreated (the drift read set aside only when they are down, by the operator's word).
+2. **Change the node's definition** in `rcn-lab1.clab.yml` (the change that needs the recreate;
+   keep a copy of the file first), and leave every other node's block as it is.
+3. **The dry run, first, every time:**
+
+   ```bash
+   cd <home>/labs/lab && containerlab deploy -t rcn-lab1.clab.yml --dry-run
+   ```
+
+   Its "Apply plan" must list **exactly the nodes intended**, each as `recreated nodes │ <node>
+   (config drift: …)`, and nothing else. Any other row (s3 above all) means stop: find what else
+   differs from what runs before anything is recreated.
+4. **A node whose startup file changed:** without `--reconfigure`, containerlab keeps a node's
+   existing artifacts, so set aside its old `clab-rcn-lab1/<node>/config/startup-config.cfg`
+   (move it out of the folder, never delete it) so the deploy copies the new one (s5's held an
+   895-byte file from its configless boots on 2026-11-27).
+5. **The window, on `<nmas-host>` as `<user>`**, naming only those nodes:
+
+   ```bash
+   <home>/python/Agentic_NMAS/scripts/nmas-planned-restart Default <node> [<node> …] \
+       --minutes 60 --new-host-keys --why "<why these nodes are recreated>"
+   ```
+
+   It names the far ends of the nodes' links ("its links' far ends: r2 GigabitEthernet4"); stop
+   if it refuses.
+6. **The deploy, at once, with no flags:**
+
+   ```bash
+   cd <home>/labs/lab && containerlab deploy -t rcn-lab1.clab.yml
+   ```
+
+   It logs "Parking links for recreate", "Deleting node for recreate", "Creating node" and
+   "Restored link" for those nodes only.
+7. **Check:** only those nodes' containers restarted (`docker inspect -f '{{.State.StartedAt}}'`
+   on a neighbour and on s3 shows the time before the deploy); each node's
+   `config/startup-config.cfg` is the size of its file in `configs/`; a vrnetlab neighbour's end of
+   each restored link still redirects to its tap (`tc filter show dev eth<N> ingress` inside
+   the neighbour names `tap<N>`).
+8. **Wait for the answers and the keys:** a C8000v answered about 7 minutes after its recreate
+   (r8, 2026-11-27: 21:11:45Z to 21:18:33Z), and a switch behind it answers once it routes (s5,
+   21:18:38Z). History shows "SSH host key kept under a planned window" for each; the next drift
+   run reads each against its golden, and its standing outage incident closes at that clean read.
+9. **Commit the topology in the lab's repository** (`git add rcn-lab1.clab.yml && git commit`),
+   a person's step on the lab host.
+
+## The full redeploy (every node, s3 included)
+
+Only when every node must boot afresh: it recreates s3, which carries the fleet's management
+path, and every other node. Use the single-node path above for anything less.
 
 ## The procedure
 
