@@ -269,6 +269,32 @@ class TestTheThreeLines:
         (only,) = primaries(html.split('id="incident-live"', 1)[1])
         assert only[2] == "Open r2" and 'data-fix="item"' in bluf(html), only
 
+    def test_c_s_order_the_action_row_then_the_lines_then_the_incident_s_line(self, web,  # noqa: F811
+                                                                            monkeypatch):
+        """C's order (the operator's GUI pick, 2026-11-25; Stage 5 step 4; its board
+        design/proposals/C-document/worst-2.html): the title, the action row right under it,
+        then the impact and status lines, then the incident's line, its id and how long it has
+        been open ("Incident hi-0214 · open 14 min"), in the card's default view. The span is
+        said there once: the Details head and the Timings heading no longer carry it."""
+        iid = legacy(web)
+        planted(monkeypatch, iid, offered=("start",))
+        html = body_of(web, iid)
+        top = bluf(html)
+        marks = ('data-bluf="what"', 'data-bluf="fix"', 'data-bluf="impact"',
+                 'data-bluf="status"', 'data-meta')
+        assert [m for m in marks if m not in top] == [], "each is in the card's default view"
+        order = [top.index(m) for m in marks]
+        assert order == sorted(order), order
+        meta = re.search(r'<p class="doc-asof inc-meta" data-meta>(.*?)</p>', top, re.S)
+        assert meta, "the incident's line is in the card's default view"
+        said = text_of(meta.group(1))
+        assert said.startswith(f"Incident {iid} · open since "), said
+        live = html.split('id="incident-live"', 1)[1]
+        head = live.split('class="inc-head', 1)[1].split("</div>", 1)[0]
+        assert "since" not in text_of(head), text_of(head)
+        timings = re.search(r"<summary>Timings · ([^<]*)</summary>", live).group(1)
+        assert timings == "not repaired yet", timings
+
 
 # ── Nothing that failed is the next action ─────────────────────────────────────────────────
 

@@ -28,9 +28,10 @@ SDN incident are on [Needs attention](needs-attention) until theirs are built.
 
 ## At a glance {#at-a-glance}
 
-The page reads as a document: the incident's title first, with its impact and its one action
-(the incident's card, below), then its story: its facts, then sections that open, each one
-line until opened.
+The page reads as a document: the incident's title first, its one action right under it, then
+its impact and a line with the incident's id and how long it has been open ("Incident hi-… ·
+open since 10:42 (14 min ago)"; a resolved one's from and to) (the incident's card, below),
+then its story: its facts, then sections that open, each one line until opened.
 
 - **The facts:** four lines, what to do next first. Then what happened (drawn only where it
   says more than the title); the likely cause (the AI's first hypothesis,
@@ -99,7 +100,9 @@ by their display name.
 
 ## The bottom line {#bluf}
 
-Three lines, at the top of the page, before anything else:
+Three parts, at the top of the page, before anything else; on the page the action's button
+(3) is drawn right under the title (1), then the impact (2), then the incident's id and how
+long it has been open:
 
 1. **What happened**: the problem, in an engineer's words ("edge1: telemetry streams 101 and
    102 lost"), never the alert that raised it nor Mercury's codes: the page's title, word for

@@ -91,12 +91,18 @@
 {%- set nets = r.networks or {} %}
 {%- set page_head %}
 <div class="inc-head inc-{{ p.state }}" data-inc-state="{{ p.state }}">
-    <p class="inc-line">{{ info('incident') }}<span data-state="{{ p.state }}">{{ badge(p.state_words, p.state_kind) }}</span>{% if p.drill %} <span class="inc-drill" data-drill="{{ p.drill.id }}">{{ badge('Drill', 'info', title=p.drill.hover) }}</span>{% endif %}{% if p.severity.words %} <span class="inc-sev">{{ badge(p.severity.words, p.severity.kind) }}</span>{% endif %} <span><a href="{{ url_for('device_v2.device', name=p.device, list=p.network) }}">{{ p.device }}</a> ({{ p.network }}){% if p.members_n %}, and {{ p.members_n }} device{{ '' if p.members_n == 1 else 's' }} attached{% endif %}</span>
-      {#- A resolved incident's span ends when it ended (a fixed one at its verify, a declined
-          one at the decline, a cleared one at its close: `incident_page.ended_at`). -#}
-      {%- if p.resolved %} <span class="inc-span">{% if p.opened %}{{ at(p.opened) }} to {% endif %}{% if p.ended_at or p.closed_at %}{{ at(p.ended_at or p.closed_at) }}{% else %}closed{% endif %}</span> <span class="inc-ro">resolved: read-only</span>
-      {%- elif p.opened %} <span>since {{ at(p.opened) }} ({{ stamp(p.opened) }})</span>{% if p.closed_at %} <span class="inc-ro">self-healing ended its own work on it {{ at(p.closed_at) }}</span>{% endif %}{% endif %}</p>
+    <p class="inc-line">{{ info('incident') }}<span data-state="{{ p.state }}">{{ badge(p.state_words, p.state_kind) }}</span>{% if p.drill %} <span class="inc-drill" data-drill="{{ p.drill.id }}">{{ badge('Drill', 'info', title=p.drill.hover) }}</span>{% endif %}{% if p.severity.words %} <span class="inc-sev">{{ badge(p.severity.words, p.severity.kind) }}</span>{% endif %} <span><a href="{{ url_for('device_v2.device', name=p.device, list=p.network) }}">{{ p.device }}</a> ({{ p.network }}){% if p.members_n %}, and {{ p.members_n }} device{{ '' if p.members_n == 1 else 's' }} attached{% endif %}</span></p>
 </div>
+{%- endset %}
+{#- The incident's line under its sentence (Stage 5 step 4, C's "Incident hi-0214 · open 14 min"):
+    its id and its span, out of Details so the person sees how long it has been open without
+    opening anything; said once, so the Details head no longer carries it. A resolved
+    incident's span ends when it ended (a fixed one at its verify, a declined one at the
+    decline, a cleared one at its close: `incident_page.ended_at`). -#}
+{%- set page_meta %}
+<p class="doc-asof inc-meta" data-meta>Incident <span class="mono">{{ p.id }}</span>
+  {%- if p.resolved %} · <span class="inc-span">{% if p.opened %}{{ at(p.opened) }} to {% endif %}{% if p.ended_at or p.closed_at %}{{ at(p.ended_at or p.closed_at) }}{% else %}closed{% endif %}</span> <span class="inc-ro">resolved: read-only</span>
+  {%- elif p.opened %} · <span>open since {{ at(p.opened) }} ({{ stamp(p.opened) }})</span>{% if p.closed_at %} · <span class="inc-ro">self-healing ended its own work on it {{ at(p.closed_at) }}</span>{% endif %}{% endif %}</p>
 {%- endset %}
 {%- set fx = r.fix %}
 {#- The incident's own Needs attention action (the GUI review's item 2, C3450), handed to the
@@ -166,7 +172,8 @@
 {#- Timings, collapsed (R2): the four recorded times, TIME TO REPAIR and one line per
     attempt. -#}
 <details class="card inc-timings" id="inc-timings" data-keep="inc-timings-{{ p.id }}">
-  <summary>Timings · {% if p.ttr.seconds is not none %}repaired in {{ p.ttr.span or p.ttr.words }}{% elif p.opened %}since {{ at(p.opened) }}{% else %}not recorded{% endif %}</summary>
+  {#- An open incident's start is said once, on its line under the card (`page_meta`). -#}
+  <summary>Timings · {% if p.ttr.seconds is not none %}repaired in {{ p.ttr.span or p.ttr.words }}{% elif p.opened %}not repaired yet{% else %}not recorded{% endif %}</summary>
   <dl class="inc-times">
     {%- for c in p.header %}
     <div class="inc-time inc-time-{{ c.state }}" data-cell="{{ c.name | lower }}"{% if c.hover %} title="{{ c.hover }}"{% endif %}><dt>{{ c.name }}</dt><dd>{{ cell(c) }}</dd></div>

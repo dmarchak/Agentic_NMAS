@@ -146,26 +146,8 @@
 {%- set SEV = page_sev if page_sev is defined and page_sev else ({'words': {'critical': 'Critical', 'warning': 'Warning', 'info': 'Info'}.get(B.severity or '', ''), 'kind': {'critical': 'danger', 'warning': 'warn', 'info': 'info'}.get(B.severity or '', 'neutral')}) %}
 <section class="card inc-bluf simple" id="inc-bluf" data-card="incident" aria-labelledby="inc-title" data-inc-state="{{ x.page_state }}" data-fix="{{ F.kind or 'none' }}"{% if B.severity %} data-severity="{{ B.severity }}"{% endif %}{% if item_state is defined %} data-item="{{ item_state }}"{% endif %}>
   <h1 class="simple-title" id="inc-title" data-bluf="what"{% if B.problem %} data-condition="{{ B.problem.condition }}"{% endif %} title="{{ TITLE }}">{{ TITLE }}</h1>
-  {%- if C.kind == 'ok' %}
-  <p class="simple-status simple-ok fixit-status" role="status" data-bluf="status" data-status data-fixed="{{ C.fixed_at }}">{% if page_drill is defined and page_drill %}<span class="inc-sev" data-state="{{ page_state_word if page_state_word is defined else x.page_state }}"></span><span class="inc-drill" data-drill="{{ page_drill.id }}">{{ badge('Drill', 'info', title=page_drill.hover) }}</span> {% endif %}{{ icon('tick', 16) }} {{ C.status | times }}</p>
-  {%- if C.how %}<p class="simple-impact" data-bluf="how" data-how>How it was fixed: {% if C.how.run %}<a href="{{ run_href(C.how.device or x.device, x.network, C.how.run, page=C.how.page or none) }}">{{ C.how.words }}</a>{% else %}{{ C.how.words }}{% endif %}{% if C.how.fix %} · <a data-fix-page="{{ C.how.fix.key }}" href="{{ url_for('fixes_v2.fix', key=C.how.fix.key, list=x.network) }}">{{ C.how.fix.name }}</a>{% endif %}</p>{% endif %}
-  {%- if C.run %}{{ ended_run(x, C.run) }}{% endif %}
-  {%- if C.proof %}{% with P=C.proof, iid=x.id %}{% include "v2/_inc_proof.html" %}{% endwith %}{% endif %}
-  {#- After Fixed (decisions (a) and (b), 2026-11-16): the heal's save, golden commit and read
-      again, each with its state, live while they run (`heal.act.tail_card`); a failure flags. -#}
-  {%- if C.tail and C.tail.steps %}
-  <ul class="inc-proof-checks small" data-tail="{{ C.tail.state }}" aria-label="After Fixed">
-  {%- for t in C.tail.steps %}
-    <li data-tail-step="{{ t.key }}" data-state="{{ t.state }}"{% if t.state == 'failed' %} data-check="fail"{% endif %}{% if t.state == 'running' %} aria-busy="true"{% endif %}><span aria-hidden="true">{{ '✓' if t.state == 'ok' else '✗' if t.state == 'failed' else '·' }}</span> {{ t.words }}</li>
-  {%- endfor %}
-  </ul>
-  {%- if C.tail.flag %}<p class="simple-impact" data-tail-flag role="alert">{{ C.tail.flag }}</p>{% endif %}
-  {%- endif %}
-  {%- else %}
-  <p class="simple-impact" data-bluf="impact">{% if SEV.words %}<span class="inc-sev" data-state="{{ page_state_word if page_state_word is defined else x.page_state }}">{{ badge(SEV.words, SEV.kind) }}</span> {% endif %}{% if page_drill is defined and page_drill %}<span class="inc-drill" data-drill="{{ page_drill.id }}">{{ badge('Drill', 'info', title=page_drill.hover) }}</span> {% endif %}{% if B.impact %}{{ B.impact }}{% else %}<span class="muted" data-impact-unknown>Its impact is not known: Mercury's table holds none for this kind of incident.</span>{% endif %}</p>
-  <div class="simple-status fixit-status{{ ' simple-ai' if C.kind == 'ai' }}{{ ' working-now' if x.working and not C.live }}"{% if C.live and S != 'investigating' %} id="inc-run"{% endif %} data-bluf="status" data-status{% if x.ai_failed %} data-ai-failed{% endif %}{% if C.plan_ready %} data-plan-ready{% endif %}>{% if C.live %}{% with iid=x.id, network=x.network, steps=C.live, said='' %}{% include "v2/_inc_step.html" %}{% endwith %}{% else %}{% if C.plan_ready and C.status %}{{ switch_linked(C.status) }}{% elif x.status %}{% if x.status != STORY_NEXT %}{% if x.status_source %}{{ badge(x.status_source, 'info') }} {% endif %}{{ switch_linked(x.status) }}{% endif %}{% else %}{{ legacy_status() | times }}{% endif %}{% if S == 'investigating' or x.working %} {% with iid=x.id, network=x.network, steps=[], said=('· ' ~ (C.step or x.working_step) if (C.step or x.working_step) else '') %}{% include "v2/_inc_step.html" %}{% endwith %}{% endif %}{% endif %}{% if S == 'running' and not C.live %} <a href="{{ run_href(x.device, x.network, x.stop.run, page=C.run_page or none) }}">Open the run</a>{% endif %}</div>
-  {%- if C.run %}{{ ended_run(x, C.run) }}{% endif %}
-  {%- endif %}
+      {#- C's order (the operator's GUI pick, 2026-11-25; Stage 5 step 4): the action row right
+          under the title, then the impact and status lines and the incident's id and span. -#}
       {#- Which control the fix names: its kind, and for a "button" the action whose route it
           names (Ask the AI again posts, so it is pressed, never followed as a link). "item"
           is the page's (`incident_page.page`): the incident's own Needs attention action. A
@@ -226,6 +208,28 @@
       {{ ai.typed_masked(answer.typed_masked) }}
       {%- endif %}
       </div>
+  {%- if C.kind == 'ok' %}
+  <p class="simple-status simple-ok fixit-status" role="status" data-bluf="status" data-status data-fixed="{{ C.fixed_at }}">{% if page_drill is defined and page_drill %}<span class="inc-sev" data-state="{{ page_state_word if page_state_word is defined else x.page_state }}"></span><span class="inc-drill" data-drill="{{ page_drill.id }}">{{ badge('Drill', 'info', title=page_drill.hover) }}</span> {% endif %}{{ icon('tick', 16) }} {{ C.status | times }}</p>
+  {%- if C.how %}<p class="simple-impact" data-bluf="how" data-how>How it was fixed: {% if C.how.run %}<a href="{{ run_href(C.how.device or x.device, x.network, C.how.run, page=C.how.page or none) }}">{{ C.how.words }}</a>{% else %}{{ C.how.words }}{% endif %}{% if C.how.fix %} · <a data-fix-page="{{ C.how.fix.key }}" href="{{ url_for('fixes_v2.fix', key=C.how.fix.key, list=x.network) }}">{{ C.how.fix.name }}</a>{% endif %}</p>{% endif %}
+  {%- if C.run %}{{ ended_run(x, C.run) }}{% endif %}
+  {%- if C.proof %}{% with P=C.proof, iid=x.id %}{% include "v2/_inc_proof.html" %}{% endwith %}{% endif %}
+  {#- After Fixed (decisions (a) and (b), 2026-11-16): the heal's save, golden commit and read
+      again, each with its state, live while they run (`heal.act.tail_card`); a failure flags. -#}
+  {%- if C.tail and C.tail.steps %}
+  <ul class="inc-proof-checks small" data-tail="{{ C.tail.state }}" aria-label="After Fixed">
+  {%- for t in C.tail.steps %}
+    <li data-tail-step="{{ t.key }}" data-state="{{ t.state }}"{% if t.state == 'failed' %} data-check="fail"{% endif %}{% if t.state == 'running' %} aria-busy="true"{% endif %}><span aria-hidden="true">{{ '✓' if t.state == 'ok' else '✗' if t.state == 'failed' else '·' }}</span> {{ t.words }}</li>
+  {%- endfor %}
+  </ul>
+  {%- if C.tail.flag %}<p class="simple-impact" data-tail-flag role="alert">{{ C.tail.flag }}</p>{% endif %}
+  {%- endif %}
+  {%- else %}
+  <p class="simple-impact" data-bluf="impact">{% if SEV.words %}<span class="inc-sev" data-state="{{ page_state_word if page_state_word is defined else x.page_state }}">{{ badge(SEV.words, SEV.kind) }}</span> {% endif %}{% if page_drill is defined and page_drill %}<span class="inc-drill" data-drill="{{ page_drill.id }}">{{ badge('Drill', 'info', title=page_drill.hover) }}</span> {% endif %}{% if B.impact %}{{ B.impact }}{% else %}<span class="muted" data-impact-unknown>Its impact is not known: Mercury's table holds none for this kind of incident.</span>{% endif %}</p>
+  <div class="simple-status fixit-status{{ ' simple-ai' if C.kind == 'ai' }}{{ ' working-now' if x.working and not C.live }}"{% if C.live and S != 'investigating' %} id="inc-run"{% endif %} data-bluf="status" data-status{% if x.ai_failed %} data-ai-failed{% endif %}{% if C.plan_ready %} data-plan-ready{% endif %}>{% if C.live %}{% with iid=x.id, network=x.network, steps=C.live, said='' %}{% include "v2/_inc_step.html" %}{% endwith %}{% else %}{% if C.plan_ready and C.status %}{{ switch_linked(C.status) }}{% elif x.status %}{% if x.status != STORY_NEXT %}{% if x.status_source %}{{ badge(x.status_source, 'info') }} {% endif %}{{ switch_linked(x.status) }}{% endif %}{% else %}{{ legacy_status() | times }}{% endif %}{% if S == 'investigating' or x.working %} {% with iid=x.id, network=x.network, steps=[], said=('· ' ~ (C.step or x.working_step) if (C.step or x.working_step) else '') %}{% include "v2/_inc_step.html" %}{% endwith %}{% endif %}{% endif %}{% if S == 'running' and not C.live %} <a href="{{ run_href(x.device, x.network, x.stop.run, page=C.run_page or none) }}">Open the run</a>{% endif %}</div>
+  {%- if C.run %}{{ ended_run(x, C.run) }}{% endif %}
+  {%- endif %}
+  {#- The incident's id and span (the page's `page_meta`), under its lines (C). -#}
+  {%- if page_meta is defined %}{{ page_meta }}{% endif %}
   {#- The card's ONE Details (R5): everything else, nothing removed (board R5's screen 6). -#}
   {#- While the AI investigates the stepper is the view (the operator, 2026-11-16): Details is
       closed by default, its open state kept apart from the one after (its own key). -#}
