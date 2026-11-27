@@ -366,6 +366,31 @@ def test_an_unreadable_devices_cant_fix_with_no_symptom_ends_at_the_clean_read( 
         inc["closed_why"]
 
 
+def test_an_unreadable_devices_unclassified_err_disable_is_never_ended_by_a_clean_read(  # noqa: F811
+        fold, monkeypatch):
+    """The third independent review's finding (bdff0c89): an err-disable line that arrived
+    while the device could not be read, not classified yet, names a port whose state a clean
+    configuration read says nothing about: the read stands it on its symptoms (where the port
+    is judged on its device read once classified), never closes it."""
+    got = I.sight("Default", "core-b", {
+        "kind": "errdisable", "key": "errdisable:core-b:Gi0/1", "epoch": T0, "at": iso(T0),
+        "source": "logs-tail", "interface": "GigabitEthernet0/1",
+        "words": "%PM-4-ERR_DISABLE: bpduguard error detected on Gi0/1"}, now=T0)
+    assert got["action"] == "opened", got
+    iid = got["incident"]
+
+    def stand(doc):
+        inc = next(i for i in doc["incidents"] if i["id"] == iid)
+        inc.update(state="standing", standing=dict(UNREADABLE_STANDING, at=iso(T0 + 100),
+                                                   epoch=T0 + 100))
+    I._mutate("Default", stand)
+    golden_now(monkeypatch, "at_intent")
+    assert (_clean_read(T0 + 3600).get("ended") or []) == [], "a port's state is not read"
+    inc = the("core-b")
+    assert inc["id"] == iid and inc["state"] == "standing" and \
+        inc["standing"]["on"] == "symptom", inc["standing"]
+
+
 def test_a_re_stand_leaves_a_record_decided_again_since_the_read(fold):  # noqa: F811
     """C4291: the re-stand compares, inside the store's lock, the decision the read was judged
     against: a record decided again since keeps its own standing."""

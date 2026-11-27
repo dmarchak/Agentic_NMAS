@@ -865,8 +865,13 @@ def clean_ended(network: str, result: dict, now: float) -> list:
                 # C4289: decided while the device could not be read; read now at its golden,
                 # it stands on its symptoms, which `detect._standing` judges (never closed
                 # here: a symptom still there keeps it). C4290: with no symptom to read (no
-                # symptom trigger, no classified port), the read itself ends it, below.
-                if act.symptom_triggers(decide.judged_triggers(inc)) or \
+                # symptom trigger, no port trigger), the read itself ends it, below. A port
+                # trigger (an err-disable line or a port's alert), classified or not yet, keeps
+                # it: a clean configuration read says nothing about a port's state (the third
+                # review's finding).
+                judged = decide.judged_triggers(inc)
+                if act.symptom_triggers(judged) or \
+                        any(t.get("kind") in errdisable.PORT_TRIGGERS for t in judged) or \
                         (errdisable.of_record(inc) or {}).get("state") == "classified":
                     incidents.stand_on_symptoms(network, inc["id"], (
                         f"the drift check ({by}) read {host} at its golden at {_iso(at)}"),
