@@ -104,8 +104,61 @@ and the next session unblocks the item and moves the entry to Answered.
   until something needs them. **Recommendation:** (a): every node then comes back from a redeploy
   by itself, and Lab 9's ZTP pass stays recorded as it was. It needs your word because it
   changes the lab's design for two nodes.
+- **Answered 2026-11-27, the operator's words:** "Convert r8's and s5's latest goldens to
+  containerlab startup configs, the same way the other ten are made (sanitised as theirs are).
+  Add startup-config lines for r8 and s5 to the topology file so every future redeploy uses
+  them. Reload r8 and s5 per lab/REDEPLOY.md. Skip the drift pre-flight (they're down); open
+  Mercury's window for new host keys as the runbook does. Never touch s3. … If anything fails,
+  fix it forward and keep going."
+- **Done 2026-11-27 (in progress at 21:15 UTC):** the lab's map maps r8 and s5 (their two
+  DECLARED-UNMAPPED lines replaced by rows like r7's; the earlier map kept beside it); the
+  startup sync built both from their goldens at intent, sanitised as the ten are (r8 130 lines,
+  s5 104, each up-ifs-ok), copied and committed them in the lab's repository at 21:09:31Z; the
+  pre-flight passed every check but the drift read on all 12. The topology's r8 block is r6's
+  (startup-only launcher), s5's is s1 to s4's (stock launcher, CPU 19 kept); **its commit in the
+  lab's repository is yours** (a git write on a host's checkout stays refused):
+  `cd ~/labs/lab && git add rcn-lab1.clab.yml && git commit -m "lab: r8 and s5 boot from their startup files (C4288)"`.
+  The one redeploy command would have recreated every node, s3 included, and containerlab
+  0.79's `--reconfigure --node-filter` destroys the whole lab; a throwaway three-node lab
+  measured that a plain `containerlab deploy` reconciles a running lab, recreating only a changed
+  node with its links restored and its neighbours untouched. The dry run planned exactly "r8
+  (config drift: Env, Binds)" and "s5 (…)"; the window (id 7764c4aff65104e1, 21:11:07 to
+  22:11:07Z, new host keys) came first; the deploy at 21:11:42Z recreated r8 and s5 alone (r2 and
+  s3 kept their 17:38 start), parking and restoring their links (r2's eth3 kept its peer and
+  its tap redirects).
 
 ### s1-walk
+
+**RECORD 1 CAPTURED; READY FOR THE REWRITTEN SHEET (2026-11-27 21:43 UTC, 14:43 Denver).** Go 1
+ran at 21:36:26Z: incident hi-f90c700a7d45 opened at 21:36:41Z and your press of BPDU guard
+recovery (access ports) fixed it, verified, at 21:40:05Z. Its proof is a command plan's run
+(`script-bpdu-guard-recovery-access-ports`) with 2 checks and 4 reads, captured masked
+(record 1, `P.reads`, kept outside the repository until C4090 lands). The old step 3 could not
+work: the card's save offer takes only a catalog command plan's run, never a saved fix's ("no
+command plan ran and passed its own verify", words that are wrong for this case: registered).
+So record 2 is made by **Fixes › New fix…** instead, saved **Manual**, which the card offers
+beside the Automatic one; your later instruction to set "any port" to manual is then met from
+the start. s1 has no open incident; Gi1/0 is back up. Only the rewritten steps below remain.
+
+**Record 2's steps (about 10 min):**
+
+1. **Troubleshooting › Fixes › New fix….** Name: **BPDU guard recovery (any port)**. What it
+   fixes: **err-disabled**, cause **BPDU guard**, port role **left unset (any)**, **the cause has
+   cleared** ticked. Lines: the three it offers, **`interface {interface}`, `shutdown`,
+   `no shutdown`**. Checks before: **The port is err-disabled by the cause now**, **The switch does
+   not recover the cause itself**, **The cause has cleared**. Verifies after: **The port reads
+   connected**, **No new err-disable**. (These are the access-ports fix's own, read from it; only
+   the port role differs.) Read its preview on the example, then **Save as Manual only**.
+2. **"go 2".** Wait for the agent's "incident 2 open".
+3. Open the new incident. The card offers **Fix with saved script: BPDU guard recovery (access
+   ports)** and, beside it, **Fix with saved script: BPDU guard recovery (any port)**: that pair
+   is record 2. **Write "hold" in chat and wait** for the agent's "captured" before pressing.
+4. Press either one. Wait for Fixed. The walk is done; the agent lands C4090.
+
+**If something differs:** New fix… refuses the draft, or the card offers one fix, not two: write
+what it says in chat and stop; nothing is retried.
+
+**Superseded below: the first sheet (go 1 done, its step 3 impossible).**
 
 **READY FOR GO 1 (2026-11-27 19:13 UTC, 12:13 Denver):** s1's outage incident hi-08fa12d33834
 is closed, not re-stood (19:12:06Z: "nothing to heal: every symptom the incident named has

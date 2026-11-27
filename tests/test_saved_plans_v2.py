@@ -489,3 +489,48 @@ class TestTheDeviceActions:
                                   data={"key": BOUNCE["key"], "interface": "GigabitEthernet0/2",
                                         "hash": "h-bounce"})
         assert r.status_code in (401, 403) and not device["seen"]["run"]
+
+
+class TestHowItWasFixedNamesWhoPressed:
+    """C4298 (the operator, 2026-11-27, the s1 walk: "I pressed that fix myself. The card credits
+    'Mercury's self-healing', which is wrong for the audit trail: a person's press must say who
+    pressed it"): with no attempt recorded, the run the incident's close names says who. A
+    person's press records the verified person (``actor_verified``); an automatic fire records
+    none (`saved_plans.fire`), so only it, or a close naming no run, is Mercury's self-healing.
+    The runs are written by the operations' own record writer; the card's words are read back."""
+
+    def _run(self, store, **who):  # noqa: F811
+        from modules.nsot import privileged, reads
+        rec = {"id": reads.new_id(), "list": NET, "device": "s1", "kind": "command_plan",
+               "key": "script-bpdu-guard-recovery-access-ports", "state": "done",
+               "outcome": "done", "at": "2026-11-27T21:39:25Z", **who}
+        privileged.record(NET, rec)
+        return rec["id"]
+
+    @staticmethod
+    def _how(fixed: dict) -> dict:
+        """The card's how line for a fixed incident with no attempt recorded, as `card_of`
+        builds it from the incident's close."""
+        from modules.fixit import section
+        out = {"state": "resolved", "ended": "fixed", "network": NET, "id": INC,
+               "device": "s1", "attempts": []}
+        found = {"incident": {"id": INC, "device": "s1", "fixed": fixed,
+                              "closed_at": "2026-11-27T21:40:05Z"}}
+        return section.card_of(out, found)["how"]
+
+    def test_a_persons_press_names_the_person_and_links_its_run(self, store):  # noqa: F811
+        from modules import display_names
+        rid = self._run(store, actor=PERSON, actor_verified="access")
+        how = self._how({"run": rid, "device": "s1", "name": "BPDU guard recovery (access ports)",
+                         "script": "script-bpdu-guard-recovery-access-ports"})
+        assert how["words"] == f"Run by {display_names.people(PERSON)}, verified on the device", how
+        assert (how["device"], how["run"]) == ("s1", rid), how
+        assert how["fix"]["key"] == "script-bpdu-guard-recovery-access-ports", how
+
+    def test_an_automatic_fire_and_a_close_with_no_run_are_mercurys_self_healing(
+            self, store):  # noqa: F811
+        rid = self._run(store, actor=PERSON, actor_verified="", person=False)
+        for fixed in ({"run": rid, "device": "s1"}, {"at": "2026-11-27T21:40:05Z"}):
+            how = self._how(fixed)
+            assert how["words"] == "Mercury's self-healing, verified on the device", (fixed, how)
+            assert how["run"] == ""

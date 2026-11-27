@@ -1454,8 +1454,7 @@ def card_of(out: dict, found: dict) -> dict:
             card["how"] = {"words": f"{what} by {who}", "device": a.get("device") or "",
                            "run": a.get("run") or ""}
         else:
-            card["how"] = {"words": "Mercury's self-healing, verified on the device",
-                           "device": "", "run": ""}
+            card["how"] = _how_of_close(network, record.get("fixed") or {})
         if card["run"] and card["how"].get("run"):
             # The plan's run is drawn on this card: its link opens it here.
             card["how"]["page"] = "#inc-run"
@@ -1499,6 +1498,29 @@ def _tail_of(network: str, device: str, found: dict) -> dict:
     except Exception as exc:                          # noqa: BLE001 (drawn without it)
         log.error("fixit: %s's tail could not be read: %s", device, exc)
         return {}
+
+
+def _how_of_close(network: str, fixed: dict) -> dict:
+    """How it was fixed when no attempt of the incident's passed: the run its close names says
+    who (C4298). A person's press of a saved fix (`routes/fixit_v2.fix_with_script`) records the
+    verified person (``actor_verified`` set); an automatic fire records none
+    (`saved_plans.fire`: ``actor_verified=""``), so only a run with no verified person, or no
+    run, is Mercury's self-healing. ``{"words", "device", "run"}``."""
+    from modules import display_names
+    from modules.config import list_data_path
+    from modules.nsot import privileged
+
+    run_id = str(fixed.get("run") or "")
+    rec = None
+    if run_id:
+        try:
+            rec = privileged.get(network, run_id, data_dir=list_data_path(network))
+        except (OSError, ValueError) as exc:
+            log.error("fixit: the run %s that closed it could not be read: %s", run_id, exc)
+    if rec and rec.get("actor_verified") and rec.get("actor"):
+        return {"words": f"Run by {display_names.people(rec['actor'])}, verified on the device",
+                "device": fixed.get("device") or rec.get("device") or "", "run": run_id}
+    return {"words": "Mercury's self-healing, verified on the device", "device": "", "run": ""}
 
 
 def _proof_of(network: str, attempt, record: dict, found: dict) -> dict:
