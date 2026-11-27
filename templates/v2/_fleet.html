@@ -11,19 +11,9 @@
 <div class="monitoring" id="fleet" hx-get="{{ url_for('v2.monitoring_dashboard', list=net, dashboard=dash_uid, range=cur_range) }}"
      hx-trigger="nmas:dashboards from:body" hx-swap="outerHTML">
 <div class="toolbar">
-  <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">
-    <button type="button" class="btn btn-select" aria-haspopup="listbox" x-bind:aria-expanded="expanded" x-on:click="toggle">
-      <span class="muted">Network</span> <strong>{{ net }}</strong>{{ icon('down', 14) }}
-    </button>
-    <div class="menu" role="listbox" x-show="isOpen" x-cloak>
-      <p class="menu-note">Each network's own Grafana and fleet dashboard: {{ networks|length }} network{{ '' if networks|length == 1 else 's' }}.</p>
-      {%- for n in networks %}
-      <a role="option" data-what="the {{ n }} network" class="menu-item{% if n == net %} on{% endif %}" aria-selected="{{ 'true' if n == net else 'false' }}"
-         href="{{ url_for('v2.monitoring_page', list=n, range=cur_range) }}"><span class="grow">{{ n }}</span></a>
-      {%- endfor %}
-    </div>
-  </div>
-  {{ info('monitoring', 'network', 'Which network this shows') }}
+  {#- Stage 5 step 6 (the survey's Monitoring line): no Network menu of the page's own; the
+      top bar's picker names the network shown (`list_name`, routes/v2.monitoring_page) and
+      chooses another, as Coverage and Profile already do. -#}
   <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">
     <button type="button" class="btn btn-select" aria-haspopup="listbox" x-bind:aria-expanded="expanded" x-on:click="toggle"{% if m.value_at %} title="Grafana's dashboard list, read {{ m.value_at }}"{% endif %}>
       <span class="muted">Dashboard</span> <strong title="{{ (m.dashboard or {}).get('title') or '' }}">{{ (m.dashboard or {}).get('title') or 'none chosen' }}</strong>{{ icon('down', 14) }}

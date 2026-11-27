@@ -158,8 +158,8 @@ class TestThePageCarriesItsNetwork:
         # form's fields are its whole query).
         form = ["/v2/monitoring/dashboard?list=Lab"]
         assert re.search(r'<input type="hidden" name="list" value="Lab">', fleet)
-        assert links.count(form[0]) == 1 and menu == ["/v2/monitoring?list=Default&amp;range=1h",
-                                                      "/v2/monitoring?list=Lab&amp;range=1h"]
+        # Stage 5 step 6: no Network menu of the page's own (the top bar's chooses).
+        assert links.count(form[0]) == 1 and menu == []
         rest = [u for u in links if u not in form + menu]
         assert len(rest) > 10 and all("list=Lab" in u for u in rest), \
             [u for u in rest if "list=Lab" not in u]
@@ -179,12 +179,23 @@ class TestThePageCarriesItsNetwork:
         _r, html = _get(lab, "/v2/monitoring?list=Lab")
         assert len(re.findall(r'data-what="the [^"]* dashboard"', html)) > 1
 
-    def test_the_menu_opens_each_network(self, lab, branch):
+    def test_the_top_bar_names_the_network_shown_and_the_page_has_no_menu_of_its_own(
+            self, lab, branch):
+        """Premise corrected (Stage 5 step 6, the survey's Monitoring line: "Drop the page's
+        own Network picker (the top bar has one)"): the page drew a Network menu of its own
+        beside the top bar's. Now the top bar's label names the network the page shows, the
+        address's when it names one, and its picker chooses another (network_v2.choose opens
+        the same page for it); the page draws no network menu."""
+        _r, html = _get(lab, "/v2/monitoring?list=Branch")
+        label = html.split('class="net net-pick', 1)[1].split("</summary>", 1)[0]
+        assert "Branch" in label and "Lab" not in label, label
+        assert "shown=Branch" in label, "the picker is told the network the page shows"
+        assert re.findall(r'data-what="the \w+ network"', html) == []
+        assert "Monitoring · Branch" in html
+        # The control: with no network in the address, the label names the active one.
         _r, html = _get(lab, "/v2/monitoring")
-        assert re.findall(r'data-what="the (\w+) network"[^>]*\s+href="([^"]+)"', html) == [
-            ("Default", "/v2/monitoring?list=Default&amp;range=1h"),
-            ("Branch", "/v2/monitoring?list=Branch&amp;range=1h"),
-            ("Lab", "/v2/monitoring?list=Lab&amp;range=1h")]
+        label = html.split('class="net net-pick', 1)[1].split("</summary>", 1)[0]
+        assert "Lab" in label and "<h1>Monitoring · Lab" in html
 
     def test_a_network_nobody_has_is_refused_naming_it(self, lab):
         r, _html = _get(lab, "/v2/monitoring?list=Nowhere")

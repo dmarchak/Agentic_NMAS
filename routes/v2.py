@@ -1961,9 +1961,7 @@ def _fleet_ctx() -> dict:
     from flask import request
 
     from modules import device_page
-    from modules.integration_groups import network_names
-    return {"networks": network_names(),
-            "m": device_page.fleet_monitoring(_monitoring_network(),
+    return {"m": device_page.fleet_monitoring(_monitoring_network(),
                                               chosen_uid=request.args.get("dashboard", ""),
                                               range_text=request.args.get("range", "1h"))}
 
@@ -1971,9 +1969,11 @@ def _fleet_ctx() -> dict:
 @bp.route("/monitoring", methods=["GET"])
 def monitoring_page():
     """Monitoring: the FLEET dashboard by default, with the selector, and
-    Coverage as a tab beside it (the operator, 2026-10-01)."""
+    Coverage as a tab beside it (the operator, 2026-10-01). The top bar names the network
+    the page shows, the address's when it names one (Stage 5 step 6: the page has no Network
+    menu of its own)."""
     return _page("v2/monitoring.html", active_nav="monitoring", monitoring_tab="dashboards",
-                 **_fleet_ctx())
+                 list_name=_monitoring_network(), **_fleet_ctx())
 
 
 @bp.route("/monitoring/dashboard", methods=["GET"])

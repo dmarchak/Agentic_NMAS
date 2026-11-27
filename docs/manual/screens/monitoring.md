@@ -16,8 +16,9 @@ Monitoring tab has the same menu.
 Monitoring shows one network at a time, named in the page's title, and the address carries it
 (`/v2/monitoring?list=Branch`), so a copied link shows the same network to whoever opens it.
 With no network in the address, the page shows the one you chose in the top bar's Network
-picker (the installation's current one until you choose). Choosing another there opens that
-network's Monitoring.
+picker (the installation's current one until you choose). The top bar names the network the
+page shows, the address's when it names one, and choosing another there opens that network's
+Monitoring; the page has no network menu of its own.
 
 Everything on the Dashboards tab is that network's:
 - its fleet dashboard (Fleet dashboard UID, in its settings);
