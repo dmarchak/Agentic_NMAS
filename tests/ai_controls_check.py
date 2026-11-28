@@ -49,8 +49,9 @@ MARKUP = {
     "sdn_policy": {"button": r'<button\b[^>]*\bdata-op="sdn-policy"[^>]*>',
                    "input": r'<textarea\b[^>]*\bid="pol-words"[^>]*>'},
     # The toolbar assistant (card P7, stage 1): its panel, drawn the first time it opens on a
-    # page (routes/assistant_v2.panel).
-    "assistant": {"button": r'<button\b[^>]*\bdata-op="assistant"[^>]*>',
+    # page (routes/assistant_v2.panel). The chat (2026-11-28): its Send, by its id (Stop, drawn
+    # beside it for a question being answered, asks the model nothing).
+    "assistant": {"button": r'<button\b[^>]*\bid="asst-send"[^>]*>',
                   "input": r'<textarea\b[^>]*\bid="asst-q"[^>]*>'},
     # An incident's page, AI troubleshooting (the fix-it plan's S5; the operator's R2,
     # 2026-11-14): Start AI troubleshooting and its Add what you know box, the BLUF's next

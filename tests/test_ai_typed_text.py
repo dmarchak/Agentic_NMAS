@@ -392,6 +392,11 @@ FIELDS = {
         "form.path": "the page's path, resolved by Mercury's URL map into what the panel is "
                      "looking at (assistant_context.resolve); only the names it resolves to "
                      "are sent",
+        # The chat (2026-11-28): the page's sidebar item, as the panel was drawn with it; it
+        # names the screen when the path names none (`assistant_context.NAV_SCREENS`), never
+        # sent as typed.
+        "form.nav": "the page's sidebar item, resolved into a screen's name by "
+                    "assistant_context.NAV_SCREENS; only that name is sent",
         # The plan engine (2026-11-14): the page's own network, read after the call for a plan
         # the answer named (its preview's `list`); never a part, never sent.
         "request.<passed to named_list>": "the network the panel was asked from, which a "

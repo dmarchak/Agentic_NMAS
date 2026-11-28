@@ -490,6 +490,11 @@ SCRIPT_REQUESTS = {
     ("nmas_credentials.js", "return root.fetch(el.getAttribute('data-intact-url')"): (
         "drawn: data-intact-url"),
     ("nmas_drag.js", "root.htmx.ajax('GET', url"): "drawn: the element's own hx-get",
+    # The Assistant chat (2026-11-28): the head's Looking at asked again when the page's
+    # address changes without a new page, from the address the panel drew, which names the
+    # page's network (page_network writes ?list= into data-*-url as the panel leaves).
+    ("nmas_assistant.js", "root.htmx.ajax('GET', url + sep + 'path='"): (
+        "drawn: data-place-url (assistant_v2.place), its ?list= the page's network"),
     ("nmas_history.js", "root.fetch(el.getAttribute('data-url')"): "drawn: data-url",
     ("nmas_logq.js", "a.href = href;"): (
         "the server's answer: the series' link from data-panel-src, built by its qs, which "

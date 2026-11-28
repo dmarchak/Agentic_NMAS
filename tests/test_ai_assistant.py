@@ -159,13 +159,14 @@ def test_the_route_draws_the_answer_and_records_a_gap_masked(world):
     from html import unescape
     chosen = manual_index.select(Q, screen="Devices")
     _answer(world, chosen)
-    r = world["client"].post("/v2/assistant/ask", data={"question": Q, "screen": "Devices"})
+    from tests import assistant_ask
+    r = assistant_ask.ask(world["client"], {"question": Q, "screen": "Devices"})
     page = unescape(r.get_data(as_text=True))
     assert r.status_code == 200 and f'href="{chosen[0]["link"]}"' in page
     assert "Open the device page, then Actions › Reload…" in page
     secret = "enable secret 9 $9$abcdefghijklmn$opqrstuvwxyz0123456789ABCDEFG"
-    r = world["client"].post("/v2/assistant/ask",
-                             data={"question": f"weather tomorrow {secret}", "screen": ""})
+    r = assistant_ask.ask(world["client"], {"question": f"weather tomorrow {secret}",
+                                            "screen": ""})
     assert "The manual doesn't cover this." in unescape(r.get_data(as_text=True))
     (gap,) = assistant.gaps()["rows"]
     assert gap["state"] == "not_covered" and "opqrstuvwxyz0123456789" not in json.dumps(gap)

@@ -128,8 +128,10 @@ def ask(lab, question="What version is r2 running?", where=DEVICE_PATH):
 
 
 def post(lab, question, path=DEVICE_PATH):
-    r = lab["client"].post("/v2/assistant/ask?list=Lab",
-                           data={"question": question, "screen": "", "path": path})
+    """A press of Send and its turn as drawn once its job ended (tests/assistant_ask.py)."""
+    from tests import assistant_ask
+    r = assistant_ask.ask(lab["client"], {"question": question, "screen": "", "path": path},
+                          query_string={"list": "Lab"})
     return r, unescape(r.get_data(as_text=True))
 
 
@@ -180,7 +182,7 @@ class TestWhatItIsLookingAt:
         opening it asks the model nothing and records no call."""
         r, html = panel(lab)
         assert r.status_code == 200
-        head = re.search(r'<p class="small asst-place"[^>]*>(.*?)</p>', html, re.S).group(1)
+        head = re.search(r'<span class="asst-place"[^>]*>(.*?)</span>', html, re.S).group(1)
         assert "Looking at: <strong>r2 (device) · Lab</strong>" in head, head
         assert 'name="path" value="/v2/device/r2?tab=overview&list=Lab"' in html
         _r, html = panel(lab, "/v2/devices", nav="devices")
@@ -264,13 +266,20 @@ class TestEveryAnswerShows:
                   cites=[chosen[0]["link"], "read:1"])])
         r, html = post(lab, "What version is r2 running? reload")
         assert r.status_code == 200, html[:400]
-        sources = html[html.index("Sources:"):html.index("</ul>", html.index("Sources:"))]
-        assert f'<a href="{chosen[0]["link"]}">Open</a>' in sources
-        assert 'href="/v2/device/r2?tab=ask&list=Lab">Open Ask the device</a>' in sources
-        assert f'/v2/show-commands/run/{lab["run_id"]}?list=Lab' in sources
+        # The chat (board assistant-chat B): the sources are chips, each with Open; the read's
+        # record on History › Reads is in its expandable line under "Ran 1 read".
+        at = html.index('aria-label="Sources"')
+        sources = html[at:html.index("</ul>", at)]
+        assert f'<a href="{chosen[0]["link"]}" title="Open this section of the manual">Open</a>' \
+            in sources
+        assert 'href="/v2/device/r2?tab=ask&list=Lab" title="Open Ask the device">Open</a>' \
+            in sources
+        reads = html[html.index('<details class="asst-reads"'):]
+        assert "Ran 1 read</summary>" in reads
+        assert f'/v2/show-commands/run/{lab["run_id"]}?list=Lab' in reads
         assert "Haiku 5.5" in html and re.search(r"· \$[0-9.]+", html), html[-900:]
-        links = re.findall(r'href="/v2/history\?call=(ai-[0-9a-f]{16})[^"]*">Open call [12] in '
-                           r'History</a>', html)
+        links = re.findall(r'href="/v2/history\?call=(ai-[0-9a-f]{16})[^"]*" title="Open the '
+                           r'call in History">Call [12] in History</a>', html)
         assert len(links) == 2 and len(set(links)) == 2, html[-900:]
         assert len(lab["ran"]) == 1, "the one read, run once through the reads engine"
 
@@ -350,10 +359,10 @@ class TestTheThread:
         sent = len(lab["sent"])
         r, html = panel(lab, "/v2/devices", nav="devices")
         assert r.status_code == 200 and 'id="asst-answer"' in html, html[:600]
-        thread = html[html.index('id="asst-answer"'):html.index('<form class="op-act asst-ask"')]
+        thread = html[html.index('id="asst-answer"'):html.index('<form class="asst-compose"')]
         assert "First answer." in thread and "Second answer." in thread, thread[:600]
         assert thread.index("First answer.") < thread.index("Second answer."), "oldest first"
-        assert "You asked, looking at r2 (device) · Lab:" in thread
+        assert '<span class="asst-where">on r2 (device) · Lab · <time class="clock"' in thread
         assert len(lab["sent"]) == sent, "drawing the thread made no call"
 
     def test_kept_owner_only_named_by_a_digest_masked_and_the_newest_20(self, lab):
@@ -417,11 +426,20 @@ class TestTheButton:
         # asked below too.
         rules = {(r.rule, "POST" if "POST" in r.methods else "GET")
                  for r in APP.app.url_map.iter_rules() if r.endpoint.startswith("assistant_v2.")}
-        assert rules == {("/v2/assistant/panel", "GET"), ("/v2/assistant/ask", "POST")}, rules
+        # The chat (2026-11-28) added its turn, Stop, New conversation, reopen and the head's
+        # Looking at, each asked below.
+        asked = {("/v2/assistant/panel", "GET"): "/v2/assistant/panel",
+                 ("/v2/assistant/ask", "POST"): "/v2/assistant/ask",
+                 ("/v2/assistant/place", "GET"): "/v2/assistant/place",
+                 ("/v2/assistant/turn/<turn>", "GET"): "/v2/assistant/turn/t-0123456789abcdef",
+                 ("/v2/assistant/stop", "POST"): "/v2/assistant/stop",
+                 ("/v2/assistant/new", "POST"): "/v2/assistant/new",
+                 ("/v2/assistant/reopen", "POST"): "/v2/assistant/reopen"}
+        assert rules == set(asked), rules
         client = lab["client"]
-        for r in (client.get("/v2/assistant/panel", headers={"HX-Request": "true"}),
-                  client.post("/v2/assistant/ask", data={"question": "hello"},
-                              headers={"HX-Request": "true"})):
+        for (_rule, method), url in asked.items():
+            r = (client.post(url, data={"question": "hello"}, headers={"HX-Request": "true"})
+                 if method == "POST" else client.get(url, headers={"HX-Request": "true"}))
             body = r.get_data(as_text=True)
             assert r.status_code == 409, (r.request.path, r.status_code)
             assert unescape(S.ASSISTANT_OFF_WORDS) in unescape(body), body[:200]
@@ -632,7 +650,7 @@ class TestWhatLeavesAndWhatIsKeptIsMasked:
         chosen = manual_index.select(q)
         lab["state"]["answer"] = words(cites=[chosen[0]["link"]])
         r, html = post(lab, f"{q} {SECRET_LINE}")
-        assert r.status_code == 200 and "You asked" in html, html[:600]
+        assert r.status_code == 200 and '<p class="asst-q">' in html, html[:600]
         assert SECRET_VALUE not in html
         # The press's effect: the question kept in the person's thread, masked as it left.
         text = kept_text(lab)

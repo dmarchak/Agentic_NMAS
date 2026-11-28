@@ -1,0 +1,31 @@
+{%- from "v2/_macros.html" import icon, clock -%}
+{#- One question of the person's in the assistant's conversation, as it is now (the chat, board
+    assistant-chat B and C; routes/assistant_v2.ask, turn and stop; `assistant_threads.turn_of`).
+    *t* is the turn: ``working`` or ``stopping`` (its question, its steps; re-read on each
+    announced step, `assistant`, never on a timer), ``done`` (its exchange, *t.row*: the
+    question and the answer), ``refused`` (*t.why*: a question already being answered) or
+    ``gone`` (not in this conversation). A turn drawn working is what puts Stop in Send's
+    place (`_assistant_act.html`, nmas_assistant.js); once it is drawn ended, Send is back. -#}
+{%- set working = t.state in ('working', 'stopping') %}
+{%- if t.state == 'refused' %}
+<p class="small notice notice-warn asst-turn" role="alert" data-turn-state="refused">Not sent: {{ t.why }}.</p>
+{%- elif t.state == 'gone' %}
+<p class="small faint asst-turn" data-turn-state="gone">This question is not in this conversation any more.</p>
+{%- else %}
+{%- set row = t.row if t.state == 'done' else t %}
+<div class="asst-turn"{% if t.turn %} id="asst-turn-{{ t.turn }}"{% endif %} data-turn-state="{{ 'working' if working else 'done' }}"{% if working %} hx-get="{{ url_for('assistant_v2.turn', turn=t.turn) }}" hx-trigger="nmas:assistant from:body" hx-swap="outerHTML"{% endif %}>
+  {%- if row.question %}
+  <div class="asst-me"{% if row.page %} title="Asked on {{ row.page }}"{% endif %}><p class="asst-q">{{ row.question }}</p><span class="asst-where">{% if row.looking_at %}on {{ row.looking_at }}{% endif %}{% if row.at %}{{ ' · ' if row.looking_at }}{{ clock(row.at) }}{% endif %}</span></div>
+  {%- endif %}
+  {%- if working %}
+  {#- One status line, the step it is on now, like a chat's "thinking" line: never a list of
+      steps (the one stepper, tests/test_one_stepper.py, is for operations); the steps before
+      it are on its hover. -#}
+  <div class="asst-ai asst-working" role="status" aria-live="polite">
+    <p class="asst-status"{% if t.steps and t.steps | length > 1 %} title="Before this: {{ t.steps[:-1] | join(' · ') }}"{% endif %}><span class="asst-dots" aria-hidden="true"><span></span><span></span><span></span></span> {% if t.state == 'stopping' %}Stopping: closing the model's answer…{% else %}{{ (t.steps or ['Starting'])[-1] }}…{% endif %}</p>
+  </div>
+  {%- else %}
+  {%- with got=dict(row.got or {}, took_s=row.took_s) %}{% include "v2/_assistant_answer.html" %}{% endwith %}
+  {%- endif %}
+</div>
+{%- endif %}

@@ -168,6 +168,15 @@ def usd(value, exact=False) -> str:
     return money.usd(value, exact)
 
 
+@bp.app_template_filter("answer_text")
+def answer_text(value):
+    """An AI answer's words as the page draws them (`modules.ai.answer_text.render`): a small
+    markdown subset, every character escaped first, no link or HTML the model wrote."""
+    from modules.ai import answer_text as AT
+
+    return AT.render(value)
+
+
 @bp.app_template_filter("utc_when")
 def utc_when(ts, fmt="dt", to=None) -> dict:
     """An instant (epoch seconds or an ISO time), or the span *ts* to *to*, as History › Query's

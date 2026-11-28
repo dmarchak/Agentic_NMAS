@@ -37,6 +37,11 @@
 <script defer src="{{ url_for('static', filename='js/nmas_draft.js') }}"></script>
 <script defer src="{{ url_for('static', filename='js/nmas_history.js') }}"></script>
 <script defer src="{{ url_for('static', filename='js/nmas_logq.js') }}"></script>
+{#- The Assistant chat's script, only where its panel is drawn (the Assistant on): a page
+    without the panel loads nothing for it. -#}
+{%- if assistant_on() %}
+<script defer src="{{ url_for('static', filename='js/nmas_assistant.js') }}"></script>
+{%- endif %}
 <script defer src="{{ url_for('static', filename='js/vendor/alpinejs-csp/cdn.min.js') }}"></script>
 </head>
 <body class="v2" x-data="frame" x-bind:class="sideClass" x-on:keydown.escape="closeSides"{% if tz_first %} data-tz-first="{{ tz_first }}"{% endif %}>
@@ -173,6 +178,10 @@
     drawer or a palette). *path* is this page's path and query, which the server resolves into
     what the panel is looking at. -#}
 <aside class="help-panel asst-panel" id="asst-panel" aria-label="Assistant" x-show="asst" x-cloak>
+  {#- The chat (board assistant-chat): its left edge drags to resize it, and takes the arrow
+      keys, between 320 px and 60% of the window; the width is this browser's, kept in
+      localStorage (nmas_assistant.js), never written to Mercury. -#}
+  <div class="asst-resize" role="separator" aria-orientation="vertical" aria-label="Resize the assistant" title="Drag to resize; or the arrow keys" tabindex="0" aria-valuemin="320" aria-valuemax="0" aria-valuenow="440" data-asst-resize></div>
   <div class="asst-body" id="asst-body" hx-get="{{ url_for('assistant_v2.panel', nav=active_nav or '', path=request.full_path.rstrip('?')) }}" hx-trigger="nmas-asst-open once" hx-swap="innerHTML">
     <div class="help-panel-head"><span class="grow">Assistant</span><button type="button" class="icon-btn" aria-label="Close the assistant" x-on:click="closeAssistant">{{ icon('x', 18) }}</button></div>
     <p class="help-panel-body small faint">Opening the assistant…</p>

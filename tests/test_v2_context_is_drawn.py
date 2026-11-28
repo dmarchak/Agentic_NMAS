@@ -410,11 +410,6 @@ _A_STATE = "a state the lab does not hold, so no measured request renders it yet
 #: what a rendered template extends, includes or imports).
 UNREACHED = {
     "v2/_apply_job.html": _A_JOB,
-    # The operator, 2026-11-18: "C4091: declare the Assistant panel in UNREACHED, with a
-    # register row saying the Assistant's return must remove that entry. I authorize that one
-    # entry only." The Assistant is off and out of scope; its return removes this entry (C4091).
-    "v2/_assistant_panel.html": _A_STATE + "the Assistant, off and out of scope until it "
-                                           "returns (C4091: its return removes this entry)",
     "v2/_breakglass_done.html": _A_POST + " (a recovery record confirmed intact)",
     "v2/_breakglass_refused.html": _A_STATE + "an export, check or drill refused",
     "v2/_coverage_deploy_preview.html": _A_STATE + "Coverage's combined deploy, devices ticked",
@@ -437,7 +432,8 @@ UNREACHED = {
 #: -2 2026-10-17: the pending page and _onboard_pending.html, reached by C1193's provider.
 #: -2 2026-11-02: bulk_intent.html and _bulk_intent.html, retired with their screen (C2307).
 #: +1 2026-11-18: _assistant_panel.html, the operator's one authorized entry (C4091).
-UNREACHED_CEILING = 20
+#: -1 2026-11-28: _assistant_panel.html, reached by the chat's provider (C4091 closed).
+UNREACHED_CEILING = 19
 
 # ── C1274: the loops no fixture reaches ─────────────────────────────────────────────────────
 #: Reasons shared by many loops. Each names the state the walk and the providers do not hold;

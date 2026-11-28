@@ -1,11 +1,14 @@
-"""The toolbar assistant's panel and its ask (card P7, stage 1; stage 2, docs/design/assistant.md;
-PHASE8_PLAN 16.10; modules/ai/assistant.py): a question answered from the manual's passages and
-the reads a person has of what is on screen, drawn in the panel's thread in place; a question
-the manual does not cover is said and recorded as a manual gap.
+"""The toolbar assistant's panel and its chat (card P7, stage 1; stage 2, docs/design/assistant.md;
+PHASE8_PLAN 16.10; the chat, the operator's order of 2026-11-28; modules/ai/assistant.py): a
+question answered from the manual's passages and the reads a person has of what is on screen,
+drawn in the person's conversation in place; a question the manual does not cover is said and
+recorded as a manual gap.
 
-The panel's open state is the browser's (nmas_v2.js); its thread is Mercury's, kept per person
-(`assistant_threads`), so opening it, changing page or refreshing draws the same exchanges and
-makes no call. The one call is a person's press of Ask."""
+The panel's open state and width are the browser's (nmas_v2.js, nmas_assistant.js); its
+conversations are Mercury's, kept per person (`assistant_threads`), so opening it, changing page
+or refreshing draws the same exchanges and makes no call. The one call is a person's press of
+Send, run as a job (`assistant_turns`): the press is answered at once with its turn, which the
+panel re-reads on each announced step (`assistant`) until its answer is drawn."""
 import logging
 
 from flask import Blueprint, render_template, request
@@ -36,47 +39,126 @@ def _place(path: str, nav: str = "") -> dict:
                                      nav=nav)
 
 
-@bp.route("/panel", methods=["GET"])
-def panel():
-    """The panel's head and body, asked the first time a person opens it on a page (the top
-    bar's Assistant), so a page carries only its shell and the AI control's state is the one
-    at opening. *path* is the page's own path and query, resolved by the server into what the
-    panel is looking at; *nav* is the page's sidebar item, the screen whose passages rank first
-    when the path names none. The person's thread is read, never asked again."""
+def _args():
+    """The page's path and sidebar item, from the form a press sends or the query a read
+    asks with."""
+    src = request.form if request.method == "POST" else request.args
+    return src.get("path", ""), src.get("nav", "")
+
+
+def _panel(notice: str = "", code: int = 200):
     from modules import identity
     from modules.ai import assistant_threads
 
-    place = _place(request.args.get("path", ""), request.args.get("nav", ""))
-    thread = assistant_threads.read(identity.request_actor())
-    return _strict(render_template("v2/_assistant_panel.html", place=place, thread=thread))
+    path, nav = _args()
+    place = _place(path, nav)
+    actor = identity.request_actor()
+    thread = assistant_threads.read(actor)
+    return _strict(render_template(
+        "v2/_assistant_panel.html", place=place, nav=nav, thread=thread,
+        turns=assistant_threads.running(actor), past=assistant_threads.past(actor),
+        keep=assistant_threads.KEEP, notice=notice), code)
+
+
+@bp.route("/panel", methods=["GET"])
+def panel():
+    """The panel's head, conversation and box, asked the first time a person opens it on a
+    page (the top bar's Assistant), so a page carries only its shell and the AI control's state
+    is the one at opening. *path* is the page's own path and query, resolved by the server into
+    what the panel is looking at; *nav* is the page's sidebar item, the screen whose passages
+    rank first when the path names none. The person's conversation is read, never asked
+    again."""
+    return _panel()
+
+
+@bp.route("/place", methods=["GET"])
+def place():
+    """The head's Looking at chip for the page at *path* (the person moved within a page, its
+    address changed): resolved by the server, as the panel's own is. A read."""
+    path, nav = _args()
+    return _strict(render_template("v2/_assistant_place.html", place=_place(path, nav)))
+
+
+def _turn(state: dict, code: int = 200):
+    return _strict(render_template("v2/_assistant_turn.html", t=state), code)
 
 
 @bp.route("/ask", methods=["POST"])
 def ask():
-    """A person's question, answered as the person who asked (one recorded, capped AI call a
-    pass; the reads it asks for of the device or incident in view, each recorded), or why not;
-    a manual gap recorded; the exchange kept in the person's thread."""
-    from modules import identity, redact
-    from modules.ai import assistant, assistant_threads, triggers
+    """A person's question: refused at once when it is empty or too long (never kept), else
+    its turn kept and its job started (`assistant_turns.start`: one recorded, capped AI call a
+    pass as the person who asked, and the reads it asks for of the device or incident in view,
+    each recorded), and the turn drawn working (which puts Stop in the box's place)."""
+    from modules import identity
+    from modules.ai import assistant, assistant_threads, assistant_turns
 
     question = request.form.get("question", "")
-    place = _place(request.form.get("path", ""))
-    screen = place.get("screen") or request.form.get("screen", "")
+    place_ = _place(request.form.get("path", ""), request.form.get("nav", ""))
+    screen = place_.get("screen") or request.form.get("screen", "")
     actor = identity.request_actor()
-    got = assistant.answer(question, screen=screen, place=place, actor=actor,
-                           trigger=triggers.person(actor))
-    if got.get("gap"):
-        assistant.record_gap(question, screen=screen, state=got["state"], actor=actor,
-                             call_id=got.get("call_id") or "")
-    # What the answer draws; whether it was a gap is the route's to record, said in the words.
-    drawn = {k: v for k, v in got.items() if k not in ("ok", "gap", "error")}
-    if drawn.get("plan"):
-        # The plan acts on the network the person asked from: its preview is that network's.
-        drawn["plan"] = dict(drawn["plan"], list=place.get("network") or "")
-    drawn["question"] = redact.redact_typed(" ".join(question.split()))[:assistant.MAX_QUESTION]
-    drawn["looking_at"] = place.get("label") or ""
-    if got.get("state") != "refused" or got.get("call_id"):
+    refused = assistant.refusal(question)
+    if refused:
         # A question refused before any call (empty, too long) is said, never kept.
-        kept = assistant_threads.keep(actor, question, drawn["looking_at"], drawn)
-        drawn["kept"] = "" if kept["ok"] else kept["error"]
-    return _strict(render_template("v2/_assistant_answer.html", got=drawn))
+        got = assistant_turns.drawn_of(refused, question, place_)
+        return _turn({"state": "done", "row": {"question": got["question"], "got": got,
+                                               "looking_at": got["looking_at"]}})
+    begun = assistant_threads.begin(actor, question, place_.get("label") or "",
+                                    place_.get("asked") or "")
+    if not begun["ok"]:
+        return _turn({"state": "refused", "why": begun["error"]}, 409)
+    assistant_turns.start(actor, begun["turn"], question, screen, place_)
+    return _turn(assistant_threads.turn_of(actor, begun["turn"]) | {"turn": begun["turn"]})
+
+
+@bp.route("/turn/<turn>", methods=["GET"])
+def turn(turn):
+    """One question of the person's, as it is now: working with its step, stopping, its
+    answer once kept, or lost (its job showed no sign of life: said; the person's next press
+    keeps it in the conversation as lost, `assistant_threads.settle_lost`). A read. *turn*
+    is the press's id, shaped `assistant_threads.TURN_ID`."""
+    from modules import identity
+    from modules.ai import assistant_threads
+
+    actor = identity.request_actor()
+    return _turn(dict(assistant_threads.turn_of(actor, turn), turn=turn))
+
+
+@bp.route("/stop", methods=["POST"])
+def stop():
+    """Stop on the person's question being answered (one at a time per person, so it is the
+    one): its turn marked stopped (`assistant_threads.stop`), read by its job; the turn drawn
+    stopping, in its place, until its job ends. With none being answered, said."""
+    from modules import identity
+    from modules.ai import assistant_threads
+
+    actor = identity.request_actor()
+    working = [t for t in assistant_threads.running(actor) if t["state"] in ("working",
+                                                                             "stopping")]
+    if not working:
+        return _turn({"state": "refused", "why": "no question of yours is being answered now"},
+                     409)
+    turn = working[-1]["turn"]
+    assistant_threads.stop(actor, turn)
+    return _turn(dict(assistant_threads.turn_of(actor, turn), turn=turn))
+
+
+@bp.route("/new", methods=["POST"])
+def new():
+    """New conversation: the current one kept in the person's past conversations, as it is;
+    the panel drawn again, empty."""
+    from modules import identity
+    from modules.ai import assistant_threads
+
+    got = assistant_threads.new(identity.request_actor())
+    return _panel("" if got["ok"] else f"Not started: {got['error']}.", 200 if got["ok"] else 409)
+
+
+@bp.route("/reopen", methods=["POST"])
+def reopen():
+    """A past conversation made the current one again, the current one kept in its place;
+    the panel drawn again with it."""
+    from modules import identity
+    from modules.ai import assistant_threads
+
+    got = assistant_threads.reopen(identity.request_actor(), request.form.get("conversation", ""))
+    return _panel("" if got["ok"] else f"Not reopened: {got['error']}.", 200 if got["ok"] else 409)

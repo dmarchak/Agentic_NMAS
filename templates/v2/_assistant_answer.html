@@ -1,33 +1,34 @@
 {%- from "v2/_macros.html" import badge, how -%}
 {%- import "v2/_ai.html" as ai -%}
-{#- One exchange of the toolbar assistant's thread (card P7, stage 1; stage 2,
-    docs/design/assistant.md, "Every answer shows"; routes/assistant_v2.ask): the question as it
-    left (masked) and what the panel was looking at, then the answer. Added under the thread by
-    a press, and drawn again from the person's kept thread when the panel opens. An answer
-    drawn is one Mercury's check passed: every citation a passage it was sent or a read that
-    ran. Each source has Open (a passage its section of the manual, a read the device tab it
-    came from and its record on History › Reads); the model and the cost; each call's History
-    link. A change asked for is handed to its gated flow, pre-filled and not started. A
-    question the manual does not cover is said, never padded; a refusal says why; what was
-    masked before sending is said, never its value; Was this right? under every answer a call
-    made. -#}
+{#- One answer in the toolbar assistant's conversation (card P7, stage 1; stage 2,
+    docs/design/assistant.md, "Every answer shows"; the chat, board assistant-chat B): drawn
+    under the person's question by `_assistant_turn.html`, when its job has kept it, and again
+    from the person's kept conversation when the panel opens. An answer drawn is one Mercury's
+    check passed: every citation a passage it was sent or a read that ran.
+
+    Its words, markdown drawn by Mercury with every character escaped (`answer_text`: lists,
+    code, tables; never a link or HTML the model wrote); its sources as chips, each with Open (a
+    passage its section of the manual, a read the device tab it came from); a change asked for
+    handed to its gated flow, pre-filled and not started, as a button inside the answer; the
+    reads it ran as one collapsed line ("Ran 2 reads"), each read opening to its verdict, its
+    reason and its record on History › Reads; one quiet line, the model, the cost, how long it
+    took and each call's History link. A question the manual does not cover is said, never
+    padded; a refusal says why; a Stop says what it stopped; what was masked before sending is
+    said, never its value; Was this right? under every answer a call made. -#}
 {%- set calls = got.calls or ([got.call_id] if got.call_id else []) %}
 {%- set sources = got.sources if got.sources is defined and got.sources is not none else (got.cites or []) %}
-<div class="asst-answer" role="group" aria-label="The assistant's answer"{% if got.at %} data-at="{{ got.at }}"{% endif %}>
-  {%- if got.question %}<p class="asst-q"><span class="small faint">You asked{% if got.looking_at %}, looking at {{ got.looking_at }}{% endif %}:</span> {{ got.question }}</p>{% endif %}
+<div class="asst-ai asst-answer" role="group" aria-label="The assistant's answer"{% if got.at %} data-at="{{ got.at }}"{% endif %}>
   {{ ai.typed_masked(got.typed_masked) }}
   {%- if got.state == 'answered' %}
-  <p class="small faint">{{ badge('AI', 'info', title='Answered by AI from the manual and the reads Mercury ran; every citation checked in code') }} {{ "From the manual and Mercury's reads" if got.reads else 'From the manual' }}</p>
-  <div class="asst-said">{{ got.answer }}</div>
+  <div class="asst-said md" title="Answered by AI from {{ "the manual and Mercury's reads" if got.reads else 'the manual' }}; every citation checked by Mercury">{{ got.answer | answer_text }}</div>
   {%- if sources %}
-  <div class="small asst-sources"><strong>Sources:</strong>
-    <ul>{% for s in sources %}
-      {%- if s.kind == 'read' %}
-      <li data-source="{{ s.id }}">{{ s.id }}, {{ s.words }}: <a href="{{ url_for('device_v2.device', name=s.device, tab=s.tab, list=s.network or none) }}">Open {{ s.tab_words }}</a>{% if s.run %} · <a href="{{ url_for('reads_v2.show_commands_result', run_id=s.run, list=s.network or none) }}">Open the read on History › Reads</a>{% endif %}</li>
-      {%- else %}
-      <li data-source="manual">{{ s.page }} › {{ s.heading }}: <a href="{{ s.link }}">Open</a></li>
-      {%- endif %}
-    {%- endfor %}</ul></div>
+  <ul class="asst-sources" aria-label="Sources">{% for s in sources %}
+    {%- if s.kind == 'read' %}
+    <li class="asst-src" data-source="{{ s.id }}"><span>{{ s.id }}, {{ s.words }}</span> <a href="{{ url_for('device_v2.device', name=s.device, tab=s.tab, list=s.network or none) }}" title="Open {{ s.tab_words }}">Open</a></li>
+    {%- else %}
+    <li class="asst-src" data-source="manual"><span>{{ s.page }} › {{ s.heading }}</span> <a href="{{ s.link }}" title="Open this section of the manual">Open</a></li>
+    {%- endif %}
+  {%- endfor %}</ul>
   {%- endif %}
   {%- if got.note %}<p class="small warn-text" data-reads-note>{{ got.note }}.</p>{% endif %}
   {%- if got.plan_dropped %}<p class="small warn-text" data-plan-dropped>{{ got.plan_dropped }}.</p>{% endif %}
@@ -36,7 +37,7 @@
   {#- A plan the answer named, held to the plan engine's schema: proposed only. Its preview is
       the engine's own, drawn here in place; a person approves it there by its hash, or not. -#}
   {%- set pid = 'plan-card-' ~ (got.call_id or 'none') %}
-  <div id="{{ pid }}"><p class="small"><strong>Proposed:</strong> {{ got.plan.title }}, on {{ got.plan.list }}.</p>
+  <div id="{{ pid }}" class="asst-handoff"><p class="small"><strong>Proposed:</strong> {{ got.plan.title }}, on {{ got.plan.list }}.</p>
     <span class="op-act"><button type="button" class="btn btn-small" data-op="plans" hx-get="{{ url_for('plans_v2.preview', list=got.plan.list, plan=got.plan.plan, params=got.plan.params | tojson) }}" hx-target="#{{ pid }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Previews each step by its own operation; nothing runs until you approve it"><span class="op-idle">Preview the plan…</span><span class="op-busy">Reading…</span></button>{{ how('plans', compact=True, op='a plan') }}</span></div>
   {%- endif %}
   {%- if got.handoff %}
@@ -53,19 +54,24 @@
   {%- endif %}
   {%- elif got.state == 'not_covered' %}
   <p class="small"><strong>{{ got.detail }}</strong> It is recorded as a gap in the manual.{% if got.passages %} The nearest it holds: {% for c in got.passages[:3] %}<a href="{{ c.link }}">{{ c.page }} › {{ c.heading }}</a>{% if not loop.last %}; {% endif %}{% endfor %}.{% endif %}</p>
+  {%- elif got.state == 'stopped' %}
+  <p class="small" data-stopped><strong>{{ got.detail }}.</strong></p>
+  {%- elif got.state == 'lost' %}
+  <p class="small notice notice-warn" role="alert" data-lost>{{ got.detail }}.</p>
   {%- else %}
   <p class="small notice notice-warn" role="alert">Couldn't answer: {{ got.detail | replace("Couldn't answer: ", "") }}</p>
   {%- endif %}
   {%- if got.reads %}
-  <details class="small asst-reads"><summary>Mercury's reads for this answer ({{ got.reads | length }})</summary>
-    <ul>{% for r in got.reads %}<li data-read="{{ r.id }}" data-verdict="{{ r.verdict }}">{{ r.id }}, {{ r.words }}: {{ {'run': 'read', 'refused': 'refused by Mercury', 'failed': 'failed'}.get(r.verdict, r.verdict) }}{% if r.reason %} ({{ r.reason }}){% endif %}{% if r.run %} · <a href="{{ url_for('reads_v2.show_commands_result', run_id=r.run, list=r.network or none) }}">Open the read on History › Reads</a>{% endif %}</li>{% endfor %}</ul>
+  <details class="asst-reads" data-keep="asst-reads-{{ got.call_id or 'none' }}"><summary>Ran {{ got.reads | length }} read{{ '' if got.reads | length == 1 else 's' }}</summary>
+    <ul>{% for r in got.reads %}<li data-read="{{ r.id }}" data-verdict="{{ r.verdict }}"><details class="asst-read" data-keep="asst-read-{{ got.call_id or 'none' }}-{{ r.id }}"><summary>{{ r.id }}, {{ r.words }} · {{ {'run': 'read', 'refused': 'refused by Mercury', 'failed': 'failed'}.get(r.verdict, r.verdict) }}</summary>
+      <p class="small">{% if r.reason %}{{ r.reason }}. {% endif %}{% if r.device %}Of {{ r.device }}. {% endif %}{% if r.run %}<a href="{{ url_for('reads_v2.show_commands_result', run_id=r.run, list=r.network or none) }}">Open the read on History › Reads</a>{% elif r.verdict == 'run' %}Mercury's own record of what it holds; nothing was sent to a device.{% else %}Nothing was read.{% endif %}</p></details></li>{% endfor %}</ul>
   </details>
   {%- endif %}
   {%- if calls or got.model_words %}
-  <p class="small faint asst-meta" data-calls="{{ calls | length }}">{% if got.model_words %}<span title="{{ got.model }}">{{ got.model_words }}</span>{% endif %}{% if got.cost_usd is defined and got.cost_usd is not none %} · {{ got.cost_usd | usd(true) }}{% endif %}{% for c in calls %} · <a href="{{ url_for('v2.history_page', call=c) }}">{{ 'Open the call in History' if calls | length == 1 else 'Open call ' ~ loop.index ~ ' in History' }}</a>{% endfor %}</p>
+  <p class="asst-meta" data-calls="{{ calls | length }}">{% if got.model_words %}<span title="{{ got.model }}">{{ got.model_words }}</span>{% endif %}{% if got.cost_usd is defined and got.cost_usd is not none %} · {{ got.cost_usd | usd(true) }}{% endif %}{% if got.took_s is defined and got.took_s is not none %} · <span title="From Send to the answer kept">{{ '%.0f' % got.took_s }} s</span>{% endif %}{% for c in calls %} · <a href="{{ url_for('v2.history_page', call=c) }}" title="Open the call in History">{{ 'History' if calls | length == 1 else 'Call ' ~ loop.index ~ ' in History' }}</a>{% endfor %}</p>
   {%- endif %}
-  {%- if got.kept %}<p class="small faint" data-not-kept>Not kept in your thread: {{ got.kept }}.</p>{% endif %}
-  {%- if got.call_id and got.state != 'refused' %}
+  {%- if got.kept %}<p class="small faint" data-not-kept>Not kept in your conversation: {{ got.kept }}.</p>{% endif %}
+  {%- if got.call_id and got.state not in ('refused', 'stopped', 'lost') %}
   {% with fb=ai_feedback(got.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}
   {%- endif %}
 </div>

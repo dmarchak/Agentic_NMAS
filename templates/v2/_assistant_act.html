@@ -1,0 +1,20 @@
+{%- from "v2/_macros.html" import how -%}
+{%- import "v2/_ai.html" as ai -%}
+{#- The assistant's box's one control (the chat, board assistant-chat C): Send while no question
+    of the person's is being answered, Stop in its place while one is, never both. Both are
+    drawn; which one shows follows the conversation the server drew (a turn drawn working,
+    `data-turn-state="working"`: nmas_assistant.js marks the slot `asst-working`), so the
+    control follows the turn as it is redrawn, in every tab. *working* is drawn by the panel
+    for its first draw. *aic* is the panel's AI control for the assistant: not ready, Send is disabled whoever
+    looks; Stop never is.
+
+    Stop stops the question being answered (one at a time per person, so the server finds it:
+    routes/assistant_v2.stop), and its answer is that turn drawn stopping, in the turn's place.
+    It says what it does on its hover: the gateway closes the model's stream at its next live
+    check after the stop is read (no further output is billed from there), and no call or read
+    is made after it; a round of reads already running finishes. -#}
+{#- *aic* is the panel's own (`_assistant_panel.html`, the one template drawing the control). -#}
+<span class="asst-act{{ ' asst-working' if working }}" id="asst-act">
+  <span class="asst-send"><button class="btn btn-primary" type="submit" id="asst-send" hx-disabled-elt="this" data-op="assistant"{{ ai.attrs(aic, 'configure') }}><span class="op-idle">Send</span><span class="op-busy">Sending…</span></button>{{ how('assistant', 'answer', compact=True, op='Send') }}</span>
+  <span class="asst-stop"><button type="button" class="btn" data-op="assistant" data-asst-stop hx-post="{{ url_for('assistant_v2.stop') }}" hx-target="#asst-answer .asst-turn[data-turn-state='working']" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }} title="Stops this answer: the model's answer is closed at its next check, so it bills no more from there, and no call is made after it; a round of reads already running finishes first. What it already spent is recorded in History."><span class="op-idle">Stop</span><span class="op-busy">Stopping…</span></button>{{ how('assistant', 'stop', compact=True, op='Stop') }}</span>
+</span>

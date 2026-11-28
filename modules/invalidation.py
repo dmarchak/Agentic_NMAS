@@ -104,6 +104,9 @@ VOCABULARY = {
     "ai_step": "the step a running AI troubleshooting investigation is on, in plain words "
                "(modules/troubleshoot_job.py `say`): its incident's status line draws it (board "
                "R5's screen 3), at most one announcement per step",
+    "assistant": "a person's assistant question while it is answered (modules/ai/assistant_turns.py): "
+                 "its step, its Stop, its end, and the conversation New conversation or a reopen "
+                 "changed; the person's open panel re-reads it",
     "ai_feedback": "what people said of AI answers (Was this right?) and the review of each one "
                    "said wrong (modules/ai/feedback.py): the control under an answer and "
                    "Settings › Installation › AI's Answers said wrong draw it",
@@ -180,6 +183,9 @@ ANNOUNCERS = {
     # job ended (Start AI troubleshooting, Modify, Ask the AI again, R1's automatic start).
     # Its step, as a person reads it, while it runs (`troubleshoot_job.say`, board R5's screen 3).
     "fixit-investigation": ("ai_calls", "drift", "in_progress", "ai_step"),
+    # modules/ai/assistant_turns.py (the chat, the operator 2026-11-28): a question's step, and
+    # its end (the calls it made recorded, the exchange kept in the person's conversation).
+    "assistant-turn": ("ai_calls", "assistant"),
     # routes/settings_v2.display_name (board E2a): a display name changed, for every open
     # page's name chip and Needs attention; the posting page hears its own response.
     "display-names": ("people",),
@@ -725,7 +731,10 @@ DECLARED = {
     "v2.monitoring_alert_explain": ("ai_calls",),
     "v2.monitoring_alert_history_evidence": ("alerts",),
     "v2.monitoring_alert_pack_rebuild": ("alerts",),
-    "assistant_v2.ask": ("ai_calls", "reads"),   # P7: recorded AI calls (or none: a gap), and the reads they asked for
+    "assistant_v2.ask": ("ai_calls", "reads", "assistant"),   # P7: recorded AI calls (or none: a gap), the reads they asked for, the person's turn started
+    "assistant_v2.stop": ("assistant",),        # the chat: Stop on the person's own turn
+    "assistant_v2.new": ("assistant",),         # the chat: New conversation (the old one kept)
+    "assistant_v2.reopen": ("assistant",),      # the chat: a past conversation made current
     "v2.history_ask_metrics_words": ("ai_calls",),
     "v2.history_ask_logs_words": ("ai_calls",),
     "intent_v2.words": ("ai_calls",),

@@ -429,6 +429,37 @@ def scope_of(place: dict, actor: str) -> tuple:
     return scope, sorted(scope.get("devices") or {}), ""
 
 
+def refusal(question: str) -> dict:
+    """The question's own checks, before anything is chosen or asked: `answer`'s result for a
+    question refused (empty, too long), else ``{}``. The panel's Send asks it first, so a
+    refused question is said at once and starts no job (routes/assistant_v2.ask)."""
+    question = (question or "").strip()
+    if not question:
+        return {"ok": False, "state": "refused", "error": "empty",
+                "detail": "Ask a question first.", "passages": [], "gap": False}
+    if len(question) > MAX_QUESTION:
+        return {"ok": False, "state": "refused", "error": "too_long",
+                "detail": (f"The question is {len(question)} characters; ask it in at "
+                           f"most {MAX_QUESTION}."), "passages": [], "gap": False}
+    return {}
+
+
+class Stopped(Exception):
+    """The person pressed Stop: raised by `answer`'s ask before a call it would make next, so
+    no further read or call is made. *calls* the calls already made, *cost_usd* their cost."""
+
+    def __init__(self, calls, cost_usd):
+        super().__init__("stopped by the person")
+        self.calls, self.cost_usd = list(calls), float(cost_usd or 0.0)
+
+
+#: Said when the person pressed Stop.
+STOPPED = ("Stopped by you. No call was made after Stop; a round of reads already running when "
+           "you pressed it finished first. What was already spent is recorded in History")
+#: The use recorded on each call a Stop ended (`stopped_result`).
+STOPPED_USE = "stopped by the person"
+
+
 def prepare(question: str, *, screen: str = "", place: dict = None,
             reads_off: str = NO_PLACE) -> dict:
     """`answer`'s steps before its call, the one code path a person's press and an evaluation's
@@ -444,13 +475,9 @@ def prepare(question: str, *, screen: str = "", place: dict = None,
 
     place = dict(place or {})
     question = (question or "").strip()
-    if not question:
-        return {"done": {"ok": False, "state": "refused", "error": "empty",
-                         "detail": "Ask a question first.", "passages": [], "gap": False}}
-    if len(question) > MAX_QUESTION:
-        return {"done": {"ok": False, "state": "refused", "error": "too_long",
-                         "detail": (f"The question is {len(question)} characters; ask it in at "
-                                    f"most {MAX_QUESTION}."), "passages": [], "gap": False}}
+    refused = refusal(question)
+    if refused:
+        return {"done": refused}
     # Chosen from the question as it leaves (`redact.redact_egress`), its placeholders taken
     # out: neither a pasted secret's value nor the mask's own words rank the manual.
     from modules import redact
@@ -472,7 +499,7 @@ def prepare(question: str, *, screen: str = "", place: dict = None,
 
 @acts_as_ai("assistant")
 def answer(question: str, *, screen: str = "", place: dict = None, actor: str, trigger: dict,
-           send=None, today: str = None) -> dict:
+           send=None, today: str = None, progress=None, stop_if=None) -> dict:
     """A person's question answered from the manual and the reads, or why not: ``{"ok",
     "state", "error", "detail", "answer"?, "cites"?, "sources"?, "reads"?, "calls"?,
     "passages", "call_id"?, "gap", ...}``. *state* ``answered``, ``not_covered`` (no passage
@@ -480,23 +507,43 @@ def answer(question: str, *, screen: str = "", place: dict = None, actor: str, t
     gate, or Mercury's check) or ``failed``; *gap* True when the manual's gap is the route's
     to record; *passages* each chosen one's link, page and heading. *place* is what the person
     is looking at (`assistant_context.resolve`). Its steps: `scope_of`, `prepare`, the read loop
-    through the gateway (`read_loop.run`), `settle`."""
+    through the gateway (`read_loop.run`), `settle`.
+
+    The chat's job (`assistant_turns`) passes *progress* (``progress(words)``, each step as a
+    person reads it: the model asked, the reads it asked for running, the model asked again) and
+    *stop_if* (``stop_if() -> bool``, the person's Stop): the gateway closes a stream as soon as
+    it reads a stop (its own *stop_if*), and no call is made after one, so no further read runs
+    either; the result is then ``stopped`` with the calls made and their cost."""
     from modules.ai import gateway
     from modules.nsot import listref
 
+    say = progress or (lambda words: None)
     place = dict(place or {})
     scope, devices, reads_off = scope_of(place, actor)
     place["devices"] = devices
+    say("Choosing the manual's passages")
     prep = prepare(question, screen=screen, place=place, reads_off=reads_off)
     if "done" in prep:
         return prep["done"]
-    seen = {}
+    seen = {"calls": [], "cost": 0.0}
 
     def ask(*a, trigger, **k):
+        # Stop pressed: no call after it (so no read after it either).
+        if stop_if is not None and stop_if():
+            raise Stopped(seen["calls"], seen["cost"])
+        n = len(seen["calls"]) + 1
+        say("Asking the model" if n == 1 else f"Answering from the reads (call {n})")
         # The gateway's own result, its typed part's mask kept to say what was removed.
-        got = gateway.ask(*a, trigger=trigger, **k)
+        got = gateway.ask(*a, trigger=trigger, stop_if=stop_if, **k)
+        seen["calls"].append(got.get("call_id") or "")
+        seen["cost"] += float(got.get("cost_usd") or 0.0)
         if got.get("typed_masked") and "typed_masked" not in seen:
             seen["typed_masked"] = got["typed_masked"]
+        if stop_if is not None and stop_if():
+            raise Stopped(seen["calls"], seen["cost"])
+        wanted = getattr(got.get("output"), "reads", None) or []
+        if got.get("ok") and wanted:
+            say(f"Running the {len(wanted)} read{'s' if len(wanted) != 1 else ''} it asked for")
         return got
 
     network = place.get("network") or ""
@@ -504,11 +551,34 @@ def answer(question: str, *, screen: str = "", place: dict = None, actor: str, t
         net_id = listref.network_id(network) if network else ""
     except Exception:                                  # noqa: BLE001 (the installation's)
         net_id = ""
-    got = RL.run(FAMILY, prep["feature"], ask=ask, network=net_id, data=prep["data"],
-                 actor=actor, trigger=trigger, context=prep["ctx"],
-                 subject=prep["request"]["subject"], scope=scope, send=send, today=today,
-                 reads_off=reads_off)
+    try:
+        got = RL.run(FAMILY, prep["feature"], ask=ask, network=net_id, data=prep["data"],
+                     actor=actor, trigger=trigger, context=prep["ctx"],
+                     subject=prep["request"]["subject"], scope=scope, send=send, today=today,
+                     reads_off=reads_off)
+    except Stopped as stopped:
+        return stopped_result(stopped.calls, stopped.cost_usd, prep["drawn"], actor)
+    if stop_if is not None and stop_if():
+        # Stopped during the last call: its stream was closed, so its answer is not drawn.
+        return stopped_result(seen["calls"], seen["cost"], prep["drawn"], actor)
     return settle(got, prep, actor=actor, typed_masked=seen.get("typed_masked") or "")
+
+
+def stopped_result(calls_, cost_usd, passages, actor: str = "") -> dict:
+    """`answer`'s result when the person pressed Stop: the calls made and what they cost. Each
+    call's use is recorded as the person's Stop (`calls.record_use`, beside the call in History):
+    the gateway records a closed stream in its own words, which name its watchdog's bound for
+    every stop (C4324), so the assistant's own record says who stopped it."""
+    from modules.ai import calls
+
+    calls_ = [c for c in calls_ if c]
+    for c in calls_:
+        calls.record_use(c, STOPPED_USE, actor=actor,
+                         detail=("Stopped by the person who asked: Stop in the assistant's "
+                                 "panel; no call was made after it"))
+    return {"ok": False, "state": "stopped", "error": "stopped", "detail": STOPPED,
+            "calls": calls_, "call_id": calls_[-1] if calls_ else "", "cost_usd": cost_usd,
+            "passages": passages, "gap": False, **model_words()}
 
 
 def _reads_drawn(records: list, place: dict) -> list:

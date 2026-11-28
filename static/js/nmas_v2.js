@@ -97,6 +97,9 @@
               'ai_calls',
               // A running AI investigation's step (board R5's screen 3): its status line.
               'ai_step',
+              // A person's assistant question moved a step or ended, or their conversation
+              // changed (the chat): its turn in the open panel re-reads.
+              'assistant',
               // A network created or deleted (Settings): the top bar's network picker and
               // Settings' scope bar draw the list again (P7-05).
               'lists',
@@ -1802,6 +1805,8 @@
   function relayAiCalls() { relay('ai_calls'); }
   // Board R5's screen 3: an incident's status line redraws its investigation's live step.
   function relayAiStep() { relay('ai_step'); }
+  // The assistant's chat: a question's step or end redraws its turn in the open panel.
+  function relayAssistant() { relay('assistant'); }
 
   /* A LONG PLAN IS READ BEFORE IT IS APPROVED (the operator's item 3, 2026-11-15: "collapse
      only long plans, and then Approve stays disabled until each step has been opened"; board
@@ -2102,6 +2107,7 @@
     NMAS.subscribe('heal_decisions', 'v2HealDecisions', relayHealDecisions);
     NMAS.subscribe('ai_calls', 'v2AiCalls', relayAiCalls);
     NMAS.subscribe('ai_step', 'v2AiStep', relayAiStep);
+    NMAS.subscribe('assistant', 'v2Assistant', relayAssistant);
     NMAS.subscribe('ai_feedback', 'v2AiFeedback', relayAiFeedback);
     NMAS.subscribe('notifications', 'v2Notifications', relayNotifications);
     NMAS.subscribe('lists', 'v2Lists', relayLists);
@@ -2401,7 +2407,9 @@
         // The operator's GUI pick (2026-11-25): a side panel (the assistant's, the help's) is
         // one the page reflows around, never one over it; the body says one is open, and the
         // frame gives up the panel's width (nmas-v2.css, `.side-open`).
-        get sideClass() { return (this.help || this.asst) ? 'side-open' : ''; },
+        // The assistant's panel is resizable (nmas_assistant.js): open, the frame gives up its
+        // own width (`asst-open`), not the help panel's.
+        get sideClass() { return this.asst ? 'side-open asst-open' : (this.help ? 'side-open' : ''); },
         get jumpClass() { return this.jumpOpen ? 'open' : ''; },
         get jumpExpanded() { return this.jumpOpen ? 'true' : 'false'; },
         open: function () { this.drawer = true; },

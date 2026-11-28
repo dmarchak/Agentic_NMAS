@@ -118,7 +118,10 @@ COMPONENTS = {"_run_stepper.html": "stepper.md",
               "_history_export.html": "history-export.md",
               # Credentials › Profiles' Read-only account on the devices (board R, provisional,
               # operator review pending; the operator, 2026-11-13): coverage, Add, the rollout.
-              "_read_account_fleet.html": "read-account.md"}
+              "_read_account_fleet.html": "read-account.md",
+              # The toolbar assistant as a continuous chat (board assistant-chat, signed off
+              # under the Phase 7 mode 2026-11-28; the operator's order of that day).
+              "_assistant_panel.html": "assistant-chat.md"}
 
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Assistant chat board</title>
+<!-- Board for the operator's order of 2026-11-28 (~00:2x UTC): the toolbar assistant's panel
+     rebuilt as a continuous chat, like Claude's chat or Claude Code, not a form. Artboards:
+     A empty; B a conversation (an answer with its sources, a collapsed and an expanded read,
+     the quiet line, a hand-off); C working (the indicator in the conversation, Stop in Send's
+     place); D AI off (greyed, the reason in place); E past conversations open. The panel is
+     drawn at its default 440 px, beside a stand-in for the page it reflows. Self-contained:
+     no external fonts or scripts. Example names only. -->
+<style>
+:root{--ground:#F4F5F2;--surface:#FFFFFF;--surface-2:#F7F8F5;--ink:#15191E;--ink-2:#4A5260;--ink-3:#9AA3AE;--line:#DADDE2;--line-2:#EEF0EC;
+--accent:#1E5E8C;--accent-soft:#E6EEF5;--ai:#5B3FA8;--ai-soft:#EFEAFB;--ok:#0B6B45;--danger:#B42318;--muted-soft:#E9EBE7;
+--sans:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;--mono:ui-monospace,Menlo,Consolas,monospace}
+body{margin:0;background:#D9DCD6;font-family:var(--sans);color:var(--ink);font-size:14px;line-height:1.45}
+.boardhead,.artlabel{width:1040px;margin:22px auto 8px;font-size:13px;color:#333}
+.boardhead h1{font-size:18px;margin:0 0 4px}
+.art{width:1040px;margin:0 auto;background:var(--ground);box-sizing:border-box;box-shadow:0 2px 14px rgba(0,0,0,.18);display:flex;height:640px}
+.page{flex:1;padding:20px 24px;color:var(--ink-3);font-size:13px;border-right:1px solid var(--line)}
+.page .bar{height:10px;background:var(--line-2);border-radius:4px;margin:10px 0}
+.panel{width:440px;background:var(--surface);display:flex;flex-direction:column;position:relative}
+.edge{position:absolute;left:-3px;top:0;bottom:0;width:6px;cursor:col-resize}
+.edge:after{content:"";position:absolute;left:2px;top:46%;height:40px;width:2px;background:var(--line);border-radius:2px}
+.head{padding:10px 12px 6px;border-bottom:1px solid var(--line)}
+.row{display:flex;align-items:center;gap:6px}
+.grow{flex:1}
+.mark{font-family:var(--mono);font-size:10.5px;background:var(--ai-soft);color:var(--ai);border-radius:4px;padding:0 4px}
+.title{font-weight:600}
+.hbtn{font:inherit;font-size:12.5px;border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:2px 8px;color:var(--ink)}
+.ibtn{display:inline-flex;width:26px;height:26px;align-items:center;justify-content:center;border-radius:6px;color:var(--ink-2);font-size:14px}
+.chip{display:inline-block;font-size:12px;background:var(--accent-soft);color:var(--accent);border-radius:12px;padding:1px 9px;margin-top:6px}
+.beta{font-size:11.5px;color:var(--ink-3);margin-left:auto}
+.log{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+.me{align-self:flex-end;max-width:85%;background:var(--accent-soft);border-radius:12px 12px 2px 12px;padding:7px 11px;font-size:13.5px}
+.me .where{display:block;font-size:11px;color:var(--ink-3)}
+.ai{align-self:stretch;font-size:13.5px}
+.ai p{margin:0 0 6px}.ai ol,.ai ul{margin:0 0 6px;padding-left:20px}
+.ai code{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:4px;padding:0 3px}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin:4px 0}
+.src{font-size:12px;border:1px solid var(--line);border-radius:12px;padding:1px 8px;background:var(--surface-2)}
+.src a{color:var(--accent);margin-left:4px}
+.reads{font-size:12.5px;color:var(--ink-2);margin:4px 0}
+.reads .read{margin:3px 0 3px 14px}
+.reads .open{margin:2px 0 4px 28px;font-size:12px;color:var(--ink-2)}
+.quiet{font-size:11.5px;color:var(--ink-3)}
+.quiet a{color:var(--ink-3)}
+.handoff{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:6px 0;background:var(--surface-2);font-size:13px}
+.btn{display:inline-block;border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:3px 10px;font-size:13px}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn[disabled],.dis{opacity:.5}
+.fb{font-size:12px;color:var(--ink-3)}
+.working{font-size:13px;color:var(--ink-2)}
+.dots{letter-spacing:2px;color:var(--ai)}
+.steps{font-size:12px;color:var(--ink-3);margin:2px 0 0 14px}
+.compose{border-top:1px solid var(--line);padding:10px 12px}
+.box{border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-height:22px;font-size:13.5px;color:var(--ink-3);background:var(--surface)}
+.crow{display:flex;align-items:center;gap:8px;margin-top:6px}
+.hint{font-size:11.5px;color:var(--ink-3)}
+.empty{margin:auto 0;color:var(--ink-2);font-size:13.5px;text-align:center}
+.empty ul{list-style:none;padding:0;margin:8px 0 0;font-size:13px}
+.empty li{margin:4px 0;color:var(--accent)}
+.off{font-size:12.5px;color:var(--ink-2);background:var(--muted-soft);border-radius:6px;padding:6px 9px;margin-top:6px}
+.menu{position:absolute;right:12px;top:40px;width:330px;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.14);padding:8px;font-size:13px;z-index:2}
+.menu .item{display:flex;gap:6px;align-items:baseline;padding:5px 4px;border-bottom:1px solid var(--line-2)}
+.menu .item:last-child{border-bottom:0}
+.info{font-size:12.5px;color:var(--ink-2);background:var(--surface-2);border-bottom:1px solid var(--line-2);padding:8px 12px}
+.callout{font-size:12px;color:#5b3d00;background:#FFF6D6;border:1px dashed #C9A23A;border-radius:6px;padding:6px 10px;margin:6px 0}
+.notes{width:1040px;margin:8px auto 0}
+</style>
+</head>
+<body>
+<div class="boardhead"><h1>The assistant, as a continuous chat</h1>
+The top bar's AI Assistant opens it on the right; the page reflows around it. Its left edge drags (and arrows on it) between 320 px and 60% of the window,
+remembered in this browser. Signed off under the Phase 7 mode (docs/STANDING_APPROVAL_LOG.md, "Board assistant-chat").</div>
+
+<div class="artlabel"><strong>A. Empty: a new conversation</strong></div>
+<div class="art"><div class="page">The page, reflowed beside the panel<div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+<div class="panel"><span class="edge" title="Drag to resize; arrow keys too"></span>
+  <div class="head"><div class="row"><span class="mark">AI</span><span class="title">Assistant</span><span class="grow"></span><span class="hbtn">New conversation</span><span class="ibtn" title="Past conversations">&#x21BA;</span><span class="ibtn" title="About the assistant">&#9432;</span><span class="ibtn">&#x2715;</span></div>
+    <div class="row"><span class="chip">Looking at: Devices · Default</span><span class="beta">Beta · advisory</span></div></div>
+  <div class="log"><div class="empty">Ask how to do something in Mercury, or about what is on this screen.
+    <p class="hint">Each question is one recorded AI call, and one more for each round of reads.</p></div></div>
+  <div class="compose"><div class="box">Ask a question…</div>
+    <div class="crow"><span class="hint">Enter sends · Shift+Enter, a new line</span><span class="grow"></span><span class="btn primary">Send</span><span class="faint">(i)</span></div></div>
+</div></div>
+<div class="notes"><p class="callout">The header: Assistant with the AI mark, New conversation, Past conversations, About the assistant (&#9432;: the beta notice in full, "It changes nothing…", masked and recorded, How does this work?), close. The chip below it says what the panel looks at and changes as the person moves (a tab, another page).</p></div>
+
+<div class="artlabel"><strong>B. A conversation: an answer with its sources, its reads (one opened), the quiet line and a hand-off</strong></div>
+<div class="art"><div class="page">The device page, r2<div class="bar"></div><div class="bar"></div></div>
+<div class="panel"><span class="edge"></span>
+  <div class="head"><div class="row"><span class="mark">AI</span><span class="title">Assistant</span><span class="grow"></span><span class="hbtn">New conversation</span><span class="ibtn">&#x21BA;</span><span class="ibtn">&#9432;</span><span class="ibtn">&#x2715;</span></div>
+    <div class="row"><span class="chip">Looking at: r2 (device) · Lab</span><span class="beta">Beta · advisory</span></div></div>
+  <div class="log">
+    <div class="me">What version is r2 running, and how do I shut Gi4?<span class="where">on r2 (device) · Lab</span></div>
+    <div class="ai"><p>r2 runs <strong>IOS XE 17.9.1a</strong> (read:1). To shut GigabitEthernet4:</p>
+      <ol><li>Open r2's <strong>Intent</strong> tab.</li><li>Use <strong>Change it in words…</strong> with <code>shut GigabitEthernet4</code>.</li><li>Preview, then confirm.</li></ol>
+      <div class="chips"><span class="src">Manual › Intent in words<a>Open</a></span><span class="src">read:1 r2's version<a>Open</a></span></div>
+      <div class="handoff"><strong>To make this change:</strong> shut GigabitEthernet4<br><span class="btn">Change it in words…</span> <span class="hint">nothing is drafted until you press there</span></div>
+      <div class="reads">&#9662; Ran 2 reads
+        <div class="read">&#9662; read:1 r2's version · read</div><div class="open">show version on r2 · Open the read on History › Reads</div>
+        <div class="read">&#9656; read:2 r6's version · refused by Mercury</div></div>
+      <div class="quiet">Haiku 5.5 · $0.0031 · 9 s · History (2 calls)</div>
+      <div class="fb">Was this right? Yes · No…</div></div>
+  </div>
+  <div class="compose"><div class="box">Ask a follow-up…</div>
+    <div class="crow"><span class="hint">Enter sends · Shift+Enter, a new line</span><span class="grow"></span><span class="btn primary">Send</span></div></div>
+</div></div>
+<div class="notes"><p class="callout">Newest at the bottom; it scrolls to each answer as it arrives unless the person has scrolled up. The answer's words are markdown drawn by Mercury (lists, code, tables; never a link the model wrote). The reads line starts collapsed ("&#9656; Ran 2 reads"); each read opens like a tool call in Claude Code. The quiet line's History opens the calls.</p></div>
+
+<div class="artlabel"><strong>C. Working: the indicator in the conversation, Stop in Send's place</strong></div>
+<div class="art"><div class="page">The page<div class="bar"></div></div>
+<div class="panel"><span class="edge"></span>
+  <div class="head"><div class="row"><span class="mark">AI</span><span class="title">Assistant</span><span class="grow"></span><span class="hbtn dis">New conversation</span><span class="ibtn">&#x21BA;</span><span class="ibtn">&#9432;</span><span class="ibtn">&#x2715;</span></div>
+    <div class="row"><span class="chip">Looking at: r2 (device) · Lab</span><span class="beta">Beta · advisory</span></div></div>
+  <div class="log">
+    <div class="me">Is r2's BGP to r3 up?<span class="where">on r2 (device) · Lab</span></div>
+    <div class="ai working"><span class="dots">&#9679;&#9679;&#9679;</span> Running the 2 reads it asked for
+      <div class="steps">Choosing the manual's passages · Asking the model</div></div>
+  </div>
+  <div class="compose"><div class="box">Type the next question…</div>
+    <div class="crow"><span class="hint">Stop closes the model's answer and runs nothing more</span><span class="grow"></span><span class="btn">Stop</span></div></div>
+</div></div>
+<div class="notes"><p class="callout">The answer does not stream word by word: Mercury checks the whole answer (its citations, reads and hand-off) before drawing it, so the steps are drawn instead. Stop's hover says what it does: the model's stream is closed at its next check and no call is made after it (a round of reads already running finishes first); what was spent is in History.</p></div>
+
+<div class="artlabel"><strong>D. AI off: greyed, the reason in place</strong></div>
+<div class="art"><div class="page">The page<div class="bar"></div></div>
+<div class="panel"><span class="edge"></span>
+  <div class="head"><div class="row"><span class="mark">AI</span><span class="title">Assistant</span><span class="grow"></span><span class="hbtn">New conversation</span><span class="ibtn">&#x21BA;</span><span class="ibtn">&#9432;</span><span class="ibtn">&#x2715;</span></div>
+    <div class="row"><span class="chip">Looking at: Devices · Default</span><span class="beta">Beta · advisory</span></div></div>
+  <div class="log"><div class="me">How do I reload a device safely?<span class="where">on Devices · Default</span></div>
+    <div class="ai"><p>Open the device page, then <strong>Actions › Reload…</strong></p><div class="quiet">Haiku 5.5 · $0.0029 · 6 s · History</div></div></div>
+  <div class="compose"><div class="box dis">Ask a question…</div>
+    <div class="crow"><span class="grow"></span><span class="btn primary dis">Send</span></div>
+    <div class="off">&#9432; Not available now: hosted AI is off. Open Settings › Installation, AI (hosted)</div></div>
+</div></div>
+
+<div class="artlabel"><strong>E. Past conversations open</strong></div>
+<div class="art"><div class="page">The page<div class="bar"></div></div>
+<div class="panel"><span class="edge"></span>
+  <div class="head"><div class="row"><span class="mark">AI</span><span class="title">Assistant</span><span class="grow"></span><span class="hbtn">New conversation</span><span class="ibtn">&#x21BA;</span><span class="ibtn">&#9432;</span><span class="ibtn">&#x2715;</span></div>
+    <div class="row"><span class="chip">Looking at: Devices · Default</span><span class="beta">Beta · advisory</span></div></div>
+  <div class="menu"><strong>Past conversations</strong>
+    <div class="item"><span class="grow">How do I roll back r2?</span><span class="hint">Nov 27, 14:02 · 3</span><span class="btn">Reopen</span></div>
+    <div class="item"><span class="grow">Why is this incident held?</span><span class="hint">Nov 26, 09:40 · 1</span><span class="btn">Reopen</span></div>
+    <div class="item"><span class="grow">What changed on s1 this week?</span><span class="hint">Nov 24, 17:15 · 5</span><span class="btn">Reopen</span></div>
+    <p class="hint">Reopening keeps the current conversation here in its place.</p></div>
+  <div class="log"></div>
+  <div class="compose"><div class="box">Ask a question…</div><div class="crow"><span class="grow"></span><span class="btn primary">Send</span></div></div>
+</div></div>
+<div class="notes"><p class="callout">Each past conversation: its first question, when it was asked (the viewer's zone, UTC on hover) and how many exchanges. Nothing is deleted: New conversation and Reopen only move a conversation in or out of the past list.</p></div>
+</body>
+</html>

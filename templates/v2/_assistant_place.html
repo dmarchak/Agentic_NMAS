@@ -1,0 +1,11 @@
+{%- from "v2/_macros.html" import how -%}
+{#- What the assistant's panel is looking at (stage 2, "Aware of where the person is"; the chat,
+    board assistant-chat's head): resolved by the server from the page's path
+    (`assistant_context.resolve`), drawn in the panel's head and asked again when the person
+    moves within a page (its address changes: routes/assistant_v2.place, nmas_assistant.js),
+    so it changes as they navigate. What it reads is on the chip's hover. *place* is the
+    resolved place. -#}
+{%- if place.device %}{% set reads = 'It reads only ' ~ place.device ~ '; nothing else is read.' %}
+{%- elif place.incident %}{% set reads = "It reads only the incident's device; nothing else is read." %}
+{%- else %}{% set reads = 'Nothing is read on this page: answers come from the manual.' %}{% endif %}
+<span class="asst-place" id="asst-place" data-looking-at="{{ place.endpoint }}" data-asked="{{ place.asked }}" data-path="{{ place.path }}" data-screen="{{ place.screen }}" data-tab="{{ place.tab }}" title="{{ reads }}">Looking at: <strong>{{ place.label or 'no one screen' }}</strong></span>{{ how('assistant', 'looking-at', compact=True, op='what the assistant looks at') }}

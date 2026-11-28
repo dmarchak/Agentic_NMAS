@@ -3262,8 +3262,11 @@ def _assistant(client, _lab, mp):
     mp.setattr(installation_settings, "assistant_on", lambda: True)
     gaps = []
     mp.setattr(assistant, "record_gap", lambda *a, **k: gaps.append((a, k)) or {})
-    r = client.post("/v2/assistant/ask", data={"question": "What is the capital of France?",
-                                               "screen": "Devices"})
+    # The chat (2026-11-28): a press answers with its turn at once and its job draws the answer;
+    # the press and the turn's read as the panel makes them (tests/assistant_ask.py).
+    from tests import assistant_ask
+    r = assistant_ask.ask(client, {"question": "What is the capital of France?",
+                                   "screen": "Devices"})
     assert r.status_code == 200 and "The manual doesn't cover this." in html.unescape(
         r.get_data(as_text=True)), r.get_data(as_text=True)[:300]
     assert len(gaps) == 1
@@ -3300,10 +3303,46 @@ def _assistant(client, _lab, mp):
         "typed_masked": ""}
     for state, got in states.items():
         mp.setattr(assistant, "answer", lambda *a, got=got, **k: dict(got))
-        r = client.post("/v2/assistant/ask", data={"question": "How do I reload?",
-                                                   "screen": "Devices"})
+        r = assistant_ask.ask(client, {"question": "How do I reload?", "screen": "Devices"})
         assert r.status_code == 200 and 'href="/v2/help/reload#the-run"' in r.get_data(
             as_text=True), state
+    # The chat (board assistant-chat): a stopped answer and a lost one, as the job and a turn
+    # with no sign of life keep them; the conversation put aside (New conversation), so the
+    # panel draws a past one; a question still being answered; the head's Looking at asked
+    # again for an address the page moved to; and Stop pressed on the working one.
+    import time as _time
+
+    from modules.ai import assistant_threads
+    from tests.conftest import TEST_PERSON
+    for got in ({"ok": False, "state": "stopped", "error": "stopped",
+                 "detail": assistant.STOPPED, "calls": ["ai-0123456789abcdef"],
+                 "call_id": "ai-0123456789abcdef", "cost_usd": 0.0012, "passages": [],
+                 "gap": False, "model": "claude-haiku-5-5", "model_words": "Haiku 5.5"},):
+        mp.setattr(assistant, "answer", lambda *a, got=got, **k: dict(got))
+        r = assistant_ask.ask(client, {"question": "Stop this one", "screen": "Devices"})
+        assert "Stopped by you." in html.unescape(r.get_data(as_text=True))
+    lost = assistant_threads.begin(TEST_PERSON, "Lost one", "Devices · Default", "/v2/devices",
+                                   now=_time.time() - assistant_threads.LOST_S - 5)
+    r = client.get(f"/v2/assistant/turn/{lost['turn']}")
+    assert "No answer arrived" in r.get_data(as_text=True)
+    r = client.get("/v2/assistant/panel", query_string={"path": "/v2/devices", "nav": "devices"})
+    assert "Stopped by you." in html.unescape(r.get_data(as_text=True)), "the kept exchanges"
+    r = client.post("/v2/assistant/new", data={"path": "/v2/devices", "nav": "devices"})
+    assert r.status_code == 200 and "data-conversation=" in r.get_data(as_text=True)
+    working = assistant_threads.begin(TEST_PERSON, "Still working", "Devices · Default",
+                                      "/v2/devices")
+    assistant_threads.step(TEST_PERSON, working["turn"], "Choosing the manual's passages")
+    assistant_threads.step(TEST_PERSON, working["turn"], "Asking the model")
+    r = client.get("/v2/assistant/panel", query_string={"path": "/v2/devices", "nav": "devices"})
+    body = html.unescape(r.get_data(as_text=True))
+    assert "Asking the model…" in body and "data-asst-stop" in body, body[-800:]
+    r = client.get("/v2/assistant/place", query_string={"path": "/v2/device/r2?tab=intent",
+                                                        "nav": "devices"})
+    assert r.status_code == 200 and 'id="asst-place"' in r.get_data(as_text=True)
+    r = client.post("/v2/assistant/stop")
+    assert "Stopping: closing the model's answer" in html.unescape(r.get_data(as_text=True))
+    assistant_threads.finish(TEST_PERSON, working["turn"], {"state": "stopped",
+                                                            "detail": assistant.STOPPED})
 
 
 def _plans(client, _lab, mp):
@@ -3389,7 +3428,8 @@ def _plans(client, _lab, mp):
            "typed_masked": "", "plan": {"plan": "dhcp-reservation", "title": "Reserve it",
                                         "params": {"mac": "aa:bb:cc:dd:ee:ff"}}}
     mp.setattr(assistant, "answer", lambda *a, **k: dict(got))
-    r = client.post("/v2/assistant/ask", data={"question": "Reserve it", "screen": ""})
+    from tests import assistant_ask
+    r = assistant_ask.ask(client, {"question": "Reserve it", "screen": ""})
     assert "Preview the plan…" in r.get_data(as_text=True) and _json
 
 

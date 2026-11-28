@@ -54,7 +54,7 @@ answers questions about Mercury and about what Mercury already holds for the thi
   assistant switch off, `ai_assistant_on`) it is disabled, and its title and the panel say why
   and where it is turned on (`ai_control('assistant')`'s reason).
 - **No model call until the person asks:** opening the panel, changing page and refreshing only
-  read the thread; the one call is the press of **Ask**.
+  read the thread; the one call is the press of **Send** (the chat's; **Ask** before it).
 - **Every call and every read in History:** each press is one gateway call, and one more for
   each round of reads the read loop runs (`gateway.ask`, trigger `person`), recorded with its
   cost; each read is recorded as a person's read through the same tool is; the answer links its
@@ -72,6 +72,50 @@ answers questions about Mercury and about what Mercury already holds for the thi
   family (the same operations as `fixit_reads.FAMILY`, scoped by the context resolver) and loop
   feature; the context resolver; the thread store; the panel's sources, model and cost lines.
 - Tests mock the model (`send=` and the adapter fake); no live call.
+
+## The chat (the operator, 2026-11-28; board assistant-chat)
+
+"Rebuild it as a continuous chat, like Claude's chat or Claude Code, not a form."
+
+- **Layout:** the head (the AI mark and Assistant, New conversation, Past conversations, About
+  the assistant behind its ⓘ holding the beta notice and "It changes nothing…", close; under
+  them the Looking at chip and one short "Beta · advisory"); the conversation filling the panel
+  and scrolling, newest at the foot, kept at the newest answer unless the person scrolled up;
+  the box pinned at the foot, growing to eight lines, Enter sends and Shift+Enter a new line.
+  The person's message and the answer are drawn apart (a bubble, and the answer's own column);
+  an answer's words are markdown drawn by Mercury (`answer_text`: every character escaped, no
+  link or HTML the model wrote), its sources chips with Open, its reads one collapsed "Ran N
+  reads" line whose reads each open, one quiet line (model · cost · seconds · History), and a
+  hand-off as a button inside it.
+- **A press is a job** (`assistant_turns`): Send keeps the turn (`assistant_threads.begin`, one
+  at a time per person) and answers at once; the turn re-reads on each announced step
+  (`assistant`), drawn "Asking the model…", "Running the 2 reads it asked for…", until its
+  answer is kept in the conversation. A request no longer waits on the model (the tunnel cuts
+  one held past about 100 s, as AI troubleshooting's was before its job).
+- **Progress steps, not a stream:** the gateway streams each call from the provider, but its
+  result is the whole schema-bound answer, which Mercury checks (citations, reads, hand-off)
+  before anything is drawn; drawing words before that check would draw an answer Mercury has
+  not checked, and streaming them out would need the gateway changed (the irreversible tier).
+  So the steps are drawn, the operator's own fallback.
+- **Stop** (Send's place while one is answered): the turn is marked stopped in its file (any
+  worker's); the gateway, handed `stop_if`, closes the model's stream at its next live check
+  (no further output billed from there), and `assistant.answer` makes no call, so no read,
+  after it. A round of reads already running finishes. The exchange is kept "Stopped by you"
+  with its calls' History links; each call made stays one recorded call, its use recorded as
+  "stopped by the person" (the gateway's own row names its watchdog's bound for every stop,
+  C4324). A turn stopping is busy (Send, New conversation and a reopen wait for it); a job
+  whose turn is gone (let go as lost) or ended stops at its next check.
+- **Conversations:** the current one is the release before's file, unchanged in name and row
+  shape (rows gain `turn`, `page`, `took_s`); New conversation moves it into the person's past
+  folder whole, Reopen moves one back (the current one aside in its place); nothing is deleted
+  (expand, then contract). Each message records the page it was asked on.
+- **Looking at** is re-asked of the server (`/v2/assistant/place`) when the page's address
+  changes without a new page (a device's tab); a new page draws its own.
+- **Width:** the left edge drags, and takes the arrow keys, between 320 px and 60% of the
+  window; kept in this browser's localStorage only, never written to Mercury.
+- **A lost turn** (no sign of life for `assistant_threads.LOST_S`, 600 s: the adapter's 235 s
+  without one and a round of reads) is drawn as lost, never working for ever; the person's
+  next press keeps it in the conversation as lost.
 
 ## Never
 

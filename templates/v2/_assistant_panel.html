@@ -1,42 +1,88 @@
-{%- from "v2/_macros.html" import icon, how -%}
+{%- from "v2/_macros.html" import icon, how, clock -%}
 {%- import "v2/_ai.html" as ai -%}
-{#- The toolbar assistant's panel (card P7, stage 1; stage 2, docs/design/assistant.md; board P7,
-    parts 1g, 3 and 4; PHASE8_PLAN 16.10): on the right, in the help panel's place (one of the
-    two at a time), opened by the top bar's Assistant, closed by its ✕ or Esc. A self-contained
-    component: its markup, its requests and its answers are its own, so it may mount docked,
-    as a drawer or in a palette (the week plan's Stage 4). It answers how to do something, from
-    the manual's passages code chose, and what Mercury holds about the device or incident in
-    view, from the reads a person has (routes/assistant_v2.ask). Its head says what it is
-    looking at, resolved by the server from the page's path (*place*,
-    `assistant_context.resolve`). The person's thread (*thread*, `assistant_threads.read`) is
-    drawn as it was kept, oldest first, and a new answer is added under it; nothing is asked
-    again. base.html carries its shell; this, its head and body, is drawn by
-    routes/assistant_v2.panel the first time a person opens it on a page. -#}
+{#- The toolbar assistant's panel as a continuous chat (card P7, stage 1; stage 2,
+    docs/design/assistant.md; the chat, the operator's order of 2026-11-28, board
+    assistant-chat; PHASE8_PLAN 16.10): on the right, in the help panel's place (one of the two
+    at a time), the page reflowing around it, opened by the top bar's Assistant, closed by its ✕
+    or Esc, its left edge dragged to resize it (base.html, nmas_assistant.js).
+
+    Top to bottom: the head (the AI mark and Assistant, New conversation, Past conversations,
+    About the assistant behind its ⓘ, close; under it what the panel is looking at, resolved by
+    the server from the page's path, `_assistant_place.html`, and the one short beta line); the
+    conversation, filling the panel and scrolling, oldest first and newest at the bottom (the
+    person's kept exchanges, *thread*, then any question still being answered, *turns*); the box
+    pinned at the foot, Send (or Stop while a question is answered, `_assistant_act.html`).
+    Nothing is asked again: the one call is a press of Send (routes/assistant_v2.ask). *past* is
+    the person's past conversations (`assistant_threads.past`); *keep* the exchanges a
+    conversation keeps; *notice* what a New conversation or a reopen could not do. -#}
 {%- set aic = ai_control('assistant') %}
-  <div class="help-panel-head">
-    <span class="grow">{{ ai.mark(aic) }} Assistant</span>
-    {{ how('assistant', compact=True, op='the assistant') }}
-    <button type="button" class="icon-btn" aria-label="Close the assistant" x-on:click="closeAssistant">{{ icon('x', 18) }}</button>
-  </div>
-  <div class="help-panel-body">
-    <p class="small asst-place" data-looking-at="{{ place.endpoint }}">Looking at: <strong>{{ place.label or 'no one screen' }}</strong>{% if place.device or place.incident %} <span class="faint">(it reads only {{ place.device or "the incident's device" }})</span>{% endif %}{{ how('assistant', 'looking-at', compact=True, op='what the assistant looks at') }}</p>
-    <p class="small betaline"><strong>Advisory (beta)</strong>: not yet measured on its recorded cases. A person should confirm.</p>
-    {%- if thread.state == 'unreadable' %}
-    <p class="small notice notice-warn" role="alert">Your earlier questions could not be read ({{ thread.error }}). The next question you ask starts the thread again.</p>
-    {%- endif %}
-    <div id="asst-answer" class="asst-thread" aria-live="polite" aria-label="Your questions and the assistant's answers">
-      {%- for row in thread.rows %}
-      {%- with got=dict(row.got, question=row.question, looking_at=row.looking_at, at=row.at) %}{% include "v2/_assistant_answer.html" %}{% endwith %}
-      {%- endfor %}
+{%- set working = (turns | selectattr('state', 'in', ['working', 'stopping']) | map(attribute='turn') | first) or '' %}
+  <div class="help-panel-head asst-head">
+    <div class="asst-head-row">
+      <span class="asst-title">{{ ai.mark(aic) }} Assistant</span>
+      <span class="grow"></span>
+      <form class="asst-new" hx-post="{{ url_for('assistant_v2.new') }}" hx-target="#asst-body" hx-swap="innerHTML">
+        <input type="hidden" name="path" value="{{ place.asked }}"><input type="hidden" name="nav" value="{{ nav }}">
+        <button type="submit" class="asst-hbtn" hx-disabled-elt="this"{% if working %} disabled aria-disabled="true"{% else %}{{ gate('configure') }}{% endif %} title="Keeps this conversation under Past conversations and starts another; nothing is deleted"><span class="op-idle">New conversation</span><span class="op-busy">Starting…</span></button>
+      </form>
+      <details class="menu-wrap asst-past" data-keep="asst-past">
+        <summary class="icon-btn" aria-haspopup="true" aria-label="Past conversations" title="Past conversations">{{ icon('history', 17) }}</summary>
+        <div class="menu asst-past-menu" role="dialog" aria-label="Past conversations">
+          <p class="asst-menu-head"><strong>Past conversations</strong></p>
+          {%- if past.state == 'unreadable' %}
+          <p class="small notice notice-warn" role="alert">Your past conversations could not be read ({{ past.error }}).</p>
+          {%- elif not past.rows %}
+          <p class="small faint">None yet: New conversation keeps this one here.</p>
+          {%- else %}
+          <ul class="asst-past-list">{% for c in past.rows %}
+            <li data-conversation="{{ c.id }}"><form hx-post="{{ url_for('assistant_v2.reopen') }}" hx-target="#asst-body" hx-swap="innerHTML">
+              <input type="hidden" name="conversation" value="{{ c.id }}"><input type="hidden" name="path" value="{{ place.asked }}"><input type="hidden" name="nav" value="{{ nav }}">
+              <span class="asst-past-q">{{ c.first or ('could not be read (' ~ c.error ~ ')' if c.error else 'no question kept') }}</span>
+              <span class="small faint">{{ clock(c.at) }} · {{ c.count }} {{ 'exchange' if c.count == 1 else 'exchanges' }}</span>
+              <button type="submit" class="asst-hbtn" hx-disabled-elt="this"{% if working %} disabled aria-disabled="true"{% else %}{{ gate('configure') }}{% endif %} title="Makes it your current conversation again; this one is kept here in its place"><span class="op-idle">Reopen</span><span class="op-busy">Opening…</span></button>
+            </form></li>
+          {%- endfor %}</ul>
+          {%- if past.total > past.rows | length %}<p class="small faint">The newest {{ past.rows | length }} of {{ past.total }}; every one is kept.</p>{% endif %}
+          <p class="small faint">Reopening keeps the current conversation here in its place.</p>
+          {%- endif %}
+        </div>
+      </details>
+      <details class="menu-wrap asst-info" data-keep="asst-info">
+        <summary class="icon-btn" aria-haspopup="true" aria-label="About the assistant" title="About the assistant">{{ icon('info', 17) }}</summary>
+        <div class="menu asst-info-menu" role="dialog" aria-label="About the assistant">
+          <p class="small betaline"><strong>Advisory (beta)</strong>: not yet measured on its recorded cases. A person should confirm.</p>
+          <p class="small">It changes nothing: a change you ask for is handed to its own gated flow (Change it in words on the device's Intent tab, or the incident's AI troubleshooting), where you preview and confirm it.</p>
+          <p class="small">Masked before it leaves Mercury. Each question is one recorded AI call, and one more for each round of reads; no call is made until you press Send.</p>
+          <p class="small">{{ how('assistant', compact=False, op='the assistant') }}</p>
+        </div>
+      </details>
+      <button type="button" class="icon-btn" aria-label="Close the assistant" x-on:click="closeAssistant">{{ icon('x', 18) }}</button>
     </div>
-    <form class="op-act asst-ask" hx-post="{{ url_for('assistant_v2.ask') }}" hx-target="#asst-answer" hx-swap="beforeend" hx-disabled-elt="find button">
-      <label for="asst-q"><strong>Ask about this screen, or how to do something in Mercury</strong></label>
-      <textarea id="asst-q" name="question" maxlength="600" rows="3" required{{ ai.input_attrs(aic) }}></textarea>
-      <input type="hidden" name="screen" value="{{ place.screen }}">
-      <input type="hidden" name="path" value="{{ place.asked }}">
-      <div class="asst-row"><span class="small faint">Masked before it leaves Mercury. Each question is one recorded AI call, and one more for each round of reads.</span>
-        <span><button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="assistant"{{ ai.attrs(aic, 'configure') }}><span class="op-idle">Ask</span><span class="op-busy">Asking…</span></button>{{ how('assistant', 'answer', compact=True, op='Ask') }}</span></div>
-      {{ ai.reason(aic) }}
-    </form>
-    <p class="small faint">It changes nothing: a change you ask for is handed to its own gated flow (Change it in words on the device's Intent tab, or the incident's AI troubleshooting), where you preview and confirm it.</p>
+    <div class="asst-head-row">{% include "v2/_assistant_place.html" %}<span class="grow"></span><span class="small faint asst-beta" title="Advisory (beta): not yet measured on its recorded cases. A person should confirm.">Beta · advisory</span></div>
   </div>
+  {%- if notice %}<p class="small notice notice-warn asst-notice" role="alert">{{ notice }}</p>{% endif %}
+  {%- if thread.state == 'unreadable' %}
+  <p class="small notice notice-warn asst-notice" role="alert">Your earlier questions could not be read ({{ thread.error }}). The next question you ask starts the conversation again.</p>
+  {%- endif %}
+  <div id="asst-answer" class="asst-thread" role="log" aria-live="polite" aria-label="Your questions and the assistant's answers" data-keep-scroll>
+    {%- if not thread.rows and not turns %}
+    <div class="asst-empty" data-asst-empty><p>Ask how to do something in Mercury, or about what is on this screen.</p><p class="small faint">Each question is one recorded AI call, and one more for each round of reads.</p></div>
+    {%- endif %}
+    {%- if thread.rows | length >= keep %}<p class="small faint asst-kept">This conversation keeps its newest {{ keep }} exchanges; New conversation keeps it whole under Past conversations.</p>{% endif %}
+    {%- for row in thread.rows %}
+    {%- with t={'state': 'done', 'row': row, 'turn': row.turn or ''}, oob=False %}{% include "v2/_assistant_turn.html" %}{% endwith %}
+    {%- endfor %}
+    {%- for tr in turns %}
+    {%- with t=tr, oob=False %}{% include "v2/_assistant_turn.html" %}{% endwith %}
+    {%- endfor %}
+  </div>
+  <form class="asst-compose" id="asst-compose" hx-post="{{ url_for('assistant_v2.ask') }}" hx-target="#asst-answer" hx-swap="beforeend" data-place-url="{{ url_for('assistant_v2.place') }}">
+    <label for="asst-q" class="sr-only">Ask about this screen, or how to do something in Mercury</label>
+    <textarea id="asst-q" name="question" maxlength="600" rows="1" required placeholder="{{ 'Ask a follow-up…' if thread.rows else 'Ask a question…' }}" aria-describedby="asst-keys"{{ ai.input_attrs(aic) }}></textarea>
+    <input type="hidden" name="screen" value="{{ place.screen }}">
+    <input type="hidden" name="path" value="{{ place.asked }}">
+    <input type="hidden" name="nav" value="{{ nav }}">
+    <div class="asst-row"><span class="small faint" id="asst-keys">Enter sends · Shift+Enter, a new line</span>
+      {% with oob=False %}{% include "v2/_assistant_act.html" %}{% endwith %}</div>
+    {{ ai.reason(aic) }}
+  </form>

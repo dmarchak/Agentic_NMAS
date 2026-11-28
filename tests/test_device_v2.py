@@ -685,7 +685,8 @@ class TestTheShippedScripts:
                                "window.NMAS_V2.jumpTarget('/v2/device/', '  ')] : 0"))
         assert out == ["/v2/device/r3", "/v2/device/a%2Fb", ""]
 
-    def test_the_keys_it_wires_are_in_the_vocabulary_and_each_is_heard(self, lab, monkeypatch):
+    def test_the_keys_it_wires_are_in_the_vocabulary_and_each_is_heard(self, lab, monkeypatch,
+                                                                       tmp_path):
         from modules import deploy_job, invalidation
 
         keys = json.loads(_eval("nmas_v2.js", "NMAS_V2", "KEYS"))
@@ -841,12 +842,24 @@ class TestTheShippedScripts:
         # Incidents list and an incident's stepper read again).
         # +1 2026-11-24: heal_decisions (C2851: History's timelines read again when a pass's
         # self-healing decisions are recorded).
-        assert len(keys) == 60
+        # +1 2026-11-28: assistant (the Assistant chat: a question being answered re-reads its
+        # turn on each announced step, routes/assistant_v2.turn; heard below).
+        assert len(keys) == 61
         # Diagnose…'s card while its run runs (H16) is the one that listens for `diagnosis`;
         # it reads its job's network and kind, which the shared stand-in above does not carry.
         monkeypatch.setattr(capture_job, "get", lambda job: {
             "state": "running", "elapsed_s": 1, "list": "Lab", "kind": "diagnosis"})
         heard += " " + _get(lab, "/v2/device/r3/diagnose/job/x")[1]
+        # The Assistant chat's working turn listens for `assistant` (the Assistant on, a turn
+        # kept for the harness's person in this test's own folder).
+        from modules import installation_settings
+        from modules.ai import assistant_threads
+        from tests.conftest import TEST_PERSON
+        monkeypatch.setattr(installation_settings, "assistant_on", lambda: True)
+        monkeypatch.setattr(assistant_threads, "_dir", lambda: str(tmp_path / "threads"))
+        turn = assistant_threads.begin(TEST_PERSON, "Is r3 up?", "r3 (device) · Lab",
+                                       "/v2/device/r3")["turn"]
+        heard += " " + _get(lab, f"/v2/assistant/turn/{turn}")[1]
         unheard = [key for key in keys if f"nmas:{key} from:body" not in heard]
         assert unheard == [], unheard
         src = _js("nmas_v2.js")
