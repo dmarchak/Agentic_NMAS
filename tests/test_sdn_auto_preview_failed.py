@@ -108,7 +108,7 @@ def test_a_failed_auto_preview_awaits_a_person_with_its_failure(lab, monkeypatch
     assert out["proposed"] == [row["id"]]
     failed = row["auto_failed"]
     assert failed == FAILED[case]
-    assert row["why"] == (f"HITL for this one: {failed}; nothing was sent, and a person "
+    assert row["why"] == (f"A person confirms this one: {failed}; nothing was sent, and a person "
                           "previews it again and confirms or dismisses it")
     assert (row["action"], row["params"], row["classified"]) == (
         ACTION, {"source": H2}, "planted: passed")

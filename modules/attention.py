@@ -5258,7 +5258,7 @@ def sdn_links_source(found=None, now: float = None) -> dict:
             state = SDN_LINK_STATES.get(outcome, f"its reroute's verify answered {outcome!r}")
             mode = ("AUTO: Mercury verifies it at each pass for "
                     f"{LF.VERIFY_WINDOW_S} s, then leaves it to a person"
-                    if r.get("mode") == "auto" else "HITL: it awaits a person's Verify")
+                    if r.get("mode") == "auto" else "It awaits a person's Verify")
             last = (f"; the latest verify ({v.get('actor') or 'unknown'}, {v.get('at')}): "
                     f"{v.get('words')}" if v else "")
             rows.append(row(

@@ -499,9 +499,11 @@ def responses_view(network: str, run: str = "", q: str = "", sev: str = "",
             "watching": [w for w in watched if not sev and (not q or _watch_matches(w, q))],
             "watching_total": len(watched),
             "awaiting_state": awaiting["state"], "awaiting_error": awaiting["error"],
-            # The mode as drawn (C2082): AUTO or HITL and its words, which carry who, why,
-            # until when, the allowed risk, an unreadable record and a lapsed AUTO.
-            "mode": {k: v for k, v in modes.current(network).items() if k in ("mode", "words")},
+            # The mode as drawn (C2082): its badge (AUTO, or a person confirms: C4295) and its
+            # words, which carry who, why, until when, the allowed risk, an unreadable record
+            # and a lapsed AUTO.
+            "mode": {k: v for k, v in modes.current(network).items()
+                     if k in ("mode", "words", "badge")},
             "loop": loop.status(network),
             # C2009: the network's stage; Turn AUTO on is drawn only on a network marked lab,
             # and AUTO recorded on elsewhere is drawn suspended (`modes.decide` runs nothing).

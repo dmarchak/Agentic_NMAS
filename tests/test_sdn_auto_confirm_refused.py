@@ -125,7 +125,7 @@ def assert_awaits_a_person(out, writes, failed, action="drop_source", params=Non
     row = one_awaiting()
     assert out["proposed"] == [row["id"]]
     assert row["auto_failed"] == failed
-    assert row["why"] == (f"HITL for this one: {failed}; nothing was sent, and a person "
+    assert row["why"] == (f"A person confirms this one: {failed}; nothing was sent, and a person "
                           "previews it again and confirms or dismisses it")
     assert (row["action"], row["classified"]) == (action, "planted: passed")
     if params is not None:

@@ -129,8 +129,8 @@ flood's comes from its port ([Where a port's source comes from](#port-source), b
 The action proposed is the rule's default in the network's **response policy** (SDN ›
 Responses, the rules), chosen in code, unless an AI classification proposed another (below).
 The policy also limits which actions each rule may take on the network: a preview or a confirm
-of any other is refused, naming the action, the rule and what is allowed. In **HITL** (the
-default) a response waits for you on SDN › Responses. In **AUTO**, which a person turns on for
+of any other is refused, naming the action, the rule and what is allowed. When **a person
+confirms** each response (the default), a response waits for you on SDN › Responses. In **AUTO**, which a person turns on for
 one network with a reason and an expiry, the loop applies only actions within the allowed risk,
 each recorded as autonomous with that reason and with who chose the action. Until Mercury is
 cleared for production use, AUTO is turned on only on a network marked **lab** (its
@@ -152,7 +152,7 @@ saying "NetBox declares it" with the host, the interface and the port. Two recor
 agree, so a fabric whose flows match MAC addresses only can still respond unattended. Anything
 else, or an export that cannot be read, waits for you as above. **When AUTO cannot preview its response** (the switch
 is no longer on the controller, the connection is gone, the plan refused), nothing is sent and
-the response waits for you as in HITL, its card saying "AUTO could not preview <action>: <why>"
+the response waits for you as when a person confirms each one, its card saying "AUTO could not preview <action>: <why>"
 and its Needs attention row naming that failure and that AUTO sent nothing; it clears when you
 confirm the response or dismiss it. **When AUTO's confirm is refused before anything is sent**
 (between its preview and its confirm the response policy or the connection was saved, the
@@ -207,7 +207,7 @@ send from), does not list the host, or could not be read, with why.
 A response does not stop a detection at once: a scan's sightings stay in its window (60 seconds
 by default) after its source is dropped or rate-limited, so the same scan can fire again while
 the response is working. **A detection that fires again while one of Mercury's responses holds
-its source off is recorded, not proposed**: no card, no AI call, nothing sent, in HITL and in
+its source off is recorded, not proposed**: no card, no AI call, nothing sent, whether a person confirms each response or in
 AUTO alike. The loop's log on SDN › Responses says it fired again while mitigated by response
 <id> (the card you confirmed, or AUTO's operation) until <time>, the response's hard timeout.
 
@@ -271,7 +271,7 @@ source's flows on each switch it crosses, so each switch's rule fires. Mercury a
    the first reported) is proposed.
 4. **One AI call.** Classification runs once per incident, on the ingress switch's detection
    and its evidence pack, so 50 switches seeing one scan are one call, not 50.
-5. **One response.** In HITL, one response awaits you, on one row of SDN › Responses and one
+5. **One response.** When a person confirms each response, one response awaits you, on one row of SDN › Responses and one
    row of Needs attention; in AUTO, the loop applies it once, at the ingress. The response's
    record keeps its incident (whether its switch is the known ingress, and how many switches
    saw it), which is what lets it hold the source off across switches (above).

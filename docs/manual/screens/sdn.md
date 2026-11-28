@@ -4,7 +4,8 @@ A network's SDN controllers and the flow tables of the switches they manage, und
 The sidebar's SDN opens it for the network you are on (`/v2/sdn?list=<network>`). Its tabs are
 **Controllers**, **Flows**, **Apps** (the apps each controller runs, deployed by Mercury),
 **Policies** (a policy in words, checked and confirmed: [SDN › Policies](sdn-policies)) and
-**Responses** (what awaits you, HITL or AUTO, the loop and the detection rules).
+**Responses** (what awaits you, whether a person confirms each response or AUTO acts, the loop
+and the detection rules).
 
 The connections are the network's own, set in Settings › Integrations' SDN controllers card
 ([Settings](settings#sdn-controllers)): a network never takes Default's controllers. With none
@@ -468,10 +469,10 @@ mode and whether the loop is running.
   refused by the check (or no classification could be made), the card says so ("AI
   classification refused: why; proposed by the catalogue default") with **The refused answer
   in History**, and the rule's catalogue default awaits you, even in AUTO.
-- **Mode**: **HITL**, a person confirms each response, is the default. **Turn AUTO on** takes a
+- **Mode**: **A person confirms** each response, the default. **Turn AUTO on** takes a
   reason, how many hours (at most 24) and the allowed risk (low: rate-limit and drop; medium:
   also remove a flow). While AUTO is on the card names who turned it on, why and until when;
-  **Turn AUTO off** ends it at once. At its expiry the mode is HITL again, and the record says so.
+  **Turn AUTO off** ends it at once. At its expiry a person confirms each response again, and the record says so.
   The card says the network's stage in one line: "This network is marked lab.", or that it is
   not marked (or marked pilot or production) and that AUTO is turned on only on a network marked
   lab until Mercury is cleared for production use, with a link to the stage on
@@ -613,7 +614,7 @@ the response is to **verify** that reroute:
 
 **Each host pair traced** opens to every pair's outcome. In **AUTO**, on a network marked lab,
 Mercury verifies at every pass until the link is rerouted. If it has not seen a reroute after
-75 seconds, the card says so and leaves it to you. In **HITL**, press **Verify the reroute**.
+75 seconds, the card says so and leaves it to you. Otherwise, press **Verify the reroute**.
 Nothing was written, so nothing is rolled back.
 
 **Your press answers at once.** The SDN reader reads the flow tables every 30 seconds. If its
@@ -664,7 +665,7 @@ itself.
   - **a switch whose meters were not read** keeps the rate limit, and its preview reads them,
     refusing (saying why) if it cannot.
 
-The fallback is said on the response's line in the loop's log, in HITL and in AUTO, and the
+The fallback is said on the response's line in the loop's log, in either mode, and the
 protected set still refuses a fallback drop that would touch a protected flow.
 
 ## Response policy {#response-policy}

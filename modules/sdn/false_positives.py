@@ -223,8 +223,8 @@ def handled(d: dict, collected: dict) -> str:
         return (f"watched as High packet rate (basis {d.get('basis') or 'rate'}): nothing "
                 "proposed, no AI call")
     if rule in detect.LINK_RULES:
-        return ("a link-failure card: HITL awaits a person, AUTO verifies the reroute; nothing "
-                "is sent")
+        return ("a link-failure card: a person confirms it, or AUTO verifies the reroute; "
+                "nothing is sent")
     unsure = d.get("scan_target_unsure")
     if unsure:
         # The loop's `scan_target_unsure`: a host that may be a scan's target (C4196).
@@ -236,7 +236,7 @@ def handled(d: dict, collected: dict) -> str:
         return f"{got['words']}; nothing proposed for AUTO, a person's card"
     default = closed_loop.DEFAULT_ACTION.get(rule, "")
     return (f"classified where sdn_classify's background feature is on (else the rule's "
-            f"default, {default}, proposed for a person); HITL waits for a person, AUTO acts "
+            f"default, {default}, proposed for a person); a person confirms it, and AUTO acts "
             "only on a network marked lab")
 
 

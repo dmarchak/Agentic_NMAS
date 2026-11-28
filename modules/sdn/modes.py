@@ -46,6 +46,16 @@ log = logging.getLogger(__name__)
 
 FILE_NAME = "sdn_mode.jsonl"
 MODES = ("hitl", "auto")
+#: The words for the default mode, from this one place (C4295, Stage 5 step 6's plain language:
+#: "HITL" was drawn on SDN › Responses, Needs attention and the loop's stored words). The mode's
+#: key stays "hitl"; AUTO keeps its name (its button and the gate name it).
+PERSON_WORDS = "A person confirms each response"
+#: One response a person confirms though AUTO is on (its risk, its source, a failure).
+THIS_ONE_WORDS = "A person confirms this one"
+#: A response kept for a person's confirm, as the loop's record says it.
+AWAITING_WORDS = "Awaiting a person's confirm"
+#: The mode in a badge or a summary line, by its key.
+BADGE = {"hitl": "A person confirms", "auto": "AUTO"}
 RISKS = ("low", "medium")
 #: The longest AUTO may be on before it must be turned on again (a day): an expiry is
 #: required, and one past this is refused.
@@ -205,22 +215,24 @@ def current(network: str, now: float = None) -> dict:
     got = _rows(network)
     hitl = {"mode": "hitl", "allowed_risk": "", "reason": "", "by": "", "since": "",
             "until": "", "state": got["state"], "error": got["error"], "expired": None,
-            "words": "HITL: a person confirms each response"}
+            "words": PERSON_WORDS, "badge": BADGE["hitl"]}
     if got["state"] == "unreadable":
-        hitl["words"] = (f"HITL: the mode's record cannot be read ({got['error']}), so no "
-                         "response runs unattended")
+        hitl["words"] = (f"{PERSON_WORDS}: the mode's record cannot be read ({got['error']}), "
+                         "so no response runs unattended")
         return hitl
     last = got["rows"][-1] if got["rows"] else None
     if not last or last.get("kind") != "on":
         return hitl
     if now >= float(last.get("until_epoch") or 0):
         return dict(hitl, expired=last,
-                    words=f"HITL: AUTO by {last.get('by')} expired {last.get('until')}")
+                    words=f"{PERSON_WORDS}: AUTO by {last.get('by')} expired "
+                          f"{last.get('until')}")
     return {"mode": "auto", "allowed_risk": last.get("allowed_risk"), "reason": last.get("reason"),
             "by": last.get("by"), "since": last.get("at"), "until": last.get("until"),
             "state": "ok", "error": "", "expired": None,
             "words": (f"AUTO until {last.get('until')}, by {last.get('by')}: "
-                      f"{last.get('reason')} (risk {last.get('allowed_risk')} and below)")}
+                      f"{last.get('reason')} (risk {last.get('allowed_risk')} and below)"),
+            "badge": BADGE["auto"]}
 
 
 def _append(network: str, row: dict) -> dict:
@@ -292,7 +304,8 @@ def record_expiry(network: str, now: float = None) -> dict:
     _append(network, {"kind": "expired", "network": network, "by": "Mercury",
                       "actor_verified": "system", "at": _iso(now),
                       "why": f"AUTO by {last.get('by')} ({last.get('reason')}) reached its "
-                             f"expiry {last.get('until')}; the mode is HITL"})
+                             f"expiry {last.get('until')}; {PERSON_WORDS[0].lower()}"
+                             f"{PERSON_WORDS[1:]} again"})
     return {"recorded": True}
 
 
@@ -382,17 +395,17 @@ def decide(network: str, risk: str, now: float = None, *, detection: dict = None
     refused = _stage_refusal(network)
     if refused:
         return {"auto": False, "autonomous": None,
-                "words": f"HITL: AUTO is on and suspended, since {refused}"}
+                "words": f"{PERSON_WORDS}: AUTO is on and suspended, since {refused}"}
     declared = (declared_source(network, detection)
                 if action in SOURCE_ACTIONS and (detection or {}).get("source_from") else "")
     inferred = source_refusal(detection, action, declared)
     if inferred:
-        return {"auto": False, "autonomous": None, "words": f"HITL for this one: {inferred}"}
+        return {"auto": False, "autonomous": None, "words": f"{THIS_ONE_WORDS}: {inferred}"}
     allowed = RISKS[: RISKS.index(mode["allowed_risk"]) + 1] if mode["allowed_risk"] in RISKS \
         else ()
     if risk not in allowed:
         return {"auto": False, "autonomous": None,
-                "words": f"HITL for this one: its risk is {risk}, and AUTO allows "
+                "words": f"{THIS_ONE_WORDS}: its risk is {risk}, and AUTO allows "
                          f"{mode['allowed_risk']} and below"}
     # The basis AUTO acted on for its source, kept with the action (C4154: the operation's
     # record and History said only who turned AUTO on, so a source NetBox declared (C4133)

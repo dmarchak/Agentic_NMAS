@@ -197,7 +197,8 @@ def test_decide_fails_closed_when_the_stage_moves_off_lab(networks, monkeypatch,
         mark_lab(NET, move)
     got = MD.decide(NET, "low", T0 + 2)
     assert got["auto"] is False and got["autonomous"] is None
-    assert got["words"].startswith("HITL: AUTO is on and suspended, since " + GATE + words)
+    assert got["words"].startswith("A person confirms each response: AUTO is on and suspended, "
+                                   "since " + GATE + words)
     assert MD.current(NET, T0 + 2)["mode"] == "auto", "recorded on, and suspended"
 
 

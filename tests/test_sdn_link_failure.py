@@ -296,7 +296,7 @@ def test_hitl_keeps_a_card_for_a_person_and_verifies_nothing(networks, monkeypat
     got = LF.step(NET, [dict(_detection(), network=NET)], [], now=1_790_000_000.0, line=line)
     (row,) = LF.open_rows(NET)["rows"]
     assert got["opened"] == [row["id"]] and row["mode"] == "hitl" and row["verify"] is None
-    assert said[0][1].endswith(f"HITL, awaiting a person ({row['id']}): {row['why']}")
+    assert said[0][1].endswith(f"Awaiting a person's confirm ({row['id']}): {row['why']}")
     LF.step(NET, [], [], now=1_790_000_010.0, line=line)
     assert LF.open_rows(NET)["rows"][0]["verifies"] == 0
 

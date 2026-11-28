@@ -41,7 +41,7 @@ NET = "Default"
 H2_V6 = "2001:db8:8::2"
 #: The words an inferred source's response awaits a person with (C2147), read off the walk's
 #: data by hand: the flood entered s1 by port 2; h2 is the one host the topology lists there.
-INFERRED = ("HITL for this one: the source was inferred from the topology: a person confirms "
+INFERRED = ("A person confirms this one: the source was inferred from the topology: a person confirms "
             "it (AUTO applies only a source the flows themselves name; the flows entering port 2 "
             "name none, and {addr} came from the controller's topology: the one host on port 2, "
             "{addr} (00:00:00:00:00:02))")
@@ -91,7 +91,7 @@ def test_a_detection_naming_no_single_source_under_auto_is_a_person_s(networks, 
     got = MD.decide(NET, "low", detection=d, action="drop_source")
     assert not got["auto"]
     assert got["words"].startswith(
-        "HITL for this one: the flows name no single source, and a source they do not name is "
+        "A person confirms this one: the flows name no single source, and a source they do not name is "
         "inferred: a person confirms it (AUTO applies only a source the flows themselves name; "
         + why), got["words"]
 
@@ -145,7 +145,7 @@ def test_in_the_loop_an_inferred_source_awaits_a_person_and_nothing_is_applied(n
     assert row["id"] in out["proposed"] and row["why"] == INFERRED.format(addr=addr)
     assert row["detection"]["source_from"]["state"] == "named"
     said = [x["words"] for x in out["lines"] if x["step"] == "respond"]
-    assert said == [f"HITL, awaiting a person ({row['id']}): {INFERRED.format(addr=addr)}"]
+    assert said == [f"Awaiting a person's confirm ({row['id']}): {INFERRED.format(addr=addr)}"]
     # A Needs attention row, as any incident awaiting a person.
     rows = A.sdn_responses_source(found={NET: LP.awaiting(NET)})["rows"]
     assert len(rows) == 1 and row["id"] in str(rows[0])

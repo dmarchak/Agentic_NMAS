@@ -611,7 +611,7 @@ def step(network: str, fired: list, resolved: list, *, now: float, line, decide=
         out["opened"].append(row["id"])
         line("respond", f"{d.get('words')}; " + (
             f"AUTO: Mercury verifies the reroute ({row['id']}), nothing is sent" if mode == "auto"
-            else f"HITL, awaiting a person ({row['id']}): {decision.get('words')}"),
+            else f"{modes.AWAITING_WORDS} ({row['id']}): {decision.get('words')}"),
             link=row["id"])
     gone = set(resolved)
     for row in open_rows(network)["rows"]:

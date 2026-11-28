@@ -75,7 +75,8 @@ def test_a_link_down_not_verified_is_one_row_naming_both_ends_and_its_card(
     assert r["operands"]["link"] == LINK and r["operands"]["card"] == card["id"]
     assert r["action"]["href"] == f"/v2/sdn/responses?list={NET}#sdn-l-{card['id']}"
     assert "Verify the reroute" in r["action"]["label"]
-    assert d["words"] in r["cause"] and "HITL" in r["cause"]
+    assert d["words"] in r["cause"] and "It awaits a person's Verify" in r["cause"]
+    assert "HITL" not in r["cause"], "the mode in words (C4295)"
     assert r["clears"] == {"ways": ["resolves"], "when": A.CLEARS[("sdn_links", "down")][1]}
 
 

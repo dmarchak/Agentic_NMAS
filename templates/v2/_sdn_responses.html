@@ -11,7 +11,7 @@
 {%- set m = g.mode %}
 {%- set aic = ai_control('sdn_classify') %}
 {%- set ic = g.incidents %}
-<p class="sdn-sum"><strong>{{ ic.total }} awaiting approval</strong>{% if g.watching_total %} · {{ g.watching_total }} watching{% endif %}{% if ic.total %} · {{ ic.total }} incident{{ 's' if ic.total != 1 }} seen on {{ ic.switches }} switch{{ 'es' if ic.switches != 1 }}{% endif %} · mode {{ m.mode | upper }} · the loop {% if g.loop.running %}running every {{ g.loop.interval | int }} s{% else %}stopped{% endif %}</p>
+<p class="sdn-sum"><strong>{{ ic.total }} awaiting approval</strong>{% if g.watching_total %} · {{ g.watching_total }} watching{% endif %}{% if ic.total %} · {{ ic.total }} incident{{ 's' if ic.total != 1 }} seen on {{ ic.switches }} switch{{ 'es' if ic.switches != 1 }}{% endif %} · mode: {{ m.badge }} · the loop {% if g.loop.running %}running every {{ g.loop.interval | int }} s{% else %}stopped{% endif %}</p>
 {%- if g.awaiting_state == 'unreadable' %}
 <div class="notice notice-danger" role="alert"><p>The responses awaiting a person cannot be read: {{ g.awaiting_error }}.</p></div>
 {%- endif %}
@@ -222,7 +222,7 @@
 {#- Lab 9 B3 (board F of docs/boards/lab9-sdn.html, self-signed under the Phase 7 mode): a link
     the topology held is down. A fact, so no AI call; its response verifies the forwarding app's
     reroute from the trace over the controller's stored flow tables (modules/sdn/link_failure.py).
-    AUTO verifies it at each pass; HITL waits for a person's Verify the reroute. -#}
+    AUTO verifies it at each pass; otherwise it waits for a person's Verify the reroute. -#}
 {%- set lk = g.links %}
 {%- if lk.total or lk.state == 'unreadable' %}
 <section class="card sdn-links" aria-labelledby="sdn-links-h">
@@ -242,7 +242,7 @@
         <details class="sdn-also" data-keep="link-{{ c.id }}-pairs"><summary class="small">Each host pair traced ({{ c.verify.checked }} of {{ c.verify.total }})</summary>
           <ul class="sdn-also-list small">{% for p in c.verify.pairs %}<li><span class="mono">{{ p.source }}</span> to <span class="mono">{{ p.destination }}</span>: {{ p.state | replace('_', ' ') }}: {{ p.words }}</li>{% endfor %}</ul>
         </details>{% endif %}{% else %}not verified yet: the forwarding app reroutes by itself on a port down, and Mercury sends nothing{% endif %}</dd>
-      <dt>Mode</dt><dd>{% if c.mode == 'auto' %}AUTO: Mercury verifies at each pass until it is rerouted, for at most {{ g.links_deadline }} s, then leaves it to you{% else %}HITL: {{ c.why }}{% endif %}</dd>
+      <dt>Mode</dt><dd>{% if c.mode == 'auto' %}AUTO: Mercury verifies at each pass until it is rerouted, for at most {{ g.links_deadline }} s, then leaves it to you{% else %}{{ c.why }}{% endif %}</dd>
     </dl>
     <div class="sdn-acts">
       <form class="op-act" hx-post="{{ url_for('sdn_v2.link_verify', lid=c.id) }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
@@ -266,7 +266,7 @@
 {%- endif %}
 
 <section class="card sdn-mode" aria-labelledby="sdn-mode-h">
-  <div class="sdn-ctl-hd"><h2 id="sdn-mode-h">Mode {{ badge(m.mode | upper, 'warn' if m.mode == 'auto' else 'muted') }}</h2></div>
+  <div class="sdn-ctl-hd"><h2 id="sdn-mode-h">Mode {{ badge(m.badge,'warn' if m.mode == 'auto' else 'muted') }}</h2></div>
   <p class="small">{{ m.words | people }}.</p>
   {#- C2009 (PHASE8_PLAN 17.7's guard): AUTO is turned on, and runs, only on a network marked lab
       until the AUTO production-readiness gate is complete. -#}
@@ -286,7 +286,7 @@
     <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Turn AUTO off</span><span class="op-busy">Turning off…</span></button>{{ how('sdn', 'responses', compact=True, op='Turn AUTO off') }}
   </form>
   {%- else %}
-  <p class="small faint">AUTO is off. A verified person turns it on for this network with a reason and an expiry (at most {{ g.max_hours }} hours); at the expiry it returns to HITL, and History says so. While it is on, only catalogue actions within the allowed risk run unattended, each recorded as autonomous with this reason.</p>
+  <p class="small faint">AUTO is off. A verified person turns it on for this network with a reason and an expiry (at most {{ g.max_hours }} hours); at the expiry a person confirms each response again, and History says so. While it is on, only catalogue actions within the allowed risk run unattended, each recorded as autonomous with this reason.</p>
   <form class="sdn-mode-form" hx-post="{{ url_for('sdn_v2.mode_set') }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="list" value="{{ g.network }}"><input type="hidden" name="mode" value="auto">
     <label>Reason <input type="text" name="reason" required></label>

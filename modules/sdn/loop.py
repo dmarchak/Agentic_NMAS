@@ -45,8 +45,9 @@ step, the one AI call, which runs only where its feature is on (below).
    action; otherwise (HITL, the default) the response is kept as awaiting a person
    (`pending`), with the classification when there is one, its preview built fresh when a
    person opens it. **AUTO's own preview failing (C2159)** sends nothing and keeps the
-   response awaiting a person as HITL does, the failure said on it ("HITL for this one: AUTO
-   could not preview <action>: <why>"), so its card and its Needs attention row name it,
+   response awaiting a person as HITL does, the failure said on it ("A person confirms this
+   one: AUTO could not preview <action>: <why>", `modes.THIS_ONE_WORDS`), so its card and its
+   Needs attention row name it,
    where it was once said only in this log. A detection that fires again while its response
    awaits a person is not classified again: the response is marked active again;
 5. a response's meter whose flows have expired is removed (`flow_ops.expire_meters`).
@@ -1627,7 +1628,7 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         were off, through the HITL path's own response, the failure on it, so its card and
         its Needs attention row say why AUTO did not act."""
         row = propose(network, d, verdict["action"], verdict["risk"], now=now(), why=(
-            f"HITL for this one: {failed}; nothing was sent, and a person previews it again "
+            f"{modes.THIS_ONE_WORDS}: {failed}; nothing was sent, and a person previews it again "
             "and confirms or dismisses it"),
             classification=verdict["classification"], params=verdict["params"],
             classified=verdict["words"], refused_call=verdict["refused_call"],
@@ -1660,7 +1661,7 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
             out["proposed"].append(row["id"])
             out["incidents"].append({"key": inc["key"], "id": row["id"], "joined": False,
                                      "switches": 1 + len(rec["seen_also"])})
-            line("respond", f"HITL, awaiting a person ({row['id']}): {decision['words']}")
+            line("respond", f"{modes.AWAITING_WORDS} ({row['id']}): {decision['words']}")
             return
         preview = closed_loop.respond_to_threat(network, d, action, params, driver=driver)
         if not preview["ok"]:
@@ -1700,7 +1701,8 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
 
     try:
         if modes.record_expiry(network, now())["recorded"]:
-            line("mode", "AUTO reached its expiry: the mode is HITL again")
+            line("mode", f"AUTO reached its expiry: {modes.PERSON_WORDS[0].lower()}"
+                         f"{modes.PERSON_WORDS[1:]} again")
         reading = clock()
         # With link status (Lab 9 B3): each switch's port descriptions and each connection's
         # discovered links, which the link-down rule judges (`link_failure.rule`).
