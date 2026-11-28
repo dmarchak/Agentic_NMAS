@@ -2422,9 +2422,16 @@
           asstQuiet = true;
           // Asked once htmx has read the page (its own DOMContentLoaded handler, registered
           // first, runs before this one), so the shell's trigger is listened for.
+          // htmx is asked to read the body first (`process`, which it does once per element):
+          // a browser may run this before htmx's own page read, and the trigger would then fall
+          // on no listener, leaving the panel open and empty on the next page (measured in
+          // Firefox 156: the shell drawn, its body never asked, until Assistant was pressed).
           var load = function () {
             var body = root.document.getElementById('asst-body');
-            if (body && root.htmx) root.htmx.trigger(body, 'nmas-asst-open');
+            if (body && root.htmx) {
+              root.htmx.process(body);
+              root.htmx.trigger(body, 'nmas-asst-open');
+            }
           };
           if (root.document.readyState === 'loading') {
             root.document.addEventListener('DOMContentLoaded', load);
