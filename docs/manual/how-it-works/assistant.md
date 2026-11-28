@@ -22,11 +22,14 @@ width is kept in this browser only, never in {{product}}.
 
 ![The toolbar assistant's answer. You ask on any page; Mercury notes what you are looking at from the page's path (the screen, the network, the device and the incident), chooses the manual's passages for the question by code (below the floor, the manual's gap, and no call), and sends one recorded, capped call through the AI gateway, your question masked. When the answer asks for reads, Mercury runs them on the device in view only, each judged by its read-only check and recorded, then makes one more recorded call with their answers. It checks that every citation is a passage it sent or a read that ran, and draws the answer with its sources, the model and the cost, offering a hand-off to the gated flow for a change, or says the manual does not cover it and records the gap. Only reads reach a device; nothing is changed.](diagrams/assistant.svg)
 
-**It never changes anything.** It answers how to do a thing, and where, and what the reads show;
-it never changes, deploys, approves or saves anything, writes nothing to any source of truth,
-and names no command to type into a device. A change you ask for is handed to its own gated
-flow (below), where you preview and confirm it as ever. For a fact across the network use
-**Ask in words** (History › Query).
+**It works as a senior network engineer would, through {{product}} alone.** It investigates
+with {{product}}'s reads, says what it found, and answers how to do a thing and where. Ask it
+to make a change and it proposes a plan of {{product}}'s own operations, each step previewed
+in the conversation, which runs only once you approve it ([below](#handoff)). Ask it for
+something no operation or read of {{product}}'s does and it says so ([below](#no-tool)).
+It never changes, deploys, approves or saves anything itself, writes nothing to any source of
+truth, and names no command to type into a device. For a fact across the network use **Ask in
+words** (History › Query).
 
 **What NetBox reads send.** Only fixed fields are read (names, statuses, addresses, prefixes,
 VLANs, sites, descriptions), never contacts, comments or custom fields; an email address, and
@@ -41,8 +44,11 @@ page, the incident's id on an incident's, and the screen's name on any other pag
 network. {{product}} works it out itself from the page's address, by its own map of its pages:
 the screen, the network, the device and the incident. It changes as you move: another page, or
 a tab of the same page. Each question is kept with the page it was asked on (under it, "on
-edge1 (device) · Default"; the page's address on its hover). The reads are only ever of that device,
-or of the incident's device; on any other page nothing is read (the chip's hover says which).
+edge1 (device) · Default"; the page's address on its hover). The reads are of that device, or
+of the incident's device, and of any device of the network your question names by its name
+("what version is edge2 running?"), on any page; a name the network's inventory does not hold
+is never read. With no device in view and none named, nothing is read (the chip's hover says
+which).
 
 ## How an answer is made {#answer}
 
@@ -61,17 +67,20 @@ or of the incident's device; on any other page nothing is read (the chip's hover
    and the passages. Your question is masked before it leaves: a value in a secret's place,
    and any credential {{product}} holds wherever it appears. The answer says what was masked,
    by its kind and never its value.
-4. `read`: when your question is about the device in view, the answer may ask for up to three
-   reads ([below](#reads)); {{product}} checks each, runs those it allows, and makes one more
-   recorded call with their answers.
+4. `read`: when your question is about the device in view, or a device of the network it
+   names, the answer may ask for up to three reads ([below](#reads)); {{product}} checks
+   each, runs those it allows, and makes one more recorded call with their answers.
 5. `check`: {{product}} checks the answer before it is drawn: every section it cites is one
-   it was sent, every read it cites is one that ran, and every screen it names is one this
-   manual names. An answer that fails is never drawn: **Couldn't answer:** says why, and the
-   call is in History.
-6. `draw`: the answer is drawn with its sources ([below](#sources)). When nothing covers your
-   question, it says **The manual doesn't cover this.**, names the nearest sections it holds,
-   and records the question as a gap in the manual. **Was this right?** under the answer
-   records whether it was.
+   it was sent, every read it cites is one that ran, every screen it names is one this
+   manual names, and no word of it says a change was made (the assistant makes none). An
+   answer that fails is never drawn: **Couldn't answer:** says why, and the call is in
+   History.
+6. `draw`: the answer is drawn with its sources ([below](#sources)); a plan it proposes is
+   previewed in place for you to approve ([below](#handoff)), and what {{product}} has no
+   tool for is said and recorded ([below](#no-tool)). When nothing covers your question, it
+   says **The manual doesn't cover this.**, names the nearest sections it holds, and records
+   the question as a gap in the manual. **Was this right?** under the answer records whether
+   it was.
 
 While it works, the conversation shows where it is, under your question: "Choosing the
 manual's passages", "Asking the model", "Running the 2 reads it asked for", "Answering from the
@@ -130,11 +139,37 @@ own.
 
 ## A change you ask for {#handoff}
 
-When you ask {{product}} to change something, the answer says so and offers the gated flow that
-does it, filled in and not started: **Change it in words…** opens the device's Intent tab with
-its sentence box filled (you press **Draft the change**, preview and commit as ever), and on an
-incident **Open AI troubleshooting** opens the incident's own AI troubleshooting card (you press
-**Start AI troubleshooting** there). One of the plan engine's plans stays **Preview the plan…**.
+When you ask {{product}} to make a change ("describe the link between edge1 Gi0/1 and edge2
+GigabitEthernet1", "shut GigabitEthernet4 on edge1 and deploy it"), the answer proposes ONE
+plan: one of {{product}}'s named plans, or a change, its steps named one by one, each one of
+{{product}}'s own operations: a change to a device's intent (any field intent models), a deploy
+of a device's intent, an interface's description, a DHCP reservation, or Add device's Create
+by ZTP. {{product}} holds every step to its operation's own parameters (a step that is not one
+of these operations, or a parameter its operation does not take, is refused: no command text
+reaches a device), and the answer says what the plan will do, never that it is done.
+
+The plan's card then opens in the conversation at once, **Proposed for your approval**: each
+step previewed by its own operation (the change, its checks, what it does not do), the plan's
+one hash and what it binds, a reason, and **Approve the plan on <network>: <title>**. A preview
+writes nothing and makes no AI call; nothing runs until you press Approve. Approved, the plan
+runs as every plan does ([a plan of operations](plans)): previewed again and refused if its
+hash moved, then each step in order through its own apply, verify and record, the first that
+does not pass stopping it. Each answer's plan has its own card, so a conversation of several
+plans keeps each Approve to its own.
+
+A change no plan expresses is handed to the gated flow that does it, filled in and not started:
+**Change it in words…** opens the device's Intent tab with its sentence box filled (you press
+**Draft the change**, preview and commit as ever), and on an incident **Open AI
+troubleshooting** opens the incident's own AI troubleshooting card (you press **Start AI
+troubleshooting** there).
+
+## Mercury has no tool for this {#no-tool}
+
+When what you ask for is something no plan, no operation and no read of {{product}}'s does, the
+answer says **Mercury has no tool for this:** with what you asked for and why, never a device
+command, a script or a way around {{product}}. It is recorded once, masked, as a capability
+{{product}} lacks, for whoever chooses what {{product}} builds next: on History, beside the AI
+calls (AI missing capabilities). It is never a Needs attention row.
 
 ## Your conversations {#thread}
 

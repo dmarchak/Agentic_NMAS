@@ -8,7 +8,8 @@
     operator, 2026-11-16: "the same stepper on its own page, with its title, the device, and
     the exact actions"): the plan's numbered steps and the waits between them, each ticked with
     its seconds, a step after a stop not run. Nothing is retried. The preview's list is the
-    plan's program, not progress. -#}
+    plan's program, not progress. Its id is `c.card` (`plans_v2.card_id`): the assistant's
+    conversation draws one card per answer that proposed a plan, each Approve its own card's. -#}
 {%- set P = c.preview or {} -%}
 {#- What each step does, exactly: the lines its own run sent (masked), else its parameters. -#}
 {%- macro actions_of(c) -%}
@@ -19,7 +20,7 @@
   {%- endfor %}
 </details>{% endif %}
 {%- endmacro -%}
-<div class="heal-prop plan-card" id="plan-card"{% if c.state == 'running' and not c.job_failed and not c.job_unknown %} aria-busy="true" hx-get="{{ url_for('plans_v2.preview', list=c.list, plan=c.plan, params=c.params_json, run=c.run, job=c.job) }}" hx-trigger="nmas:privileged from:body, nmas:device_progress from:body" hx-swap="outerHTML"{% endif %}{% if c.state != 'preview' or c.error %} data-holds-live="review"{% endif %}>
+<div class="heal-prop plan-card" id="{{ c.card }}"{% if c.state == 'running' and not c.job_failed and not c.job_unknown %} aria-busy="true" hx-get="{{ url_for('plans_v2.preview', list=c.list, plan=c.plan, params=c.params_json, run=c.run, job=c.job, card=c.card if c.card != 'plan-card' else none) }}" hx-trigger="nmas:privileged from:body, nmas:device_progress from:body" hx-swap="outerHTML"{% endif %}{% if c.state != 'preview' or c.error %} data-holds-live="review"{% endif %}>
 {%- if c.error %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not run:</strong> {{ c.error }}</p></div>
 {%- endif %}
@@ -58,14 +59,14 @@
   {#- Everything the hash binds, before Approve (C3725): each parameter, what each step's
       preview found (a reservation's subnet) and each step's own hash, one level down. -#}
   {%- if P.bound %}
-  <details class="small plan-bound" data-keep="plan-bound"><summary>What its hash binds</summary>
+  <details class="small plan-bound" data-keep="plan-bound{{ '' if c.card == 'plan-card' else '-' ~ c.card }}"><summary>What its hash binds</summary>
     <dl class="tl-record">{% for label, words in P.bound %}<dt>{{ label }}</dt><dd>{{ words }}</dd>{% endfor %}</dl>
   </details>
   {%- endif %}
-  <div id="plan-card-form">
-    <input type="hidden" name="plan" value="{{ c.plan }}"><input type="hidden" name="params" value="{{ c.params_json }}">
-    <label class="heal-field" for="plan-card-why">Reason (recorded with the plan and each step)<input id="plan-card-why" name="reason" type="text" autocomplete="off" placeholder="at least three words, recorded with your name" value="{{ c.reason or '' }}"></label>
+  <div id="{{ c.card }}-form">
+    <input type="hidden" name="plan" value="{{ c.plan }}">{% if c.card != 'plan-card' %}<input type="hidden" name="card" value="{{ c.card }}">{% endif %}<input type="hidden" name="params" value="{{ c.params_json }}">
+    <label class="heal-field" for="{{ c.card }}-why">Reason (recorded with the plan and each step)<input id="{{ c.card }}-why" name="reason" type="text" autocomplete="off" placeholder="at least three words, recorded with your name" value="{{ c.reason or '' }}"></label>
   </div>
-  <div class="att-action"><span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="plans" hx-post="{{ url_for('plans_v2.approve', list=c.list) }}" hx-vals='{"hash": "{{ P.hash }}"}' hx-include="#plan-card-form" hx-target="#plan-card" hx-swap="outerHTML" hx-disabled-elt="this" title="Runs these {{ P.steps | length }} steps in order as you, with your reason, bound to {{ P.hash }}"{{ gate('confirm') }}><span class="op-idle">Approve the plan on {{ c.list }}: {{ P.title }}</span><span class="op-busy">Starting…</span></button>{{ how('plans', compact=True, op='a plan') }}</span></div>
+  <div class="att-action"><span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="plans" hx-post="{{ url_for('plans_v2.approve', list=c.list) }}" hx-vals='{"hash": "{{ P.hash }}"}' hx-include="#{{ c.card }}-form" hx-target="#{{ c.card }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Runs these {{ P.steps | length }} steps in order as you, with your reason, bound to {{ P.hash }}"{{ gate('confirm') }}><span class="op-idle">Approve the plan on {{ c.list }}: {{ P.title }}</span><span class="op-busy">Starting…</span></button>{{ how('plans', compact=True, op='a plan') }}</span></div>
 {%- endif %}
 </div>

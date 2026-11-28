@@ -34,6 +34,9 @@ stepper (`op_progress`, its declared steps `step_labels`).
 
 **Who proposes.** The toolbar assistant may name a plan and its parameters
 (`modules/ai/assistant.py`); `checked` holds that to the schema before anything is previewed.
+A change it is asked for is the plan ``change`` (`CHANGE`): its steps named one by one, each a
+step kind that needs no incident (`CHANGE_ADMITTED`), held by the same check of a plan's steps
+an incident's fix is (`_steps_refusal`).
 The person sees the preview and approves it; nothing an AI wrote runs. A secret is never a
 plan's parameter: no step here takes one.
 
@@ -1252,7 +1255,16 @@ def _deploy_preview(network: str, p: dict, *, candidate: dict = None) -> dict:
             f"the deploy of {device} sends nothing: the device already holds what a merge-only "
             "deploy of " + ("the patched" if texts else "its committed") + " intent carries")}
     lost = (entry.get("expected_effects") or {}).get("reach_lost") or {}
-    if lost.get("cut") or (p.get("incident") and lost and lost.get("state") != "known"):
+    if lost and lost.get("state") != "known" and not lost.get("cut"):
+        # Whether it cuts the path is not known (the program shuts an interface and the cut
+        # could not be computed): a plan, an incident's fix or a change, refuses it as heal's
+        # does; a person's own Deploy… draws the sentence and leaves it to them.
+        return {"ok": False, "refused": (
+            f"whether the deploy cuts Mercury's path to a device is "
+            f"{lost.get('state') or 'not stated'} (needed: known): "
+            f"{lost.get('why') or 'no reason was given'}; deploy {device} by hand with "
+            "Deploy…, which says so, or make the cut known first")}
+    if lost.get("cut"):
         return {"ok": False, "refused": (
             "the deploy would cut Mercury's path (" + (", ".join(lost.get("cut") or [])
                                                      or str(lost.get("why") or "unknown"))
@@ -1505,25 +1517,27 @@ def _as(name: str, base: Param) -> Param:
     return Param(name, base.takes, base.refusal)
 
 
-def _fix_steps_refusal(value) -> str:
-    """What an incident plan's ``steps`` is instead of a list of 1 to `MOST_STEPS` steps, each
-    exactly ``{operation, params}``: a catalog operation held to the catalog's schema
-    (`catalog.checked`), or an intent change or a deploy (`FIX_ADMITTED`, C3756) held to its
-    step kind's schema less the incident and proposal the plan gives it; or ``""``."""
+def _steps_refusal(value, admitted: tuple, *, catalog_ops: bool) -> str:
+    """What a plan's ``steps`` is instead of a list of 1 to `MOST_STEPS` steps, each exactly
+    ``{operation, params}``: a step kind of *admitted* held to its step kind's schema less the
+    incident and proposal (an incident's fix gives them; a change has none), or, when
+    *catalog_ops* (an incident's fix), a catalog operation held to the catalog's schema
+    (`catalog.checked`) with the collector step's session; or ``""``. The one check of a plan's
+    steps: an incident's fix (`_fix_steps_refusal`) and a change (`_change_steps_refusal`)."""
     from modules.heal import catalog
 
     if not isinstance(value, list):
         return kind_of(value)
     if not 1 <= len(value) <= MOST_STEPS:
         return f"a list of {len(value)}"
+    keys = {"operation", "params"} | ({"session"} if catalog_ops else set())
     for n, s in enumerate(value, 1):
-        if (not isinstance(s, dict) or not {"operation", "params"} <= set(s)
-                or set(s) - {"operation", "params", "session"}):
-            return (f"a list whose step {n} is not exactly {{operation, params}} (and the "
-                    "collector step's session)")
+        if not isinstance(s, dict) or not {"operation", "params"} <= set(s) or set(s) - keys:
+            return (f"a list whose step {n} is not exactly {{operation, params}}"
+                    + (" (and the collector step's session)" if catalog_ops else ""))
         if "session" in s and _session_refusal(s["session"]):
             return f"a list whose step {n} names no session ({_session_refusal(s['session'])})"
-        if s["operation"] in FIX_ADMITTED:
+        if isinstance(s["operation"], str) and s["operation"] in admitted:
             if "session" in s:
                 return f"a list whose step {n} ({s['operation']}) names a session"
             kind = STEP_KINDS[s["operation"]]
@@ -1534,11 +1548,27 @@ def _fix_steps_refusal(value) -> str:
             except Refused as exc:
                 return f"a list whose step {n} the plan engine refuses ({exc})"
             continue
+        if not catalog_ops:
+            # Never echoed: what was named may be anything a model wrote.
+            return (f"a list whose step {n} names an operation that is not one a change "
+                    f"admits ({listed(admitted)})")
         try:
             catalog.checked(s["operation"], s["params"])
         except catalog.Refused as exc:
             return f"a list whose step {n} the catalog refuses ({exc})"
     return ""
+
+
+def _fix_steps_refusal(value) -> str:
+    """What an incident plan's ``steps`` is instead of its steps: a catalog operation, or an
+    intent change or a deploy (`FIX_ADMITTED`, C3756) (`_steps_refusal`)."""
+    return _steps_refusal(value, FIX_ADMITTED, catalog_ops=True)
+
+
+def _change_steps_refusal(value) -> str:
+    """What a change's ``steps`` is instead of its steps: each a step kind a change admits
+    (`CHANGE_ADMITTED`), never a catalog operation (an incident's) (`_steps_refusal`)."""
+    return _steps_refusal(value, CHANGE_ADMITTED, catalog_ops=False)
 
 
 FIX_STEPS = Param("steps", f"1 to {MOST_STEPS} steps, in order, each exactly {{operation, "
@@ -1558,6 +1588,63 @@ def _fix_steps(p: dict) -> list:
 #: The plan an incident's proposal is (C3694; `modules/fixit/plan.py` previews it before it is
 #: drawn and routes/fixit_v2.py's Approve starts it by its hash).
 INCIDENT_FIX = "incident-fix"
+
+#: The plan a change is (the operator, 2026-11-28: "When prompted to make a change it should
+#: present a plan for approval before making any changes"): the toolbar assistant's proposal of
+#: Mercury's own operations, named step by step, each previewed by its own step kind, the plan
+#: approved once by its hash on the plan's card (routes/plans_v2.py) and run by `run`, as every
+#: plan is. Its steps are the step kinds that need no incident (`CHANGE_ADMITTED`); a catalog
+#: operation is an incident's fix, never a change's.
+CHANGE = "change"
+CHANGE_ADMITTED = ("intent-edit", "intent-deploy", "intent-description", "dhcp-reservation",
+                   "ztp-create")
+CHANGE_STEPS = Param("steps", f"1 to {MOST_STEPS} steps, in order, each exactly {{operation, "
+                              "params}: one of intent-edit, intent-deploy, intent-description, "
+                              "dhcp-reservation or ztp-create, its params held to its step "
+                              "kind's schema", _change_steps_refusal)
+
+
+def _change_steps(p: dict) -> list:
+    """A change's steps, each its step kind with its parameters as named (the step kind's own
+    schema holds them again, `checked`: no incident and no proposal). A deploy of a device after
+    a step that changes the device's intent without handing that intent on (a step kind with no
+    ``candidate``: an interface's description, Add device's Create) is refused: its program
+    would be computed from intent without that change, so what is approved is not what runs."""
+    unseen = {}
+    for n, s in enumerate(p["steps"], 1):
+        kind = STEP_KINDS[s["operation"]]
+        params = s["params"]
+        if s["operation"] == "intent-deploy" and params.get("device") in unseen:
+            m, words = unseen[params["device"]]
+            raise Refused("unseen_intent", (
+                f"step {n} deploys {params['device']} after step {m} changes its intent by "
+                f"{words}, whose change a later step of the same plan does not see: name that "
+                "change as an intent-edit step, whose intent the deploy is computed from"))
+        if "intent" in kind.announces and not kind.candidate:
+            device = params.get("device") or params.get("hostname")
+            if device:
+                unseen.setdefault(device, (n, kind.words))
+    return [(s["operation"], dict(s["params"])) for s in p["steps"]]
+
+
+def _change_title(p: dict) -> str:
+    """A change's title by the devices its steps act on: "Change edge1: 2 steps"."""
+    devices = [d for d in dict.fromkeys(
+        str((s.get("params") or {}).get("device") or (s.get("params") or {}).get("hostname")
+            or "") for s in p["steps"] if isinstance(s, dict)) if d]
+    n = len(p["steps"])
+    on = f"Change {', '.join(devices)}" if devices else "Make a change"
+    return f"{on}: {n} step{'s' if n != 1 else ''}"
+
+
+def change_operations() -> list:
+    """What the toolbar assistant is told a change's steps may be (`CHANGE_ADMITTED`): each step
+    kind's key, its words and each parameter it takes, less the incident and proposal (a
+    change has none)."""
+    return [{"operation": key, "words": STEP_KINDS[key].words,
+             "params": [{"name": p.name, "takes": p.takes} for p in STEP_KINDS[key].params
+                        if p.name not in ("incident", "proposal")]}
+            for key in CHANGE_ADMITTED]
 
 
 PLANS = {p.key: p for p in (
@@ -1585,6 +1672,8 @@ PLANS = {p.key: p for p in (
     # heal guards at its own preview (`fixit.plan.step_preview`).
     Plan(INCIDENT_FIX, "Fix an incident: the steps its proposal names, in order",
          (INCIDENT, PROPOSAL, FIX_STEPS), _fix_steps, lambda p: _fix_title(p)),
+    Plan(CHANGE, "Make a change: the steps named, in order", (CHANGE_STEPS,), _change_steps,
+         _change_title),
 )}
 
 

@@ -5,14 +5,28 @@
 ## Where it is
 
 Ask the toolbar's **Assistant** for something one of Mercury's plans does, giving every value it
-needs ("reserve 192.0.2.50 for printer-3, MAC 00:11:22:33:44:55, in subnet 20"). When its
-answer names a plan, it says **Proposed:** with the plan's title, and **Preview the plan…** draws
-the plan in place: each step previewed by its own operation, and the plan's one hash. A plan the
-assistant names is only proposed. Mercury holds it to the plan's own schema first (a plan it has,
-exactly its parameters, each of its shape); anything else is refused, and nothing is drawn.
+needs ("reserve 192.0.2.50 for printer-3, MAC 00:11:22:33:44:55, in subnet 20"), or to make a
+change. When its answer names a plan, it says **Proposed for your approval** with the plan's
+title, and the plan's card opens in place at once: each step previewed by its own operation,
+and the plan's one hash. A plan the assistant names is only proposed. Mercury holds it to the
+plan's own schema first (a plan it has, exactly its parameters, each of its shape); anything
+else is refused, and nothing is drawn.
 
 ## The plans
 
+- **Make a change: the steps named, in order**: the toolbar assistant's plan for a change you
+  ask it to make, 1 to 10 steps, each one of these operations with exactly its own parameters:
+  a change to a device's intent (any field intent models, held to its schema and to what is
+  committed), a deploy of a device's intent (the deploy's own plan, merge-only), an interface's
+  description, a DHCP reservation, or Add device's Create by ZTP; each as the plan below that
+  holds it describes. A step that is none of these (a catalog operation is an incident's fix,
+  never a change's), or a parameter its operation does not take, refuses the plan before
+  anything is previewed: no command text reaches a device. A deploy after an intent change of
+  the same device is computed from the intent that change would commit; a deploy after an
+  interface's description (or Add device's Create) of the same device is refused, naming an
+  intent change as the way, since that step's intent is not handed on. A deploy where whether
+  it cuts Mercury's path to a device is not known is refused, as in an incident's fix: deploy
+  it by hand with Deploy…, which says so.
 - **Reserve an address for a client in the network's DHCP**: one step, the DHCP reservation, as
   DHCP › Reservations makes it: its own preview (its checks, what it does not do), then, approved,
   written, Kea reloaded, read back from Kea and recorded in the Kea owner's repository. A network

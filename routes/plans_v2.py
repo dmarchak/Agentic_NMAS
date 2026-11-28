@@ -5,6 +5,7 @@ answer, `templates/v2/_assistant_answer.html`) by `templates/v2/_plan_card.html`
 - ``preview`` (GET): the plan named (``plan``) with its parameters (``params``, one JSON object),
   every step previewed by its own operation, the plan's hash, a reason, and Approve the plan,
   named for the work; with ``run`` (and ``job``), the run's state or its result in place.
+  ``card`` names the card's own id (`card_id`) when the assistant's conversation draws several.
 - ``approve`` (POST): the plan started as a job as the verified person, bound to the plan's
   hash (``hash``); or the refusal drawn in place, nothing run.
 
@@ -14,6 +15,7 @@ Its declarations live in their tables (`route_gates.GATES`, `invalidation.DECLAR
 
 import json
 import logging
+import re
 
 from flask import Blueprint, render_template, request
 
@@ -92,6 +94,19 @@ def _run_view(network: str, rec: dict, job: str) -> dict:
             "devices": devices, "actions": actions}
 
 
+#: The card's own id: `CARD` alone, or with the answer's call id when the toolbar assistant's
+#: conversation draws several plans at once (each card's Approve swaps its own card).
+CARD = "plan-card"
+_CARD_ID = re.compile(r"plan-card(?:-[A-Za-z0-9_-]{1,80})?\Z")
+
+
+def card_id(value) -> str:
+    """The card's id as the request names it (``card``), when it is one of a card's shape;
+    `CARD` otherwise."""
+    value = str(value or "")
+    return value if _CARD_ID.match(value) else CARD
+
+
 def card(network: str, args, **answer) -> dict:
     """The card's context in the state its query names: ``preview``, ``running`` or
     ``result``; reads only Mercury's records (and each step's own dry run)."""
@@ -100,7 +115,7 @@ def card(network: str, args, **answer) -> dict:
     c = {"list": network, "plan": str(args.get("plan") or "")[:64], "error": "",
          "run": str(args.get("run") or "")[:80], "job": str(args.get("job") or "")[:80],
          "reason": str(args.get("reason") or "")[:300], "state": "preview",
-         "outcome_words": dict(E.OUTCOME_WORDS)}
+         "card": card_id(args.get("card")), "outcome_words": dict(E.OUTCOME_WORDS)}
     c.update(answer)
     from modules.redact import redact_text
     # What a refusal says is drawn through the same mask as the preview (`redact_payload`).
@@ -190,7 +205,8 @@ def approve():
 
     network, form = _list_name(), request.form
     params, why = _params(form.get("params"))
-    again = {"plan": form.get("plan") or "", "params": form.get("params") or ""}
+    again = {"plan": form.get("plan") or "", "params": form.get("params") or "",
+             "card": form.get("card") or ""}
     if why:
         return _draw(network, again, 409, error=why + ". Nothing ran")
     actor = identity.request_actor()

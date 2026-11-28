@@ -1,7 +1,8 @@
 # Fidelity: the assistant as a continuous chat (2026-11-28)
 
 Board: `docs/boards/assistant-chat.html` (artboards A empty, B a conversation, C working, D AI off,
-E past conversations), drawn 2026-11-28 for the operator's order of that day ("Assistant panel:
+E past conversations; F a change's plan presented for approval and G "Mercury has no tool for
+this", added for the senior-engineer order of the same day), drawn 2026-11-28 for the operator's order of that day ("Assistant panel:
 rebuild it as a continuous chat, like Claude's chat or Claude Code, not a form") and signed off
 under the Phase 7 mode (docs/STANDING_APPROVAL_LOG.md, "Board assistant-chat"). Its yellow
 notes are notes for the builder.
@@ -17,7 +18,8 @@ Compared again 2026-11-28 (the independent review): Stop's hover now says no cal
 Compared again 2026-11-28 (the full suite on 2c738990b): the working indicator is one status line, the earlier steps on its hover (Working (C), now a deviation below); Stop, New conversation and Reopen carry the configure gate; the act slot no longer asks for the AI control itself (the panel's is passed in); the head's Looking at is asked from `data-place-url`, which carries the page's network. Templates sha256 before: `e2cb87a31c622c0a0d5eb60f4bbe44b52e6d836ba3465cf60e2ad8784af56c61`.
 Compared again 2026-11-28 (the model selector, the operator: "add a model selector to the chat"): the box's row gains the model selector between the keys line and Send, as the board's A and B now draw it ("Haiku 5.5 · default", the others "N× the cost"); after-shots at 1366 and 1920 taken by the same scratch shot test (the selector beside Send, the newest answer's model chosen). At the panel's default width of 440 px the keys line wraps onto two lines beside it (a deviation below). Templates sha256 before: `c5c87dcdcf868c64b04885873828eadd9843368f7e6bb76952c0f769c13e40f0`.
 Compared again 2026-11-28 (the pre-gate on the selector): each option's rates on its hover are drawn by the `usd` filter (tests/test_money.py); the words and the region are unchanged. Templates sha256 before: `f40052b0c04c6c4541203e6c9659a1675e6e61c3f3f895ee48ae654e940fa77f`.
-Templates sha256: `e66ab0ce212c9120cb434e83c152930fcc10625d54f7ce8eaae4c54067f891c8`
+Compared again 2026-11-28 (the assistant as a senior network engineer, artboards F and G): an answer proposing a plan loads the plan's own card in place at once (`hx-trigger="load"` on the preview, the card's id the answer's call), where it offered Preview the plan…; an answer saying Mercury has no tool draws its box; About the assistant's "It changes nothing…" line now says a change is a plan you approve by its hash, or a hand-off, and that Mercury says what it has no tool for. Compared by the templates' diff and tests/test_assistant_engineer.py (the answer drawn through the chat's job, its card loaded), not by shots. Regions A to E stand; F and G are added below. Built beside the model selector (both of 2026-11-28, brought together on main); the templates as both left them. Templates sha256 before: `e66ab0ce212c9120cb434e83c152930fcc10625d54f7ce8eaae4c54067f891c8`.
+Templates sha256: `3ac65e19c351e9367d95e30f9e39e021a648854b1aa9f0022b98305e79524d83`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -41,4 +43,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Stop (C) | Stop in Send's place, "Stop closes the model's answer and runs nothing more" beside it | Stop in Send's place; what it does on its hover; the line beside the box stays "Enter sends · Shift+Enter, a new line" (no narration beside a control) | **deviation** (log: Board assistant-chat built: its five deviations) |
 | AI off (D) | the box and Send greyed, the reason under them with Open Settings | the same (`ai.input_attrs`, `ai.attrs`, `ai.reason`) | **same** |
 | Past conversations (E) | a menu: each first question, when, how many, Reopen; "Reopening keeps the current conversation here in its place." | the same; how many as "3 exchanges"; the newest 30 of N said when there are more | **same** |
+| A change's words (F) | what the plan will do, read first, "it runs only once you approve it"; never that it is done | the same; an answer whose words say a change was made is refused by Mercury's check, never drawn | **same** |
+| A change's plan (F) | the plan engine's card inside the answer, at once: its title on the network, its words, each step's own preview, the hash line, What its hash binds, the reason, Approve named for the work | the same card (`_plan_card.html`), loaded in place on the answer's arrival, "Proposed for your approval: <title>, on <network>. Previewing each step…" while it loads; its id the answer's call, its Approve its own card's | **same** |
+| No tool (G) | a box inside the answer: "Mercury has no tool for this: <wanted>." bold, the why after it; recorded for review on its hover | the same (`data-no-tool`), the words masked | **same** |
 | The edge (A) | a grip on the panel's left edge, drag or arrow keys | the same (`[data-asst-resize]`, a separator with its value) | **same** |

@@ -3350,7 +3350,7 @@ def _plans(client, _lab, mp):
     """The plan card (modules/plan_engine.py, routes/plans_v2.py) in each of its states: a plan
     Mercury does not have (refused), a planted preview of two steps (as the engine's own
     preview answers), a run still going, and its result with one step done and one not run;
-    and the assistant's answer naming a plan, which offers Preview the plan…."""
+    and the assistant's answer naming a plan, whose preview loads in place."""
     import json as _json
 
     from modules import plan_engine
@@ -3431,7 +3431,11 @@ def _plans(client, _lab, mp):
     mp.setattr(assistant, "answer", lambda *a, **k: dict(got))
     from tests import assistant_ask
     r = assistant_ask.ask(client, {"question": "Reserve it", "screen": ""})
-    assert "Preview the plan…" in r.get_data(as_text=True) and _json
+    # The plan's preview loads in place at once (the operator, 2026-11-28: "present a plan for
+    # approval before making any changes"), its card's own id the answer's.
+    body = r.get_data(as_text=True)
+    assert "data-plan-proposed" in body and 'hx-trigger="load"' in body and _json
+    assert "card=plan-card-ai-0123456789abcdef" in body
 
 
 def _ai_spend(client, _lab, _mp):

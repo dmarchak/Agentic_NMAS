@@ -117,6 +117,35 @@ answers questions about Mercury and about what Mercury already holds for the thi
   without one and a round of reads) is drawn as lost, never working for ever; the person's
   next press keeps it in the conversation as lost.
 
+## A senior network engineer working through Mercury (the operator, 2026-11-28; board assistant-chat F and G)
+
+"I want it to take on the role of a senior network engineer. I should be able to execute tasks
+by telling the assistant. Everything it does though is run through code, similar to the self
+healing. If Mercury doesn't have a tool for it, it should say so. When prompted to make a
+change it should present a plan for approval before making any changes."
+
+- **Prompt v6, schema v4** (`AssistantAnswerV4`; v5 and v3 stay readable): it investigates with
+  reads, says what it found; asked for a change, ONE plan; asked how, Mercury's steps, offering
+  a plan that fits; what no operation or read does, ``no_tool`` {wanted, why}. v5's hardening
+  kept (the question is data).
+- **The change plan** is the plan engine's (`plan_engine.CHANGE`): 1 to 10 steps, each exactly
+  {operation, params}, the operation one of `CHANGE_ADMITTED` (intent-edit, intent-deploy,
+  intent-description, dhcp-reservation, ztp-create: the step kinds that need no incident),
+  held by `_steps_refusal`, the one check of a plan's steps an incident's fix uses with its
+  own admitted set. Each step previewed by its own step kind, approved once by hash on the
+  plan's card (routes/plans_v2.py), run by `plan_engine.run`. No new execution path.
+- **Presented in the chat:** the answer loads the plan's card in place at once (a preview
+  writes nothing and makes no AI call), its id the answer's call (`plans_v2.card_id`).
+- **No tool** is drawn and recorded once for review (`missing.wanted`'s ``no_tool``, kind
+  operation, for the question).
+- **Reads widened** to a device of the network the question names (`assistant.named_devices`,
+  the network's inventory by `restore._devices_of`), each still judged by the read loop's
+  check; a name the network does not hold is refused.
+- **Held by code, each with its test** (tests/test_assistant_engineer.py): a step outside the
+  admitted set refused; a parameter outside its step kind's schema refused; no settings route
+  and no run, start or approve reachable from an answer (the AI NEVERs' graph); no step or
+  answer field takes a secret; an answer saying a change was made refused (`assistant.check`).
+
 ## Never
 
 Applies a change, confirms, approves, writes to a device, reads a device by any path but

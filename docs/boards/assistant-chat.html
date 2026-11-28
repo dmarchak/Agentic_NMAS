@@ -8,7 +8,11 @@
      rebuilt as a continuous chat, like Claude's chat or Claude Code, not a form. Artboards:
      A empty; B a conversation (an answer with its sources, a collapsed and an expanded read,
      the quiet line, a hand-off); C working (the indicator in the conversation, Stop in Send's
-     place); D AI off (greyed, the reason in place); E past conversations open. The panel is
+     place); D AI off (greyed, the reason in place); E past conversations open. Added for the
+     operator's order of 2026-11-28 (the assistant as a senior network engineer, "present a
+     plan for approval before making any changes", "If Mercury doesn't have a tool for it, it
+     should say so"): F a change's plan presented in the conversation; G "Mercury has no tool
+     for this". The panel is
      drawn at its default 440 px, beside a stand-in for the page it reflows. Self-contained:
      no external fonts or scripts. Example names only. -->
 <style>
@@ -153,5 +157,44 @@ remembered in this browser. Signed off under the Phase 7 mode (docs/STANDING_APP
   <div class="compose"><div class="box">Ask a question…</div><div class="crow"><span class="grow"></span><span class="btn primary">Send</span></div></div>
 </div></div>
 <div class="notes"><p class="callout">Each past conversation: its first question, when it was asked (the viewer's zone, UTC on hover) and how many exchanges. Nothing is deleted: New conversation and Reopen only move a conversation in or out of the past list.</p></div>
+
+<div class="artlabel"><strong>F. A change asked for: its plan presented in the conversation, for approval</strong></div>
+<div class="art"><div class="page">The device page, edge1<div class="bar"></div><div class="bar"></div></div>
+<div class="panel"><span class="edge"></span>
+  <div class="head"><div class="row"><span class="mark">AI</span><span class="title">Assistant</span><span class="grow"></span><span class="hbtn">New conversation</span><span class="ibtn">&#x21BA;</span><span class="ibtn">&#9432;</span><span class="ibtn">&#x2715;</span></div>
+    <div class="row"><span class="chip">Looking at: edge1 (device) · Default</span><span class="beta">Beta · advisory</span></div></div>
+  <div class="log">
+    <div class="me">Shut Gi4 on edge1 and deploy it<span class="where">on edge1 (device) · Default</span></div>
+    <div class="ai"><p>GigabitEthernet4 on edge1 is up with no neighbour (read:1). The plan below sets it shut in edge1's intent, then deploys edge1; it runs only once you approve it.</p>
+      <div class="chips"><span class="src">read:1 edge1's interfaces<a>Open</a></span><span class="src">Manual › A plan of operations<a>Open</a></span></div>
+      <div class="handoff"><p style="margin:0 0 4px"><strong>Change edge1: 2 steps, on Default.</strong> Make a change: the steps named, in order: 2 steps, run in order, each through its own operation; the first that does not pass stops the plan, and nothing is retried.</p>
+        <ol style="margin:0 0 4px;padding-left:18px;font-size:12.5px"><li><strong>Change a device's intent</strong>: edge1. interfaces.GigabitEthernet4.shutdown: false → true <span class="hint">(deploys nothing)</span></li><li><strong>Deploy a device's intent</strong>: edge1. 2 lines, merge-only <span class="hint">(no removal)</span></li></ol>
+        <p class="hint" style="margin:0 0 4px">The plan is bound to 3f2a9c0e41b7d6a5: if any step's own preview moves before you approve, nothing runs. &#9656; What its hash binds</p>
+        <div class="box" style="min-height:0;font-size:12.5px">Reason: at least three words, recorded with your name</div>
+        <div style="margin-top:6px"><span class="btn primary">Approve the plan on Default: Change edge1: 2 steps</span> <span class="faint">(i)</span></div></div>
+      <div class="quiet">Haiku 5.5 · $0.0042 · 11 s · Call 1 in History · Call 2 in History</div>
+      <div class="fb">Was this right? Yes · No…</div></div>
+  </div>
+  <div class="compose"><div class="box">Ask a follow-up…</div>
+    <div class="crow"><span class="hint">Enter sends · Shift+Enter, a new line</span><span class="grow"></span><span class="btn primary">Send</span></div></div>
+</div></div>
+<div class="notes"><p class="callout">The answer's words say what the plan will do, never that it is done. Its card loads in place at once, the plan engine's own preview card (each step's own preview, the hash line, What its hash binds, the reason, Approve named for the work); while it loads, one line, "Proposed for your approval: Change edge1: 2 steps, on Default. Previewing each step…". A preview writes nothing and makes no AI call; nothing runs before Approve. Each answer's card is its own (its id the answer's call), so a later plan's Approve never acts on an earlier one. Started, the card runs on the one stepper, as on the plan's own page.</p></div>
+
+<div class="artlabel"><strong>G. Mercury has no tool for this</strong></div>
+<div class="art"><div class="page">The Devices page<div class="bar"></div></div>
+<div class="panel"><span class="edge"></span>
+  <div class="head"><div class="row"><span class="mark">AI</span><span class="title">Assistant</span><span class="grow"></span><span class="hbtn">New conversation</span><span class="ibtn">&#x21BA;</span><span class="ibtn">&#9432;</span><span class="ibtn">&#x2715;</span></div>
+    <div class="row"><span class="chip">Looking at: Devices · Default</span><span class="beta">Beta · advisory</span></div></div>
+  <div class="log">
+    <div class="me">Upgrade edge1 to the newest IOS XE<span class="where">on Devices · Default</span></div>
+    <div class="ai"><p>Mercury has no operation that installs software on a device, so no plan can do this.</p>
+      <div class="handoff"><strong>Mercury has no tool for this: Upgrade edge1's IOS XE image.</strong> No operation of Mercury's installs or activates a software image.</div>
+      <div class="quiet">Haiku 5.5 · $0.0021 · 5 s · History</div>
+      <div class="fb">Was this right? Yes · No…</div></div>
+  </div>
+  <div class="compose"><div class="box">Ask a follow-up…</div>
+    <div class="crow"><span class="hint">Enter sends · Shift+Enter, a new line</span><span class="grow"></span><span class="btn primary">Send</span></div></div>
+</div></div>
+<div class="notes"><p class="callout">Never a device command, a script or a way around Mercury. The box's hover says it is recorded for review on History, as a capability Mercury lacks (one row per answer, masked, for the question); it is never a Needs attention row. An answer may hold both a plan for the part Mercury can do and this line for the part it cannot.</p></div>
 </body>
 </html>

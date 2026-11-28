@@ -59,8 +59,8 @@ def approve(plan, params, h=None, **over):
 class TestTheSchema:
     @pytest.mark.parametrize("plan, params, code, words", [
         ("reload-everything", {}, "not_a_plan",
-         "a plan is one of Mercury's (add-ztp-device, describe-link, dhcp-reservation and "
-         "incident-fix)"),
+         "a plan is one of Mercury's (add-ztp-device, change, describe-link, dhcp-reservation "
+         "and incident-fix)"),
         ("dhcp-reservation", dict(RES, commands="reload"), "unknown_parameter",
          "also given: a parameter the schema does not name is refused"),
         ("dhcp-reservation", {k: v for k, v in RES.items() if k != "mac"}, "missing_parameter",

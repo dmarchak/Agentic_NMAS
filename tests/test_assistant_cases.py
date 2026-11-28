@@ -107,9 +107,9 @@ def test_a_batched_request_is_the_press_s_byte_for_byte_and_judged_the_same(worl
     got = _ask([{"n": 2, "q": Q, "screen": SCREEN}], 2, fake)
     assert got["ok"] and got["batch_id"] == "msgbatch_0test", got["detail"]
     (sent,) = fake.created
-    # The press asks prompt v5 since stage 2 (docs/design/assistant.md: prompt v5, schema v3,
-    # one shape every pass), so the evaluation measures v5 too.
-    assert [r["custom_id"] for r in sent] == ["a2-assistant-v5-r0", "a2-assistant-v5-r1"]
+    # The press asks prompt v6 since the engineer's role (2026-11-28: prompt v6, schema v4, one
+    # shape every pass; v5 was stage 2's), so the evaluation measures v6 too.
+    assert [r["custom_id"] for r in sent] == ["a2-assistant-v6-r0", "a2-assistant-v6-r1"]
 
     def unmarked(body):
         return dict(body, system=[{k: v for k, v in b.items() if k != "cache_control"}

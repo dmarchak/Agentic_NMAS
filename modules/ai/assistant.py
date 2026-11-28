@@ -11,7 +11,8 @@ and names no command to type.
 
 **Where the person is** (stage 2) is the page's path, resolved by the server
 (`assistant_context.resolve`) into the screen, the network, the device and the incident. The
-reads are scoped to that device, or to the incident's (`scope_of`).
+reads are scoped to that device, or to the incident's, and to the devices of the network the
+question names (`scope_of`).
 
 **The reads** (stage 2; the operator, 2026-11-23: the same read-only tools a person has, device
 reads included) run through the generic read loop (`read_loop.run`) over the assistant's read
@@ -58,6 +59,19 @@ nothing.
 existing gated flow, pre-filled and not started (`handoff_of`): the device's Intent tab, its
 Change it in words box filled, or the incident's AI troubleshooting card. The person presses,
 previews and confirms there, as ever.
+
+**A senior engineer working through Mercury (v6 and schema v4; the operator, 2026-11-28).** It
+investigates with Mercury's reads (of the device or incident in view, and of any device of the
+network the question names, `named_devices`), says what it found, and:
+- asked to make a change, proposes ONE plan: a named plan, or ``change`` (the plan engine's
+  `plan_engine.CHANGE`: its steps named one by one, each one of Mercury's operations that needs
+  no incident, held to its step kind's schema by the one check of a plan's steps). The panel
+  previews it in place at once (each step's own preview, a read), and a person approves it by
+  its hash on the plan's card; the plan engine runs it. The assistant runs nothing, and an
+  answer whose words say a change was made is refused (`check`);
+- asked for what no operation or read of Mercury's does, says so (``no_tool``, `no_tool_of`):
+  drawn as "Mercury has no tool for this", and recorded for review as an operation Mercury
+  lacks (`record_no_tool`, `missing`), never a device command or a way around Mercury.
 """
 import json
 import logging
@@ -89,7 +103,14 @@ FEATURE = "assistant"
 #: v5 (stage 2, docs/design/assistant.md): v4's, and what the person is looking at, the reads
 #: (when to ask, of which device, citing ``read:<n>``) and the hand-off to a gated flow; its
 #: schema is v3 (`AssistantAnswerV3`), one shape for every pass.
-PROMPT = ("assistant", 5)
+#: v6 (the operator, 2026-11-28: "take on the role of a senior network engineer ... If Mercury
+#: doesn't have a tool for it, it should say so. When prompted to make a change it should
+#: present a plan for approval"): v5's hardening, and the engineer's role: it investigates with
+#: reads, says what it found; a change asked for is ONE plan (a named plan, or ``change``, its
+#: steps Mercury's own operations), never said to be made; what no operation or read of
+#: Mercury's does is ``no_tool``, never a command or a way around Mercury. Its schema is v4
+#: (`AssistantAnswerV4`). v5 stays readable (a recorded case's answers are v5's).
+PROMPT = ("assistant", 6)
 #: The kind of subject a call is about (`history_sources.SUBJECT_WORDS`).
 SUBJECT_KIND = "manual_question"
 #: The longest answer drawn, characters; longer is refused at check.
@@ -108,18 +129,40 @@ STEPS = (
     ("ask", "one recorded AI call: the instructions, the screens, the plans and the read set "
             "cached, then the question (masked on its way out), what it is looking at and the "
             "passages"),
-    ("read", "the reads the answer asks for, of the device in view only, each judged by "
-             "Mercury's check and run through its reads engine and its own records, recorded, "
-             "then one more recorded call with their answers"),
+    ("read", "the reads the answer asks for, of the device or incident in view and of any "
+             "device of the network the question names, each judged by Mercury's check and run "
+             "through its reads engine and its own records, recorded, then one more recorded "
+             "call with their answers"),
     ("check", "Mercury's check: every citation a passage sent or a read that ran, every screen "
-              "named one the manual names"),
+              "named one the manual names, no word saying a change was made"),
     ("draw", "the answer drawn with its sources' links, the model, the cost and the calls in "
-             "History, a hand-off offered, or the manual's gap said and recorded"),
+             "History; a change's plan previewed in place for a person to approve by its hash, "
+             "a hand-off offered, Mercury's lack of a tool said and recorded, or the manual's "
+             "gap said and recorded"),
 )
 #: Said when the manual does not cover a question, whichever way that was found.
 NOT_COVERED = "The manual doesn't cover this."
 #: Why no read is asked when the page is about no device or incident.
-NO_PLACE = "no device or incident is in view, so no device is read"
+NO_PLACE = ("no device or incident is in view and the question names no device of the network, "
+            "so no device is read")
+#: The most devices of the network a question may name for its reads (each one's committed
+#: stores and read-only account are read for the scope, `router_reads.scope_for`).
+MOST_NAMED = 6
+#: The longest "Mercury has no tool for this" said: what was wanted, and why.
+MAX_NO_TOOL = 300
+#: What Mercury records as its reason for a "no tool" answer (`missing.wanted`).
+NO_TOOL_REASON = "no operation or read of Mercury's does it"
+#: Words that say the assistant made a change, or that the change asked for is now made (an
+#: answer's never do: the assistant makes none; a plan it proposes runs only once a person
+#: approves it). Refused by resemblance, the safe side; the assistant's own first person and
+#: the change "now" made only, so a fact History holds ("Mercury deployed edge1 on Tuesday") is
+#: never one.
+_CLAIMS_MADE = re.compile(
+    r"\bI(?:['’]ve|\s+have)?\s+(?:now\s+|already\s+|just\s+)?"
+    r"(?:applied|deployed|changed|committed|saved|configured|reloaded|reserved|removed|"
+    r"pushed|shut)\b"
+    r"|\b(?:the|your|this)\s+change\s+(?:is\s+now|has\s+(?:now\s+)?been)\s+"
+    r"(?:made|applied|deployed|done|complete|committed)\b", re.I)
 
 
 @register("assistant", 1)
@@ -196,6 +239,44 @@ class AssistantAnswerV3(StrictModel):
     reads: list[ReadAsk] = []
 
 
+# ── v4: the senior engineer's answer (the operator, 2026-11-28) ─────────────────────────────
+
+class PlanStepAsk(StrictModel):
+    """One step of a change the answer names: one of the operations a change admits
+    (`plan_engine.CHANGE_ADMITTED`) and each of its parameters, as {name, value}."""
+    operation: str
+    params: list[PlanParam]
+
+
+class PlanAskV4(StrictModel):
+    """A plan the answer names (`plan_engine.PLANS`): a named plan's parameters, or a change's
+    steps (``plan`` ``change``, its ``params`` empty)."""
+    plan: str
+    params: list[PlanParam]
+    steps: list[PlanStepAsk] = []
+
+
+class NoTool(StrictModel):
+    """What the person asked for that no operation or read of Mercury's does: what was
+    wanted, and why Mercury cannot do it, in a sentence each."""
+    wanted: str
+    why: str
+
+
+@register("assistant", 4)
+class AssistantAnswerV4(StrictModel):
+    """v4 (2026-11-28): v3's answer, its ``plan`` able to name a change's steps
+    (`PlanAskV4`), and ``no_tool`` (what no operation or read of Mercury's does, or null)."""
+    answer: str
+    cites: list[str]
+    covered: bool
+    screens: list[str]
+    plan: PlanAskV4 | None = None
+    handoff: Handoff | None = None
+    reads: list[ReadAsk] = []
+    no_tool: NoTool | None = None
+
+
 #: Each read's operation and the device tab it opens on (Open, beside the source): Mercury's
 #: own reads their tab, a device read the device's Ask the device tab (its record on History ›
 #: Reads beside it).
@@ -246,7 +327,7 @@ def loop_feature(chosen: list) -> "RL.LoopFeature":
     def check_(answer, *, read_ids):
         return check(answer, chosen, read_ids=read_ids)
 
-    spec = (PROMPT, AssistantAnswerV3)
+    spec = (PROMPT, AssistantAnswerV4)
     return RL.LoopFeature(task=FEATURE, first=spec, second=spec, plain=spec, check=check_,
                           cites=lambda a: list(a.cites), one_shape=True,
                           shared_context={"read_set": read_set(),
@@ -254,15 +335,31 @@ def loop_feature(chosen: list) -> "RL.LoopFeature":
 
 
 def plans_offered(plan_engine) -> list:
-    """What the model is told of each plan: its name, its words and each parameter's shape."""
-    return [{"plan": p.key, "words": p.words,
-             "params": [{"name": x.name, "takes": x.takes} for x in p.params]}
+    """What the model is told of each plan: its name, its words and each parameter's shape; a
+    change (`plan_engine.CHANGE`) also the operations its steps may be, each with its
+    parameters (`plan_engine.change_operations`)."""
+    return [dict({"plan": p.key, "words": p.words,
+                  "params": [{"name": x.name, "takes": x.takes} for x in p.params]},
+                 **({"operations": plan_engine.change_operations()}
+                    if p.key == plan_engine.CHANGE else {}))
             for _k, p in sorted(plan_engine.PLANS.items())]
+
+
+def _named_once(params, what: str) -> tuple:
+    """``(values, why)``: *params* (``[{name, value}]``) as ``{name: value}``, or why not (a
+    name given twice, said by its name only)."""
+    given = {}
+    for p in params:
+        if p.name in given:
+            return None, f"{what} names the parameter {p.name!r} twice"
+        given[p.name] = p.value
+    return given, ""
 
 
 def plan_of(words) -> tuple:
     """``(plan, why)``: the plan *words* names, held to the plan engine's schema
-    (`plan_engine.checked`: a plan Mercury has, exactly its parameters, each of its shape), as
+    (`plan_engine.checked`: a plan Mercury has, exactly its parameters, each of its shape; a
+    change's steps each an operation a change admits, exactly its parameters), as
     ``{"plan", "params", "title"}``; ``(None, "")`` for none; ``(None, why)`` refused. Reads
     nothing and runs nothing."""
     from modules import plan_engine
@@ -270,11 +367,20 @@ def plan_of(words) -> tuple:
     ask = getattr(words, "plan", None)
     if ask is None:
         return None, ""
-    given = {}
-    for p in ask.params:
-        if p.name in given:
-            return None, f"its plan names the parameter {p.name!r} twice"
-        given[p.name] = p.value
+    given, why = _named_once(ask.params, "its plan")
+    if why:
+        return None, why
+    steps = list(getattr(ask, "steps", None) or [])
+    if steps:
+        # A change's steps (v4): each {operation, params}, as the plan engine's check takes them.
+        if "steps" in given:
+            return None, "its plan names its steps twice"
+        given["steps"] = []
+        for n, s in enumerate(steps, 1):
+            values, why = _named_once(s.params, f"its plan's step {n}")
+            if why:
+                return None, why
+            given["steps"].append({"operation": s.operation, "params": values})
     try:
         plan, held, steps = plan_engine.checked(ask.plan, given)
     except plan_engine.Refused as exc:
@@ -323,6 +429,40 @@ def handoff_of(words, place: dict) -> tuple:
             "incident": place["incident"], "network": network}, ""
 
 
+def no_tool_of(words) -> dict:
+    """What the answer says Mercury has no tool for (v4's ``no_tool``), as the panel draws and
+    the missing capabilities record keeps it: ``{"wanted", "why"}``, each one line, masked
+    (`redact.redact_text`), at most `MAX_NO_TOOL` characters; ``None`` for none (or one with
+    nothing wanted). Reads nothing."""
+    from modules import redact
+
+    got = getattr(words, "no_tool", None)
+    if got is None:
+        return None
+    wanted = " ".join(str(got.wanted or "").split()).rstrip(".")
+    if not wanted:
+        return None
+    why = " ".join(str(got.why or "").split())
+    return {"wanted": redact.redact_text(wanted)[:MAX_NO_TOOL],
+            "why": redact.redact_text(why)[:MAX_NO_TOOL]}
+
+
+def record_no_tool(got: dict, *, network: str) -> dict:
+    """The chat's job's write (`assistant_turns.work`, beside the manual's gap): an answer that
+    said Mercury has no tool for what was asked, recorded as one missing capability for review
+    (`missing.wanted` and `missing.record`: an operation Mercury lacks, for the question, keyed
+    by the answering call; masked at rest). ``{"ok", "recorded", "error"}``; nothing for an
+    answer without one."""
+    from modules.ai import missing
+
+    if not (got or {}).get("no_tool"):
+        return {"ok": True, "recorded": 0, "error": ""}
+    rows = missing.wanted(None, (), feature=FEATURE, network=network or "",
+                          about=("question", got.get("call_id") or ""),
+                          no_tool=dict(got["no_tool"], reason=NO_TOOL_REASON))
+    return missing.record(rows[:1])
+
+
 def passages_sent(chosen: list) -> list:
     """What the model is sent of each chosen passage: its link, its page, its heading, its
     text."""
@@ -368,6 +508,12 @@ def check(words, chosen: list, read_ids=()) -> str:
         return f"it names {', '.join(unknown)}, which is no screen the manual names"
     if len(words.answer) > MAX_ANSWER:
         return f"its answer is {len(words.answer)} characters, past {MAX_ANSWER}"
+    claim = _CLAIMS_MADE.search(words.answer or "")
+    if claim:
+        # The assistant makes no change; a plan it proposes runs only once a person approves
+        # it. Its words are never drawn saying otherwise.
+        return (f"its words say a change was made (\"{claim.group(0)}\"), and the assistant "
+                "makes none: a plan runs only once a person approves it")
     return ""
 
 
@@ -385,20 +531,52 @@ def model_words(model: str = None) -> dict:
     return {"model": model, "model_words": profiles.profile(model)["words"]}
 
 
-def scope_of(place: dict, actor: str) -> tuple:
+def named_devices(question: str, network: str) -> list:
+    """The devices of *network*'s inventory that *question* names (the operator, 2026-11-28: a
+    senior engineer reads the device the person names, not only the one on screen): each word of
+    the question as it leaves (masked, `redact.redact_typed`) that is a device's name in the
+    inventory, compared without case, in the order named, at most `MOST_NAMED`, each as the
+    inventory spells it. A name the inventory does not hold names nothing (a read of it is
+    refused by the read loop's check); an inventory that cannot be read names none, said in the
+    log. Reads the inventory only."""
+    from modules import redact
+    from modules.nsot.restore import _devices_of
+
+    words = re.findall(r"[A-Za-z0-9][A-Za-z0-9_.-]*", redact.redact_typed(question or ""))
+    if not words or not network:
+        return []
+    try:
+        # The network's own inventory, as every per-network operation reads it.
+        names = [str(d.get("hostname") or "") for d in _devices_of(network)]
+    except Exception as exc:                          # noqa: BLE001 (none named: said)
+        log.warning("assistant: %s's inventory could not be read for the names a question "
+                    "gives: %s", network, exc)
+        return []
+    by_case = {n.casefold(): n for n in names if n}
+    out = []
+    for w in words:
+        name = by_case.get(w.rstrip("._-").casefold())
+        if name and name not in out:
+            out.append(name)
+    return out[:MOST_NAMED]
+
+
+def scope_of(place: dict, actor: str, question: str = "") -> tuple:
     """``(scope, devices, why)``: what the read family's comparisons read for what the person is
-    looking at (*place*): a device page's device (`router_reads.scope_for`), an incident's
-    device and its streams (`fixit_reads.scope_for`, the incident as its fix-it record takes
-    it); the devices a read may be of; and why no read may be asked ("" when one may). Read
-    only at a press, and only when the device state class is on for the network
-    (`read_loop.reads_off`); every read it allows is recorded as the assistant's, asked by the
-    person."""
+    looking at (*place*) and the devices *question* names (`named_devices`): a device page's
+    device and those named (`router_reads.scope_for`), an incident's device and its streams
+    (`fixit_reads.scope_for`, the incident as its fix-it record takes it) with those named; the
+    devices a read may be of; and why no read may be asked ("" when one may). Read only at a
+    press, and only when the device state class is on for the network (`read_loop.reads_off`);
+    each read is still judged by the read loop's check, a device outside the scope refused, and
+    every read it allows is recorded as the assistant's, asked by the person."""
     from modules.nsot import listref
 
     place = place or {}
     network = place.get("network") or ""
     device, incident = place.get("device") or "", place.get("incident") or ""
-    if not network or not (device or incident):
+    named = [n for n in named_devices(question, network) if n != device] if network else []
+    if not network or not (device or incident or named):
         return None, [device] if device else [], NO_PLACE
     try:
         net_id = listref.network_id(network)
@@ -408,8 +586,9 @@ def scope_of(place: dict, actor: str) -> tuple:
     if off:
         return None, [device] if device else [], off
     try:
-        if device:
-            scope = RR.scope_for(network, [device], turned_on_by=actor)
+        if device or not incident:
+            scope = RR.scope_for(network, ([device] if device else []) + named,
+                                 turned_on_by=actor)
         else:
             from modules import incident_page
             from modules.fixit import section
@@ -418,12 +597,19 @@ def scope_of(place: dict, actor: str) -> tuple:
             if got["incident"] is None:
                 return None, [], got["why"]
             scope = FR.scope_for(network, got["incident"], actor=actor)
+            more = [n for n in named if n not in (scope.get("devices") or {})]
+            if more:
+                # The devices the question names beside the incident's, each as a device
+                # page's is read (`router_reads.scope_for`).
+                extra = RR.scope_for(network, more, turned_on_by=actor)
+                scope["devices"] = dict(scope.get("devices") or {}, **extra["devices"])
+                for key in ("addresses", "prefixes"):
+                    scope[key] = sorted(set(scope.get(key) or ()) | set(extra.get(key) or ()))
     except Exception as exc:                          # noqa: BLE001 (no read: said)
-        log.error("assistant: the reads' scope of %s could not be built: %s",
-                  device or incident, exc)
-        return None, [device] if device else [], (f"what Mercury holds about "
-                                                  f"{device or incident} could not be read "
-                                                  f"({type(exc).__name__})")
+        about = device or incident or ", ".join(named)
+        log.error("assistant: the reads' scope of %s could not be built: %s", about, exc)
+        return None, [device] if device else [], (f"what Mercury holds about {about} could "
+                                                  f"not be read ({type(exc).__name__})")
     scope["actor"] = f"the toolbar assistant, asked by {actor or 'nobody named'}"
     scope["purpose"] = "the toolbar assistant's read"
     return scope, sorted(scope.get("devices") or {}), ""
@@ -525,7 +711,7 @@ def answer(question: str, *, screen: str = "", place: dict = None, actor: str, t
     # pin's own model is no choice); None for the pin's.
     chosen = model or None
     place = dict(place or {})
-    scope, devices, reads_off = scope_of(place, actor)
+    scope, devices, reads_off = scope_of(place, actor, question)
     place["devices"] = devices
     say("Choosing the manual's passages")
     prep = prepare(question, screen=screen, place=place, reads_off=reads_off)
@@ -674,21 +860,25 @@ def drawn(words, prep: dict, *, actor: str, call_id: str, cost_usd: float, recor
 
     place = prep.get("place") or {}
     passages = prep["drawn"]
-    if not words.covered or not words.cites:
+    # A plan named (v2; a change's steps, v4): proposed only, held to the plan engine's schema;
+    # the panel previews it in place at once, and a person approves it by its hash or not.
+    plan, dropped = plan_of(words)
+    # What Mercury has no tool for (v4): said and recorded (`record_no_tool`), never padded.
+    no_tool = no_tool_of(words)
+    if plan is None and no_tool is None and (not words.covered or not words.cites):
         calls.record_use(call_id, "shown: not covered", actor=actor)
         return {"ok": True, "state": "not_covered", "error": "", "detail": NOT_COVERED,
                 "call_id": call_id, "passages": passages, "gap": True,
                 "cost_usd": cost_usd, "typed_masked": typed_masked}
-    calls.record_use(call_id, "shown: answered", actor=actor)
+    calls.record_use(call_id, "shown: no tool" if no_tool and plan is None
+                     else "shown: answered", actor=actor)
     cited = [d for d in passages if d["link"] in set(words.cites)]
     by_id = {r["id"]: r for r in _reads_drawn(list(records or ()), place)}
     sources = ([dict(c, kind="manual") for c in cited]
                + [dict(by_id[c], kind="read") for c in words.cites if c in by_id])
-    # A plan named (v2): proposed only, held to the plan engine's schema by `check`; the panel
-    # offers its preview, and a person approves it or not.
-    plan, dropped = plan_of(words)
     handoff, handoff_dropped = handoff_of(words, place)
     return {"ok": True, "state": "answered", "error": "", "detail": "", "plan": plan,
+            "no_tool": no_tool,
             "plan_dropped": (f"Mercury dropped the plan the answer named: {dropped}" if dropped
                              else ""),
             "handoff": handoff,

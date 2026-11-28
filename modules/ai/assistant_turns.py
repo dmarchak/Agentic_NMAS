@@ -62,8 +62,8 @@ def drawn_of(got: dict, question: str, place: dict) -> dict:
 
 
 def work(actor: str, turn: str, question: str, screen: str, place: dict, model: str = None):
-    """The job's work: the answer (on *model*, the person's choice, or the pin's), its gap
-    recorded, the exchange kept. Returns the turn."""
+    """The job's work: the answer (on *model*, the person's choice, or the pin's), its gap or
+    what Mercury has no tool for recorded, the exchange kept. Returns the turn."""
     from modules.ai import assistant, assistant_threads, triggers
 
     started = time.monotonic()
@@ -93,6 +93,13 @@ def work(actor: str, turn: str, question: str, screen: str, place: dict, model: 
     if got.get("gap"):
         assistant.record_gap(question, screen=screen, state=got["state"], actor=actor,
                              call_id=got.get("call_id") or "")
+    if got.get("no_tool"):
+        # What Mercury has no tool for, one row for review (History › AI missing
+        # capabilities); a store that cannot be written is logged, and the answer stands.
+        kept = assistant.record_no_tool(got, network=place.get("network") or "")
+        if not kept.get("ok"):
+            log.error("assistant: turn %s's missing capability was not recorded: %s", turn,
+                      kept.get("error"))
     took = time.monotonic() - started
     assistant_threads.finish(actor, turn, drawn_of(got, question, place), took_s=took)
     return {"turn": turn, "state": got.get("state")}

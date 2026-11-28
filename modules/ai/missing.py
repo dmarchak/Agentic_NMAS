@@ -11,7 +11,9 @@ from the model's say-so alone:
   golden does not hold) or its class (the configuration class off) is the check working, and
   is not recorded here;
 - **an operation** (`KIND_OPERATION`): a gap, the fix the evidence points to that no catalog
-  operation does (the answer's ``gap``).
+  operation does (the answer's ``gap``); or what a person asked the toolbar assistant for that
+  no operation or read of Mercury's does (its answer's ``no_tool``, one row per answer, for
+  the question, 2026-11-28).
 Each row: when, the feature, the network, what was wanted (the read's operation and its words,
 or the gap's words), why (the request's why, or the gap's evidence), Mercury's reason, and what
 it was for (``incident`` or ``question``).
@@ -112,9 +114,11 @@ def for_incident(incident_id: str) -> list:
 
 
 def wanted(answer, records, *, feature: str, network: str, about: tuple,
-           condition: str = "") -> list:
-    """The rows one checked answer makes: each refused read Mercury lacks (`lacking`), and the
-    answer's gap, if any. *records* are the read loop's records; *about* is ``(kind, id)``,
+           condition: str = "", no_tool: dict = None) -> list:
+    """The rows one checked answer makes: each refused read Mercury lacks (`lacking`), the
+    answer's gap, if any, and *no_tool* (the toolbar assistant's "Mercury has no tool for
+    this", ``{"wanted", "why", "reason"}``: an operation Mercury lacks, 2026-11-28), if given.
+    *records* are the read loop's records; *about* is ``(kind, id)``,
     kind one of `ABOUT`. Each row has its stable `row_id`; a gap of an incident whose problem's
     *condition* is known also keeps what it wanted (``wants``: that condition, and the keys
     Mercury could propose then, `capabilities`), so it restarts once when a step that fixes it
@@ -135,6 +139,10 @@ def wanted(answer, records, *, feature: str, network: str, about: tuple,
                     "reason": "no catalog operation does it"})
         if condition:
             out[-1]["wants"] = {"condition": condition, "known": sorted(capabilities())}
+    if no_tool and _one_line(no_tool.get("wanted")):
+        out.append({"kind": KIND_OPERATION, "what": _one_line(no_tool.get("wanted")),
+                    "device": "", "why": _one_line(no_tool.get("why")),
+                    "reason": _one_line(no_tool.get("reason") or "Mercury has no tool for it")})
     kind, ident = about
     ab = {"kind": kind, "id": str(ident)}
     return [dict(row, feature=feature, network=network, about=ab,
