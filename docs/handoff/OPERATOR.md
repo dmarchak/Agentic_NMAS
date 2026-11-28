@@ -222,6 +222,17 @@ again. No EMPTY_IN_FIXTURE entry for it. After the walk, once both records are c
 or a rogue switch and must never be re-enabled automatically. Note it in decisions." The loop
 removed (the words kept) and docs/fidelity/incident.md compared again, 2026-11-27.
 
+### assistant-v6-cases
+
+- **Asked (2026-11-28 06:3x UTC, 23:3x Denver):** the assistant's prompt v6 (a change as a plan,
+  "no tool", reads of named devices) is deployed but unmeasured (C4333): its 39 recorded cases
+  ran on v2 to v4, and none is a change or a no-tool question. Measuring it spends provider money.
+- **Options:** (a) record about 8 new cases (4 changes, 2 no-tool, 2 named-device reads), then run
+  all 47 ten times on Haiku 5.5 at the batch rate with `scripts/nmas-assistant-cases`: about $1
+  (47 x 10 x about $0.0015, from the panel's measured $0.0031 a call at half price), inside the day
+  cap; (b) the same once more on Sonnet 5.5, about 20 times that; (c) not now: the label stays
+  Advisory (beta). **Recommendation:** (a); (b) only if Haiku misses the 95% floor.
+
 ### automatic-port-scope
 
 - **Asked (2026-11-28 00:25 UTC, 17:25 Denver):** your access-only rule is built for err-disable
