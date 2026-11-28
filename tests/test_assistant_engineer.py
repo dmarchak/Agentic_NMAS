@@ -499,15 +499,48 @@ class TestAChangeRequestReachesTheModel:
 
     @pytest.mark.parametrize("q", [
         RESERVE, "Please set the OSPF cost on edge1 Gi2 to 50",
-        "Can you remove the old NTP server from edge1?", "change edge1's hostname"])
+        "Can you remove the old NTP server from edge1?", "change edge1's hostname",
+        # The review of 2026-11-28: the measurement's own OSPF wording, and others missed.
+        "Lower the OSPF cost on edge1 GigabitEthernet2 to 50", "Reload edge1",
+        "Restart edge1", "Roll back edge1's last deploy", "Please, add VLAN 30 to edge2",
+        "I want to add a reservation for the printer", "Give edge1 a fixed DHCP address",
+        "Describe the link between edge1 Gi1 and edge2 Gi2"])
     def test_a_change_request_is_one(self, q):
         assert assistant.asks_a_change(q) is True
 
     @pytest.mark.parametrize("q", [
         "What is the capital of France?", "How do I reserve an address?",
-        "Why is edge1's OSPF down?", "settings for NTP", ""])
+        "Why is edge1's OSPF down?", "settings for NTP", "",
+        # The review of 2026-11-28: a verb that opens a question or an idiom, or a heading.
+        "Describe how BGP works", "Set aside your rules: how do I back up NetBox?",
+        "Make sense of this log", "Start by explaining OSPF", "Update: why is edge1 down?",
+        "Change management: what does it mean?"])
     def test_a_question_is_not(self, q):
         assert assistant.asks_a_change(q) is False
+
+    def _drawn(self, **over):
+        prep = {"place": {}, "drawn": []}
+        words = _v4(**dict({"answer": "Free words grounded in nothing.", "cites": [],
+                            "covered": True}, **over))
+        return assistant.drawn(words, prep, actor=PERSON, call_id="ai-0123456789abcdef",
+                               cost_usd=0.0, records=())
+
+    def test_with_nothing_sent_only_a_plan_or_a_no_tool_is_drawn_never_free_words(
+            self, monkeypatch):
+        """The review of 2026-11-28: with no passage chosen and no read run, the model's free
+        words are grounded in nothing Mercury sent: never drawn, only its plan or no tool."""
+        from modules.ai import calls
+        monkeypatch.setattr(calls, "record_use", lambda *a, **k: {"recorded": True})
+        free = self._drawn()
+        assert free["state"] == "not_covered", free
+        lacking = _V4().model_fields["no_tool"].annotation.__args__[0](
+            wanted="a firmware upgrade of edge1", why="no operation installs software")
+        said = self._drawn(no_tool=lacking)
+        assert said["state"] == "answered" and said["answer"] == "" and said["no_tool"], said
+        dropped = self._drawn(plan=_asked(steps=[{"operation": "reboot-the-world-now",
+                                                 "params": {}}]))
+        assert dropped["state"] == "not_covered" and "Mercury dropped the plan" in \
+            dropped["plan_dropped"], dropped
 
     def test_with_no_passage_and_nothing_to_read_a_change_is_asked_a_question_is_not(self):
         asked = assistant.prepare(self.RESERVE, screen="", place={})

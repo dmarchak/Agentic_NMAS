@@ -20,7 +20,11 @@
 <div class="asst-ai asst-answer" role="group" aria-label="The assistant's answer"{% if got.at %} data-at="{{ got.at }}"{% endif %}>
   {{ ai.typed_masked(got.typed_masked) }}
   {%- if got.state == 'answered' %}
+  {#- C4330's review: an answer grounded in nothing Mercury sent (no passage, no read) has no
+      free words drawn; its plan or what it has no tool for speaks for it. -#}
+  {%- if got.answer %}
   <div class="asst-said md" title="Answered by AI from {{ "the manual and Mercury's reads" if got.reads else 'the manual' }}; every citation checked by Mercury">{{ got.answer | answer_text }}</div>
+  {%- endif %}
   {%- if sources %}
   <ul class="asst-sources" aria-label="Sources">{% for s in sources %}
     {%- if s.kind == 'read' %}
@@ -62,6 +66,7 @@
   {%- endif %}
   {%- elif got.state == 'not_covered' %}
   <p class="small"><strong>{{ got.detail }}</strong> It is recorded as a gap in the manual.{% if got.passages %} The nearest it holds: {% for c in got.passages[:3] %}<a href="{{ c.link }}">{{ c.page }} › {{ c.heading }}</a>{% if not loop.last %}; {% endif %}{% endfor %}.{% endif %}</p>
+  {%- if got.plan_dropped %}<p class="small warn-text" data-plan-dropped>{{ got.plan_dropped }}.</p>{% endif %}
   {%- elif got.state == 'stopped' %}
   <p class="small" data-stopped><strong>{{ got.detail }}.</strong></p>
   {%- elif got.state == 'lost' %}

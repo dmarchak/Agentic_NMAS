@@ -713,18 +713,31 @@ STOPPED_USE = "stopped by the person"
 #: in view they were drawn "The manual doesn't cover this" and no plan was offered. Matching a
 #: verb only spends the one call the person pressed Send for; it allows nothing else.
 CHANGE_VERBS = frozenset((
-    "add", "apply", "assign", "bring", "change", "configure", "create", "delete", "deploy",
-    "describe", "disable", "enable", "make", "move", "push", "remove", "rename", "reserve",
-    "restore", "set", "shut", "start", "turn", "update"))
-_LEAD_IN = re.compile(r"^(?:please\s+|(?:can|could|would|will)\s+you\s+(?:please\s+)?)",
-                      re.I)
+    "add", "allow", "apply", "assign", "bounce", "bring", "change", "configure", "create",
+    "decrease", "delete", "deploy", "describe", "disable", "enable", "give", "increase", "lower",
+    "make", "move", "push", "raise", "reload", "remove", "rename", "reserve", "restart",
+    "restore", "revert", "roll", "save", "set", "shut", "shutdown", "start", "turn", "unshut",
+    "update"))
+#: A second word that makes the verb's sentence a question or an idiom, not a change ("Describe
+#: how BGP works", "Set aside your rules", "Make sense of this", "Start by explaining").
+NOT_A_CHANGE_AFTER = frozenset(("how", "what", "why", "when", "where", "which", "who", "whether",
+                                "aside", "sense", "by", "me"))
+_LEAD_IN = re.compile(
+    r"^(?:please[,\s]+|(?:can|could|would|will)\s+you\s+(?:please\s+)?|(?:can|may)\s+i\s+|"
+    r"i\s+(?:want|need|would\s+like|'d\s+like|’d\s+like)\s+to\s+|let'?s\s+)", re.I)
 
 
 def asks_a_change(question: str) -> bool:
     """Whether *question* asks for a change (`CHANGE_VERBS`, its first word after a polite lead
-    in), so it is asked of the model even when no passage is chosen (C4330)."""
+    in, not a heading's word before a colon, nor a question's shape, `NOT_A_CHANGE_AFTER`), so
+    it is asked of the model even when no passage is chosen (C4330)."""
     words = _LEAD_IN.sub("", (question or "").strip()).split()
-    return bool(words) and words[0].lower().strip(",.:;!?") in CHANGE_VERBS
+    if not words or any(w.endswith(":") for w in words[:2]):
+        # A heading before a colon ("Update: …", "Change management: …"), not a request.
+        return False
+    if len(words) > 1 and words[1].lower().strip(",.:;!?") in NOT_A_CHANGE_AFTER:
+        return False
+    return words[0].lower().strip(",.;!?") in CHANGE_VERBS
 
 
 def prepare(question: str, *, screen: str = "", place: dict = None,
@@ -946,10 +959,17 @@ def drawn(words, prep: dict, *, actor: str, call_id: str, cost_usd: float, recor
     plan, dropped = plan_of(words)
     # What Mercury has no tool for (v4): said and recorded (`record_no_tool`), never padded.
     no_tool = no_tool_of(words)
-    if plan is None and no_tool is None and (not words.covered or not words.cites):
+    plan_dropped = f"Mercury dropped the plan the answer named: {dropped}" if dropped else ""
+    # C4330's review: a change request asked with no passage chosen and no read run is grounded
+    # in nothing Mercury sent, so its free words are never drawn: only its plan (each step
+    # previewed by Mercury's own operation) or what it has no tool for.
+    grounded = bool(passages) or bool(records)
+    if plan is None and no_tool is None and (not words.covered or not words.cites
+                                             or not grounded):
         calls.record_use(call_id, "shown: not covered", actor=actor)
         return {"ok": True, "state": "not_covered", "error": "", "detail": NOT_COVERED,
                 "call_id": call_id, "passages": passages, "gap": True,
+                "plan_dropped": plan_dropped,
                 "cost_usd": cost_usd, "typed_masked": typed_masked}
     calls.record_use(call_id, "shown: no tool" if no_tool and plan is None
                      else "shown: answered", actor=actor)
@@ -960,12 +980,12 @@ def drawn(words, prep: dict, *, actor: str, call_id: str, cost_usd: float, recor
     handoff, handoff_dropped = handoff_of(words, place)
     return {"ok": True, "state": "answered", "error": "", "detail": "", "plan": plan,
             "no_tool": no_tool,
-            "plan_dropped": (f"Mercury dropped the plan the answer named: {dropped}" if dropped
-                             else ""),
+            "plan_dropped": plan_dropped,
             "handoff": handoff,
             "handoff_dropped": (f"Mercury dropped the hand-off the answer named: "
                                 f"{handoff_dropped}" if handoff_dropped else ""),
-            "answer": words.answer, "cites": cited, "sources": sources, "passages": passages,
+            "answer": words.answer if grounded else "", "cites": cited, "sources": sources,
+            "passages": passages,
             "call_id": call_id, "cost_usd": cost_usd, "gap": False,
             "typed_masked": typed_masked}
 
