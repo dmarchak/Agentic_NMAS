@@ -1,6 +1,40 @@
-# Handoff: the assistant as an engineer, deployed green (2026-11-28, 02:30 Denver)
+# Handoff: printed defaults and the assistant's lazy plan cards (2026-11-28, 02:30 Denver)
 
-## The evening of 2026-11-27 to 28 (to 02:30 Denver): read this first
+## The last hour, 07:50 to 09:30 UTC: read this first
+
+- **State.** The host runs cd355a7dc, deployed 08:38 UTC on CI #2373 green.
+  - The deploy's checks: SMOKE OK, 0 tracebacks, Default in dry run, the SDN lab off.
+  - Main is cd355a7dc plus this handoff's commit. Main's own CI run on cd355a7dc (#2374) is
+    green as well.
+  - Needs attention on the host at 08:40 UTC: no rows, 8 acknowledged, and Mercury itself holds
+    the two scheduled-job warnings, as before.
+  - The deploy went the CI path again (pre-gate, then a ci/ branch). The laptop's WinBoat VM
+    still holds 8 GiB, under the gate's floor.
+- **What landed:**
+  - Restore or keep's first item, the printed-defaults table (e6e9ad4ed, 2ffcb5442): eight lines
+    a C8000v prints when nothing sets them, for the IOS-XE dialect only, are left out of the
+    device's side where intent lacks them. That covers Intent-Match (the Intent row, Save All's
+    baseline, Reload's gate, the previews, the heal's departure) and the Intent editor's
+    departs rows. A first boot from a startup file therefore reads at intent. A changed value
+    still departs, and every template-fidelity question still compares every line.
+  - The independent review found it UNSAFE. All four findings were fixed before any deploy,
+    and the re-review found it SAFE. The biggest finding: `license boot level …` is
+    configuration the image's install step sets, so it is left out of the table, against the
+    order's list. That decision is logged in STANDING_APPROVAL_LOG.md.
+  - CI #2371 went red on the platform-keying scan, which the pre-gate does not choose. It was
+    fixed forward in cd355a7dc.
+  - C4331, measured in Firefox and fixed (850ab191e): the assistant's panel previewed all 20
+    planned answers on every open. It now previews only the newest, and the rest load on
+    scroll.
+  - Registered: C4340 and C4341, both C and both in the safe direction; C4342, also C: the
+    pre-gate does not choose the keying scan behind #2371's red.
+- **Waiting on the operator:** the same as below (assistant-v6-cases, automatic-port-scope, the
+  break-glass export).
+- **Next:** Restore or keep's item 3, Keep device. Seed's parse is merged into a device's full
+  intent, keeping `no_shutdown`, secret refs and unmodelled keys, and is previewed by the Intent
+  editor's two diffs. Then item 2, Restore (its measurements first), then the board.
+
+## The evening of 2026-11-27 to 28 (to 02:30 Denver)
 
 - **State.** The host runs 72ddb6cde since 07:20 UTC (CI #2364 and #2365 green, SMOKE OK, Default
   in dry run). Main is 71e4ecc86 (docs on top of it) plus this handoff's commit. Every deploy

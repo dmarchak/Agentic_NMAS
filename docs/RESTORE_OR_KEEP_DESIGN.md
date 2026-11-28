@@ -120,6 +120,26 @@ would send.
    secret refs, keys the parser does not model), previewed by the Intent editor's own two diffs
    (what the edit changes; what a deploy would send, which must be empty), confirmed by hash, one
    commit as the person, `Source: keep`. It replaces the hand edits of Lab 9 and of r8.
+
+   **Read for the build (2026-11-28, code only):** the path after the merge already exists in
+   `nsot/intent_patch.py`, which is the shape to follow. Its `patched_text` produces the new
+   document through `hostvars`' serialiser and checks it with `intent_edit.validate`. It refuses
+   a document that does not round-trip (a hand edit's comments). `preview` hands the text to
+   `intent_edit.preview` with the blob it came from, and `commit` re-applies it at that base
+   through `intent_edit.commit`, which refuses if intent moved since.
+
+   Keep's new piece is the merge alone. The capture's parse (`roundtrip.validate_device`, as
+   `seed.entry_for` runs it) is merged into committed intent:
+   - section by section, the device's values taken;
+   - committed `no_shutdown`, `secrets` refs and keys the parse does not model kept;
+   - the merged document handed to that same preview and commit, never a second commit path.
+
+   The parse carries secret VALUES (`host_vars["secrets"]`, ref to value, which Seed stores in
+   the credential store at apply). Keep must therefore decide, per value, whether it is the
+   value committed intent's ref already holds (keep the ref) or a new one. That is code that
+   stores secret values, the irreversible tier (CLAUDE.md, "Mutation is a weekly measurement"):
+   its proof is the hand check in docs/TIER_HAND_CHECK.md before it deploys. Keep a device
+   whose secrets match first, and refuse, naming the ref, where a value differs.
 4. **The screen.** On the device's Overview ("Intent against what it runs") and on a departure's
    incident card: the diff (masked, one level down, both directions, the defaults table's lines
    named as left out), then the two actions side by side, "Restore intent" and "Keep device",
