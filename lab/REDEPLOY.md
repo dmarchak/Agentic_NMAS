@@ -165,6 +165,13 @@ list the node means the plain deploy will not recreate it.
    (r8, 2026-11-27: 21:11:45Z to 21:18:33Z), and a switch behind it answers once it routes (s5,
    21:18:38Z). History shows "SSH host key kept under a planned window" for each; the next drift
    run reads each against its golden, and its standing outage incident closes at that clean read.
+   **A node's first boot from a startup file** (its golden captured in its configless life)
+   prints the platform's own rendering of that file, and departs from that golden: r8 on
+   2026-11-27 printed `line vty 0 4` as `line vty 0`, `1` and `2 4`, `no mop` on each interface,
+   the `mgcp` defaults, `spanning-tree extend system-id` and GigabitEthernet1 shut (C4300). Bring
+   its intent to that form (Intent › Change it in words, previewed against the device), then Save
+   All once; the save records the golden and earns the baseline, and every later recreate boots
+   the same form and reads clean, as r6 and r7 do.
 9. **Commit the topology in the lab's repository** (`git add rcn-lab1.clab.yml && git commit`),
    a person's step on the lab host.
 
