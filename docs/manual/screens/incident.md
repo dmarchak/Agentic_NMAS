@@ -164,9 +164,10 @@ Run, on every incident it matches (…) while <network>'s self-healing is in Aut
 open incidents it would run on now, and **Make it automatic** promotes it, bound to that list,
 through the same path as a fix page's Set Automatic…; its answer is drawn on the card. It needs
 a verified run of the fix's current version first (until then it says so), and the
-self-healing right. It is never offered for a fix whose match leaves the port's role unset
-(any port), and Mercury refuses it too, naming why: an uplink's err-disable is never
-re-enabled automatically. A saved fix that ran is saved already: nothing offers to save it
+self-healing right. It is offered only for a fix whose match names access ports: a fix for
+trunk or routed ports, any port (no role named) or an unrecognised role is always Manual, and
+Mercury refuses it too, naming why: an uplink's err-disable is never re-enabled
+automatically. A saved fix that ran is saved already: nothing offers to save it
 again.
 
 **Approve** runs the plan exactly as drawn, held to the plan's hash: a step that moved since it

@@ -536,8 +536,10 @@ class TestNeverAutomaticForAnyPort:
             e = doc["plans"][walk["anyport"]]
             e.update(mode="auto", promoted_by=PERSON, promoted_at=e["saved_at"],
                      digest=CP.parse(e["template"]).digest)
-        S._update(planted)
-        assert S.read()["plans"][walk["anyport"]]["mode"] == "auto", "floor: planted Auto"
+        # Planted past every writer, as a store from before the rule holds it (since C4311 a
+        # write through the store converts it, and a read shows it Manual only).
+        raw(planted)
+        assert stored_raw()[walk["anyport"]]["mode"] == "auto", "floor: planted Auto"
         monkeypatch.setattr("modules.connection.with_temp_connection",
                             lambda *a, **kw: pytest.fail("a session was opened"))
         monkeypatch.setattr("modules.connection.get_persistent_connection",
@@ -599,3 +601,160 @@ class TestTheReviewsOtherFindings:
         assert title == display_names.people(identity.right_refusal("self_healing", **WHO)), \
             title
         assert S.read()["plans"][e["key"]]["mode"] == S.MANUAL
+
+
+# ── The operator's ruling, 2026-11-28 (OPERATOR.md#automatic-port-roles; C4311, C4312) ──────
+
+#: Each port role a match may name, and whether its fix may be Automatic (an allowlist).
+ROLES = [("access", True), ("trunk", False), ("routed", False), ("", False),
+         ("uplink-ish", False)]
+
+
+def matched(role: str) -> dict:
+    m = {"condition": "err_disabled", "cause": "BPDU guard"}
+    return dict(m, port_role=role) if role else m
+
+
+def raw(change) -> dict:
+    """The saved plans' store as stored on disk, changed by *change* past every writer (as a
+    store written before the rule holds it), and read afresh after."""
+    with open(S._path(), encoding="utf-8") as fh:
+        doc = json.load(fh)
+    change(doc)
+    with open(S._path(), "w", encoding="utf-8") as fh:
+        json.dump(doc, fh)
+    S._READ.clear()
+    return doc
+
+
+def stored_raw() -> dict:
+    with open(S._path(), encoding="utf-8") as fh:
+        return json.load(fh)["plans"]
+
+
+class TestTheAccessAllowlist:
+    @pytest.mark.parametrize("role,allowed", ROLES)
+    def test_a_save_is_automatic_only_for_access_ports_and_says_so(self, store, role,
+                                                                   allowed):  # noqa: F811
+        e = S.save_script(NET, run_id=store["run"](), name=f"Recovery {role or 'any'}",
+                          match=matched(role), fills=FILLS, **WHO)
+        assert e["mode"] == ("auto" if allowed else S.MANUAL), e["mode"]
+        line = S.runs_on(NET, matched(role), "")
+        assert line["manual"] is (not allowed), line
+        if not allowed:
+            scope = f"{role} ports" if role else "any port"
+            assert line["words"].startswith(
+                f"Saved Manual only: a fix for {scope} is never automatic"), line["words"]
+
+    @pytest.mark.parametrize("role,allowed", ROLES)
+    def test_promote_refuses_every_role_but_access(self, store, role, allowed):  # noqa: F811
+        e = S.save_script(NET, run_id=store["run"](), name=f"Recovery {role or 'any'}",
+                          match=matched(role), fills=FILLS, dry_run=True, **WHO)
+        if allowed:
+            assert S.promote(e["key"], network=NET, **WHO)["mode"] == "auto"
+            return
+        with pytest.raises(S.Refused) as got:
+            S.promote(e["key"], network=NET, **WHO)
+        named = (f"{role} ports" if role else "any port (its match names no port role)")
+        assert f"matches {named}, so it stays Manual" in str(got.value), str(got.value)
+        assert "only a fix for access ports may be automatic" in str(got.value)
+        assert S.read()["plans"][e["key"]]["mode"] == "dry_run"
+
+    def test_a_fix_the_rule_marked_once_runs_automatically_after_it_is_promoted(
+            self, store):  # noqa: F811
+        """The third review's finding 1: the rule's mark (`manual_by_rule`) answers the match it
+        was made for; a fix whose match now names access ports, promoted, carries no stale mark,
+        so its automatic run is not refused for a rule it no longer breaks."""
+        e = S.save_script(NET, run_id=store["run"](), name="Recovery, corrected to access",
+                          match=matched("access"), fills=FILLS, dry_run=True, **WHO)
+
+        def marked(doc):
+            doc["plans"][e["key"]]["manual_by_rule"] = "matches any port, so it stays Manual"
+        raw(marked)
+        assert S.promote(e["key"], network=NET, **WHO)["mode"] == "auto"
+        stored = stored_raw()[e["key"]]
+        assert "manual_by_rule" not in stored, stored.get("manual_by_rule")
+        why = S.authority_refusal(e["key"], {"script": e["key"]}, NET)
+        assert "matches any port" not in why, why
+
+    @pytest.mark.parametrize("role,allowed", ROLES)
+    def test_a_stored_automatic_fix_runs_only_for_access_ports(self, store, monkeypatch,
+                                                                 role, allowed):  # noqa: F811
+        from modules.nsot import command_plan_run as CR
+        e = S.save_script(NET, run_id=store["run"](), name=f"Recovery {role or 'any'}",
+                          match=matched(role), fills=FILLS, dry_run=True, **WHO)
+
+        def planted(doc):
+            got = doc["plans"][e["key"]]
+            got.update(mode="auto", promoted_by=PERSON, promoted_at=got["saved_at"],
+                       digest=CP.parse(got["template"]).digest)
+        raw(planted)
+        why = S.authority_refusal(e["key"], {"script": e["key"]}, NET)
+        if allowed:
+            assert why == "", why
+            return
+        assert why.startswith("its automatic run is refused: ") and "stays Manual" in why, why
+        monkeypatch.setattr("modules.connection.with_temp_connection",
+                            lambda *a, **kw: pytest.fail("a session was opened"))
+        monkeypatch.setattr("modules.connection.get_persistent_connection",
+                            lambda *a, **kw: pytest.fail("a session was opened"))
+        rec = CR.run(NET, e["key"], {"device": "s1", "interface": "Gi0/2",
+                                     "cause": "bpduguard"}, actor=PERSON, actor_verified="",
+                     person=False, confirmed="0" * 16, reason="a planted fire",
+                     authority={"script": e["key"]})
+        assert rec["outcome"] == "refused" and why in rec["why"], rec["why"]
+
+
+class TestAStoredAutomaticFixTheRuleRefuses:
+    """C4311: a fix stored Automatic that the rule refuses reads Manual only everywhere at once,
+    and the store's next write converts it, recorded as Mercury's under the ruling; an
+    Automatic access-port fix is untouched."""
+
+    def _planted(self, walk):
+        from tests.test_fix_manual_controls import with_pair_check
+        template = with_pair_check(S.read()["plans"][walk["access"]]["template"])
+        trunk = S.new_fix(NET, name="BPDU guard recovery (trunk ports)", words="",
+                          match=matched("trunk"), fills=FILLS, template=template, **WHO)
+
+        def planted(doc):
+            for key in (walk["anyport"], trunk["key"]):
+                e = doc["plans"][key]
+                e.update(mode="auto", promoted_by=PERSON, promoted_at="2026-11-27T21:00:00Z",
+                         digest=CP.parse(e["template"]).digest)
+        raw(planted)
+        return trunk["key"]
+
+    def test_it_reads_and_is_drawn_manual_never_recommended_nor_batched(self, walk):
+        from modules import fix_page, incident_page
+        trunk = self._planted(walk)
+        assert stored_raw()[walk["anyport"]]["mode"] == "auto", "floor: stored Automatic"
+        every = S.fixes(NET)
+        assert (every[walk["anyport"]]["how"], every[trunk]["how"],
+                every[walk["access"]]["how"]) == ("manual", "manual", "automatic")
+        found = incident_page.resolve(NET, walk["iid"])
+        assert S.script_for(NET, found)[0]["key"] == walk["access"], "the batch's pick"
+        row = row_of(walk, walk["anyport"])
+        assert "Manual only" in text(row) and "data-recommended" not in row, text(row)
+        assert "Make this fix automatic?" not in text(row)
+        listed = {r["key"]: r for r in fix_page.listing(NET)["rows"]}
+        assert listed[trunk]["how"] == "manual", listed[trunk]["how"]
+        r = walk["client"].get(f"/v2/fixes/{trunk}?list={NET}")
+        page_text = text(r.get_data(as_text=True))
+        assert r.status_code == 200 and "Manual only" in page_text, page_text[:400]
+        assert "made Manual only under the operator's ruling of 2026-11-28" in page_text
+
+    def test_the_next_write_converts_it_with_a_record_and_leaves_access_alone(self, walk):
+        trunk = self._planted(walk)
+        before = stored_raw()[walk["access"]]
+        S._update(lambda doc: None)
+        after = stored_raw()
+        for key in (walk["anyport"], trunk):
+            e = after[key]
+            assert e["mode"] == S.MANUAL and "stays Manual" in e["manual_by_rule"], key
+            ch = e["changes"][-1]
+            assert (ch["action"], ch["by"]) == ("made_manual", S.RULED_BY), ch
+            # The third review's finding 3: the ruling's sentence alone, never cut mid-sentence
+            # (the role it refused is the entry's own `manual_by_rule`).
+            assert ch["words"] == S.RULED_WHY and ch["at"], ch
+        assert after[walk["access"]] == before, "an Automatic access-port fix is untouched"
+        assert after[walk["access"]]["mode"] == "auto"

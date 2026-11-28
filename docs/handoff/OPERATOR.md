@@ -222,6 +222,18 @@ again. No EMPTY_IN_FIXTURE entry for it. After the walk, once both records are c
 or a rogue switch and must never be re-enabled automatically. Note it in decisions." The loop
 removed (the words kept) and docs/fidelity/incident.md compared again, 2026-11-27.
 
+### automatic-port-scope
+
+- **Asked (2026-11-28 00:25 UTC, 17:25 Denver):** your access-only rule is built for err-disable
+  fixes (C4312). The review of it found that saved fixes for Mercury's other port conditions (a
+  port bounce for a stuck port, a flapping port, an interface shut, a link down) carry no port
+  role, so the rule does not see them: such a fix could be made Automatic and run on a trunk or
+  uplink port. That was so before the rule, and Default holds no such fix (C4320).
+- **Options:** (a) the rule covers every port condition: each stays Manual until Mercury's
+  classifier for it names the port's role, then only access may be Automatic, as for err-disable;
+  (b) err-disable only, as built. **Recommendation:** (a): the same reason holds (an uplink
+  acted on by itself), and it is the same one rule.
+
 ### automatic-port-roles
 
 - **Asked (2026-11-27 23:56 UTC, 16:56 Denver):** the fix-choice change makes a saved fix whose

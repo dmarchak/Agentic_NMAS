@@ -91,9 +91,11 @@ A Manual only or Dry run fix's row offers **Make this fix automatic?**: what the
 do by itself, which open incidents it would run on now, and **Make it automatic**, which binds
 those incidents (a list that moved since it was drawn is refused, naming both) and promotes the
 fix through the one promotion path a fix page's Set Automatic… takes. It waits for a verified
-run of the fix's current version, takes the self-healing right, and is never offered for a fix
-whose match leaves the port's role unset: Mercury refuses that promotion itself, since an
-uplink's err-disable must never be re-enabled automatically.
+run of the fix's current version, takes the self-healing right, and is offered only for a fix
+whose match names access ports (the operator's ruling of 2026-11-28: an allowlist): a fix for
+trunk or routed ports, any port (no role named) or a role Mercury does not recognise is always
+Manual. Mercury refuses that promotion itself, since an err-disable on an uplink is a loop or
+a rogue switch and must never be re-enabled automatically.
 
 ## Start AI troubleshooting {#start}
 

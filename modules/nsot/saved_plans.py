@@ -101,7 +101,7 @@ def read() -> dict:
     except OSError:
         return {"plans": {}}
     if _READ.get("mtime") == mtime and _READ.get("path") == path:
-        return json.loads(_READ["text"])
+        return _ruled(json.loads(_READ["text"]))
     try:
         with open(path, encoding="utf-8") as fh:
             text = fh.read()
@@ -111,7 +111,8 @@ def read() -> dict:
     if not (isinstance(got, dict) and isinstance(got.get("plans"), dict)):
         return {"plans": {}, "unreadable": "not a store"}
     _READ.update(mtime=mtime, path=path, text=text)
-    return got
+    # C4311: a stored fix the rule refuses as Automatic reads Manual only, at once (`_ruled`).
+    return _ruled(got)
 
 
 #: The store as last read, by its file's modification time (a read per question otherwise).
@@ -126,6 +127,8 @@ def _update(change):
     with PathLock(path):
         doc = read_json_for_write(path, empty={"plans": {}})
         doc.setdefault("plans", {})
+        # C4311: the conversion kept and recorded, under the lock, by every write.
+        _ruled(doc, record=True)
         out = change(doc)
         # In the order written: a template's parameters keep their own order (as a person
         # reads them, and as its steps take them).
@@ -735,24 +738,74 @@ def save_script(network: str, *, run_id: str, name: str, match: dict, fills: dic
                     actor_verified=actor_verified, person=person, incident=incident)
 
 
-def automatic_refusal(e: dict) -> str:
-    """Why the saved fix *e* may never be made Automatic as it is matched, or ``""`` (C4304,
-    the operator, 2026-11-27: "never offered for a fix whose port role is unset (any port),
-    since an uplink err-disable must never be re-enabled automatically"): a match on a
-    condition whose problem names its port's role (`problem.PORT_ROLE_CONDITIONS`) that names
-    no role runs on any port, an uplink's too. THE one rule: `promote` refuses by it, `save_fix`
-    saves such a fix Manual only, `authority_refusal` refuses its automatic run at fire time,
-    and the incident card and a fix's page offer no Make this fix automatic? or Set Automatic…
-    by it (`fix_page.automatic_form`). PURE."""
+#: The port roles whose fix may be Automatic, an ALLOWLIST (the operator's ruling,
+#: 2026-11-28, OPERATOR.md#automatic-port-roles, C4312: "Automatic only for access-port fixes.
+#: Write it as an allowlist: access may be Automatic; trunk, routed, unset and any unrecognised
+#: role are always Manual. One rule in the single guard").
+AUTOMATIC_PORT_ROLES = ("access",)
+
+
+def port_scope(match: dict) -> str:
+    """Which ports a match runs on, in words, for a condition whose problem names its port's
+    role (`problem.PORT_ROLE_CONDITIONS`): "access ports", "trunk ports", "any port" (no role
+    named); ``""`` for any other condition. The one wording of it (`automatic_refusal`,
+    `runs_on`, the incident card's rows, `fix_page._scope`). PURE."""
     from modules import problem as P
 
+    m = match or {}
+    if m.get("condition") not in P.PORT_ROLE_CONDITIONS:
+        return ""
+    role = str(m.get("port_role") or "")
+    return f"{role} ports" if role else "any port"
+
+
+def automatic_refusal(e: dict) -> str:
+    """Why the saved fix *e* may never be Automatic as it is matched, or ``""``: THE one rule
+    (C4304, C4312; the operator's ruling of 2026-11-28, `AUTOMATIC_PORT_ROLES`): a match on a
+    condition whose problem names its port's role is Automatic only for a role the allowlist
+    names (access); trunk, routed, unset (any port) and any role it does not recognise are
+    Manual only, since an err-disable on an uplink is a loop or a rogue switch. `promote`
+    refuses by it, `save_fix` saves such a fix Manual only, `authority_refusal` refuses its
+    automatic run at fire time, `_ruled` shows a stored one Manual and converts it, and the
+    incident card and a fix's page offer no Make this fix automatic? or Set Automatic… by it
+    (`fix_page.automatic_form`). PURE."""
     m = (e or {}).get("match") or {}
-    if m.get("condition") in P.PORT_ROLE_CONDITIONS and not str(m.get("port_role") or ""):
-        return (f"{(e or {}).get('name') or (e or {}).get('key') or 'this fix'} matches any "
-                "port (its match names no port role), so it stays Manual: an uplink's "
-                "err-disable is never re-enabled automatically; a fix whose match names the "
-                "port's role can be made automatic")
+    scope = port_scope(m)
+    if scope and str(m.get("port_role") or "") not in AUTOMATIC_PORT_ROLES:
+        named = ("any port (its match names no port role)" if scope == "any port" else scope)
+        return (f"{(e or {}).get('name') or (e or {}).get('key') or 'this fix'} matches "
+                f"{named}, so it stays Manual: an uplink's err-disable is never re-enabled "
+                "automatically (an err-disable on an uplink is a loop or a rogue switch); only "
+                "a fix for access ports may be automatic")
     return ""
+
+
+#: Who converts a stored fix the rule refuses as Automatic, and why (C4311).
+RULED_BY = "Mercury: the automatic port-role rule"
+RULED_WHY = ("made Manual only under the operator's ruling of 2026-11-28 (automatic-port-roles, "
+             "C4312): only a fix for access ports may be automatic")
+
+
+def _ruled(doc: dict, record: bool = False) -> dict:
+    """*doc* (the store) with every entry the rule refuses as Automatic (`automatic_refusal`)
+    in Manual only (C4311, the operator, 2026-11-28: "any stored fix the guard would refuse as
+    Automatic is converted to Manual and shown as Manual"), its reason kept on it
+    (``manual_by_rule``). Applied by every read (`read`), so the entry reads Manual before the
+    conversion lands, and, *record*, by the store's one write path (`_update`, under its lock),
+    which keeps the conversion and records it as a change (`_change`: Mercury, the ruling,
+    when). The store's normalise seam; it had none before. *doc* is changed in place."""
+    for e in (doc.get("plans") or {}).values():
+        if not (isinstance(e, dict) and e.get("mode") == "auto"):
+            continue
+        why = automatic_refusal(e)
+        if why:
+            e.update(mode=MANUAL, manual_by_rule=why)
+            if record:
+                # The rule's sentence alone: the role it refused is the entry's own
+                # `manual_by_rule`, so History's record is never cut mid-sentence (`_change`
+                # keeps 300 characters).
+                _change(e, "made_manual", RULED_BY, RULED_WHY)
+    return doc
 
 
 def promote(key: str, *, actor: str, actor_verified: str, person: bool,
@@ -797,6 +850,10 @@ def promote(key: str, *, actor: str, actor_verified: str, person: bool,
         e.update(mode="auto", promoted_by=actor, promoted_at=_iso(),
                  digest=CP.parse(e["template"]).digest)
         e.pop("held_manual", None)
+        # The rule's mark (`_ruled`) answers an earlier match; promote has just asked the rule
+        # of this one (`automatic_refusal`), so a mark left would refuse every automatic run of
+        # a fix now Automatic (the third review's finding 1).
+        e.pop("manual_by_rule", None)
         _change(e, "automatic", actor, f"set Automatic on version {n}'s verified run "
                                        f"{str(ran.get('id') or '')[-8:]}")
         return as_fix(e)
@@ -806,7 +863,8 @@ def promote(key: str, *, actor: str, actor_verified: str, person: bool,
 #: Each change kept on a fix (`_change`), in words: THE one table its page's How it runs
 #: (`fix_page.page`) and History (`history_sources.saved_fixes`) draw it by.
 CHANGE_WORDS = {"written": "written on the Fixes page", "edited": "edited",
-                "new_version": "saved as a new version", "automatic": "set Automatic"}
+                "new_version": "saved as a new version", "automatic": "set Automatic",
+                "made_manual": "made Manual only"}
 
 
 def _change(e: dict, action: str, by: str, words: str) -> None:
@@ -1009,6 +1067,10 @@ def edit_fix(key: str, *, network: str, version: int, name: str, words: str, mat
         was_auto = e.get("mode") == "auto"
         runs_differently = bump or match != (e.get("match") or {}) or \
             new_fills != (e.get("fills") or {})
+        if match != (e.get("match") or {}):
+            # The rule's mark answered the old match; the entry is Manual either way, and a
+            # later promote asks the rule of the new one.
+            e.pop("manual_by_rule", None)
         e.update(name=name, words=" ".join(str(words or "").split())[:200], match=match,
                  fills=new_fills)
         if (match and not e.get("mode")) or (not match and e.get("mode")):
@@ -1065,6 +1127,9 @@ def authority_refusal(key: str, authority, network: str = "") -> str:
         r = e["retired"] or {}
         return (f"{e.get('name') or key} was deleted by {r.get('by') or 'a person not '
                 'recorded'} at {r.get('at') or 'an unrecorded time'}")
+    if e.get("manual_by_rule"):
+        # C4311: stored Automatic, read Manual only by the rule (`_ruled`): said by its rule.
+        return f"its automatic run is refused: {e['manual_by_rule']}"
     if not _is_matched(e) or e.get("mode") != "auto":
         return f"{key} is not a saved script in Auto"
     # C4306 (the review of C4304): an Automatic entry whose match runs on any port (stored
@@ -1826,9 +1891,8 @@ def runs_on(network: str, match: dict, incident_id: str, dry_run: bool = False, 
     n, devices = len(got["incidents"]), got["devices"]
     other = "other " if incident_id else ""
     if manual:
-        words = ("Saved Manual only: a fix for any port is never automatic, so it runs only "
-                 "when a person presses Run (tick the port role under Customize… for one that "
-                 "can be)")
+        words = (f"Saved Manual only: a fix for {port_scope(match)} is never automatic, so it "
+                 "runs only when a person presses Run (only a fix for access ports may be)")
     elif got["error"]:
         words = (f"Which {other}open incidents {press} runs it on could not be read "
                  f"({got['error']})")

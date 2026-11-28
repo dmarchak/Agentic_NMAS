@@ -666,15 +666,12 @@ def _does(o: dict, f: dict, t) -> str:
 def _scope(f: dict) -> str:
     """Which ports a fix runs on, from its own match, for a condition whose problem names the
     port's role (`problem.PORT_ROLE_CONDITIONS`): ", a fix for access ports" or ", a fix for
-    any port"; ``""`` otherwise. Two fixes for one problem then read apart on the incident's
-    card (the review of C4301 to C4304)."""
-    from modules import problem as P
+    any port"; ``""`` otherwise (`saved_plans.port_scope`'s words). Two fixes for one problem
+    then read apart on the incident's card (the review of C4301 to C4304)."""
+    from modules.nsot import saved_plans as S
 
-    m = (f or {}).get("match") or {}
-    if m.get("condition") not in P.PORT_ROLE_CONDITIONS:
-        return ""
-    role = str(m.get("port_role") or "")
-    return f", a fix for {role} ports" if role else ", a fix for any port"
+    scope = S.port_scope((f or {}).get("match") or {})
+    return f", a fix for {scope}" if scope else ""
 
 
 def offered(network: str, offers: list, *, device: str = "", since: str = "") -> dict:
@@ -787,6 +784,11 @@ def page(network: str, key: str) -> dict:
     if how == "manual" and not by_run:
         said = ("runs as a step of a plan a person approves by its hash; Run… here cannot "
                 "fill all it takes")
+    elif how == "manual" and S.automatic_refusal(f):
+        # C4311, C4312: never Automatic by the allowlist; a stored one made Manual says so.
+        said = (("was Automatic; " + S.RULED_WHY if f.get("manual_by_rule") else
+                 "runs only when a person presses Run…; never Automatic: only a fix for "
+                 "access ports may be"))
     elif how == "manual" and f.get("held_manual"):
         said = (f"was Automatic; Manual only until version {f['held_manual'].get('version')} "
                 "has a verified run, then it can be set Automatic again")
