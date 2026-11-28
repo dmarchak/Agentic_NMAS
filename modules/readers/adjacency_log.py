@@ -243,15 +243,30 @@ def _population() -> list:
     return [(name, host) for name, _ref, hosts in lists() for host in hosts]
 
 
+#: C4327: Loki's bound for these questions, about 2.5x the 7-day question's cold answer measured
+#: on the host (2.49 s cold, 0.32 to 0.36 s warm, 2026-11-28 04:21 UTC); the client's default of
+#: 5 s was under it, and one slow answer was a critical row that cleared by itself.
+ASK_TIMEOUT_S = 6.5
+#: How many times a question Loki did not answer within the bound is asked in all before the
+#: read fails: one slow answer is asked once more, never more (a failed read is a row).
+ASK_TRIES = 2
+
+
 def _ask(query: str, start: float, end: float) -> list:
-    """``[(ns, line)]`` from Loki. Raises naming what Loki answered."""
+    """``[(ns, line)]`` from Loki. Raises naming what Loki answered. A question Loki did not
+    answer within `ASK_TIMEOUT_S` is asked once more (`ASK_TRIES`) before the read fails (C4327);
+    any other failure fails at once."""
     from modules.integrations.loki import LokiIntegration
 
-    loki = LokiIntegration()
+    loki = LokiIntegration(timeout=ASK_TIMEOUT_S)
     if not loki.is_configured():
         raise LookupError("Loki is not configured")
-    r = loki._get("loki/api/v1/query_range", query=query, limit=LIMIT,  # noqa: SLF001
-                  start=int(start * 1e9), end=int(end * 1e9), direction="backward")
+    for _ in range(ASK_TRIES):
+        r = loki._get("loki/api/v1/query_range", query=query, limit=LIMIT,  # noqa: SLF001
+                      start=int(start * 1e9), end=int(end * 1e9), direction="backward")
+        if r.get("ok") or not r.get("timed_out"):
+            break
+        log.info("adjacency-log: Loki did not answer within %g s; asked once more", ASK_TIMEOUT_S)
     if not r.get("ok"):
         raise RuntimeError(f"Loki could not be asked: {r.get('error')}"
                            + (f" ({r['detail']})" if r.get("detail") else ""))

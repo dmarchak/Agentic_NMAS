@@ -364,3 +364,54 @@ def test_an_installation_without_loki_reads_as_not_configured_never_failing(monk
     got = AL.read(clock=lambda: 1_800_000_000.0, population=[("Lab", "r1")])
     assert got["configured"] is False and "Loki is not configured" in got["why"]
     assert got["adjacencies"] == {} and got["lines"] == 0
+
+
+class TestOneSlowAnswer:
+    """C4327 (the operator's screenshot, 2026-11-28: "How do I clear this error?"): one 7-day
+    question Loki did not answer within the client's 5 s raised a CRITICAL failing reader that
+    cleared by itself; measured on the host, the question answered in 2.49 s cold. Asked with a
+    bound of about 2.5x that, and once more when the bound fires, before the read fails."""
+
+    def _loki(self, monkeypatch, answers):
+        from modules.integrations.loki import LokiIntegration
+
+        asked = []
+
+        class Resp:
+            def json(self):
+                return {"data": {"result": [{"values": [[str(_ns(NOW - 600)), OSPF_DOWN]]}]}}
+
+        def get(self, path, **params):
+            asked.append(self.timeout)
+            got = answers.pop(0)
+            return {"ok": True, "status": 200, "response": Resp()} if got == "ok" else got
+        monkeypatch.setattr(LokiIntegration, "is_configured", lambda self: True)
+        monkeypatch.setattr(LokiIntegration, "_get", get)
+        return asked
+
+    TIMED_OUT = {"ok": False, "not_answering": True, "timed_out": True,
+                 "error": "Loki did not answer within 6.5 s (loki/api/v1/query_range)"}
+
+    def test_its_bound_is_about_two_and_a_half_times_the_measured_cold_answer(self, monkeypatch):
+        asked = self._loki(monkeypatch, ["ok"])
+        AL._ask("q", NOW - 60, NOW)
+        assert asked == [AL.ASK_TIMEOUT_S]
+        assert 2.49 * 2.0 <= AL.ASK_TIMEOUT_S <= 2.49 * 3.0, "about 2.5x the 2.49 s measured"
+
+    def test_one_slow_answer_is_asked_once_more_and_read(self, monkeypatch):
+        asked = self._loki(monkeypatch, [dict(self.TIMED_OUT), "ok"])
+        got = AL._ask("q", NOW - 60, NOW)
+        assert len(asked) == 2 and len(got) == 1
+
+    def test_two_slow_answers_fail_the_read_naming_the_bound(self, monkeypatch):
+        asked = self._loki(monkeypatch, [dict(self.TIMED_OUT), dict(self.TIMED_OUT), "ok"])
+        with pytest.raises(RuntimeError, match="did not answer within 6.5 s"):
+            AL._ask("q", NOW - 60, NOW)
+        assert len(asked) == 2, "never asked a third time"
+
+    def test_any_other_failure_fails_at_once(self, monkeypatch):
+        refused = {"ok": False, "status": 400, "error": "HTTP 400"}
+        asked = self._loki(monkeypatch, [refused, "ok"])
+        with pytest.raises(RuntimeError, match="HTTP 400"):
+            AL._ask("q", NOW - 60, NOW)
+        assert len(asked) == 1
