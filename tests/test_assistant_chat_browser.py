@@ -10,7 +10,8 @@ TEST_PERSON). Each test states the person's action and reads the page after it i
   of the window, the page reflowing beside it, and the width is remembered by this browser;
 - Stop is in Send's place while a question is answered, and Send comes back at its end;
 - the reads an answer ran are one collapsed line, each read opening to its record;
-- Looking at follows the page's address as the person moves within a page and to another.
+- Looking at follows the page's address as the person moves within a page and to another;
+- only the newest planned answer previews when the panel opens, an older one on scroll (C4331).
 """
 import pytest
 
@@ -275,3 +276,43 @@ def test_looking_at_follows_the_page_s_address(lab, served, monkeypatch):
     assert "tab=overview" in first and "r2 (device)" in label, (first, label)
     assert "tab=intent" in path, path
     assert "Devices" in other and "r2 (device)" not in other, other
+
+
+def test_only_the_newest_plan_previews_when_the_panel_opens(lab, served, monkeypatch):
+    """C4331: a conversation of planned answers previewed every one of them (each a request
+    running every step's preview) on every open of the panel. The newest answer's card loads at
+    once; an older one's when the person scrolls it into view."""
+    from routes import plans_v2
+    asked = []
+
+    def counted(call_id, network):
+        asked.append(call_id)
+        return None, "counted by the test"
+    monkeypatch.setattr(plans_v2, "_answered_plan", counted)
+    for k in range(20):
+        assistant_threads.keep(TEST_PERSON, f"Change {k}", "Devices · Lab", {
+            "state": "answered", "answer": _long(k), "sources": [], "calls": [],
+            "call_id": f"ai-{k:016x}", "model_words": "Haiku 5.5", "cost_usd": 0.001,
+            "plan": {"plan": "change", "list": "Lab", "title": f"Change {k}",
+                     "params": {"steps": [{"operation": "intent-description", "params": {
+                         "device": "edge1", "interface": "GigabitEthernet1",
+                         "description": f"uplink {k}"}}]}}})
+    import time
+
+    def until(test, bound=15):
+        end = time.monotonic() + bound
+        while time.monotonic() < end and not test():
+            time.sleep(0.1)
+        return test()
+
+    srv, b = served
+    _open(srv, b)
+    b.wait_for(AT_FOOT, 15)
+    newest = until(lambda: f"ai-{19:016x}" in asked)
+    time.sleep(1.5)                  # any other load-triggered card has asked by now
+    opened = list(asked)
+    b.js("document.getElementById('asst-answer').scrollTop = 0; return 1")
+    first = until(lambda: f"ai-{0:016x}" in asked)
+    assert newest, f"the newest answer's card never asked its preview: {asked}"
+    assert len(opened) <= 3, f"the panel's open asked {len(opened)} previews: {opened}"
+    assert first, "scrolled to the first answer, its card asked its preview"

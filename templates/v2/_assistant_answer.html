@@ -44,13 +44,15 @@
   {%- endif %}
   {%- if got.plan %}
   {#- A plan the answer named, held to the plan engine's schema: proposed only. Its preview is
-      the engine's own, loaded here in place at once (a preview writes nothing and makes no AI
+      the engine's own, loaded here in place (a preview writes nothing and makes no AI
       call): every step's own preview and Approve bound to the plan's hash; nothing runs before
       a person presses Approve on it. A change, whose steps grow with it, is asked by its
       answer's id and read from the person's own conversation (C4329: its parameters never
-      travel in an address); a named plan's few parameters are in its address, as before. -#}
+      travel in an address); a named plan's few parameters are in its address, as before. The
+      newest answer's card loads at once; an older one's when it scrolls into view (C4331: a
+      conversation of 20 planned answers previewed all 20 on every open of the panel). -#}
   {%- set pid = 'plan-card-' ~ (got.call_id or 'none') %}
-  <div id="{{ pid }}" class="asst-handoff" data-plan-proposed aria-busy="true" hx-get="{{ url_for('plans_v2.preview', list=got.plan.list, answer=got.call_id, card=pid) if got.plan.plan == 'change' else url_for('plans_v2.preview', list=got.plan.list, plan=got.plan.plan, params=got.plan.params | tojson, card=pid) }}" hx-trigger="load" hx-swap="outerHTML"><p class="small"><strong>Proposed for your approval:</strong> {{ got.plan.title }}, on {{ got.plan.list }}. <span class="faint">Previewing {% set n = (got.plan.params or {}).get('steps') | length if (got.plan.params or {}).get('steps') is not none else 0 %}{{ 'each step' if not n else (n ~ ' step' ~ ('' if n == 1 else 's')) }}…</span>{{ how('plans', compact=True, op='a plan') }}</p></div>
+  <div id="{{ pid }}" class="asst-handoff" data-plan-proposed aria-busy="true" hx-get="{{ url_for('plans_v2.preview', list=got.plan.list, answer=got.call_id, card=pid) if got.plan.plan == 'change' else url_for('plans_v2.preview', list=got.plan.list, plan=got.plan.plan, params=got.plan.params | tojson, card=pid) }}" hx-trigger="{{ 'intersect once' if older | default(false) else 'load' }}" hx-swap="outerHTML"><p class="small"><strong>Proposed for your approval:</strong> {{ got.plan.title }}, on {{ got.plan.list }}. <span class="faint">Previewing {% set n = (got.plan.params or {}).get('steps') | length if (got.plan.params or {}).get('steps') is not none else 0 %}{{ 'each step' if not n else (n ~ ' step' ~ ('' if n == 1 else 's')) }}…</span>{{ how('plans', compact=True, op='a plan') }}</p></div>
   {%- endif %}
   {%- if got.handoff %}
   {#- A change handed to its gated flow (stage 2): the flow opened pre-filled, nothing started;

@@ -70,7 +70,7 @@
     {%- endif %}
     {%- if thread.rows | length >= keep %}<p class="small faint asst-kept">This conversation keeps its newest {{ keep }} exchanges; New conversation keeps it whole under Past conversations.</p>{% endif %}
     {%- for row in thread.rows %}
-    {%- with t={'state': 'done', 'row': row, 'turn': row.turn or ''}, oob=False %}{% include "v2/_assistant_turn.html" %}{% endwith %}
+    {%- with t={'state': 'done', 'row': row, 'turn': row.turn or ''}, oob=False, older=not loop.last %}{% include "v2/_assistant_turn.html" %}{% endwith %}
     {%- endfor %}
     {%- for tr in turns %}
     {%- with t=tr, oob=False %}{% include "v2/_assistant_turn.html" %}{% endwith %}

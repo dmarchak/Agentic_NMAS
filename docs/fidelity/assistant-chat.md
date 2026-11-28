@@ -22,7 +22,8 @@ Compared again 2026-11-28 (the assistant as a senior network engineer, artboards
 Compared again 2026-11-28 (C4329): a change's card is asked by its answer's id, its parameters never in the address; the placeholder while it loads names the steps it previews ("Previewing 2 steps…"); the region (F) and its words otherwise stand. Templates sha256 before: `3ac65e19c351e9367d95e30f9e39e021a648854b1aa9f0022b98305e79524d83`.
 Compared again 2026-11-28 (shots of F and G at 1366 by a scratch shot test, the plan engine's preview planted): the change's card loads in the answer with each step's own preview, the hash it binds, the reason and Approve; G's box said its reason in lower case after a full stop ("… of r2. no operation …"), now capitalised and ended with a full stop. Templates sha256 before: `c75cbf49353f2dbb73e148e164b794cc3283d506b6468333893cb49d2d629a48`.
 Compared again 2026-11-28 (the review of C4330): an answer grounded in nothing Mercury sent (no passage chosen, no read run) draws no free words, only its plan's card or its "no tool" box (F, G); a plan Mercury dropped says why under "The manual doesn't cover this." too. Regions stand. Templates sha256 before: `49bfba647135a4d33ea144ef81424b969c5112961cddacdc11555916120b6940`.
-Templates sha256: `718fb2a73e7fcdcc39e03caed6936a3692999415527ea23af8644ecfb7c48c8d`
+Compared again 2026-11-28 (C4331): an older answer's plan card (F) loads when it scrolls into view, the newest at once; drawn the same, its "Previewing …" line standing until then, as while any card loads. Regions stand. Templates sha256 before: `718fb2a73e7fcdcc39e03caed6936a3692999415527ea23af8644ecfb7c48c8d`.
+Templates sha256: `aaf30324b2e8d13a9df9c028052a35c95a34a36e55dc8ecc7b9f04f43c6a01ca`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
