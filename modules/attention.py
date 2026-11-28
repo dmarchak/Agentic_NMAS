@@ -2172,7 +2172,7 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
                                     "saved to startup, and Persist… on its device page saves "
                                     "it meanwhile") if unsaved_words or held_words else
                     {"label": read_it, "href": f"/v2/device/{host}?tab=history"}),
-            event=str(r.get("id") or r.get("at") or f"{host}:{outcome}"),
+            event=str(r.get("id") or r.get("at") or f"{host}/{outcome}"),
             devices=[host], since=_ts(r.get("at")),
             operands={"list": lst, "action": r.get("action"), "outcome": outcome,
                       "sent_lines": r.get("program_lines") if r.get("sent") else 0,
