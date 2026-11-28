@@ -25,8 +25,19 @@ log = logging.getLogger(__name__)
 
 bp = Blueprint("plans_v2", __name__, url_prefix="/v2/plans")
 
-#: The longest ``params`` a request may carry.
-PARAMS_CHARS = 2000
+def _params_chars() -> int:
+    """The longest ``params`` a request may carry (C4329: 2,000 refused a change of a few
+    steps): the largest plan the step kinds take, `plan_engine.MOST_STEPS` steps each of
+    `plan_engine.MOST_CHANGES` changes, each change's path, before and after within 512
+    characters. Derived from the plan engine's own bounds, not measured; the chat never sends
+    them in an address (its card is asked by the answer's id, `_answered_plan`)."""
+    from modules import plan_engine as E
+
+    return E.MOST_STEPS * E.MOST_CHANGES * 512
+
+
+#: The longest ``params`` a request may carry (`_params_chars`: 163,840 today).
+PARAMS_CHARS = _params_chars()
 
 
 def _list_name() -> str:
@@ -47,6 +58,29 @@ def _params(text):
         return None, "the plan's parameters are not one JSON object"
     return (got, "") if isinstance(got, dict) else (None, "the plan's parameters are not one "
                                                           "JSON object")
+
+
+def _answered_plan(call_id: str, network: str) -> tuple:
+    """``({"plan", "params"}, "")``: the plan the asking person's own assistant answer *call_id*
+    proposed, as their conversation keeps it (C4329: the chat asks a card by its answer's id, so
+    a long change's parameters never travel in an address); or ``(None, why)``: no answer of
+    theirs with that id proposed one, or it was proposed on another network than *network*. A
+    read of the person's own thread only (`assistant_threads.read`)."""
+    from modules import identity
+    from modules.ai import assistant_threads
+
+    for row in assistant_threads.read(identity.request_actor()).get("rows") or []:
+        got = (row or {}).get("got") or {}
+        plan = got.get("plan") or {}
+        if not call_id or got.get("call_id") != call_id or not plan:
+            continue
+        if (plan.get("list") or "") != network:
+            return None, (f"that answer's plan is for {plan.get('list') or 'no network'}, "
+                          f"not {network}")
+        return {"plan": plan.get("plan") or "",
+                "params": json.dumps(plan.get("params") or {}, sort_keys=True,
+                                     separators=(",", ":"))}, ""
+    return None, "no answer of yours in this conversation proposed that plan"
 
 
 def _kept(rec: dict) -> dict:
@@ -112,6 +146,12 @@ def card(network: str, args, **answer) -> dict:
     ``result``; reads only Mercury's records (and each step's own dry run)."""
     from modules import plan_engine as E
 
+    answered_why = ""
+    if args.get("answer") and not args.get("params"):
+        # The chat's card, asked by its answer's id (C4329): the plan the person's own
+        # conversation keeps, never one the address carries; not found, its refusal says why.
+        found, answered_why = _answered_plan(str(args.get("answer") or "")[:64], network)
+        args = dict(args.items(), **(found or {"plan": "", "params": ""}))
     c = {"list": network, "plan": str(args.get("plan") or "")[:64], "error": "",
          "run": str(args.get("run") or "")[:80], "job": str(args.get("job") or "")[:80],
          "reason": str(args.get("reason") or "")[:300], "state": "preview",
@@ -154,6 +194,7 @@ def card(network: str, args, **answer) -> dict:
                      level=("ok" if rec.get("state") == "done" else
                             "warn" if rec.get("outcome") == "partial" else "danger"))
         return c
+    why = answered_why or why
     if why:
         c["preview"] = {"ok": False, "refused": why, "steps": []}
         return c

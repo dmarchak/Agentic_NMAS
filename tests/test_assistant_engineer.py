@@ -299,7 +299,10 @@ def test_a_proposed_change_loads_its_preview_card_in_place_and_nothing_runs(lab,
     loads = [(m, _endpoint(APP.app, p, m), q) for _a, m, p, q, t in got if t == "load"]
     assert [(m, e) for m, e, _q in loads] == [("GET", "plans_v2.preview")], got
     query = loads[0][2]
-    assert query["plan"] == ["change"] and json.loads(query["params"][0]) == {"steps": STEPS}
+    # C4329: asked by its answer's id, the plan read from the person's own conversation; its
+    # parameters never travel in the address.
+    assert "params" not in query and "plan" not in query, query
+    assert query["answer"][0].startswith("ai-"), query
     card = query["card"][0]
     assert card.startswith("plan-card-ai-") and f'id="{card}"' in html
     assert "Preview the plan…" not in html, "nothing to press before the preview"
@@ -309,15 +312,21 @@ def test_a_proposed_change_loads_its_preview_card_in_place_and_nothing_runs(lab,
                 "params": s["params"], "ok": True, "hash": "ab" * 8, "refused": "",
                 "drawn": {"title": f"{s['params']['device']}", "change": "description set"}}
                for n, s in enumerate(STEPS, 1)]
-    monkeypatch.setattr(E, "preview", lambda *a, **k: {
-        "ok": True, "plan": "change", "title": "Change s1, r2: 2 steps", "words": "the steps",
-        "params": {"steps": STEPS}, "steps": planted, "hash": "cd" * 8, "refused": "",
-        "code": ""})
+    previewed = []
+
+    def preview(network, plan, params, *a, **k):
+        previewed.append((network, plan, params))
+        return {"ok": True, "plan": "change", "title": "Change s1, r2: 2 steps",
+                "words": "the steps", "params": {"steps": STEPS}, "steps": planted,
+                "hash": "cd" * 8, "refused": "", "code": ""}
+    monkeypatch.setattr(E, "preview", preview)
     before = privileged.runs("Lab")
     c = lab["client"].get("/v2/plans/preview", query_string={k: v[0] for k, v in query.items()},
                           headers={"HX-Request": "true"})
     card_html = unescape(c.get_data(as_text=True))
     assert c.status_code == 200 and f'id="{card}"' in card_html, card_html[:400]
+    assert previewed and previewed[0][1] == "change", previewed
+    assert previewed[0][2] == {"steps": STEPS}, "the plan the conversation keeps"
     posts = [(_endpoint(APP.app, p, m), t) for _a, m, p, q, t in _urls(card_html)
              if m == "POST"]
     assert posts == [("plans_v2.approve", "")], posts
@@ -435,6 +444,40 @@ def test_the_assistant_reaches_no_run_start_or_approve():
                   "modules.ai.missing.record"):
         assert floor in seen, floor
     assert N.findings(seen, never) == []
+
+
+class TestALongChange:
+    """C4329: a change of more than a few steps could not be previewed: plans_v2 refused
+    parameters past 2,000 characters, and two description steps took about 250. The bound is the
+    plan engine's own largest change, and the chat asks a card by its answer's id."""
+
+    def test_the_bound_takes_the_largest_change_the_step_kinds_allow(self):
+        from routes import plans_v2
+        assert plans_v2.PARAMS_CHARS == E.MOST_STEPS * E.MOST_CHANGES * 512
+        steps = [{"operation": "intent-description",
+                  "params": {"device": f"edge{n}", "interface": "GigabitEthernet1",
+                             "description": "uplink to the core, " + "x" * 200}}
+                 for n in range(E.MOST_STEPS)]
+        text = json.dumps({"steps": steps})
+        assert len(text) > 2000, "the premise: past the old bound"
+        got, why = plans_v2._params(text)
+        assert why == "" and got == {"steps": steps}
+
+    def test_a_card_asked_by_an_answer_not_the_persons_is_refused_naming_why(self, monkeypatch):
+        from modules.ai import assistant_threads
+        from routes import plans_v2
+        rows = [{"got": {"call_id": "ai-0123456789abcdef", "plan": {
+            "plan": "change", "list": "Lab", "params": {"steps": STEPS}}}}]
+        monkeypatch.setattr(assistant_threads, "read", lambda actor: {"rows": rows})
+        found, why = plans_v2._answered_plan("ai-0123456789abcdef", "Lab")
+        assert why == "" and found["plan"] == "change"
+        assert json.loads(found["params"]) == {"steps": STEPS}
+        none, why = plans_v2._answered_plan("ai-ffffffffffffffff", "Lab")
+        assert none is None and "no answer of yours" in why
+        other, why = plans_v2._answered_plan("ai-0123456789abcdef", "Branch")
+        assert other is None and why == "that answer's plan is for Lab, not Branch"
+        c = plans_v2.card("Lab", {"answer": "ai-ffffffffffffffff", "card": "plan-card-x"})
+        assert c["preview"]["ok"] is False and "no answer of yours" in c["preview"]["refused"]
 
 
 @pytest.fixture(autouse=True)
