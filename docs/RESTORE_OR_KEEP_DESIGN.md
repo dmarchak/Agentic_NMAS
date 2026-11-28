@@ -54,6 +54,25 @@ would send.
    left out by Seed), and the terminal lines' grouping (`line vty 0`, `1` with `length 0`,
    `2 4`), which is a real setting (`length 0`), not a default: Restore removes it (a replace),
    Keep records it.
+
+   **Measured 2026-11-28** (read masked through `scripts/nmas-config-read` from the Default
+   network's goldens of r6, r7 and r8, the three C8000v, after each one's first boot from a
+   startup file; identical on all three):
+
+   | Section | Line, exactly | Depth |
+   |---|---|---|
+   | (global) | `license boot level network-premier addon dna-premier` | 0 |
+   | (global) | `spanning-tree extend system-id` | 0 |
+   | (global) | `mgcp behavior rsip-range tgcp-only` | 0 |
+   | (global) | `mgcp behavior comedia-role none` | 0 |
+   | (global) | `mgcp behavior comedia-check-media-src disable` | 0 |
+   | (global) | `mgcp behavior comedia-sdp-force disable` | 0 |
+   | (global) | `mgcp profile default` (no children) | 0 |
+   | `interface GigabitEthernet<n>` | `no mop enabled` | 1 |
+   | `interface GigabitEthernet<n>` | `no mop sysid` | 1 |
+
+   `license boot level …` names the image's licence level, which a person may change: it joins
+   the table only as the line this image prints when nothing sets it, so another level differs.
 2. **Restore intent: a true replace.** Where the platform has `configure replace` (IOS-XE; IOS
    15.x with an archive), the rendered intent is sent as a file to the device's own flash and
    replaced onto running: preview (the exact file, masked, and the diff it will make, both
