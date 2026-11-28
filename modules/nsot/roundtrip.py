@@ -646,6 +646,14 @@ def compare(running_config: str, rendered_config: str, host_vars: dict = None) -
         "\n".join(normalize.strip_for_roundtrip(running_config))))
     rendered = _sections(platform_defaults.strip(
         "\n".join(normalize.strip_for_roundtrip(rendered_config))))
+    # The lines an image prints when nothing sets them (`platform_defaults.PRINTED`, Restore or
+    # keep's prerequisite): left out of the DEVICE's side only, where intent lacks the line, so
+    # a first boot from a startup file reads at intent (C4300: 27 such lines on a C8000v). A
+    # line intent declares is compared as before, and a changed value is no rule's line.
+    running = {header: [c for c in children
+                        if not (platform_defaults.printed(header, c)
+                                and c not in rendered.get(header, ()))]
+               for header, children in running.items()}
 
     matched, missing, extra, reordered = [], [], [], []
 

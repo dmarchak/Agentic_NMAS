@@ -47,6 +47,43 @@ HIDDEN = (
 )
 
 
+#: The opposite direction (Restore or keep's prerequisite, docs/RESTORE_OR_KEEP_DESIGN.md item 1):
+#: lines an image PRINTS when nothing sets them. ``(section, line, reason)``: *section* matches
+#: the line's container path as `roundtrip._sections` keys it ("" for a top-level line), *line*
+#: the line exactly. Left out of the DEVICE's side of Intent-Match only, where intent lacks the
+#: line (`roundtrip.compare`), so a first boot from a startup file reads at intent; never in a
+#: deploy's program or verify's read-back (unlike `HIDDEN`, whose target lines a deploy never
+#: sends: a printed default there would keep intent's `no mop enabled` from ever reaching a
+#: device printing `mop enabled`). A changed value (`mop enabled`, another licence level) is no
+#: rule's line and still differs. Measured 2026-11-28 on the C8000v (IOS-XE 17), identical on
+#: three routers' goldens after their first boot from a startup file (C4300, C1538).
+_TOP = re.compile(r"^$")
+_INTERFACE = re.compile(r"^interface \S+$")
+_C8000V = ("printed by the C8000v image when nothing sets it (measured 2026-11-28 on three "
+           "routers' goldens after their first boot from a startup file, C4300)")
+PRINTED = (
+    (_TOP, "license boot level network-premier addon dna-premier", _C8000V),
+    (_TOP, "spanning-tree extend system-id", _C8000V),
+    (_TOP, "mgcp behavior rsip-range tgcp-only", _C8000V),
+    (_TOP, "mgcp behavior comedia-role none", _C8000V),
+    (_TOP, "mgcp behavior comedia-check-media-src disable", _C8000V),
+    (_TOP, "mgcp behavior comedia-sdp-force disable", _C8000V),
+    (_TOP, "mgcp profile default", _C8000V),
+    (_INTERFACE, "no mop enabled", _C8000V),
+    (_INTERFACE, "no mop sysid", _C8000V),
+)
+
+
+def printed(section: str, line: str) -> str:
+    """The reason *line* under the container path *section* (`roundtrip._sections`'s key, ""
+    for a top-level line) is a default the image prints when nothing sets it, or ""."""
+    text = (line or "").strip()
+    for where, exactly, reason in PRINTED:
+        if text == exactly and where.match(section or ""):
+            return reason
+    return ""
+
+
 def hidden(chain, line: str) -> str:
     """The reason *line* under *chain* (its parent lines, outermost first) is a default the
     device does not print, or ""."""

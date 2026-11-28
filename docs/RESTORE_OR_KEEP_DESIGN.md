@@ -83,6 +83,14 @@ would send.
    `roundtrip.canonical_lines` (through `change_rows` and `canonical_diff`), `roundtrip.compare`'s
    running side (Intent-Match, so the Intent row and Save All's baseline), and the drift check's
    residue; never in the program the deploy builds or in verify's read-back.
+
+   **Built 2026-11-28, its first slice:** `platform_defaults.PRINTED` (the nine lines) and
+   `roundtrip.compare`'s running side. That is Intent-Match, so it covers the device page's
+   Intent row, Save All's baseline refusal, Reload's gate, the deploy and revert previews' words
+   and the heal's departure (`heal/decide.py` asks `intent_match`). The drift check needs nothing:
+   it compares a device with its golden, which holds what it prints. Left: the Intent editor's
+   "how the device departs" rows (`intent_edit.diffs`'s `departs`, through `change_rows`), which
+   still list them.
 2. **Restore intent: a true replace.** Where the platform has `configure replace` (IOS-XE; IOS
    15.x with an archive), the rendered intent is sent as a file to the device's own flash and
    replaced onto running: preview (the exact file, masked, and the diff it will make, both
