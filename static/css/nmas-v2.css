@@ -2362,6 +2362,7 @@ input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft);
   border-radius: var(--r); font-family: var(--mono); font-size: 12.5px; line-height: 1.6; }
 .dr { white-space: pre-wrap; overflow-wrap: anywhere; }
 .dr-head { color: var(--ink-2); }
+.dr-top { margin-top: 8px; }
 .dr-del, .dr-add, .dr-keep { padding-left: 1.5em; text-indent: -1.2em; }
 .dr-del { color: var(--danger); background: var(--danger-soft); }
 .dr-add { color: var(--ok); background: var(--ok-soft); }

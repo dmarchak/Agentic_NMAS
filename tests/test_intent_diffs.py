@@ -64,6 +64,25 @@ class TestTheRule:
         assert [(r["kind"], r["text"]) for r in d["not_removed"]] == [
             ("head", "interface GigabitEthernet2"), ("keep", "ip ospf cost 20")]
 
+    def test_a_deleted_line_the_device_does_not_hold_is_never_named_kept(self, no_history):
+        """C4305 (2): r8's edit deleted `line vty 0 4`, which r8 printed split (`line vty 0`,
+        `1`, `2 4`), and the warning said a deploy would not remove it. A line this edit deletes
+        is named only where the device's capture still holds it."""
+        committed = DEVICE + "line vty 0 4\n transport input ssh\n"
+        split = DEVICE + ("line vty 0\n transport input ssh\nline vty 1\n transport input ssh\n"
+                          "line vty 2 4\n transport input ssh\n")
+        edited = DEVICE + ("line vty 0\n transport input ssh\nline vty 1\n transport input ssh\n"
+                           "line vty 2 4\n transport input ssh\n")
+        d = intent_edit.diffs("/nowhere", "r3", committed, edited, split)
+        assert not any("line vty 0 4" in r["text"] for r in d["not_removed"]), d["not_removed"]
+        assert d["replaces"] is False, "a deletion not replaced is never called replaced"
+        # The same edit against a device that still prints `line vty 0 4` names it.
+        held = intent_edit.diffs("/nowhere", "r3", committed, edited, committed)
+        assert any(r["text"] == "line vty 0 4" for r in held["not_removed"]), held["not_removed"]
+        # With no capture to read, every deletion a deploy keeps is named, as before.
+        blind = intent_edit.diffs("/nowhere", "r3", committed, edited, "")
+        assert any(r["text"] == "line vty 0 4" for r in blind["not_removed"])
+
     @pytest.mark.parametrize("old, new", [
         (" ip address 192.0.2.1 255.255.255.0\n",
          " ip address 192.0.2.1 255.255.255.0\n ip address 192.0.2.65 255.255.255.192 secondary\n"),
@@ -166,6 +185,30 @@ class TestTheCard:
         assert "and what a deploy would send" in html and "the same" in html
         assert "A deploy would send exactly this change: 1 line, merge-only" in html
         assert html.count('class="ie-diff') == 1 and "From this edit" not in html
+
+
+    def test_a_section_after_another_sections_lines_is_set_apart(self, ed, monkeypatch):  # noqa: F811
+        """C4305 (3): on r8's commit the `line vty` entries sat directly under `interface
+        GigabitEthernet3` with no break, so they read as part of it. A row that begins a
+        top-level section (its line, or a section added whole) is set apart; a line inside a
+        section is not."""
+        from modules.nsot.roundtrip import change_rows
+        left = "interface GigabitEthernet3\n description a\nline vty 0 4\n transport input ssh\n"
+        right = ("interface GigabitEthernet3\n description b\nline vty 0\n transport input ssh\n"
+                 "line vty 1\n transport input ssh\n")
+        rows = change_rows(left, right)["rows"]
+        assert any(r["text"] == "line vty 1" for r in rows), rows
+        monkeypatch.setattr(intent_edit, "diffs", lambda *a: {
+            "same": True, "replaces": False, "sent": 1, "golden": None, "edit_rows": rows,
+            "edit_changes": True, "not_removed": [], "from_edit_rows": [], "from_edit": 1,
+            "not_from": [], "masked": 0})
+        _r, html = _post(ed, "/v2/device/s4/intent/check", yaml=self._desc_edit(ed))
+        drawn = re.findall(r'<div class="dr dr-(\w+)( dr-top)?">(?:<span[^>]*>[^<]*</span>)?'
+                           r'([^<]*)</div>', html)
+        top = {text: bool(t) for _k, t, text in drawn}
+        assert top["interface GigabitEthernet3"] is False, "the first row needs no gap"
+        assert top["description b"] is False, "a line inside its section"
+        assert top["line vty 1"] is True and top["line vty 0 4"] is True, drawn
 
 
 def test_a_real_browser_draws_a_three_line_diff_as_three_lines(ed):  # noqa: F811

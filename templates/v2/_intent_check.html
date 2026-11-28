@@ -17,7 +17,10 @@
     they differ, both, the deploy's lines not from this edit labelled from the device's golden
     history, and a line this edit deletes that a merge-only deploy keeps said plainly. -#}
 {%- macro rows(list, cls='') -%}
-<div class="ie-diff {{ cls }}">{% for r in list %}<div class="dr dr-{{ r.kind }}">{% if r.kind == 'del' %}<span class="dr-sign" aria-label="removed">-</span>{% elif r.kind == 'add' %}<span class="dr-sign" aria-label="added">+</span>{% endif %}{{ r.text }}</div>{% endfor %}</div>
+{#- C4305 (3): a row that begins a top-level section (its line, or a section added or removed
+    whole, `text` its own `section`) is set apart from the rows above it, so `line vty 0` never
+    reads as part of the interface drawn before it. -#}
+<div class="ie-diff {{ cls }}">{% for r in list %}<div class="dr dr-{{ r.kind }}{{ ' dr-top' if not loop.first and (r.kind == 'head' or (r.section and r.text == r.section)) }}">{% if r.kind == 'del' %}<span class="dr-sign" aria-label="removed">-</span>{% elif r.kind == 'add' %}<span class="dr-sign" aria-label="added">+</span>{% endif %}{{ r.text }}</div>{% endfor %}</div>
 {%- endmacro %}
 {%- set d = p.diffs or {} %}
 {%- macro golden_words() -%}

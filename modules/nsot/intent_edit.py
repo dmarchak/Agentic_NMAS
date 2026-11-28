@@ -490,13 +490,13 @@ def _rows_of(pairs, kind: str = "add") -> list:
     pairs = [(s, no_value_words(l) if l else l) for s, l in pairs]
     for section, line in pairs:
         if not line:
-            rows.append({"kind": kind, "text": section})
+            rows.append({"kind": kind, "text": section, "section": section})
             last = section
             continue
         if section != last and section != "(global)":
-            rows.append({"kind": "head", "text": section})
+            rows.append({"kind": "head", "text": section, "section": section})
         last = section
-        rows.append({"kind": kind, "text": line})
+        rows.append({"kind": kind, "text": line, "section": section})
     return rows
 
 
@@ -578,7 +578,13 @@ def diffs(repo: str, hostname: str, committed_render, edited_render: str,
             else {"rows": [], "removed": [], "added": [], "masked": 0})
     deploy = change_rows(capture, edited_render)
     edit_added = set(edit["added"])
-    not_removed = _kept(edit["removed"], edit["added"])
+    kept = _kept(edit["removed"], edit["added"])
+    # C4305 (2): a line this edit deletes is left in place only where the device still holds
+    # it: its capture's lines the edited render lacks (`deploy["removed"]`). r8's edit deleted
+    # `line vty 0 4`, which r8 printed split (`line vty 0`, `1`, `2 4`), and the warning named
+    # it. With no capture to read, every one is named, as before.
+    on_device = set(deploy["removed"])
+    not_removed = [p for p in kept if p in on_device] if (capture or "").strip() else kept
     # How the device departs from this intent in lines a deploy keeps (C884): the device's
     # lines the render lacks, but those a line the deploy sends replaces. A merge-only deploy
     # sends nothing for them; only a removal (Mode B) takes them off.
@@ -596,7 +602,9 @@ def diffs(repo: str, hostname: str, committed_render, edited_render: str,
         "same": same,
         "edit_rows": edit["rows"],
         "edit_changes": bool(edit["rows"]),
-        "replaces": bool(edit["removed"]) and not not_removed,
+        # Every deletion one setting an added line replaces: read from all it deletes, never
+        # only those the device holds, so a deletion it does not hold is not called replaced.
+        "replaces": bool(edit["removed"]) and not kept,
         "not_removed": _rows_of(not_removed, "keep"),
         "from_edit_rows": _rows_of(from_edit),
         "from_edit": len([p for p in from_edit if p[1]]),

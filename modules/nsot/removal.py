@@ -888,16 +888,76 @@ def removable(target: str, captured: str, *, mgmt_ip: str, dialect: str) -> list
     """Every candidate for removal with its ID and, where it cannot be removed,
     WHY, beside it (a box that cannot be ticked says why, C109). Each is judged
     alone, by the same gate the program uses."""
-    out = []
-    for c in candidates(target, captured):
+    found = candidates(target, captured)
+    judged_each, into = [], {}
+    for c in found:
         judged = removal_program(captured, [c], mgmt_ip=mgmt_ip, dialect=dialect)
         why = judged["refused"][0]["reason"] if judged["refused"] else ""
         merged = _merges_into(c, target) if why else ""
-        out.append({**c, "why_not": (
-            f"these merge into `{merged}` once its settings are applied: IOS keeps every "
-            "terminal line and prints one stanza per run of lines with the same settings, "
-            "so nothing is removed" if merged else why)})
+        judged_each.append((c, why, merged))
+        if merged:
+            into.setdefault(merged, []).append(c)
+    # C4305: the split stanzas merge only when none holds a line the target's stanza does not
+    # set (the deploy sets its settings and removes nothing): r8's `line vty 1` held `length 0`,
+    # so IOS kept printing three stanzas while the preview said they merge.
+    apart = {merged: _kept_apart(units, target, merged) for merged, units in into.items()}
+    out = []
+    for c, why, merged in judged_each:
+        keeps = apart.get(merged) if merged else None
+        if merged and keeps:
+            unit, line = keeps
+            words = (f"these do not merge into `{merged}`: `{unit}` holds `{line}`, which "
+                     f"`{merged}` does not set and nothing removes, so IOS keeps printing them "
+                     f"as stanzas of their own; {why}")
+        elif merged:
+            words = (f"these merge into `{merged}` once its settings are applied: IOS keeps "
+                     "every terminal line and prints one stanza per run of lines with the same "
+                     "settings, so nothing is removed")
+        else:
+            words = why
+        out.append({**c, "why_not": words})
     return out
+
+
+#: A terminal line's commands that hold ONE value, so the target's line replaces the one a
+#: split stanza holds (`length 24` by `length 0`). Anything else is matched only as the same
+#: line: allowing a merge by resemblance is not safe (CLAUDE.md), so an unknown command keeps
+#: the stanzas apart in the words, the safe reading (`login local` is not `login
+#: authentication`).
+LINE_ONE_SETTING = ("exec-timeout", "session-timeout", "absolute-timeout", "length", "width",
+                    "history size", "privilege level", "escape-character", "logging synchronous",
+                    "transport input", "transport output", "transport preferred")
+
+
+def _line_setting(line: str) -> tuple:
+    """What a terminal line's child sets, compared to see whether the target replaces it: a
+    command of `LINE_ONE_SETTING` by its name (``("setting", "length")``), an access class by
+    its family and direction (``("setting", "access-class", "in")``), anything else by the
+    whole line (``("line", "login local")``)."""
+    text = " ".join(line.split())
+    for name in sorted(LINE_ONE_SETTING, key=len, reverse=True):
+        if text == name or text.startswith(name + " "):
+            return ("setting", name)
+    words = text.split()
+    family = words[:1] if words[:1] == ["ipv6"] else []
+    rest = words[len(family):]
+    if len(rest) == 3 and rest[0] == "access-class" and rest[2] in ("in", "out"):
+        return ("setting", *family, "access-class", rest[2])
+    return ("line", text)
+
+
+def _kept_apart(units: list, target: str, merged: str):
+    """``(unit's header, its line)``: the first line one of *units* (the split stanzas
+    `_merges_into` *merged*) holds whose setting the target's *merged* stanza does not set
+    (`_line_setting`: a value the target sets replaces the old one, so it merges; one it does
+    not set stays, nothing removing it), or None when the target sets every one."""
+    sets = {_line_setting(line.strip()) for line, chain in _chains(target)
+            if len(chain) == 1 and chain[0].strip() == merged}
+    for u in units:
+        for child in u.get("children") or []:
+            if _line_setting(child.strip()) not in sets:
+                return u["line"].strip(), child.strip()
+    return None
 
 
 def _merges_into(unit: dict, target: str) -> str:

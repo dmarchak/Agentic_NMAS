@@ -141,6 +141,47 @@ class TestThePreviewSaysTheyMerge:
             assert text.startswith("these merge into `line vty 0 4` once its settings are "
                                    "applied") and "nothing is removed" in text
 
+    def test_a_setting_intent_does_not_set_keeps_them_apart_and_is_named(self, r1):
+        """C4305: r8's `line vty 1` held `length 0`, which intent's `line vty 0 4` does not set
+        and nothing removes, so IOS kept printing three stanzas while the preview said they
+        merge. Each split stanza now says they do not, naming the line that keeps them apart."""
+        from modules.nsot.removal import removable
+        pre, intended, _program = r1
+        assert "history size" not in intended, "the premise: intent sets no history size"
+        planted = pre.replace("line vty 1\n", "line vty 1\n history size 50\n", 1)
+        assert planted != pre, "the premise: r1 holds `line vty 1`"
+        why = {c["line"]: c["why_not"] for c in removable(intended, planted, mgmt_ip="",
+                                                          dialect="cisco_iosxe")
+               if c["line"].startswith("line vty")}
+        assert sorted(why) == ["line vty 0", "line vty 1", "line vty 2 4"]
+        for text in why.values():
+            assert text.startswith("these do not merge into `line vty 0 4`: `line vty 1` "
+                                   "holds `history size 50`, which `line vty 0 4` does not "
+                                   "set"), text
+            assert "these merge" not in text and "nothing is removed" not in text
+
+    def test_another_value_of_a_setting_intent_sets_still_merges(self, r1):
+        """A value the target's stanza sets replaces the one a split stanza holds: it merges."""
+        from modules.nsot.removal import removable
+        pre, intended, _program = r1
+        assert " length 0\n" in ONE and ONE in intended, "the premise: intent sets length 0"
+        planted = pre.replace("line vty 1\n", "line vty 1\n length 24\n", 1)
+        assert planted != pre, "the premise: r1 holds `line vty 1`"
+        why = {c["line"]: c["why_not"] for c in removable(intended, planted, mgmt_ip="",
+                                                          dialect="cisco_iosxe")
+               if c["line"].startswith("line vty")}
+        assert all(t.startswith("these merge into `line vty 0 4`") for t in why.values()), why
+
+    def test_a_command_not_known_to_hold_one_value_is_never_read_as_replaced(self):
+        """Allowing a merge by resemblance is not safe: `login authentication X` is not what
+        `login local` sets, so a split stanza holding it is said apart."""
+        from modules.nsot.removal import _line_setting
+        assert _line_setting("length 24") == _line_setting("length 0")
+        assert _line_setting("access-class 10 in") == _line_setting("access-class 20 in")
+        assert _line_setting("access-class 10 in") != _line_setting("access-class 10 out")
+        assert _line_setting("login authentication VTY") != _line_setting("login local")
+        assert _line_setting("login local") == _line_setting(" login  local ")
+
     def test_a_line_stanza_intent_does_not_cover_keeps_its_reason(self, r1):
         from modules.nsot.removal import removable
         pre, intended, _program = r1
