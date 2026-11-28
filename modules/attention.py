@@ -1944,7 +1944,36 @@ def _adjacency_states(cached=None) -> dict:
             "at": _ts(good.get("value_at")) or 0.0, "why": ""}
 
 
-def deploy_source(read=None, saves=None, adjacency=None) -> dict:
+def _newest_baseline(lst: str) -> dict:
+    """The network's newest earned baseline not withdrawn, ``{"tag", "at"}`` (*at* its tag's
+    time, epoch seconds), or ``{}`` when there is none or the tags cannot be read. An earned
+    baseline is a measurement that every device was at its committed intent then (the save
+    earns one only so), so a run that failed before it has been superseded by what was
+    measured after it (C4322). One `git for-each-ref` and one `rev-parse` per tag read until
+    the first not withdrawn: never a read per device."""
+    import os
+
+    from modules.config import get_list_data_dir
+    from modules.nsot.record_exceptions import withdrawn_baseline
+    from modules.nsot.repo import git
+
+    repo = os.path.join(get_list_data_dir(lst), "config_repo")
+    try:
+        rc, out, _ = git(repo, "for-each-ref", "--sort=-creatordate",
+                         "--format=%(refname:short) %(creatordate:unix)", "refs/tags/baseline/")
+        if rc != 0:
+            return {}
+        for line in (out or "").splitlines():
+            tag, _, at = line.strip().rpartition(" ")
+            commit = git(repo, "rev-parse", f"{tag}^{{commit}}")[1].strip()
+            if tag and at.isdigit() and not withdrawn_baseline(commit):
+                return {"tag": tag, "at": float(at)}
+    except (OSError, RuntimeError) as exc:
+        log.info("attention: the baselines of %s could not be read: %s", lst, exc)
+    return {}
+
+
+def deploy_source(read=None, saves=None, adjacency=None, baseline=None) -> dict:
     """Each device's LATEST deploy or restore receipt, judged by the ONE
     decision the result screen uses (`preview_confirm.result_level`): a row
     unless it finished clean. A later clean run supersedes an earlier
@@ -1959,7 +1988,14 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
     receipt and plans again, offering Persist too when the change is also unsaved. A change
     that landed and whose verify did not pass has its save HELD (C2701): its own kind, `held`,
     naming verify's words, whose action is the person's decision (Persist on the device's
-    page) and which a save read back after the receipt clears, as `unsaved`'s does."""
+    page) and which a save read back after the receipt clears, as `unsaved`'s does.
+
+    A run that failed and left nothing unsaved or held is superseded by an earned baseline
+    recorded after it (C4322: r7's failed command plan stood while r7 was at intent in
+    baseline 20261127T233631Z): that baseline measured the device at its intent, so the row
+    clears and What was checked names the baseline. *baseline* replaces the read of the newest
+    one (`_newest_baseline`, tests), asked at most once and only when such a row would be
+    drawn."""
     from modules.nsot import receipts
     from modules.preview_confirm import (OUTCOME_WORDS, SAVED_STARTUP_WORDS, read_back_missed,
                                          result_level)
@@ -1980,6 +2016,7 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
     for r in receipts.current_rows(lst, got.get("rows") or []):       # newest first
         latest.setdefault(r.get("device") or "?", r)
     rows, pending_named, saved_later, met_later, adj = [], 0, 0, 0, None
+    at_intent_later, base = 0, None
     # Read only when a device's one fault is the save: one read of one record, not per device.
     saved_at, saves_unread = ((_saved_since(saves)) if any(
         _only_unsaved(r) or _only_held(r) for r in latest.values()) else ({}, ""))
@@ -2125,6 +2162,14 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
                 operands={"list": lst, "action": r.get("action"), "outcome": outcome,
                           "unmet": protos, "by": r.get("actor")}))
             continue
+        if not unsaved_words and not held_words and not receipts.is_pending(r):
+            # C4322: an earned baseline after the run measured the device at its intent.
+            if base is None:
+                base = (baseline or _newest_baseline)(lst) or {}
+            if base and base["at"] > (_ts(r.get("completed_at") or r.get("at"))
+                                      or float("inf")):
+                at_intent_later += 1
+                continue
         # C4308: the reason a run records is often its verify's own words (a command plan's
         # is the checks it could not read, joined), so a finding the reason already says is
         # said once, by the reason, never again after it.
@@ -2182,8 +2227,10 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
                          checked=(f"list {lst}: no deploy or restore recorded"
                                   if got.get("state") == "absent" else
                                   f"list {lst}: the latest receipt of {len(latest)} device(s), "
-                                  f"{len(latest) - len(rows) - pending_named - saved_later - met_later} "
+                                  f"{len(latest) - len(rows) - pending_named - saved_later - met_later - at_intent_later} "
                                   "clean"
+                                  + (f", {at_intent_later} failed and at intent since, in "
+                                     f"baseline {base['tag']}" if at_intent_later else "")
                                   + (f", {met_later} with a protocol unmet after the deploy and "
                                      "up since (the adjacency reader)" if met_later else "")
                                   + (f", {pending_named} commit PENDING (a batch still "

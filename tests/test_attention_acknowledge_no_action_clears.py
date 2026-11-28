@@ -111,6 +111,72 @@ class TestRsevensRow:
         assert A.first_action(r) == "acknowledge"
         assert "acknowledges this one with a reason" in r["clears"]["when"]
 
+    def test_an_earned_baseline_after_it_clears_it_and_what_was_checked_names_it(self):
+        """C4322: r7's row stood while r7 was at intent in baseline 20261127T233631Z. An earned
+        baseline recorded after the run measured the device at its intent, so the row clears
+        and What was checked says which baseline; one recorded before it changes nothing."""
+        rec = _r7()
+        ran = A._ts(rec.get("completed_at") or rec.get("at"))
+        assert ran, "the premise: the receipt is dated"
+        seen = []
+
+        def baseline(lst, at):
+            seen.append(lst)
+            return {"tag": "baseline/20261127T233631Z", "at": at}
+        after = A.deploy_source(read=lambda: {"state": "ok", "rows": [rec]},
+                                baseline=lambda lst: baseline(lst, ran + 60))
+        assert after["rows"] == [], after["rows"]
+        assert "1 failed and at intent since, in baseline baseline/20261127T233631Z" in \
+            after["checked"], after["checked"]
+        before = A.deploy_source(read=lambda: {"state": "ok", "rows": [rec]},
+                                 baseline=lambda lst: baseline(lst, ran - 60))
+        assert [r["kind"] for r in before["rows"]] == ["failed"]
+        assert "at intent since" not in before["checked"]
+        none = A.deploy_source(read=lambda: {"state": "ok", "rows": [rec]},
+                               baseline=lambda lst: {})
+        assert [r["kind"] for r in none["rows"]] == ["failed"]
+        assert len(seen) == 2, "asked once per read, only while such a row would be drawn"
+
+    def test_the_newest_baseline_is_read_from_the_tags_passing_a_withdrawn_one(
+            self, tmp_path, monkeypatch):
+        import subprocess
+        from modules import config
+        from modules.nsot import record_exceptions
+
+        repo = tmp_path / "Net" / "config_repo"
+        repo.mkdir(parents=True)
+
+        def git(*a, when="2026-11-27T23:00:00Z"):
+            env = dict(os.environ, GIT_AUTHOR_DATE=when, GIT_COMMITTER_DATE=when,
+                       GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.invalid",
+                       GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.invalid")
+            return subprocess.run(["git", *a], cwd=repo, env=env, check=True,
+                                  capture_output=True, text=True).stdout.strip()
+        git("init", "-q")
+        git("commit", "-q", "--allow-empty", "-m", "one", when="2026-11-27T22:00:00Z")
+        git("tag", "-a", "baseline/20261127T220000Z", "-m", "earned",
+            when="2026-11-27T22:00:00Z")
+        git("commit", "-q", "--allow-empty", "-m", "two", when="2026-11-27T23:36:31Z")
+        git("tag", "-a", "baseline/20261127T233631Z", "-m", "earned",
+            when="2026-11-27T23:36:31Z")
+        monkeypatch.setattr(config, "get_list_data_dir", lambda lst: str(tmp_path / lst))
+        got = A._newest_baseline("Net")
+        assert got == {"tag": "baseline/20261127T233631Z", "at": A._ts("2026-11-27T23:36:31Z")}
+        newest = git("rev-parse", "baseline/20261127T233631Z^{commit}")
+        monkeypatch.setitem(record_exceptions.WITHDRAWN_BASELINES, newest,
+                            {"tag": "baseline/20261127T233631Z", "why": "a test's"})
+        assert A._newest_baseline("Net")["tag"] == "baseline/20261127T220000Z"
+        assert A._newest_baseline("Absent") == {}
+
+    def test_a_baseline_never_clears_a_failed_run_left_unsaved(self):
+        rec = _r7()
+        rec["saved_startup"] = {"state": "not_saved", "detail": "the save was refused"}
+        rec["outcome"] = "failed"
+        ran = A._ts(rec.get("completed_at") or rec.get("at"))
+        got = A.deploy_source(read=lambda: {"state": "ok", "rows": [rec]},
+                              baseline=lambda lst: {"tag": "baseline/x", "at": ran + 60})
+        assert [r["kind"] for r in got["rows"]] == ["failed"], got["rows"]
+
     def test_it_draws_one_action(self):
         (r,) = _rows(_r7())
         item = _item(_draw([r]), r["id"])
