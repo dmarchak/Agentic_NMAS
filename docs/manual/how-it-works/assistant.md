@@ -116,6 +116,18 @@ each read opens to its record on History › Reads. Last, one quiet line: the mo
 the cost, how long it took and each call's link in History (for example "Haiku 5.5 · $0.0031 ·
 9 s · History").
 
+## The model {#model}
+
+The box's selector, beside **Send**, chooses the model your question is asked on: **Haiku 5.5**
+(the default), **Sonnet 5.5** (about 20 times the cost) or **Opus 5.5** (about 40 times); each
+one's rates per million tokens are on its hover. The larger models reason more deeply about what
+the reads show, and cost more for every call of the answer, reads rounds included. The choice is
+sent with the question, so nothing is asked when you change it; the panel opens on the model
+your conversation's newest answer ran on. Every call counts against the AI spending caps
+whichever model answers, and the call in History names the model it ran on. Only a person's
+question chooses: nothing {{product}} runs in the background ever runs on another model than its
+own.
+
 ## A change you ask for {#handoff}
 
 When you ask {{product}} to change something, the answer says so and offers the gated flow that

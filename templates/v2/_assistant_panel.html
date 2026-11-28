@@ -83,6 +83,20 @@
     <input type="hidden" name="path" value="{{ place.asked }}">
     <input type="hidden" name="nav" value="{{ nav }}">
     <div class="asst-row"><span class="small faint" id="asst-keys">Enter sends · Shift+Enter, a new line</span>
+      <span class="grow"></span>
+      {%- if models %}
+      {#- The model each question is asked on (the operator, 2026-11-28: "add a model selector
+          to the chat"): sent with the question, the newest answer's model chosen when the panel
+          is drawn (routes/assistant_v2._models); each option says what it costs against the
+          default, its rates on hover. Every call still counts against the caps. Never greyed:
+          choosing asks nothing, and Send is what is greyed while AI cannot answer. -#}
+      <label for="asst-model" class="sr-only">Model</label>
+      <select id="asst-model" name="model" class="asst-model" title="The model this question is asked on; every call counts against the AI spending caps">
+        {%- for m in models %}
+        <option value="{{ m.model }}"{% if m.model == chosen %} selected{% endif %} title="{{ m.price.input | usd }} in, {{ m.price.output | usd }} out, per million tokens">{{ m.words | replace('Claude ', '') }}{{ ' · default' if m.pinned else ' · ' ~ m.times ~ '× the cost' }}</option>
+        {%- endfor %}
+      </select>
+      {%- endif %}
       {% with oob=False %}{% include "v2/_assistant_act.html" %}{% endwith %}</div>
     {{ ai.reason(aic) }}
   </form>

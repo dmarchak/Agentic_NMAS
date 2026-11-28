@@ -59,6 +59,7 @@ body{margin:0;background:#D9DCD6;font-family:var(--sans);color:var(--ink);font-s
 .box{border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-height:22px;font-size:13.5px;color:var(--ink-3);background:var(--surface)}
 .crow{display:flex;align-items:center;gap:8px;margin-top:6px}
 .hint{font-size:11.5px;color:var(--ink-3)}
+.sel{font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:3px 6px;background:var(--surface);color:var(--ink)}
 .empty{margin:auto 0;color:var(--ink-2);font-size:13.5px;text-align:center}
 .empty ul{list-style:none;padding:0;margin:8px 0 0;font-size:13px}
 .empty li{margin:4px 0;color:var(--accent)}
@@ -84,9 +85,10 @@ remembered in this browser. Signed off under the Phase 7 mode (docs/STANDING_APP
   <div class="log"><div class="empty">Ask how to do something in Mercury, or about what is on this screen.
     <p class="hint">Each question is one recorded AI call, and one more for each round of reads.</p></div></div>
   <div class="compose"><div class="box">Ask a question…</div>
-    <div class="crow"><span class="hint">Enter sends · Shift+Enter, a new line</span><span class="grow"></span><span class="btn primary">Send</span><span class="faint">(i)</span></div></div>
+    <div class="crow"><span class="hint">Enter sends · Shift+Enter, a new line</span><span class="grow"></span><span class="sel">Haiku 5.5 · default &#9662;</span><span class="btn primary">Send</span><span class="faint">(i)</span></div></div>
 </div></div>
-<div class="notes"><p class="callout">The header: Assistant with the AI mark, New conversation, Past conversations, About the assistant (&#9432;: the beta notice in full, "It changes nothing…", masked and recorded, How does this work?), close. The chip below it says what the panel looks at and changes as the person moves (a tab, another page).</p></div>
+<div class="notes"><p class="callout">The header: Assistant with the AI mark, New conversation, Past conversations, About the assistant (&#9432;: the beta notice in full, "It changes nothing…", masked and recorded, How does this work?), close. The chip below it says what the panel looks at and changes as the person moves (a tab, another page).</p>
+<p class="callout">The model (added 2026-11-28, the operator: "add a model selector to the chat"): a select beside Send, "Haiku 5.5 · default", "Sonnet 5.5 · 20× the cost", "Opus 5.5 · 40× the cost", each one's rates per million tokens on its hover. Sent with the question; the panel opens on the model the conversation's newest answer ran on. Never greyed: choosing asks nothing, and Send is greyed while AI cannot answer. Every call still counts against the caps.</p></div>
 
 <div class="artlabel"><strong>B. A conversation: an answer with its sources, its reads (one opened), the quiet line and a hand-off</strong></div>
 <div class="art"><div class="page">The device page, r2<div class="bar"></div><div class="bar"></div></div>
@@ -106,7 +108,7 @@ remembered in this browser. Signed off under the Phase 7 mode (docs/STANDING_APP
       <div class="fb">Was this right? Yes · No…</div></div>
   </div>
   <div class="compose"><div class="box">Ask a follow-up…</div>
-    <div class="crow"><span class="hint">Enter sends · Shift+Enter, a new line</span><span class="grow"></span><span class="btn primary">Send</span></div></div>
+    <div class="crow"><span class="hint">Enter sends · Shift+Enter, a new line</span><span class="grow"></span><span class="sel">Haiku 5.5 · default &#9662;</span><span class="btn primary">Send</span></div></div>
 </div></div>
 <div class="notes"><p class="callout">Newest at the bottom; it scrolls to each answer as it arrives unless the person has scrolled up. The answer's words are markdown drawn by Mercury (lists, code, tables; never a link the model wrote). The reads line starts collapsed ("&#9656; Ran 2 reads"); each read opens like a tool call in Claude Code. The quiet line's History opens the calls.</p></div>
 

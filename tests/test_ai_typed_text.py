@@ -392,6 +392,11 @@ FIELDS = {
         "form.path": "the page's path, resolved by Mercury's URL map into what the panel is "
                      "looking at (assistant_context.resolve); only the names it resolves to "
                      "are sent",
+        # The model selector (2026-11-28): a model id held to the assistant's offered models
+        # (`profiles.choice_refusal`, by the route and again by the gateway); never sent as
+        # text, only as the request's model.
+        "form.model": "the model chosen in the box, one of profiles.CHOOSABLE['assistant'] or "
+                      "refused; sent only as the request's model",
         # The chat (2026-11-28): the page's sidebar item, as the panel was drawn with it; it
         # names the screen when the path names none (`assistant_context.NAV_SCREENS`), never
         # sent as typed.

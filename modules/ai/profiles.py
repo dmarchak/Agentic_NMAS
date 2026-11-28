@@ -7,7 +7,9 @@ Haiku 5.5 is priced by prompt length: a prompt over 100,000 tokens (all its inpu
 and writes included) pays every rate at its long tier, 5x. The card draws this table, and says
 so when it is older than `PRICES_STALE_DAYS`.
 
-**Tasks** pin their model; there is no model switch at run time. Each task's pin is a file,
+**Tasks** pin their model; a person's press may choose another only where its task offers a
+choice (`CHOOSABLE`, the operator, 2026-11-28: "add a model selector to the chat"; the
+assistant alone), and a background call always runs on its pin. Each task's pin is a file,
 `pins/<task>.json`, with its request settings (thinking, temperature). **No size bound of
 Mercury's own** (the operator, 2026-11-16: "remove every AI token/size limit Mercury sets
 itself. The spending limits ... are the only governor"): a prompt is bounded only by its model's
@@ -142,6 +144,59 @@ def task(name: str) -> dict:
         return TASKS[name]
     except KeyError:
         raise KeyError(f"no task {name!r}; known: {', '.join(sorted(TASKS))}") from None
+
+
+#: The tasks a person may run on a model other than its pin, and the models offered for each,
+#: the pin's own first (the operator, 2026-11-28: "add a model selector to the chat"). Only a
+#: person's press chooses one (`choice_refusal`); a background call always runs on its pin.
+CHOOSABLE = {"assistant": ("claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5")}
+
+
+def choice_refusal(task_name: str, model: str, person: bool) -> str:
+    """Why *model* may not be chosen for a call of *task_name*, or ``""``: the task offers no
+    choice, the model is not one it offers (both named), or the call is not a person's."""
+    offered = CHOOSABLE.get(task_name)
+    if not offered:
+        return (f"{task_name!r} offers no model choice; it runs on its pin, "
+                f"{task(task_name)['model']}")
+    if model not in offered:
+        return f"{model!r} is not one of the models {task_name!r} offers ({', '.join(offered)})"
+    if not person:
+        return "a model is chosen only by a person's press; a background call runs on its pin"
+    return ""
+
+
+def chosen_pin(task_name: str, model: str) -> dict:
+    """*task_name*'s pin with *model* in its pin's place. Its thinking is the pin's where the
+    model's profile can send it, else ``adaptive`` (a model whose profile names no way to turn
+    thinking off, `thinking_off` None: Opus); every other setting the pin's. Assumes
+    `choice_refusal` found nothing."""
+    pin = task(task_name)
+    if model == pin["model"]:
+        return pin
+    thinking = pin["thinking"]
+    if thinking == "off" and not profile(model).get("thinking_off"):
+        thinking = "adaptive"
+    return dict(pin, model=model, thinking=thinking)
+
+
+def choices(task_name: str) -> list:
+    """The models a person may choose for *task_name*, as a selector draws them: each one's id,
+    name, whether it is the pin's, its prices against the pin's (input and output alike,
+    `MODELS`'s table: "20x") and its input and output rates, ``[]`` when the task offers none."""
+    offered = CHOOSABLE.get(task_name) or ()
+    if not offered:
+        return []
+    base = profile(task(task_name)["model"])["price"]
+    out = []
+    for m in offered:
+        p = profile(m)["price"]
+        times = max(p["input"] / base["input"], p["output"] / base["output"])
+        out.append({"model": m, "words": profile(m)["words"],
+                    "pinned": m == task(task_name)["model"],
+                    "times": round(times),
+                    "price": {"input": p["input"], "output": p["output"]}})
+    return out
 
 
 def context_window(model: str) -> int:

@@ -1344,6 +1344,10 @@ body.asst-resizing { user-select: none; cursor: col-resize; }
   border-radius: 10px; background: var(--surface); color: var(--ink); resize: none; overflow-y: hidden; }
 .asst-compose textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 .asst-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.asst-row .grow { flex: 1 1 auto; }
+.asst-model { font: inherit; font-size: 12.5px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); color: var(--ink); max-width: 46%; }
+.asst-model:disabled { opacity: .55; }
 .asst-act, .asst-send, .asst-stop { display: inline-flex; align-items: center; gap: 2px; }
 .asst-act .asst-stop, .asst-act.asst-working .asst-send { display: none; }
 .asst-act.asst-working .asst-stop { display: inline-flex; }

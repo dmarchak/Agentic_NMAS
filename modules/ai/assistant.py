@@ -376,12 +376,12 @@ def subject(screen: str, place: dict = None) -> dict:
     return {"kind": SUBJECT_KIND, "id": screen or "", "devices": devices}
 
 
-def model_words() -> dict:
-    """The model the assistant's task is pinned to: its id and its name, as the answer draws
-    it ("Haiku 5.5")."""
+def model_words(model: str = None) -> dict:
+    """The model an answer ran on (*model*, the person's choice, else the task's pin): its id
+    and its name, as the answer draws it ("Claude Haiku 5.5")."""
     from modules.ai import profiles
 
-    model = profiles.task(FEATURE)["model"]
+    model = model or profiles.task(FEATURE)["model"]
     return {"model": model, "model_words": profiles.profile(model)["words"]}
 
 
@@ -499,7 +499,8 @@ def prepare(question: str, *, screen: str = "", place: dict = None,
 
 @acts_as_ai("assistant")
 def answer(question: str, *, screen: str = "", place: dict = None, actor: str, trigger: dict,
-           send=None, today: str = None, progress=None, stop_if=None) -> dict:
+           send=None, today: str = None, progress=None, stop_if=None,
+           model: str = None) -> dict:
     """A person's question answered from the manual and the reads, or why not: ``{"ok",
     "state", "error", "detail", "answer"?, "cites"?, "sources"?, "reads"?, "calls"?,
     "passages", "call_id"?, "gap", ...}``. *state* ``answered``, ``not_covered`` (no passage
@@ -513,11 +514,16 @@ def answer(question: str, *, screen: str = "", place: dict = None, actor: str, t
     person reads it: the model asked, the reads it asked for running, the model asked again) and
     *stop_if* (``stop_if() -> bool``, the person's Stop): the gateway closes a stream as soon as
     it reads a stop (its own *stop_if*), and no call is made after one, so no further read runs
-    either; the result is then ``stopped`` with the calls made and their cost."""
+    either; the result is then ``stopped`` with the calls made and their cost. *model* is the
+    person's choice of model (`profiles.CHOOSABLE`), every call of the answer made on it; None,
+    or the pin's own, is the pin's (no choice sent)."""
     from modules.ai import gateway
     from modules.nsot import listref
 
     say = progress or (lambda words: None)
+    # The person's choice, checked and applied by the gateway (`gateway.request_body`, where the
+    # pin's own model is no choice); None for the pin's.
+    chosen = model or None
     place = dict(place or {})
     scope, devices, reads_off = scope_of(place, actor)
     place["devices"] = devices
@@ -534,7 +540,7 @@ def answer(question: str, *, screen: str = "", place: dict = None, actor: str, t
         n = len(seen["calls"]) + 1
         say("Asking the model" if n == 1 else f"Answering from the reads (call {n})")
         # The gateway's own result, its typed part's mask kept to say what was removed.
-        got = gateway.ask(*a, trigger=trigger, stop_if=stop_if, **k)
+        got = gateway.ask(*a, trigger=trigger, stop_if=stop_if, model=chosen, **k)
         seen["calls"].append(got.get("call_id") or "")
         seen["cost"] += float(got.get("cost_usd") or 0.0)
         if got.get("typed_masked") and "typed_masked" not in seen:
@@ -557,14 +563,16 @@ def answer(question: str, *, screen: str = "", place: dict = None, actor: str, t
                      subject=prep["request"]["subject"], scope=scope, send=send, today=today,
                      reads_off=reads_off)
     except Stopped as stopped:
-        return stopped_result(stopped.calls, stopped.cost_usd, prep["drawn"], actor)
+        return stopped_result(stopped.calls, stopped.cost_usd, prep["drawn"], actor,
+                              model=chosen)
     if stop_if is not None and stop_if():
         # Stopped during the last call: its stream was closed, so its answer is not drawn.
-        return stopped_result(seen["calls"], seen["cost"], prep["drawn"], actor)
-    return settle(got, prep, actor=actor, typed_masked=seen.get("typed_masked") or "")
+        return stopped_result(seen["calls"], seen["cost"], prep["drawn"], actor, model=chosen)
+    return settle(got, dict(prep, model=chosen), actor=actor,
+                  typed_masked=seen.get("typed_masked") or "")
 
 
-def stopped_result(calls_, cost_usd, passages, actor: str = "") -> dict:
+def stopped_result(calls_, cost_usd, passages, actor: str = "", model: str = None) -> dict:
     """`answer`'s result when the person pressed Stop: the calls made and what they cost. Each
     call's use is recorded as the person's Stop (`calls.record_use`, beside the call in History):
     the gateway records a closed stream in its own words, which name its watchdog's bound for
@@ -578,7 +586,7 @@ def stopped_result(calls_, cost_usd, passages, actor: str = "") -> dict:
                                  "panel; no call was made after it"))
     return {"ok": False, "state": "stopped", "error": "stopped", "detail": STOPPED,
             "calls": calls_, "call_id": calls_[-1] if calls_ else "", "cost_usd": cost_usd,
-            "passages": passages, "gap": False, **model_words()}
+            "passages": passages, "gap": False, **model_words(model)}
 
 
 def _reads_drawn(records: list, place: dict) -> list:
@@ -606,7 +614,7 @@ def settle(got: dict, prep: dict, *, actor: str, typed_masked="") -> dict:
     first = got.get("first") or {}
     base = {"calls": [c for c in got.get("call_ids") or [] if c],
             "reads": _reads_drawn(records, prep.get("place")), "passages": prep["drawn"],
-            "typed_masked": typed_masked, **model_words()}
+            "typed_masked": typed_masked, **model_words(prep.get("model"))}
     if got["state"] == "failed":
         return dict(base, ok=False, state="refused", error=first.get("error") or "failed",
                     detail=first.get("detail") or "", call_id=first.get("call_id") or "",

@@ -15,7 +15,9 @@ Firefox and by the templates, not by shots.
 Templates compared: templates/v2/_assistant_panel.html, templates/v2/_assistant_place.html, templates/v2/_assistant_act.html, templates/v2/_assistant_turn.html, templates/v2/_assistant_answer.html
 Compared again 2026-11-28 (the independent review): Stop's hover now says no call is made after it and a round of reads already running finishes first (it said nothing more is asked or read), and a question refused at once draws its turn with no id (it drew `asst-turn-refused`, repeated). No region moves; every verdict stands. Templates sha256 before: `82d364d46d25574b395e0c2188f9a9b65e5acca0a056a85fc93abd3249c23de0`.
 Compared again 2026-11-28 (the full suite on 2c738990b): the working indicator is one status line, the earlier steps on its hover (Working (C), now a deviation below); Stop, New conversation and Reopen carry the configure gate; the act slot no longer asks for the AI control itself (the panel's is passed in); the head's Looking at is asked from `data-place-url`, which carries the page's network. Templates sha256 before: `e2cb87a31c622c0a0d5eb60f4bbe44b52e6d836ba3465cf60e2ad8784af56c61`.
-Templates sha256: `c5c87dcdcf868c64b04885873828eadd9843368f7e6bb76952c0f769c13e40f0`
+Compared again 2026-11-28 (the model selector, the operator: "add a model selector to the chat"): the box's row gains the model selector between the keys line and Send, as the board's A and B now draw it ("Haiku 5.5 · default", the others "N× the cost"); after-shots at 1366 and 1920 taken by the same scratch shot test (the selector beside Send, the newest answer's model chosen). At the panel's default width of 440 px the keys line wraps onto two lines beside it (a deviation below). Templates sha256 before: `c5c87dcdcf868c64b04885873828eadd9843368f7e6bb76952c0f769c13e40f0`.
+Compared again 2026-11-28 (the pre-gate on the selector): each option's rates on its hover are drawn by the `usd` filter (tests/test_money.py); the words and the region are unchanged. Templates sha256 before: `f40052b0c04c6c4541203e6c9659a1675e6e61c3f3f895ee48ae654e940fa77f`.
+Templates sha256: `e66ab0ce212c9120cb434e83c152930fcc10625d54f7ce8eaae4c54067f891c8`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -27,6 +29,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Behind the ⓘ (A) | the beta notice in full, "It changes nothing…", masked and recorded, How does this work? | the same four, in a menu under the ⓘ | **same** |
 | Empty conversation (A) | "Ask how to do something in Mercury, or about what is on this screen." and the calls line, centred | the same words, centred | **same** |
 | The box (A, B) | one line, "Ask a question…" / "Ask a follow-up…", "Enter sends · Shift+Enter, a new line", Send with its (i) | the same; it grows to eight lines with the text | **same** |
+| The model (A, B) | a select beside Send, "Haiku 5.5 · default", rates on hover, the keys line on one line | the select beside Send with the three models; at 440 px the keys line wraps onto two lines | **deviation** (log: Board assistant-chat: the model selector) |
 | The person's message (B) | a bubble at the right, "on r2 (device) · Lab" under it | the same bubble, and the time it was asked after the place ("on r2 (device) · Lab · 18:02", the viewer's zone); the page's address on its hover | **deviation** (log: Board assistant-chat built: its five deviations) |
 | The answer's words (B) | markdown: a paragraph, an ordered list, bold, inline code | the same, drawn by Mercury with every character escaped | **same** |
 | Sources (B) | chips, each its words and Open | the same | **same** |

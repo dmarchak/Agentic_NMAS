@@ -5270,3 +5270,50 @@ unchanged. One control by hand, tests/test_fixit_cap.py in an `nmas-control` wor
 | canary | one refusal's old "worst case" words put back | **died**: 6 tests (the stored-cap refusals) |
 
 **The result: the canary died.**
+
+## 2026-11-28: a person's choice of model for the assistant (the model selector), by hand
+
+**The change.** The egress path's request builder (`gateway.request_body`) takes *model*, a
+person's choice for the call: refused as ``model_choice`` unless the task offers that model
+(`profiles.CHOOSABLE`, the assistant alone) and the call is a person's
+(`profiles.choice_refusal`), else the pin with that model in its place and, where the model
+cannot turn thinking off, adaptive thinking (`profiles.chosen_pin`); `_prepared` records and
+counts, caps and prices the call as the model sent (`row["model"] = built["model"]`); `ask`
+passes the choice to its gates and to its one retry. The mask, the body's build and the send
+are unchanged. Aimed tests: tests/test_assistant_model_choice.py, tests/test_ai_gateway_ask.py,
+tests/test_ai_gateway.py (133, all passing on the change), `-x`, in an `nmas-control` worktree of
+the uncommitted change (snapshot b99ae75b9c); the file restored byte for byte after each.
+
+| # | Mutant | Result |
+|---|---|---|
+| canary | the choice branch raises | **died**: `test_a_question_sent_on_a_model_is_answered_on_it_and_the_panel_keeps_it` |
+| M1 | `if model is not None:` made `if model is None:` | **died**: `test_a_chosen_model_is_the_model_sent_recorded_and_priced` |
+| M2 | `if why:` made `if not why:` | **died**: the same |
+| M3 | `pin = profiles.chosen_pin(...)` dropped | **died**: the same |
+| M4 | the person check made `True` | **died**: `test_the_gateway_refuses_a_choice_the_task_or_the_trigger_does_not_allow[...background...]` |
+| M5 | `_prepared` keeps the pin's model | **died**: `test_a_chosen_model_is_the_model_sent_recorded_and_priced` (priced at the pin's rates) |
+| M6 | `ask` passes no choice to `_prepared` | **died**: `test_a_question_sent_on_a_model_is_answered_on_it_and_the_panel_keeps_it` |
+| M7 | the retry drops the choice | **died**: `test_a_call_asked_once_more_after_a_mid_answer_error_keeps_the_chosen_model` |
+| M8 | `_prepared` passes no choice to `request_body` | **died**: `test_a_chosen_model_is_the_model_sent_recorded_and_priced` |
+| M9 | the row does not say it was chosen | **died**: the same |
+
+**The result: the canary and all nine mutants died.**
+
+**The independent review's fixes, and their round** (the same day). The review found that `ask`
+overwrote the caller's *model* with the model sent, so its one retry passed the pin's own model
+as a choice and was refused for every task that offers none (HIGH; tests/test_ai_truncated_answers.py
+failed on it), and that a chosen thinking model (Opus) was sized by the pin's measured bound
+(MEDIUM). Fixed: `ask` keeps the caller's choice apart (`chosen`); `request_body` records a choice
+only when it is not the pin's own; `_capped_send` applies no measured bound to a chosen model.
+Aimed tests: tests/test_assistant_model_choice.py, tests/test_ai_truncated_answers.py,
+tests/test_ai_gateway_ask.py (78, all passing), `-x`, an `nmas-control` worktree (snapshot
+9d039b352b), the file restored byte for byte.
+
+| # | Mutant | Result |
+|---|---|---|
+| M10 | the retry passes the model sent | **died**: `test_ai_truncated_answers.py::test_a_metrics_answer_stopped_at_max_tokens_fills_nothing[complete-and-valid]` |
+| M11 | the pin's own model recorded as a choice (`if True:`) | **died**: `test_choosing_the_pins_own_model_sends_what_no_choice_sends` |
+| M12 | a chosen model sized by the pin's measured bound | **died**: `test_opus_thinking_is_sized_by_its_own_maximum_never_the_pins_measured_bound` |
+| M13 | `ask` drops the choice (`chosen = None`) | **died**: `test_a_chosen_model_is_the_model_sent_recorded_and_priced` |
+
+**The result: all four died.**

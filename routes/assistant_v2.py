@@ -54,10 +54,30 @@ def _panel(notice: str = "", code: int = 200):
     place = _place(path, nav)
     actor = identity.request_actor()
     thread = assistant_threads.read(actor)
+    models, chosen = _models(thread)
     return _strict(render_template(
         "v2/_assistant_panel.html", place=place, nav=nav, thread=thread,
         turns=assistant_threads.running(actor), past=assistant_threads.past(actor),
-        keep=assistant_threads.KEEP, notice=notice), code)
+        keep=assistant_threads.KEEP, notice=notice, models=models, chosen=chosen), code)
+
+
+def _models(thread: dict) -> tuple:
+    """The box's model selector: the models the assistant offers (`profiles.choices`), and the
+    one chosen, the model this conversation's newest answer ran on while it is still offered
+    (so a choice follows the person across pages and reloads, kept nowhere but the answer),
+    else the pin's."""
+    from modules.ai import assistant, profiles
+
+    models = profiles.choices(assistant.FEATURE)
+    offered = {m["model"] for m in models}
+    chosen = profiles.task(assistant.FEATURE)["model"]
+    for row in reversed(thread.get("rows") or []):
+        ran = ((row or {}).get("got") or {}).get("model")
+        if ran:
+            if ran in offered:
+                chosen = ran
+            break
+    return models, chosen
 
 
 @bp.route("/panel", methods=["GET"])
@@ -96,7 +116,8 @@ def ask():
     place_ = _place(request.form.get("path", ""), request.form.get("nav", ""))
     screen = place_.get("screen") or request.form.get("screen", "")
     actor = identity.request_actor()
-    refused = assistant.refusal(question)
+    model = request.form.get("model", "")
+    refused = assistant.refusal(question) or _model_refusal(model)
     if refused:
         # A question refused before any call (empty, too long) is said, never kept.
         got = assistant_turns.drawn_of(refused, question, place_)
@@ -106,8 +127,23 @@ def ask():
                                     place_.get("asked") or "")
     if not begun["ok"]:
         return _turn({"state": "refused", "why": begun["error"]}, 409)
-    assistant_turns.start(actor, begun["turn"], question, screen, place_)
+    assistant_turns.start(actor, begun["turn"], question, screen, place_, model=model or None)
     return _turn(assistant_threads.turn_of(actor, begun["turn"]) | {"turn": begun["turn"]})
+
+
+def _model_refusal(model: str):
+    """The question's refusal, said at once and never kept, when *model* (the box's selector;
+    "" for the pin's) is not one the assistant offers (`profiles.choice_refusal`, which the
+    gateway asks again at the call); None when it is."""
+    from modules.ai import assistant, profiles
+
+    if not model:
+        return None
+    why = profiles.choice_refusal(assistant.FEATURE, model, person=True)
+    if not why:
+        return None
+    return {"ok": False, "state": "refused", "error": "model_choice",
+            "detail": f"Couldn't answer: {why}", "gap": False}
 
 
 @bp.route("/turn/<turn>", methods=["GET"])

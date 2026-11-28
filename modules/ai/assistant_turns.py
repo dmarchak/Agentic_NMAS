@@ -61,8 +61,9 @@ def drawn_of(got: dict, question: str, place: dict) -> dict:
     return drawn
 
 
-def work(actor: str, turn: str, question: str, screen: str, place: dict):
-    """The job's work: the answer, its gap recorded, the exchange kept. Returns the turn."""
+def work(actor: str, turn: str, question: str, screen: str, place: dict, model: str = None):
+    """The job's work: the answer (on *model*, the person's choice, or the pin's), its gap
+    recorded, the exchange kept. Returns the turn."""
     from modules.ai import assistant, assistant_threads, triggers
 
     started = time.monotonic()
@@ -84,7 +85,7 @@ def work(actor: str, turn: str, question: str, screen: str, place: dict):
     try:
         got = assistant.answer(question, screen=screen, place=place, actor=actor,
                                trigger=triggers.person(actor), progress=progress,
-                               stop_if=stop_if)
+                               stop_if=stop_if, model=model)
     except Exception as exc:                            # noqa: BLE001 (kept, and said)
         log.exception("assistant: turn %s failed", turn)
         got = {"ok": False, "state": "refused", "error": "failed",
@@ -97,7 +98,8 @@ def work(actor: str, turn: str, question: str, screen: str, place: dict):
     return {"turn": turn, "state": got.get("state")}
 
 
-def start(actor: str, turn: str, question: str, screen: str, place: dict) -> str:
+def start(actor: str, turn: str, question: str, screen: str, place: dict,
+          model: str = None) -> str:
     """Start *turn*'s job: its id, at once. Called inside the press's request (its context is
     carried into the job, as AI troubleshooting's press carries its own)."""
     from flask import copy_current_request_context
@@ -105,7 +107,7 @@ def start(actor: str, turn: str, question: str, screen: str, place: dict) -> str
     from modules.nsot import capture_job
 
     def run(_job_id):
-        return work(actor, turn, question, screen, place)
+        return work(actor, turn, question, screen, place, model)
 
     return capture_job.start(place.get("network") or "", "An assistant answer", actor,
                              copy_current_request_context(run), kind=KIND,

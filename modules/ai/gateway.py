@@ -616,10 +616,12 @@ def _text_of(reply_body: dict) -> str:
 def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
         trigger: dict = None, context: dict = None, send=None, today: str = None,
         thinking: str = None, subject: dict = None, network: str = "", count=None,
-        spend_cap: dict = None, stop_if=None, _retried: str = "",
+        spend_cap: dict = None, stop_if=None, model: str = None, _retried: str = "",
         _size: str = "bound") -> dict:
     """One schema-bound call of the task *feature* (the module's docstring has the order): its
-    model and bounds are its pin in `profiles.TASKS`, never an argument. *context* is the
+    model and bounds are its pin in `profiles.TASKS`; *model* replaces the pin's model for this
+    call alone only where the task offers that choice to a person's press
+    (`profiles.choice_refusal`, else refused and recorded; `profiles.chosen_pin`). *context* is the
     stable prefix every call of the task shares, cached; *parts* the call's own data,
     uncached. *send* replaces the adapter (tests); *today* the UTC day the caps count.
     *thinking* (one of `profiles.THINKING`) replaces the task's for this call alone, as a
@@ -651,9 +653,12 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     # the provider's count (``prepare_s``, of which ``count_s``), then the send (``send_s``).
     import time as _time
     t_prep = _time.monotonic()
+    # The person's choice as the caller gave it (None: the pin's), kept apart from the model
+    # sent (`model` below), so a retry asks with the same choice and never the sent model as one.
+    chosen = model
     prep = _prepared(feature, prompt, schema_model, parts, actor=actor, trigger=trigger,
                      context=context, thinking=thinking, subject=subject, count=count,
-                     row_extra={"network": network} if network else None)
+                     row_extra={"network": network} if network else None, chosen=chosen)
     if "refused" in prep:
         return prep["refused"]
     t_send = _time.monotonic()
@@ -697,7 +702,7 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
                     context=context, send=send, today=today, thinking=thinking,
                     subject=subject, network=network, count=count,
                     spend_cap=_spent_plus(spend_cap, got.get("cost_usd")), stop_if=stop_if,
-                    _retried=got.get("call_id") or "-",
+                    model=chosen, _retried=got.get("call_id") or "-",
                     _size="bound" if error_mid else "remaining")
         if at_bound and again.get("error") in ("over_cap", "feature_cap"):
             # The remaining could not pay a retry at all: the first answer was cut by the
@@ -741,7 +746,7 @@ def _spent_plus(spend_cap, usd):
 
 def request_body(feature: str, prompt: tuple, schema_model, parts: dict, *,
                  context: dict = None, thinking: str = None, kind: str = triggers.PERSON,
-                 cache_ttl: str = None) -> dict:
+                 cache_ttl: str = None, model: str = None) -> dict:
     """The masked request body a call of the task *feature* sends, items 3 to 5 of the module's
     docstring: the pin, the model's profile and the pin's settings checked, the schema and the
     prompt, then the person's typed parts masked (`mask_typed`), instruction-like lines
@@ -751,6 +756,9 @@ def request_body(feature: str, prompt: tuple, schema_model, parts: dict, *,
     here, and so does AI troubleshooting's preview (`fixit_troubleshoot.preview`), so the
     preview cannot drift from what a press sends. *kind* is the trigger's kind (a person's
     single press is sent without the cache mark, C2261); *cache_ttl* a batched request's TTL.
+    *model*, a person's choice of model for this call (`ask`), replaces the pin's model and,
+    where that model cannot send it, its thinking (`profiles.chosen_pin`), or is refused
+    (``model_choice``, `profiles.choice_refusal`).
 
     ``{"row", "told"}`` and either ``{"refused": (kind, detail)}`` or ``{"body", "model",
     "max_tokens", "pin", "profile"}``: *row* the fields the call's row gains (the thinking
@@ -767,10 +775,18 @@ def request_body(feature: str, prompt: tuple, schema_model, parts: dict, *,
         return dict(out, refused=(kind_, detail))
 
     pin = profiles.TASKS.get(feature) or {}
-    model = pin.get("model", "")
     if not pin:
         return refused("unknown_task", f"{feature!r} is not a task profiles.TASKS pins; "
                        f"known: {', '.join(sorted(profiles.TASKS))}")
+    if model is not None:
+        why = profiles.choice_refusal(feature, model, kind == triggers.PERSON)
+        if why:
+            return refused("model_choice", f"{why}; nothing was sent")
+        if model != pin["model"]:
+            # The pin's own model is no choice: sent and recorded exactly as the pin.
+            pin = profiles.chosen_pin(feature, model)
+            row["model_chosen"] = model
+    model = pin.get("model", "")
     if feature not in TYPED_PARTS:
         return refused("typed_undeclared", f"{feature!r} names no typed parts in "
                        "gateway.TYPED_PARTS: which of its data a person typed is not known, so "
@@ -853,7 +869,7 @@ def request_body(feature: str, prompt: tuple, schema_model, parts: dict, *,
 def _prepared(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
               trigger: dict = None, context: dict = None, thinking: str = None,
               subject: dict = None, count=None, cache_ttl: str = None,
-              row_extra: dict = None) -> dict:
+              row_extra: dict = None, chosen: str = None) -> dict:
     """`ask`'s gates and its request, items 0 to 5 of the module's docstring, the one code path
     `ask` and `ask_batch` share, so a batched request is built, masked, counted and bounded
     exactly as a call is: ``{"refused": <ask's refusal, recorded>}``, or ``{"row", "body",
@@ -904,13 +920,17 @@ def _prepared(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: 
             return refused(provider_limit.KIND, provider_limit.said(hold)["words"],
                            **_limit_fields(hold))
     built = request_body(feature, prompt, schema_model, parts, context=context,
-                         thinking=thinking, kind=named["trigger"]["kind"], cache_ttl=cache_ttl)
+                         thinking=thinking, kind=named["trigger"]["kind"], cache_ttl=cache_ttl,
+                         model=chosen)
     row.update(built["row"])
     told.update(built["told"])
     if "refused" in built:
         return refused(*built["refused"])
     body, max_tokens = built["body"], built["max_tokens"]
     profile = built["profile"]
+    # The model sent: the pin's, or the person's choice (`request_body`), counted, capped and
+    # recorded as itself from here on.
+    model = row["model"] = built["model"]
 
     # The prompt's size (C1898): the provider's count of the masked request, every gate above
     # passed; the fallback over-estimate when the count is not had, said. Both on the row. A
@@ -1209,7 +1229,11 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
     # tightest remaining cap can pay after other calls' holds; its hold is its counted prompt
     # plus that max_tokens at the output rate. A visible-output call keeps the live abort.
     thinking = row.get("thinking") != "off"
-    bound = (background.output_bound(feature) if thinking and size_mode != "remaining"
+    # A person's choice of another model than the pin (`model_chosen`): the task's measured
+    # bound is its pin's calls' (another model, thinking off), so none applies; it is sized as a
+    # retry is, the model's maximum within what the caps can pay (the review, 2026-11-28).
+    bound = (background.output_bound(feature)
+             if thinking and size_mode != "remaining" and not row.get("model_chosen")
              else None)
     # Read once, outside the reservations' lock (each task's measured cost may be a records
     # read): what a cap-sized call leaves for another start (C3898).
