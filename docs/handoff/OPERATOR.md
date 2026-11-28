@@ -235,6 +235,11 @@ removed (the words kept) and docs/fidelity/incident.md compared again, 2026-11-2
   trunk both refused, by the same one guard every path passes; (b) keep the rule as written
   (only an unset role refused), trunk fixes allowed Automatic.
   **Recommendation:** (a): it is what your reason says, and it is one line in the guard.
+- **Answered 2026-11-28, the operator's words:** "automatic-port-roles (C4312): Automatic only for
+  access-port fixes. Write it as an allowlist: access may be Automatic; trunk, routed, unset and
+  any unrecognised role are always Manual. One rule in the single guard. Also fix C4311 now: any
+  stored fix the guard would refuse as Automatic is converted to Manual and shown as Manual. Both
+  may go in a follow-up commit after d703d3580 deploys."
 
 ### ci-ten-gate-memory
 
@@ -262,6 +267,8 @@ removed (the words kept) and docs/fidelity/incident.md compared again, 2026-11-2
   guard. **Recommendation:** (a), so the weakening check refuses a new gap on its own.
 - **Answered 2026-11-27, the operator's words (for the commit's Approved-By):** "ratchet-no-screen: (a). I authorise adding one RATCHETS line to tests/ratchet_lists.py declaring modules/settings_index.py's NO_SCREEN a shrinking list. No other change to that file." Moved to Answered once landed.
 
+## Answered
+
 ### claude-md-ten-shards
 
 - **Asked (2026-11-27):** the gate now runs ten shards (your ci-ten-gate-memory words), so
@@ -285,6 +292,8 @@ removed (the words kept) and docs/fidelity/incident.md compared again, 2026-11-2
 
   (checked: tests/test_claude_md.py's `unenforced` finds none, before and after). After you
   paste, the agent commits CLAUDE.md as you left it.
+- **Answered 2026-11-28:** the operator pasted it; tests/test_claude_md.py passes (61, with
+  tests/test_claude_md_edit_hook.py); committed as the operator left it.
 
 ### claude-md-0230
 
@@ -304,8 +313,10 @@ removed (the words kept) and docs/fidelity/incident.md compared again, 2026-11-2
 - **Also:** the fast lane is retired (2026-11-24), so the two rules "Temporary fast lane" and
   "Temporary skip mode within the fast lane" under "### Git, the gate and deploys" are stale: delete
   them both. After you paste, the agent commits CLAUDE.md as you left it.
-
-## Answered
+- **Answered 2026-11-28:** the operator pasted the 02:30 rule first under Working method and
+  deleted both fast-lane rules; tests/test_claude_md.py passes; committed as the operator left
+  it. No other rule in CLAUDE.md names the fast lane or its skip mode (searched: "fast lane",
+  "fast-lane", "skip mode", "debt", "full pass", "rehearsed build", "Lab 10 demo").
 
 ### lab-down
 

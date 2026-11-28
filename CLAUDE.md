@@ -77,6 +77,13 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 
 ### Working method
 
+- **Sessions run until 02:30 Denver (the operator, 2026-11-24): never end a turn before 02:30
+  America/Denver, and never stop to report, summarise or ask. Progress goes in the day's
+  report file; a question goes in docs/handoff/OPERATOR.md, its plan item marked BLOCKED, and
+  the next item is taken. At 02:30 stop at a clean point, update docs/handoff/latest.md and the
+  day's report as the morning session's handoff, then end the turn. Cost: no progress shown in
+  chat until the handoff. Prevents: work stopping for a report, or for an answer nobody is
+  there to give.** [not mechanised]
 - **Every new finding is judged against the charter as CORE, LAB or FUTURE before any design work; only CORE is active.** [not mechanised]
 - **Walk the path for real:** a path never run fails on first use, and the suite cannot say so.
   Every operation gets a real run on the host; watch what else moves. [not mechanised] [why](docs/LESSONS.md#walk-the-path-for-real)
@@ -151,35 +158,6 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 
 ### Git, the gate and deploys
 
-- **Temporary fast lane (the operator, 2026-11-15, until the operator ends it; off once the
-  features are complete, after the Lab 10 demo and Lab 9's SDN work, when the full pass gives
-  one full gate and CI green on the final sha; the recording and the demo run on the rehearsed
-  build, the backup video their fallback, the operator, 2026-11-16):** a change is deployed with `nmas-deploy --fast-lane "<the tests run and
-  their result>"` once the tests for its touched files (impact analysis) pass, with no pre-gate
-  and no CI verdict asked; the nightly backup window, the preflight and a green smoke check
-  still hold (nmas-deploy runs the smoke check after the restart and a red one puts the previous
-  release back at once); every fast-lane deploy is recorded with its sha, files and tests in the
-  deploy record, and `nmas-deploy --revert` puts back the previous deployed sha; full CI keeps
-  running on main, a red on the running release a Needs attention warning, not a stop; the
-  independent review stays only for code that writes to devices (the runner, plan execution,
-  operations). Cost: CI's protection moves after the deploy, not before it. Prevents: a gate
-  of about an hour for each small fix while the operator tests live.
-  [tests/test_nmas_deploy_fast_lane.py; the review and the off-when rule: not mechanised]
-- **Temporary skip mode within the fast lane (the operator, 2026-11-15, until the operator
-  ends it; cleared after the Lab 10 demo and Lab 9's SDN work):** a change is written and
-  deployed with no test run, no new test, no red-green proof, no board, fidelity or manual
-  update; the commit hooks as they run, the nightly backup window, the preflight and
-  nmas-deploy's smoke check with its automatic rollback still hold, and code that writes to
-  devices still gets its independent review before its deploy (the operator, 2026-11-16).
-  Every change shipped this way is one row in docs/FAST_LANE_DEBT.md naming the tests,
-  boards and reviews it skipped, and the rows are cleared together in one full pass (tests,
-  fidelity, a full gate, CI green on the final sha) once the features are complete, in long
-  unattended runs.
-  Where this rule and the fast lane above disagree, this one governs while it is in force; the
-  charter states it ("Standing rules decided 2026-11-14 to 2026-11-16"). Cost: every shipped
-  change carries untested code until the full pass, sized at about 91 agent-hours on
-  2026-11-16. Prevents: features waiting on tests while the operator rehearses live.
-  [not mechanised; the debt list: docs/FAST_LANE_DEBT.md]
 - **The gate:** `git add -A` → `scripts/nmas-stage-guard` → a snapshot worktree of the staged
   tree → the suite in CI's interpreter and command there (docs/TESTING.md, "CI's interpreter
   here"; a commit whose every path is under docs/ runs the doc set alone) → commit in the
@@ -250,9 +228,10 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   harness); a step the gate gains that CI lacks joins this list. Cost: CI's minutes in place of
   the laptop's. Prevents: gates waiting 45 minutes for memory an everyday desktop holds, and a
   deploy on another sha's verdict. **Since the adaptive waves (the operator, 2026-11-13), that
-  threshold is the waves' floor, 11.7 GiB free:** from 18.5 GiB the gate runs its five shards
-  at once, from 11.7 GiB in two waves capped at 10.7 GiB (browser1, browser2, a; then browser3,
-  b; a failed wave stops the next), and under 11.7 GiB it refuses, naming this path. [the
+  threshold is the waves' floor, 11.7 GiB free:** from 29.0 GiB the gate runs its ten shards
+  at once at 1 worker each (the operator, 2026-11-27, until a ten-shard peak is measured),
+  from 11.7 GiB in three waves capped at 11.1 GiB (f, browser2, b; then g, a, e; then d,
+  browser1, browser3, c; a failed wave stops the next), and under 11.7 GiB it refuses, naming this path. [the
   waves, their floor and the refusal: tests/test_nmas_gate.py (`TestTheAdaptiveWaves`); the
   rest: not mechanised]
 
