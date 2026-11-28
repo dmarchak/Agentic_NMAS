@@ -177,6 +177,22 @@ class TestRsevensRow:
                               baseline=lambda lst: {"tag": "baseline/x", "at": ran + 60})
         assert [r["kind"] for r in got["rows"]] == ["failed"], got["rows"]
 
+    def test_its_title_names_the_run_in_words_never_its_identifier(self, monkeypatch):
+        """C4321: the row read "The last command_plan to r7: failed"; it names the plan's own
+        run as Fixes and the incident card say it (`saved_plans.run_name`), and a command plan
+        whose plan cannot be named is a run of reviewed commands."""
+        from modules.nsot import receipts, saved_plans
+        monkeypatch.setattr(saved_plans, "run_name",
+                            lambda network, key: {"telemetry-subscription-recreate":
+                                                  "Re-subscribe the telemetry"}.get(key, key))
+        (r,) = _rows(_r7())
+        assert r["what"].startswith("The last run of Re-subscribe the telemetry to r7: "), \
+            r["what"]
+        assert "command_plan" not in r["what"]
+        bare = dict(_r7(), command_plan={})
+        assert receipts.noun(bare) == "run of reviewed commands"
+        assert receipts.noun({"action": "deploy"}) == "deploy"
+
     def test_it_draws_one_action(self):
         (r,) = _rows(_r7())
         item = _item(_draw([r]), r["id"])

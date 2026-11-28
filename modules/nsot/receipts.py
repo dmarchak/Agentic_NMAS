@@ -84,10 +84,28 @@ _PAST = {"deploy": "Deployed", "restore": "Restored", "reapply": "Re-applied",
          "command_plan": "Ran reviewed commands"}
 
 
+#: A run's action said in words where its identifier is not one (C4321: "The last command_plan
+#: to <device>" on Needs attention).
+NOUNS = {"command_plan": "run of reviewed commands"}
+
+
 def noun(row: dict) -> str:
-    """What the receipt's run was, as a noun: its scope's, else its action."""
+    """What the receipt's run was, as a noun: its scope's; a command plan's by its plan's own
+    name ("run of Recover an err-disabled interface", the name Fixes and the incident card
+    say, `saved_plans.run_name`), else its action in words (`NOUNS`), else its action."""
     scope = SCOPES.get(row.get("scope") or "")
-    return scope[0] if scope else (row.get("action") or "deploy")
+    if scope:
+        return scope[0]
+    action = row.get("action") or "deploy"
+    key = str(((row.get("command_plan") or {}) if action == "command_plan" else {})
+              .get("plan") or "")
+    if key:
+        try:
+            from modules.nsot import saved_plans
+            return f"run of {saved_plans.run_name(row.get('list') or '', key)}"
+        except Exception as exc:                    # noqa: BLE001 (its words, never a raise)
+            log.info("receipts: the name of plan %s could not be read: %s", key, exc)
+    return NOUNS.get(action, action)
 
 
 def past(row: dict) -> str:
