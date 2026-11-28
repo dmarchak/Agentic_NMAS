@@ -28,6 +28,11 @@
     scroll.
   - Registered: C4340 and C4341, both C and both in the safe direction; C4342, also C: the
     pre-gate does not choose the keying scan behind #2371's red.
+  - UNKNOWN rows measured on the host (read-only):
+    - C4292 went to C; the 5-second ERROR it exposed is C4343.
+    - C4255 and C4217 closed, no defect.
+    - C4262 went to C.
+    - C4049 measured in part; the kit is left.
 - **Waiting on the operator:** the same as below (assistant-v6-cases, automatic-port-scope, the
   break-glass export).
 - **Next:** Restore or keep's item 3, Keep device. Seed's parse is merged into a device's full
