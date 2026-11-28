@@ -484,6 +484,31 @@ def test_the_assistant_reaches_no_run_start_or_approve():
     assert N.findings(seen, never) == []
 
 
+class TestADroppedPlanSaysWhichStep:
+    """C4332: a plan Mercury dropped said only its rule ("… and a list was given"), though the
+    steps' check had named the step; the refusal now carries the check's own words, never a
+    value the model wrote."""
+
+    def test_the_refusal_names_the_step_and_why(self):
+        bad = [{"operation": "intent-description",
+                "params": {"device": "edge1", "interface": "GigabitEthernet1",
+                           "description": "uplink"}},
+               {"operation": "reboot-the-world-now", "params": {}}]
+        with pytest.raises(E.Refused) as exc:
+            E.checked(CHANGE, {"steps": bad})
+        words = str(exc.value)
+        assert "step 2 names an operation that is not one a change admits" in words, words
+        assert "reboot-the-world-now" not in words, "never echoed"
+        assert "and a list was given" not in words
+
+    def test_a_step_missing_a_parameter_is_named_with_it(self):
+        with pytest.raises(E.Refused) as exc:
+            E.checked(CHANGE, {"steps": [{"operation": "intent-description",
+                                          "params": {"device": "edge1"}}]})
+        words = str(exc.value)
+        assert "step 1 (intent-description)" in words and "interface" in words, words
+
+
 class TestALongChange:
     """C4329: a change of more than a few steps could not be previewed: plans_v2 refused
     parameters past 2,000 characters, and two description steps took about 250. The bound is the

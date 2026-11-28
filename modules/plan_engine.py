@@ -198,7 +198,14 @@ def _held(params, schema, what: str, optional=()) -> dict:
         if p.refusal(value):
             # The parameter and its rule, never the value (a wrong-shaped value may be anything
             # a person or a model wrote: it is not echoed into the refusal or the call record).
-            given = ("text not of that shape" if isinstance(value, str) else kind_of(value))
+            # A list or a mapping is said by its rule's own words (C4332: a change's steps named
+            # the step and its operation, "a list whose step 2 the plan engine refuses (…)", and
+            # the person read only "a list was given"): those are Mercury's words, naming a
+            # step's or a change's number, an admitted operation, or a field's path already held
+            # to a path of names (`changes_of`), never a free value the model wrote.
+            given = ("text not of that shape" if isinstance(value, str) else
+                     (p.refusal(value) or kind_of(value)) if isinstance(value, (list, dict))
+                     else kind_of(value))
             raise Refused("wrong_shape", f"{what}'s parameter {p.name} is {p.takes}, and "
                                          f"{given} was given")
     return {p.name: params[p.name] for p in schema}
