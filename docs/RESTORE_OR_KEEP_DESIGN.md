@@ -44,9 +44,9 @@ would send.
 1. **The prerequisite: known printed defaults, per platform.** A table in `modules/nsot/platform.py`
    (the one platform table, C4275), per platform the exact lines its image prints by default when
    nothing sets them, measured on a real device, each with where it was read: for `cisco_iosxe`
-   (C8000v 17.6) `no mop enabled` and `no mop sysid` under an interface, the five `mgcp behavior …`
-   and `mgcp profile default` lines, `license boot level network-premier addon dna-premier`,
-   `spanning-tree extend system-id`. Every comparison (the Intent row, Save All's baseline, the
+   (C8000v 17.6) `no mop enabled` and `no mop sysid` under an interface, the four `mgcp behavior …`
+   and `mgcp profile default` lines, `spanning-tree extend system-id` (the licence level, first
+   listed, is configuration: see "Changed by the build's review" below). Every comparison (the Intent row, Save All's baseline, the
    drift check, the heal's departure) leaves out a table line present on the device and absent
    from intent, and only that: a changed line (`mop enabled`) is not in the table and still
    differs, and a line intent declares is compared as today. The table is code, not a setting
@@ -61,7 +61,7 @@ would send.
 
    | Section | Line, exactly | Depth |
    |---|---|---|
-   | (global) | `license boot level network-premier addon dna-premier` | 0 |
+   | (global) | `license boot level network-premier addon dna-premier` (configuration, not in the table: the review below) | 0 |
    | (global) | `spanning-tree extend system-id` | 0 |
    | (global) | `mgcp behavior rsip-range tgcp-only` | 0 |
    | (global) | `mgcp behavior comedia-role none` | 0 |
@@ -84,13 +84,23 @@ would send.
    running side (Intent-Match, so the Intent row and Save All's baseline), and the drift check's
    residue; never in the program the deploy builds or in verify's read-back.
 
-   **Built 2026-11-28, its first slice:** `platform_defaults.PRINTED` (the nine lines) and
-   `roundtrip.compare`'s running side. That is Intent-Match, so it covers the device page's
-   Intent row, Save All's baseline refusal, Reload's gate, the deploy and revert previews' words
-   and the heal's departure (`heal/decide.py` asks `intent_match`). The drift check needs nothing:
-   it compares a device with its golden, which holds what it prints. Left: the Intent editor's
-   "how the device departs" rows (`intent_edit.diffs`'s `departs`, through `change_rows`), which
-   still list them.
+   **Built 2026-11-28:** `platform_defaults.PRINTED`, eight lines for the `cisco_iosxe` dialect
+   only, left out of the device's side where the caller names the platform:
+   `roundtrip.compare(…, platform=)` through `build_artifact`'s intent report (Intent-Match: the
+   device page's Intent row, Save All's baseline refusal, Reload's gate, the deploy and revert
+   previews' words and the heal's departure, `heal/decide.py` asking `intent_match`), and
+   `roundtrip.change_rows(…, device_platform=)` (the Intent editor's "how the device departs"
+   rows and the configuration check's intent-match). A question about whether a template
+   reproduces a capture (approval, the template report, restore's gap) names no platform and
+   compares every line. The drift check needs nothing: it compares a device with its golden,
+   which holds what it prints.
+
+   **Changed by the build's review:** `license boot level …` is NOT in the table. The lab's image
+   install step sets it, and the operator ruled it configuration on 2026-10-09
+   (lab/clab-sync/clab-startup-sync.sh), so the three goldens were booted from files that set
+   it: no measurement of an image that prints it unset exists. A level a person sets departs
+   from intent lacking it. The table is keyed by dialect, not model or version (an IOS device
+   holding `spanning-tree extend system-id` set it); see the register for the version question.
 2. **Restore intent: a true replace.** Where the platform has `configure replace` (IOS-XE; IOS
    15.x with an archive), the rendered intent is sent as a file to the device's own flash and
    replaced onto running: preview (the exact file, masked, and the diff it will make, both

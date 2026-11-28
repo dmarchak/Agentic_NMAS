@@ -174,7 +174,7 @@ class TestTheCard:
         assert re.findall(r'class="dr dr-(\w+)"', first) == ["head", "del", "add"]
 
     def test_equal_diffs_draw_one(self, ed, monkeypatch):  # noqa: F811
-        monkeypatch.setattr(intent_edit, "diffs", lambda *a: {
+        monkeypatch.setattr(intent_edit, "diffs", lambda *a, **_kw: {
             "same": True, "replaces": True, "sent": 1, "golden": None,
             "edit_rows": [{"kind": "head", "text": "interface Gi3"},
                           {"kind": "del", "text": "description a"},
@@ -203,7 +203,7 @@ def test_a_section_after_another_sections_lines_is_set_apart_in_a_browser(ed, mo
              "line vty 1\n transport input ssh\n")
     rows = change_rows(left, right)["rows"]
     assert any(r["text"] == "line vty 1" for r in rows), rows
-    monkeypatch.setattr(intent_edit, "diffs", lambda *a: {
+    monkeypatch.setattr(intent_edit, "diffs", lambda *a, **_kw: {
         "same": True, "replaces": False, "sent": 1, "golden": None, "edit_rows": rows,
         "edit_changes": True, "not_removed": [], "from_edit_rows": [], "from_edit": 1,
         "not_from": [], "masked": 0})

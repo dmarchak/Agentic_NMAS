@@ -529,7 +529,7 @@ def _check_device(run: _Run, device: str, intent: dict, entry: dict, profile_doc
         run.add("intent-match", "note", "no golden: nothing captured to compare", golden_rel,
                 device=device)
         return
-    rows = roundtrip.change_rows(golden, rendered)
+    rows = roundtrip.change_rows(golden, rendered, device_platform=platform)
     removed, added = rows["removed"], rows["added"]
     if not removed and not added:
         run.add("intent-match", "pass", "the golden matches its rendered intent"

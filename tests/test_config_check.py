@@ -488,7 +488,7 @@ def test_an_intent_that_departs_from_its_golden_shows_both_sides(lab, monkeypatc
         "intent-match", "note", "golden/r2.cfg", "r2",
         "differs (-1 +1): a `-` line is in the golden and not in intent, a `+` line in intent "
         "and not in the golden: - (global) / hostname r2; + (global) / hostname r2x")]
-    monkeypatch.setattr(roundtrip, "change_rows", lambda golden, rendered: {
+    monkeypatch.setattr(roundtrip, "change_rows", lambda golden, rendered, **_kw: {
         "removed": [("a", "1"), ("b", ""), ("c", "3"), ("d", "4")],
         "added": [("e", ""), ("f", "6"), ("g", "7"), ("h", "8")], "masked": 0})
     report = config_check.run(lab["repo"], notes=True)
@@ -601,7 +601,7 @@ def test_five_dangerous_lines_are_all_named_and_a_sixth_is_counted(lab, monkeypa
 def test_a_match_with_nothing_masked_says_only_that_it_matches(lab, monkeypatch):
     from modules.nsot import config_check, roundtrip
     monkeypatch.setattr(roundtrip, "change_rows",
-                        lambda golden, rendered: {"removed": [], "added": [], "masked": 0})
+                        lambda golden, rendered, **_kw: {"removed": [], "added": [], "masked": 0})
     match = _records(config_check.run(lab["repo"], notes=True)["results"], "intent-match")
     assert match == [_rec("intent-match", "pass", "golden/r2.cfg", "r2",
                           "the golden matches its rendered intent")]

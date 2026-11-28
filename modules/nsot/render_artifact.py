@@ -472,7 +472,16 @@ def build_artifact(device: str, running_config: str, platform: str,
         render_kwargs["template_root"] = template_root
 
     truthful = roundtrip.render(parsed, resolved_platform, **render_kwargs)
-    report = roundtrip.compare(running_config, truthful, parsed)
+    report = roundtrip.compare(running_config, truthful, parsed, platform=resolved_platform)
+    # With no intent the template report is this same render, but its question is whether the
+    # template reproduces the capture, every line of it: the printed defaults `report` leaves
+    # out for its platform (Intent-Match's question) are compared there, so a template dropping
+    # one never passes (the review of Restore or keep's first slice).
+    from modules.nsot import platform_defaults
+    every_line = (roundtrip.compare(running_config, truthful, parsed)
+                  if host_vars is None and any(rule[0] == resolved_platform
+                                               for rule in platform_defaults.PRINTED)
+                  else None)
     # Measured on the TRUTHFUL render, never the masked one: the mask is U+2022,
     # so a masked render is non-ASCII by construction and would report every
     # secret line as unsendable.
@@ -484,7 +493,7 @@ def build_artifact(device: str, running_config: str, platform: str,
     del truthful
 
     if host_vars is None:
-        template_report = report
+        template_report = every_line or report
     else:
         capture_platform = from_capture.get("platform", platform)
         capture_render = roundtrip.render(from_capture, capture_platform,

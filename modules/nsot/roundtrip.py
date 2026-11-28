@@ -587,12 +587,18 @@ def canonical_diff(left: str, right: str, *, fromfile: str = "left",
     return (diff, masked) if report_masked else diff
 
 
-def change_rows(left: str, right: str) -> dict:
+def change_rows(left: str, right: str, *, device_platform: str = "") -> dict:
     """What differs between two configs, as ROWS a person reads one line each (C500): only the
     changed lines, each under its section's line. ``{"rows": [{"kind": "head"|"del"|"add",
     "text", "section"}], "removed": [(section, line)], "added": [(section, line)],
     "masked": n}``. Over :func:`canonical_lines` as :func:`canonical_diff` is, masked values
-    neutralised the same way; a whole section added or removed is its own row (``line`` "")."""
+    neutralised the same way; a whole section added or removed is its own row (``line`` "").
+
+    With ``device_platform`` the left side is what a DEVICE of that dialect prints (a capture
+    or a golden), and a line its image prints when nothing sets it (`platform_defaults.printed`)
+    is left out of the removed lines where the right side's section lacks it, as :func:`compare`
+    does (Restore or keep's prerequisite). Never for two renders: there a deleted default is the
+    edit's own."""
     import difflib
 
     left_lines, right_lines, masked = _neutralise(
@@ -614,6 +620,12 @@ def change_rows(left: str, right: str) -> dict:
             continue
         removed += [_where(left_lines, i) for i in range(i1, i2)]
         added += [_where(right_lines, j) for j in range(j1, j2)]
+    if device_platform:
+        from modules.nsot import platform_defaults
+        held = {_where(right_lines, j) for j in range(len(right_lines))}
+        removed = [(sec, line) for sec, line in removed
+                   if not (line and (sec, line) not in held and platform_defaults.printed(
+                       "" if sec == "(global)" else sec, line, device_platform))]
     rows, last = [], None
     order = []
     for section, line in removed + added:
@@ -635,7 +647,8 @@ def change_rows(left: str, right: str) -> dict:
     return {"rows": rows, "removed": removed, "added": added, "masked": masked}
 
 
-def compare(running_config: str, rendered_config: str, host_vars: dict = None) -> dict:
+def compare(running_config: str, rendered_config: str, host_vars: dict = None, *,
+            platform: str = "") -> dict:
     """Compare a rendered config against the real one. Returns a coverage report."""
     # The lines a device holds without printing at their default (C14, `platform_defaults`)
     # are left out of both sides, as `canonical_lines` leaves them: intent bringing an
@@ -650,8 +663,11 @@ def compare(running_config: str, rendered_config: str, host_vars: dict = None) -
     # keep's prerequisite): left out of the DEVICE's side only, where intent lacks the line, so
     # a first boot from a startup file reads at intent (C4300: 27 such lines on a C8000v). A
     # line intent declares is compared as before, and a changed value is no rule's line.
+    # Only for the dialect *platform* names: Intent-Match passes it (`build_artifact`), while a
+    # template-fidelity question (does the template reproduce the capture: approval, the
+    # template report, restore's gap) passes none and compares every line.
     running = {header: [c for c in children
-                        if not (platform_defaults.printed(header, c)
+                        if not (platform_defaults.printed(header, c, platform)
                                 and c not in rendered.get(header, ()))]
                for header, children in running.items()}
 

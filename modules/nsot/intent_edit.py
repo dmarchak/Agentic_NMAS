@@ -428,7 +428,8 @@ def preview(list_name: str, hostname: str, text: str, *, vlan_databases: dict = 
             "document_changed": document_changed,
             "vs_device": vs_device, "masked_not_compared": masked,
             # The v2 editor's right column (C500): the same two diffs as rows, compared.
-            "diffs": diffs(repo, hostname, current_render, edited.rendered_masked, capture),
+            "diffs": diffs(repo, hostname, current_render, edited.rendered_masked, capture,
+                           platform=platform),
             "captured_from": "golden",
             "rendered": edited.rendered_masked, "template": template,
             "unmodelled": lines, **checks}
@@ -566,7 +567,7 @@ def where_from(repo: str, hostname: str, pairs) -> dict:
 
 
 def diffs(repo: str, hostname: str, committed_render, edited_render: str,
-          capture: str) -> dict:
+          capture: str, platform: str = "") -> dict:
     """The right column's two diffs, by the rule approved on board H (C500): EQUAL when the
     deploy's lines are exactly the edit's added lines and every line the edit deletes is a
     one-setting line an added one replaces; then one diff. Otherwise both, the deploy's lines
@@ -576,7 +577,7 @@ def diffs(repo: str, hostname: str, committed_render, edited_render: str,
 
     edit = (change_rows(committed_render, edited_render) if committed_render is not None
             else {"rows": [], "removed": [], "added": [], "masked": 0})
-    deploy = change_rows(capture, edited_render)
+    deploy = change_rows(capture, edited_render, device_platform=platform)
     edit_added = set(edit["added"])
     kept = _kept(edit["removed"], edit["added"])
     # C4305 (2): a line this edit deletes is left in place only where the device still holds
