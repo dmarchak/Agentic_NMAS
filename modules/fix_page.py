@@ -651,7 +651,7 @@ AUTOMATIC_PRESS = "Making it automatic"
 def _does(o: dict, f: dict, t) -> str:
     """What the offered fix *o* does on this incident, in one line: its words' first clause
     (the fix's own words, else its plan's) on the device and port its preview filled, and which
-    ports its match runs on (`_scope`): "Recover an err-disabled interface on s1 Gi1/0, a fix
+    ports its match runs on (`_scope`): "Recover an err-disabled interface on edge1 Gi1/0, a fix
     for access ports". A saved fix's plan title is the name it was saved
     under (`saved_plans._template_doc`), so it says nothing the row's name does not."""
     clause = str((f or {}).get("words") or (t.words if t is not None else "") or "")

@@ -139,7 +139,7 @@ incident is open, as a link: it opens its modal over the page ([Hand over](fixit
 holds, one row each, all drawn alike: its name (its page on [Fixes](fixes)), its mode
 (Automatic, Dry run or Manual only), how often it ran and how many runs verified, its last
 result, and one small **Run**. The row's second line, closed, says what it does here and which
-ports its match covers ("Recover an err-disabled interface on s1 Gi1/0, a fix for access
+ports its match covers ("Recover an err-disabled interface on edge1 Gi1/0, a fix for access
 ports", or "…, a fix for any port"); opened, the lines it sends to the device, in order,
 the checks it reads first and what it verifies after. Where Mercury recommends one, its row
 says **Recommended** and why: the rule is the fix self-healing itself runs on this problem when
