@@ -118,6 +118,13 @@ class TestEveryKindSaysHowItClears:
                                      ("adjacency_log", "flap"),
                                      # One deploy's lines verify could not read back (C1542).
                                      ("deploys", "read_back"),
+                                     # One deploy, restore or command plan that did not
+                                     # finish clean, by its receipt (C4308, the operator,
+                                     # 2026-11-27/28: it clears only by a later run).
+                                     ("deploys", "failed"),
+                                     # One span self-healing's detection skipped, by its
+                                     # bounds (C4309: it clears only by time).
+                                     ("job_health", "unscanned"),
                                      # One console survey's or kick-start's run (O6a).
                                      ("console_ztp", "not_blank"), ("console_ztp", "failed"),
                                      # The newest AI call that withheld a line (C2272).

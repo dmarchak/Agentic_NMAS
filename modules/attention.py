@@ -61,6 +61,10 @@ ROW_KINDS = {
                           "find why it cannot be read: the cause names what failed"),
     ("job_health", "job"): ("a job or check is failing, stale, not installed or could not ask",
                             "its own remedy, or read its output on the host, or install it"),
+    # C4309: a span self-healing's detection skipped (older than its horizon when it read
+    # again). Nothing a person does scans it now, so it clears by time or by a person's word.
+    ("job_health", "unscanned"): ("self-healing did not scan a span of configuration changes",
+                                  "acknowledge it with a reason, or let it clear by time"),
     ("drift", "disabled"): ("drift checking is switched off", "switch it back on"),
     ("drift", "never"): ("no drift check has run yet for the network", "run a drift check"),
     ("drift", "failed"): ("the last drift check failed", "run it again and read its reason"),
@@ -81,7 +85,8 @@ ROW_KINDS = {
     ("rollback", "blocked"): ("a device's next plan is blocked by a rolled-back change",
                               "revert the failed intent, or authorise a retry"),
     ("deploys", "failed"): ("the last deploy or restore to a device did not succeed",
-                            "read its receipt, then plan again"),
+                            "read its receipt, then plan again or acknowledge it with what "
+                            "was found"),
     # C543: verified and running, and NOT in startup, so a reload loses it; Persist saves it.
     ("deploys", "unsaved"): ("a change verified and running on a device is not saved to "
                              "startup, so a reload loses it",
@@ -476,6 +481,9 @@ CLEARS = {
                             "re-reads every 5 minutes, and as soon as a host job finishes; a "
                             "root-installed helper's row is asked again at the next read of "
                             "this page)"),
+    ("job_health", "unscanned"): (("acknowledge", "time"), "a day after detection read again "
+                                  "(by time), or a person acknowledges this span with a "
+                                  "reason; a later span it skips raises it again"),
     ("drift", "disabled"): (("resolves",), "drift checking is switched back on"),
     ("drift", "never"): (("resolves",), "a drift check runs for this list"),
     ("drift", "failed"): (("resolves",), "a later drift check completes"),
@@ -492,8 +500,9 @@ CLEARS = {
     ("rollback", "record"): (("resolves",), "the rolled-back record can be read again"),
     ("rollback", "blocked"): (("resolves",), "its intent no longer sends what was rolled back "
                               "(reverted or edited), or a retry is authorised with a reason"),
-    ("deploys", "failed"): (("resolves",), "a later deploy or restore to the device finishes "
-                            "clean"),
+    ("deploys", "failed"): (("resolves", "acknowledge"), "a later deploy or restore to the "
+                            "device finishes clean, or a person acknowledges this one with a "
+                            "reason; a later one that fails raises it again"),
     ("deploys", "unsaved"): (("resolves",), "a save of the device after the deploy reads its "
                              "startup config back saved (its page's Persist, or Save), or a "
                              "later deploy or restore to it finishes clean"),
@@ -806,6 +815,15 @@ ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "re
                                # One deploy's lines verify could not read back, the device
                                # printing them in another form (C1542): that deploy only.
                                ("deploys", "read_back"),
+                               # One deploy, restore or command plan that did not finish
+                               # clean, by its receipt (C4308, the operator, 2026-11-27): it
+                               # clears only by a later run, so a person who read the receipt
+                               # and found nothing more to do says so; a later failure is a
+                               # new receipt and raises it again.
+                               ("deploys", "failed"),
+                               # One span self-healing's detection skipped, by its bounds
+                               # (C4309): no action scans it, so only time or a person's word.
+                               ("job_health", "unscanned"),
                                # One console run (O6a): that run only, by its id.
                                ("console_ztp", "not_blank"), ("console_ztp", "failed"),
                                # One interrupted heal (board H, H6), by its decision's id.
@@ -1321,6 +1339,20 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
             ops["list"] = job["list"]
         if job.get("missing"):
             ops["missing"] = list(job["missing"])
+        if state == "unscanned":
+            # C4309: a span detection skipped is about the span, not the job: no later run of
+            # the job scans it, so it is its own kind, cleared by time (its *until*) or by a
+            # person's acknowledgement of this span (its bounds, `event`).
+            rows.append(row(
+                source="job_health", kind="unscanned", key=job.get("unit", "?"),
+                what=job.get("headline") or f"{job.get('unit', '?')} {words}",
+                devices=list(job.get("devices") or []), since=job.get("since"),
+                cause=job.get("detail") or f"state {state}, with no detail recorded",
+                operands=ops, action=_job_action(job), level=level,
+                event=str(job.get("event") or job.get("headline") or job.get("since")),
+                clears_at=job.get("until"),
+                read_at=job.get("_read_at") or value_at or started))
+            continue
         rows.append(row(
             source="job_health", kind="job", key=job.get("unit", "?"),
             # A row may name its own headline, in the reader's words ("edge1 is not
@@ -2093,6 +2125,12 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
                 operands={"list": lst, "action": r.get("action"), "outcome": outcome,
                           "unmet": protos, "by": r.get("actor")}))
             continue
+        # C4308: the reason a run records is often its verify's own words (a command plan's
+        # is the checks it could not read, joined), so a finding the reason already says is
+        # said once, by the reason, never again after it.
+        said = str(r.get("reason") or "")
+        issues = [i for i in issues if i not in said]
+        unread = [i for i in unread if i not in said]
         cause = "; ".join(x for x in (
             r.get("reason"),
             f"stopped at {r['stage']}" if r.get("stage") else "",
@@ -2121,7 +2159,10 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
             # The words follow what failed (C1542): it landed, and its verify did not pass.
             words += ", and its verify did not pass"
         # The receipt is read on the device page's History tab (v2 has no Changes tab).
-        read_it = "Read its receipt on the device's History tab, then plan again"
+        # C4308: it clears only by a later run, so the person who read the receipt and found
+        # nothing more to do acknowledges THIS receipt with what they found (`event`).
+        read_it = ("Read its receipt on the device's History tab, then plan again, or "
+                   "acknowledge it with what you found")
         rows.append(row(
             source="deploys", kind="failed", key=f"{lst}:{host}",
             level="danger" if r.get("sent") else "warning",
@@ -2131,6 +2172,7 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
                                     "saved to startup, and Persist… on its device page saves "
                                     "it meanwhile") if unsaved_words or held_words else
                     {"label": read_it, "href": f"/v2/device/{host}?tab=history"}),
+            event=str(r.get("id") or r.get("at") or f"{host}:{outcome}"),
             devices=[host], since=_ts(r.get("at")),
             operands={"list": lst, "action": r.get("action"), "outcome": outcome,
                       "sent_lines": r.get("program_lines") if r.get("sent") else 0,
@@ -7358,8 +7400,24 @@ def _fold_device_rows_into_incidents(rows: list, lst: str = None, listed=None) -
 #: A row's first action, by what it is (`first_action`): the keys the row's line and its
 #: incident's page draw a control for.
 FIRST_ACTIONS = ("run", "alike", "start", "ai_spend_panel", "heal_proposal", "heal_halt",
-                 "heal_mark", "resubscribe", "heal_batch", "update_page", "likely", "device",
-                 "href", "")
+                 "heal_mark", "resubscribe", "heal_batch", "update_page", "acknowledge",
+                 "likely", "device", "href", "")
+
+
+def acknowledge_is_its_action(r: dict) -> bool:
+    """Whether a row's ONE action is a person's acknowledgement (C4308, the operator,
+    2026-11-27/28: a row a person cannot clear by an action offers Acknowledge…, and a row
+    names one action): a row acknowledged here (`ACKNOWLEDGED_HERE`, the row's
+    ``acknowledge``) whose action has no control of its own (no ``open``, no command, no CI
+    run), which names no likeliest cause, offers no Diagnose… and has no incident page of its
+    own (that page's one action is its row's). Such a row's action is words: what to read
+    before acknowledging (its ``href`` the place to read it), so its line offers
+    Acknowledge…, and What to do draws the words and the form, never Open <device> or Open…
+    beside them."""
+    act = r.get("action") or {}
+    return bool(r.get("acknowledge") and not act.get("open") and not act.get("command")
+                and not act.get("run_url") and not r.get("likely") and not r.get("diagnose")
+                and not r.get("incident_page") and not r.get("held"))
 #: The actions whose control is a card drawn in place when it is pressed. G6's batch card
 #: (``heal_batch``) is drawn open, its preview on it before the press.
 IN_PLACE = ("heal_proposal", "heal_halt", "heal_mark", "resubscribe", "heal_batch")
@@ -7408,6 +7466,8 @@ def first_action(r: dict) -> str:
         # Every row whose one action opens the Update page draws it on its line: the host
         # steps owed (C3136), the running commit's CI verdict and a pushed release (C3139).
         return "update_page"
+    if acknowledge_is_its_action(r):
+        return "acknowledge"
     if r.get("likely"):
         return "likely"
     if r.get("devices"):
@@ -7544,6 +7604,9 @@ def _shared_action(members: list):
     if len(firsts) != 1:
         return None
     first = next(iter(firsts))
+    if first == "acknowledge":
+        # Each member is acknowledged as its own event (C4308): the group offers its list.
+        return None
     if len({json.dumps(m.get("action") or {}, sort_keys=True, default=str)
             for m in members}) != 1:
         return None
@@ -9738,7 +9801,9 @@ _ACK_SOURCES = {"restarts": "restart_source", "authorisations": "authorisation_s
                 "controller_python": "controller_python_source",
                 # A scheduled quality job's failed run, until its next scheduled run
                 # (the operator, 2026-11-11).
-                "scheduled_jobs": "scheduled_jobs_source"}
+                "scheduled_jobs": "scheduled_jobs_source",
+                # A span self-healing's detection skipped (C4309).
+                "job_health": "job_health_source"}
 
 #: The kinds whose acknowledgement records what the person found (C2295): lines withheld as
 #: instructions are a true positive (someone aimed them at the model: investigate), benign or
@@ -10069,9 +10134,12 @@ def assemble(results: list) -> dict:
             # The overnight item 9 (2026-11-12): the reader whose reading the row stands on,
             # for its Run the check again (modules/recheck.py). A job-health row about a
             # reader's own liveness stands on job health's judgement of that reader, which
-            # its source reads again on its own cadence, so it names none (C3241).
+            # its source reads again on its own cadence, so it names none (C3241). Nor does a
+            # row whose condition never resolves by a reading (C4309: it clears by time or by
+            # a person's word, so reading its source again does nothing to it).
             if not r.get("reader") and res.get("reader") and not r["id"].startswith(
-                    "job_health:reader:"):
+                    "job_health:reader:") and "resolves" in (r.get("clears") or {}).get(
+                        "ways", ("resolves",)):
                 r["reader"] = res["reader"]
     rows = _with_networks(_attach(_fold_drift_into_heal(_fold_known_unmonitored(_fold_one_cause(
         [r for res in results for r in res["rows"]]

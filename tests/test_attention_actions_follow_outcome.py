@@ -260,7 +260,10 @@ class TestRolledBackReadsItsReceipt:
         assert r["kind"] == "failed" and "rollback: restored" in r["cause"]
         assert "open" not in r["action"] and "NOT saved" not in r["cause"]
         assert r["action"]["href"] == "/v2/device/s4?tab=history"
-        assert 'href="/v2/device/s4?tab=history">Open…</a>' in _drawn(r)
+        # C4308: its one action is Acknowledge… (it clears only by a later run), and the
+        # receipt is read from the action's own words, a link to the History tab.
+        assert ('<a class="att-label att-read" href="/v2/device/s4?tab=history">Read its '
+                "receipt") in _drawn(r)
 
 
 class TestTheRollbackBlockOffersRevertAndRetry:

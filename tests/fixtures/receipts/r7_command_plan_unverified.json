@@ -1,0 +1,23 @@
+{
+  "_about": "r7's command plan receipt of 2026-11-17T01:31:38Z (telemetry-subscription-recreate, its reads after the plan timed out), as Mercury's receipts store held it, read on the host on 2026-11-18. Minimal edits: the collector's address is 192.0.2.10, the actor is a test address, the receipt's id and its run's id are stand-ins (the capture listed their keys, not their values), and checks keeps the keys the capture printed.",
+  "receipt": {
+    "id": "c4308r7plan0001a",
+    "at": "2026-11-17T01:31:38Z",
+    "device": "r7",
+    "list": "Default",
+    "action": "command_plan",
+    "outcome": "failed",
+    "stage": "",
+    "sent": true,
+    "actor": "alex@example.com",
+    "actor_kind": "person",
+    "reason": "The streams are back: 101: r7's receiver could not be read (`show telemetry ietf subscription 101 receiver` could not be read); subscription 101's series is not in Prometheus (no sample in the last 90 s); no new session from r7 on 192.0.2.10 port 57000 | 102: r7's receiver could not be read (`show telemetry ietf subscription 102 receiver` could not be read); subscription 102's series is not in Prometheus (no sample in the last 90 s); no new session from r7 on 192.0.2.10 port 57000 after 402.4 s; the running configuration after the plan could not be read (NetmikoTimeoutException): whether it is net zero cannot be told",
+    "program_lines": 14,
+    "program": ["no telemetry ietf subscription 101", "no telemetry ietf subscription 102", "telemetry ietf subscription 101", " encoding encode-kvgpb", " filter xpath /process-cpu-ios-xe-oper:cpu-usage/cpu-utilization/one-minute", " stream yang-push", " update-policy periodic 1000", " receiver ip address 192.0.2.10 57000 protocol grpc-tcp", "telemetry ietf subscription 102", " encoding encode-kvgpb", " filter xpath /interfaces-ios-xe-oper:interfaces/interface/statistics", " stream yang-push", " update-policy periodic 1000", " receiver ip address 192.0.2.10 57000 protocol grpc-tcp"],
+    "checks": {"bgp_watch": null, "checked_protocols": ["rip", "ripng"], "declared_moves": [], "expected_effects": {"down": [], "up": []}, "failed_at_once": false, "from_intent": [], "intent_note": "no target intent is known, so the protocols checked are only those the device ran before the change", "intent_unmet": [], "interfaces": {"came_up": [], "compared_by": "name", "lost_expected": [], "lost_unexpected": [], "not_down": [], "not_up": []}, "interfaces_up": [4, 4], "ip_sla_against_intent": null, "issues": [], "neighbours": {"rip": [1, 1], "ripng": [1, 1]}, "notes": [], "ok": false, "pending_convergence": [], "ran": true, "read_back": null, "removals_checked": 0, "routes": [10, 10], "routes_compared": true, "unexpected_settle": null, "unreadable": ["The streams are back: 101: r7's receiver could not be read (`show telemetry ietf subscription 101 receiver` could not be read); subscription 101's series is not in Prometheus (no sample in the last 90 s); no new session from r7 on 192.0.2.10 port 57000 | 102: r7's receiver could not be read (`show telemetry ietf subscription 102 receiver` could not be read); subscription 102's series is not in Prometheus (no sample in the last 90 s); no new session from r7 on 192.0.2.10 port 57000 after 402.4 s", "the running configuration after the plan could not be read (NetmikoTimeoutException): whether it is net zero cannot be told"]},
+    "rollback": {"commands": [], "detail": "", "not_undone": [], "performed": false, "remaining": [], "state": ""},
+    "matches_confirmed": true,
+    "command_plan": {"plan": "telemetry-subscription-recreate", "run": "c4308r7run00001", "outcome": "failed"},
+    "saved_startup": {"state": "not_run", "detail": "the deploy stopped at an unnamed stage, before it"}
+  }
+}

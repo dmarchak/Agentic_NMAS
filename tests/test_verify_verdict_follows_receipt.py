@@ -252,14 +252,19 @@ class TestAcknowledgingIt:
         again = _attention()["rows"]
         assert [x["event"] for x in again] == ["2026-10-22T09:00:00Z"]
 
-    def test_a_failed_deploy_is_not_acknowledged(self, store, monkeypatch):  # noqa: F811
+    def test_a_failed_deploy_is_acknowledged_by_its_receipt_only(self, store, monkeypatch):  # noqa: F811
+        """C4308 (the operator, 2026-11-27/28): a failed deploy clears only by a later run, so
+        a person acknowledges THAT receipt (its id); an acknowledgement naming another event
+        (its time) is refused and the row stays. Before C4308 a failed deploy was refused
+        outright ("clears when its condition resolves")."""
         _only(monkeypatch, "deploy_source")
         self._receipts(monkeypatch, r7_receipt(intent_unmet=["rip is not up"]))
         (r,) = _attention()["rows"]
-        assert r["kind"] == "failed" and not r["acknowledge"]
+        assert r["kind"] == "failed" and r["acknowledge"] and r["event"] != AT
         got = _ack(r["id"], AT, "looked at it and it was expected")
-        assert got.status_code == 409 and "clears when its condition resolves" in \
+        assert got.status_code == 409 and "a later event is acknowledged on its own" in \
             got.get_json()["error"]
+        assert [x["id"] for x in _attention()["rows"]] == [r["id"]], "the row stays"
 
 
 def test_the_result_level_is_the_same_decision():

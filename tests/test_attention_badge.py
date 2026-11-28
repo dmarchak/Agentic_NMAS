@@ -172,7 +172,9 @@ class TestARowThatClearsByTime:
                          ("heal", "dampening"),
                          # The recurrence and fight findings (106c117d, e9902af0): once the
                          # oldest of the occurrences they count leaves the window.
-                         ("heal", "recurrence"), ("heal", "fight")}
+                         ("heal", "recurrence"), ("heal", "fight"),
+                         # A span detection skipped, a day after it read again (C4309).
+                         ("job_health", "unscanned")}
         tree = ast.parse(open(attention.__file__, encoding="utf-8").read())
         found = set()
         for node in ast.walk(tree):

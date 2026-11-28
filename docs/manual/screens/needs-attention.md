@@ -76,7 +76,12 @@ failed on the incident is not offered again: the row names the incident's next a
   (**Open <device>**, or its own page), which works without opening the item. An action with
   no button of its own is its words on the line, cut to one line with the whole on hover
   ("Read the job's own output on the host"); an item whose action is not known says how it
-  clears there instead ("Clears when …"). Those words step aside while the item is open, whose
+  clears there instead ("Clears when …"). An item no action of yours clears (one that leaves
+  only by a later run, by time, or by your word: a failed deploy, restore or command plan, an
+  unplanned restart, a span self-healing could not scan) offers **Acknowledge…** as its one
+  action: pressing it opens the item at its form, and What to do says what to read first,
+  its words a link to where it is read, with no **Open <device>** or **Open…** beside them
+  ([Acknowledging an event](#acknowledging)). Those words step aside while the item is open, whose
   What to do says them, and nothing on the line moves. While a run holds
   the device an item's action would change, the action is not offered: a second line under
   the item's title reads "<run> running since <time>, by <who>", and the right side of the
@@ -223,7 +228,9 @@ credential health). When the cause was fixed outside {{product}} (a workflow re-
 NetBox back up), the row would stand until the check's next run. Open the item: the
 last line of its summary says when its reading was taken ("read 40 min ago"), and **Run the
 check again** sits at that line's right. The button never moves: whatever a press says is drawn
-below it, and it is as wide while **Checking…** as before.
+below it, and it is as wide while **Checking…** as before. An item that a fresh reading cannot
+clear (it leaves only by time or by your acknowledgement, such as a span self-healing could not
+scan) has no **Run the check again**: it would do nothing to the item.
 
 - **What it runs:** that check once, now, exactly as its schedule runs it: the same reads, the
   same time limits, recorded as your request ("checked on your request" on its hover). It
@@ -597,7 +604,10 @@ Every row says, under its cause, how it leaves the page: "Clears when …". Ther
 - **A person acknowledges it.** For an event that cannot un-happen: an unplanned restart, the
   same line authorised again and again, an operation interrupted while it held a device, the
   new host keys a planned window kept, a deploy whose verify could not read back lines the
-  device prints in another form; within a measured band, a chronic alert and an adjacency a
+  device prints in another form, a deploy, restore or command plan that did not finish clean
+  (that receipt only: read it on the device's History tab, then plan again, or acknowledge it
+  with what you found; a later one that fails is a new row), a span of configuration changes
+  self-healing could not scan (that span only); within a measured band, a chronic alert and an adjacency a
   device keeps logging down; and, until the workflow's next scheduled run, a scheduled
   quality job's failed run; and a self-healing recurrence or fight, until its count since
   reaches the setting again. See below. A host step a release owes is closed on the Update
@@ -607,7 +617,12 @@ Every row says, under its cause, how it leaves the page: "Clears when …". Ther
   approval expires after 48 hours (expiring executes nothing); an adjacency logged down
   clears a day after its last unexplained drop; an AI spend row about a day's or a month's
   spend clears when that day or month ends; a recurrence or a fight clears once the oldest
-  incident it counts leaves its window, unless another comes first.
+  incident it counts leaves its window, unless another comes first; a span of configuration
+  changes self-healing could not scan (when detection read again, the changes were older than
+  its 24 h horizon, so it skipped them) clears a day after detection read again, the moment
+  drawn on the item. Nothing you press scans that span now, so the item offers only
+  **Acknowledge…**; the drift check still compares each device with its golden on its own
+  schedule.
 
 The acknowledgements in force are listed beside the table ("Acknowledged, so not listed"),
 each with who, when and why, and those hiding no row now apart ("Acknowledgements in force,

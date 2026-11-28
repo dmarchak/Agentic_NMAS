@@ -224,7 +224,11 @@ def test_the_landing_world_drawn_and_after_an_acknowledgement(tmp_path, monkeypa
     for check in (rows_of_one_shape_are_one_row, every_line_names_its_action):
         check(findings, page)
     counts_are_the_findings(findings, page, html)
-    gone = next(r for r in findings if r.get("acknowledge") and r.get("event"))
+    # The repeated authorisation: the one acknowledgeable item whose source the handler is
+    # handed as the page was (above). The world's failed deploy (acknowledgeable since C4308)
+    # is planted only into the page's source, so the handler's own read never finds it.
+    gone = next(r for r in findings if r.get("acknowledge") and r.get("event")
+                and r["source"] == "authorisations")
     assert _ack(gone).status_code == 200
     after, html, page = _drawn_now()
     assert len(after) == len(findings) - 1 and gone["id"] not in {r["id"] for r in after}

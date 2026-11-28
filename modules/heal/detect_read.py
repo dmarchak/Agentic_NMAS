@@ -358,17 +358,22 @@ def liveness(reader, got: dict, now: float) -> list:
                      action=action(networks[0]))]
     gap = value.get("unscanned")
     if gap and (gap.get("until") or 0) > now:
+        # C4309: a whole sentence of its own (the stored *why* is a clause, "older than …"),
+        # and no action that does nothing to it: nothing a person presses scans the span now,
+        # so it clears by time (*until*) or by a person's acknowledgement of THIS span
+        # (*event*, its bounds), Needs attention's own `job_health/unscanned` kind.
         return [dict(base, state="unscanned", since=gap["to"] / 1e9,
+                     event=f"{gap.get('from', gap.get('from_at'))}-{gap['to']}",
+                     until=gap.get("until"),
                      headline=(f"Self-healing did not scan configuration changes on "
                                f"{', '.join(networks)} from {gap['from_at']} to "
                                f"{gap['to_at']}"),
-                     detail=(f"{gap['why']}. A change made then was not decided by "
-                             "self-healing; the drift check compares each device with its "
-                             "golden. Clears a day after detection read again."),
-                     action={"label": ("Run a drift check with Check now in Settings › "
-                                       "Installation › Diagnostics, and read each differing "
-                                       "device"),
-                             "href": "/v2/settings/installation?tab=diagnostics"})]
+                     detail=(f"When detection read again, these changes were older than its "
+                             f"{HORIZON_SECONDS // 3600} h horizon, so it skipped them. A "
+                             "change made then was not decided by self-healing; the drift "
+                             "check still compares each device with its golden."),
+                     action={"label": ("Acknowledge it with a reason once you know nothing "
+                                       "changed then needs a fix, or let it clear by time")})]
     lag = value.get("behind_seconds") or 0
     return [dict(base, detail=(f"read at {good.get('value_at')}, through "
                                f"{value.get('through_at')}"

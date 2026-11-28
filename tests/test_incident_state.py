@@ -413,6 +413,10 @@ class TestTheOneResolver:
         ({"action": {"open": "ai_spend_panel"}}, "ai_spend_panel", "Open the spend panel"),
         ({"action": {"open": "app_update"}, "source": "host_steps"}, "update_page",
          "Open the Update page"),
+        # C4308: a row a person cannot clear by an action, acknowledged here: Acknowledge… is
+        # its one action, never Open r1 or Open….
+        ({"action": {"href": "/v2/device/r1?tab=history"}, "acknowledge": True,
+          "event": "e-1", "devices": ["r1"]}, "acknowledge", "Acknowledge…"),
         ({"action": {}, "likely": {"device": "r9"}, "devices": ["r1"]}, "likely",
          "Open r9 (likely cause)"),
         ({"action": {"open": "persist", "device": "r1"}, "devices": ["r1"]}, "device",
