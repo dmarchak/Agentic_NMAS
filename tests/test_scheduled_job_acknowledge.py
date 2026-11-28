@@ -150,7 +150,8 @@ class TestAcknowledgingAFailedRun:
         assert k["said"] == said
         # The count re-reads at that moment, when the row comes back by itself.
         assert a["badge"]["next_change_at"] == rec["until"]
-        html = _client().get("/v2/attention").get_data(as_text=True)
+        # Under the Acknowledged filter, where the list is drawn (the operator, 2026-11-28).
+        html = _client().get("/v2/attention?show=ack").get_data(as_text=True)
         # The page draws the moment through the clock, in the viewer's zone (C3290).
         before, after = said.split(when)
         assert "Acknowledged, so not listed" in html and before in html and after in html

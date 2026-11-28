@@ -226,8 +226,12 @@ class TestAcknowledgingARestart:
         # Board E2a: the page's model names the person by display name (the part before the
         # "@"); the acknowledgement's record, read above, keeps the identity.
         assert after["acknowledged"][0]["by"] == "test-person"
-        page = _client().get("/v2/attention").get_data(as_text=True)
+        # The list is drawn under its own filter only (the operator, 2026-11-28).
+        page = _client().get("/v2/attention?show=ack").get_data(as_text=True)
         assert "Acknowledged, so not listed" in page and "see C289" in page
+        everything = _client().get("/v2/attention").get_data(as_text=True)
+        assert "Acknowledged, so not listed" not in everything and "see C289" not in everything
+        assert 'data-show="ack"' in everything, "the chip, its one way in"
 
     @pytest.mark.parametrize("why", ["", "ok", "fine ok"])
     def test_a_reason_without_the_shape_of_one_is_refused(self, store, monkeypatch, why):

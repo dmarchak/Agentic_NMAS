@@ -308,7 +308,8 @@ Compared again 2026-11-28 (C4308, C4309; the operator, 2026-11-27/28: a row a pe
 | Opened: What to do of such an item (C4308) | the action, its button, Acknowledge…, How does this work?, "Clears when …" | the action's words (a link to where they are read), "Clears when …", Acknowledge…; no Open <device> or Open… | **deviation** (log: Needs attention: Acknowledge… is the one action of a row no action clears, C4308 and C4309) |
 
 Templates sha256 before: `02e876bf737b5f252b87b654fc91f59257435c1837301c06e6cf4687c022aed8`.
-Templates sha256: `4773399d92f22770f36d670df936377a160421d27dcb88f2b5588925f57ab62f`
+Compared again 2026-11-28 (the operator's two of that day): (1) "Hide the acknowledged list and only display it when the acknowledged filter button is selected": the Acknowledged group is drawn only under its chip (`?show=ack`), open and with no collapse there; All no longer draws it (a deviation, logged: "Needs attention: Acknowledged only under its chip"). (2) "Large amounts of whitespace when 'Mercury itself' is expanded": its list was the `tl-record` grid of a record's labels and values, each row a cell (the first as wide as its unwrapped line, past the page, the second squeezed beside it); it is a plain list now, each row wrapping (tests/test_attention_mercury_itself_browser.py). Every other region and verdict stands. Templates sha256 before: `4773399d92f22770f36d670df936377a160421d27dcb88f2b5588925f57ab62f`.
+Templates sha256: `5b44046d5538552e3d4b24fa00ad157e2ab99cd234b9c1713d135a9a7245f872`
 (before the combined gate's reviews, 2026-11-15, above: `95963b5612ee0d494c7192eb31a8ade9c34068395adb2cb9bdede8db69638a35`)
 (before the port problem's fold, 2026-11-15, above: `a894c8009f442e454c18b53caaaa6a23a7ad9a59f9a045a201afd44e2459c8c6`)
 (before the lost stream's Start, 2026-11-14, below: `df04b28a2f32a3505d0451f14d5f4dbad62cc0643c8e194e95a2522806aba5bd`)

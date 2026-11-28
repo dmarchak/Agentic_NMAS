@@ -1525,7 +1525,8 @@ def _attention_scheduled_ack(client, _lab, _mp):
                           json={"row": "scheduled_jobs:mutation-nightly.yml",
                                 "event": "41337732668", "why": "the canary is being reworked"})
         assert got.status_code == 200, got.get_json()
-        r = client.get("/v2/attention")
+        # The acknowledged list is drawn under its own chip only (the operator, 2026-11-28).
+        r = client.get("/v2/attention?show=ack")
         assert r.status_code == 200 and "until the next scheduled run" in r.get_data(
             as_text=True), r.status_code
     finally:

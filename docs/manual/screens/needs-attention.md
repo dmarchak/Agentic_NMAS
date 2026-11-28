@@ -17,6 +17,8 @@ list: **All**, each severity with items (**Critical**,
 **Warnings**, **Unknown**) and **Acknowledged**, each with its count. A chip shows only its
 group, and the page's address carries it, so a filtered view can be copied, survives a refresh
 and stays as the list updates itself; a chip with nothing in it says so, with **Show all**.
+The acknowledged items are listed only under **Acknowledged**: All shows that chip and its
+count, never the list itself.
 
 Each severity's rows are one list, the severity's colour as a bar at each row's start. From
 the keyboard, while not typing in a field: **j** moves to the next row and **k** to the one

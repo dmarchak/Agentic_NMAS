@@ -572,9 +572,12 @@
   {%- if show == 'ack' and not a.acknowledged %}
   <p class="muted att-filt-none" data-show-none>Nothing is acknowledged now. <a href="{{ url_for('v2.landing') }}">Show all</a></p>
   {%- endif %}
-  {%- if a.acknowledged and (not show or show == 'ack') %}
-  <details class="att-grp att-grp-ack" data-keep="att-grp-ack" data-remember="att-grp-ack"{% if show == 'ack' %} open{% endif %}>
-    <summary class="att-grp-sum">Acknowledged · {{ a.acknowledged|length }}</summary>
+  {%- if a.acknowledged and show == 'ack' %}
+  {#- Only under its own filter (the operator, 2026-11-28: "Hide the acknowledged list and only
+      display it when the acknowledged filter button is selected to make the page less
+      cluttered"): the chip is its one way in, and the list is drawn open there. -#}
+  <section class="att-grp att-grp-ack" aria-label="Acknowledged">
+    <h3 class="att-grp-sum att-grp-head">Acknowledged · {{ a.acknowledged|length }}</h3>
     <p class="att-acked">Acknowledged, so not listed:</p>
     <ul class="att-members">
       {#- An acknowledgement that expires at a moment its row's source names (the operator,
@@ -582,14 +585,18 @@
           said in those words, from `acknowledgements.in_force_words`. -#}
       {%- for k in a.acknowledged %}<li>{% if k.expires and k.said %}{{ k.what }} — {{ k.said }}{% else %}{{ k.what }} — by {{ k.by | people }}, {{ stamp(k.at) }}{% if k.why %}: {{ k.why }}{% endif %}{% if k.band %} ({{ k.band }}){% endif %}{% if k.until %} (a quiet period until {{ stamp(k.until) }}){% endif %}{% endif %}</li>{% endfor %}
     </ul>
-  </details>
+  </section>
   {%- endif %}
   {%- if a.mercury %}
   {#- About Mercury itself (its CI, its scheduled developer jobs), not the network: apart and
       collapsed, never in the operator's count (the operator, 2026-11-16). -#}
   <details class="evidence" data-keep="mercury-itself">
     <summary>Mercury itself · {{ a.mercury|length }}</summary>
-    <ul class="tl-record">
+    {#- A plain list, each row wrapping in the page's width (the operator, 2026-11-28: "Large
+        amounts of whitespace when 'Mercury itself' is expanded": `tl-record` is the two-column
+        grid of a record's labels and values, so each row became a cell, the first as wide as
+        its whole line and the second squeezed beside it). -#}
+    <ul class="att-members att-mercury">
       {%- for r in a.mercury %}<li data-mercury="{{ r.id }}">{{ r.what }}{% if (r.action or {}).label %}: {{ r.action.label }}{% endif %}{% if r.acknowledge %}
 {{ ack_form(r) }}{% endif %}</li>{% endfor %}
     </ul>

@@ -986,6 +986,9 @@ a.att-filt.on b { color: var(--accent-ink); }
 .att-ops dt::after { content: ":"; }
 .att-ops dd { margin: 0; overflow-wrap: anywhere; }
 .att-members { margin: 2px 0 0; padding-left: 18px; font-size: 12px; }
+.att-grp-head { margin: 0; cursor: default; }
+.att-mercury { font-size: 12.5px; overflow-wrap: anywhere; }
+.att-mercury > li { margin: 4px 0; }
 .att-also { margin: 0; font-size: 12px; color: var(--ink-2); }
 .att-meta { margin: 0; font-size: 12px; color: var(--ink-2); display: flow-root; }
 /* Run the check again never moves when its own answer appears (C3401; docs/UI_RULES.md, "No
