@@ -121,7 +121,8 @@ Compared again 2026-11-26 (Stage 5 step 6): the summary ("No incident is open on
 `8584cffdb86747fdfbf8021826193d8556d95beb012d2f47a29d344db23e04e6`.
 Compared again 2026-11-28 (the assistant as a continuous chat, board assistant-chat): `base.html`'s assistant panel shell gains its left edge's resize handle (drawn only while the panel is open) and the page loads `nmas_assistant.js`; with the panel open the frame gives up the width the person dragged it to (`asst-open`). No region of this screen moves and none is drawn under the open panel; every verdict stands, no deviation. Compared by the template's diff, not by new shots; the panel itself is docs/fidelity/assistant-chat.md's. Templates sha256 before: `7266623edd1bc83440d6097baa4ff8053ce60b68f6571284c9a3de714d3b7101`.
 Compared again 2026-11-28 (the same change's follow-up): `base.html` loads `nmas_assistant.js` only where the Assistant's panel is drawn (the Assistant on). Nothing drawn changes; every verdict stands. Templates sha256 before: `6a3e80ad719703e22689f47251de4cb3c5d853742045c8cf2f5823192dbe7bd3`.
-Templates sha256: `2c6f3339b6faa467f5d86236fb2cc15bed6b48b4ce283e1f8d2a17532370bd6d`
+Compared again 2026-11-28 (the operator: "Remove it from the sidebar"): the sidebar's Troubleshooting section draws Incidents and Fixes; Self-healing left it, as it only opened Settings' Self-healing tab. The page's own regions are unchanged and every verdict stands; board T's Self-healing item is a deviation logged (docs/STANDING_APPROVAL_LOG.md, "Sidebar: Self-healing removed"). Templates sha256 before: `2c6f3339b6faa467f5d86236fb2cc15bed6b48b4ce283e1f8d2a17532370bd6d`.
+Templates sha256: `a7400c13014a38b66e9a8ceb27d621cdee74fd33c52d6229294da23e79a5d7a7`
 
 Compared again 2026-11-14 04:2x UTC (the operator's notes on board T, 2026-11-14; provisional,
 operator review pending): "1. Remove the "N open" chip from Incidents in the sidebar. Needs

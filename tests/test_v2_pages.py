@@ -301,9 +301,11 @@ class TestTheLanding:
 #: its suggested Problems, Drills and Reports have no page and are not drawn). "—" is the rule
 #: above Help and Settings at the bottom.
 # Troubleshooting › Fixes beside Incidents (a61bb071, C3849; board fixes-list, approved by the
-# operator 2026-11-16).
+# operator 2026-11-16). Self-healing left it (the operator, 2026-11-28: "the 'Self-healing'
+# page on the sidebar just opens a page in settings, making it redundant. Remove it from the
+# sidebar"): its policy is the network's tab in Settings.
 SIDEBAR = ("Needs attention", "Devices", "History",
-           "TROUBLESHOOTING", "Incidents", "Fixes", "Self-healing",
+           "TROUBLESHOOTING", "Incidents", "Fixes",
            "OBSERVE", "Monitoring", "Topology", "SDN", "Show commands", "Logs",
            "SOURCE OF TRUTH", "Intent", "Templates", "NetBox", "DHCP", "Credentials",
            "—", "Help", "Settings")

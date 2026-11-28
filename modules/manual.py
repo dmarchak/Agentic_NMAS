@@ -200,9 +200,10 @@ ON_TODAYS_APP = frozenset()
 #: Screens page it opens.
 SCREENS = {
     "Needs attention": "needs-attention", "Devices": "devices", "History": "history",
-    # Board T's Troubleshooting section (provisional, operator review pending): Self-healing
-    # opens Settings' Self-healing tab, whose section is on the Settings page.
-    "Incidents": "incidents", "Fixes": "fixes", "Self-healing": "settings",
+    # Board T's Troubleshooting section (provisional, operator review pending). Self-healing
+    # left the sidebar (the operator, 2026-11-28: it only opened Settings' Self-healing tab,
+    # whose section is on the Settings page).
+    "Incidents": "incidents", "Fixes": "fixes",
     "Monitoring": "monitoring", "Topology": "topology", "SDN": "sdn", "Show commands": "show-commands-screen", "Logs": "logs", "DHCP": "dhcp", "Intent": "intent-layers", "Templates": "templates",
     "NetBox": "netbox", "Credentials": "credentials", "Help": "help", "Settings": "settings",
 }

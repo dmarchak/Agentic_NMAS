@@ -132,8 +132,8 @@ Searching reads the list again and changes nothing.
 
 ## Self-healing {#self-healing}
 
-The sidebar's **Self-healing** item, under Incidents, opens the network's
-[Self-healing tab in Settings](settings#self-healing), where its policy and who is told are
-set. The item carries no chip. While a network's self-healing runs in **Auto**, the top bar
+Self-healing's policy and who is told are set on the network's
+[Self-healing tab in Settings](settings#self-healing) (Settings › the network › Self-healing);
+the sidebar has no item of its own for it. While a network's self-healing runs in **Auto**, the top bar
 says so instead ([the Self-healing chip](getting-started#self-healing-auto)); in dry run or
 off nothing is drawn.
