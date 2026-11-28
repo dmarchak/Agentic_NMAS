@@ -187,28 +187,50 @@ class TestTheCard:
         assert html.count('class="ie-diff') == 1 and "From this edit" not in html
 
 
-    def test_a_section_after_another_sections_lines_is_set_apart(self, ed, monkeypatch):  # noqa: F811
-        """C4305 (3): on r8's commit the `line vty` entries sat directly under `interface
-        GigabitEthernet3` with no break, so they read as part of it. A row that begins a
-        top-level section (its line, or a section added whole) is set apart; a line inside a
-        section is not."""
-        from modules.nsot.roundtrip import change_rows
-        left = "interface GigabitEthernet3\n description a\nline vty 0 4\n transport input ssh\n"
-        right = ("interface GigabitEthernet3\n description b\nline vty 0\n transport input ssh\n"
-                 "line vty 1\n transport input ssh\n")
-        rows = change_rows(left, right)["rows"]
-        assert any(r["text"] == "line vty 1" for r in rows), rows
-        monkeypatch.setattr(intent_edit, "diffs", lambda *a: {
-            "same": True, "replaces": False, "sent": 1, "golden": None, "edit_rows": rows,
-            "edit_changes": True, "not_removed": [], "from_edit_rows": [], "from_edit": 1,
-            "not_from": [], "masked": 0})
-        _r, html = _post(ed, "/v2/device/s4/intent/check", yaml=self._desc_edit(ed))
-        drawn = re.findall(r'<div class="dr dr-(\w+)( dr-top)?">(?:<span[^>]*>[^<]*</span>)?'
-                           r'([^<]*)</div>', html)
-        top = {text: bool(t) for _k, t, text in drawn}
-        assert top["interface GigabitEthernet3"] is False, "the first row needs no gap"
-        assert top["description b"] is False, "a line inside its section"
-        assert top["line vty 1"] is True and top["line vty 0 4"] is True, drawn
+def test_a_section_after_another_sections_lines_is_set_apart_in_a_browser(ed, monkeypatch):  # noqa: F811
+    """C4305 (3): on r8's commit the `line vty` entries sat directly under `interface
+    GigabitEthernet3` with no break, so they read as part of it. Drawn in a real browser, a row
+    that begins a top-level section (its line, or a section added or removed whole) stands
+    apart from the row above it by more than the space between a section's own lines."""
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why})")
+    import app as A
+    from modules.nsot.roundtrip import change_rows
+    left = "interface GigabitEthernet3\n description a\nline vty 0 4\n transport input ssh\n"
+    right = ("interface GigabitEthernet3\n description b\nline vty 0\n transport input ssh\n"
+             "line vty 1\n transport input ssh\n")
+    rows = change_rows(left, right)["rows"]
+    assert any(r["text"] == "line vty 1" for r in rows), rows
+    monkeypatch.setattr(intent_edit, "diffs", lambda *a: {
+        "same": True, "replaces": False, "sent": 1, "golden": None, "edit_rows": rows,
+        "edit_changes": True, "not_removed": [], "from_edit_rows": [], "from_edit": 1,
+        "not_from": [], "masked": 0})
+    text = intent_edit.open_doc("lab", "s4")["yaml"]
+    _r, card = _post(ed, "/v2/device/s4/intent/check",
+                     yaml=_edit(text, "description: uplink", "description: core uplink to r1"))
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1280, "height": 1000})
+            b.go(srv.url("/v2/help/about"))
+            b.wait_for("return !!document.querySelector('main')", 10)
+            got = b.js(
+                "var m=document.createElement('div'); m.className='ie-split';"
+                "m.innerHTML='<div></div><div>'+arguments[0]+'</div>';"
+                "document.querySelector('main').appendChild(m);"
+                "var rows=m.querySelector('.ie-diff').querySelectorAll('.dr'), out=[], prev=null;"
+                "rows.forEach(function(r){ var b=r.getBoundingClientRect();"
+                " out.push([r.textContent.replace(/^[-+]/, ''),"
+                " prev ? Math.round(b.top - prev.bottom) : null]); prev=b; });"
+                "return out;", card)
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+    gap = dict(got)
+    inside = gap["description b"]
+    assert gap["interface GigabitEthernet3"] is None, got
+    assert gap["line vty 1"] >= inside + 6 and gap["line vty 0 4"] >= inside + 6, got
 
 
 def test_a_real_browser_draws_a_three_line_diff_as_three_lines(ed):  # noqa: F811
