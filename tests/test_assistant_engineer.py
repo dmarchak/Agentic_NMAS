@@ -404,7 +404,8 @@ def test_no_tool_is_said_and_recorded_once_for_review_masked(lab):
                      r"<strong>(.*?)</strong>(.*?)</p>", html, re.S)
     assert said and said.group(1) == "Mercury has no tool for this: Upgrade r2's IOS XE image.", \
         html[-1500:]
-    assert "no operation of Mercury's installs software" in said.group(2)
+    # Drawn as its own sentence (the shot of artboard G, 2026-11-28): capitalised.
+    assert "No operation of Mercury's installs software" in said.group(2)
     assert "Pl4nted-Value-7" not in html
     rows = missing.rows()["rows"]
     assert len(rows) == 1, rows
@@ -482,6 +483,20 @@ def test_the_assistant_reaches_no_run_start_or_approve():
                   "modules.ai.missing.record"):
         assert floor in seen, floor
     assert N.findings(seen, never) == []
+
+
+def test_a_no_tool_reason_is_drawn_as_its_own_sentence():
+    """Shot of artboard G, 2026-11-28: the reason after "Mercury has no tool for this: …." was
+    drawn as the model wrote it, lower case after a full stop; it is its own sentence."""
+    import app as APP
+    from flask import render_template
+    got = {"state": "answered", "answer": "Mercury cannot do that yet.",
+           "no_tool": {"wanted": "a firmware upgrade of edge1",
+                       "why": "no operation of Mercury's installs software on a device"}}
+    with APP.app.test_request_context("/v2/"):
+        html = unescape(render_template("v2/_assistant_answer.html", got=got))
+    assert ("Mercury has no tool for this: a firmware upgrade of edge1.</strong> No operation "
+            "of Mercury's installs software on a device.</p>") in html, html[-500:]
 
 
 class TestADroppedPlanSaysWhichStep:

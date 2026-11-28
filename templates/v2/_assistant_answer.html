@@ -36,7 +36,7 @@
   {%- if got.no_tool %}
   {#- What no operation or read of Mercury's does (v4, the operator 2026-11-28: "If Mercury
       doesn't have a tool for it, it should say so"): said, and recorded for review. -#}
-  <div class="asst-handoff" data-no-tool title="Recorded for review on History, as a capability Mercury lacks"><p class="small"><strong>Mercury has no tool for this: {{ got.no_tool.wanted }}.</strong>{% if got.no_tool.why %} {{ got.no_tool.why }}{% endif %}</p></div>
+  <div class="asst-handoff" data-no-tool title="Recorded for review on History, as a capability Mercury lacks"><p class="small"><strong>Mercury has no tool for this: {{ got.no_tool.wanted }}.</strong>{% if got.no_tool.why %} {{ got.no_tool.why[:1] | upper }}{{ got.no_tool.why[1:] }}{{ '' if got.no_tool.why[-1:] in '.!?' else '.' }}{% endif %}</p></div>
   {%- endif %}
   {%- if got.plan %}
   {#- A plan the answer named, held to the plan engine's schema: proposed only. Its preview is
