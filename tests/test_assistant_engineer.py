@@ -206,11 +206,13 @@ class TestTheNevers:
 
 
     @pytest.mark.parametrize("said", [
-        "Run `show ip ospf neighbor` on r2.",
+        "Enter `configure terminal` on r2.",
         "On the device:\n```\nconfigure terminal\ninterface Gi2\n shutdown\n```",
         "Type `reload` at the console.",
         "r2# show running-config | section line vty",
-        "Router(config)# no ip route 0.0.0.0 0.0.0.0"])
+        "Router(config)# no ip route 0.0.0.0 0.0.0.0",
+        "Then `r2# reload` and wait.",
+        "Router>enable"])
     def test_an_answer_naming_a_device_command_is_refused(self, said):
         """NEVER (C4334; CLAUDE.md, No terminal steps): an answer, or what it says Mercury has
         no tool for, never names a device command: held by Mercury's check, not the prompt
@@ -222,10 +224,22 @@ class TestTheNevers:
         why = assistant.check(_v4(answer="Mercury has no tool for this.", cites=["x"],
                                   no_tool=lacking), [{"link": "x"}])
         assert why.startswith("its words name a device command"), why
+        # A hand-off's words are held too.
+        ho = assistant.Handoff(flow=assistant.HandoffFlow.intent_words,
+                               words="Router(config)# shutdown")
+        why = assistant.check(_v4(answer="Change it in words.", cites=["x"], handoff=ho),
+                              [{"link": "x"}])
+        assert why.startswith("its words name a device command"), why
+        # The review of 2026-11-28: Mercury's own words, a read Mercury ran cited in code, a
+        # field's name alone, a control's name and a glued '#' or '>' that is no prompt pass.
         for fine in ("Open **Show commands**, choose r2 and the OSPF neighbours read.",
                      "Use **Change it in words…** on r2's Intent tab, then preview it.",
                      "Mercury has no operation that reloads a whole site at once.",
-                     "The `description` field of GigabitEthernet2 holds the old text."):
+                     "The `description` field of GigabitEthernet2 holds the old text.",
+                     "Mercury's read of `show ip ospf neighbor` (read:1) shows r3 in INIT.",
+                     "Its intent sets `shutdown` on GigabitEthernet3, and `hostname` is r2.",
+                     "Press `Show commands`, then `Delete` beside the saved read.",
+                     "C# is not a device's language.\nSettings>AI holds the key."):
             assert assistant.check(_v4(answer=fine, cites=["x"]), [{"link": "x"}]) == "", fine
 
 
@@ -502,6 +516,41 @@ class TestALongChange:
         assert other is None and why == "that answer's plan is for Lab, not Branch"
         c = plans_v2.card("Lab", {"answer": "ai-ffffffffffffffff", "card": "plan-card-x"})
         assert c["preview"]["ok"] is False and "no answer of yours" in c["preview"]["refused"]
+
+    def test_a_running_cards_redraw_names_its_run_never_the_parameters(self, monkeypatch):
+        """The review of 2026-11-28: after Approve the running card redrew itself with the
+        plan's parameters in its address, which a long change would take past the access
+        proxy's limit; it names its run and job, all the running card reads."""
+        import app as APP
+        from routes import plans_v2
+        monkeypatch.setattr(E, "record_of", lambda network, run: None)
+        big = json.dumps({"steps": STEPS * 5})
+        with APP.app.test_request_context("/v2/plans/preview?list=Lab"):
+            html = unescape(plans_v2._draw("Lab", {
+                "run": "plan-20261128-0001", "plan": "change", "params": big,
+                "card": "plan-card-ai-0123456789abcdef"}).get_data(as_text=True))
+        redraw = re.search(r'hx-get="([^"]+)"', html)
+        assert redraw and "run=plan-20261128-0001" in redraw.group(1), html[:400]
+        assert "params=" not in redraw.group(1), redraw.group(1)
+
+    def test_only_the_asking_persons_own_conversation_is_read(self, monkeypatch):
+        """The review of 2026-11-28: a second verified person asking the first person's answer
+        id reads their own conversation, never the first's, and is refused."""
+        from modules.ai import assistant_threads
+        from routes import plans_v2
+        rows = [{"got": {"call_id": "ai-0123456789abcdef", "plan": {
+            "plan": "change", "list": "Lab", "params": {"steps": STEPS}}}}]
+        asked = []
+
+        def read(actor):
+            asked.append(actor)
+            return {"rows": rows if actor == PERSON else []}
+        monkeypatch.setattr(assistant_threads, "read", read)
+        other = "someone.else@example.com"
+        with pressed_by(other):
+            found, why = plans_v2._answered_plan("ai-0123456789abcdef", "Lab")
+        assert found is None and "no answer of yours" in why
+        assert asked == [other], "the asking person's thread, and theirs only"
 
 
 @pytest.fixture(autouse=True)

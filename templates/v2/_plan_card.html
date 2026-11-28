@@ -20,7 +20,7 @@
   {%- endfor %}
 </details>{% endif %}
 {%- endmacro -%}
-<div class="heal-prop plan-card" id="{{ c.card }}"{% if c.state == 'running' and not c.job_failed and not c.job_unknown %} aria-busy="true" hx-get="{{ url_for('plans_v2.preview', list=c.list, plan=c.plan, params=c.params_json, run=c.run, job=c.job, card=c.card if c.card != 'plan-card' else none) }}" hx-trigger="nmas:privileged from:body, nmas:device_progress from:body" hx-swap="outerHTML"{% endif %}{% if c.state != 'preview' or c.error %} data-holds-live="review"{% endif %}>
+<div class="heal-prop plan-card" id="{{ c.card }}"{% if c.state == 'running' and not c.job_failed and not c.job_unknown %} aria-busy="true" hx-get="{{ url_for('plans_v2.preview', list=c.list, plan=c.plan, run=c.run, job=c.job, card=c.card if c.card != 'plan-card' else none) }}" hx-trigger="nmas:privileged from:body, nmas:device_progress from:body" hx-swap="outerHTML"{% endif %}{% if c.state != 'preview' or c.error %} data-holds-live="review"{% endif %}>
 {%- if c.error %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not run:</strong> {{ c.error }}</p></div>
 {%- endif %}

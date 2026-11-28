@@ -170,28 +170,48 @@ _CLAIMS_MADE = re.compile(
 #: line, or after a device prompt ("edge1#", "Router(config)#") is refused by Mercury's check, held
 #: by code and not only by the prompt. Refusing by resemblance is safe: a refused answer is said
 #: and kept in History, never drawn.
+#: The configuring and exec verbs, matched case-sensitively (a device's command line is lower
+#: case; Mercury's controls are not: `Show commands`, `Delete`). A read's `show …` is not one of
+#: them: an answer cites the reads Mercury ran in that form (the read set's own words), and a
+#: read goes through Mercury's reads. A field name alone (`shutdown`, `hostname`) is not a
+#: command: a code span is one only with words after its verb, or as `STANDALONE`.
 CLI_VERBS = frozenset((
-    "aaa", "access-list", "clear", "conf", "configure", "copy", "crypto", "debug", "delete", "do",
-    "enable", "end", "erase", "exit", "hostname", "int", "interface", "ip", "ipv6", "line",
-    "logging", "no", "ntp", "reload", "router", "service", "sh", "sho", "show", "shut",
-    "shutdown", "snmp-server", "spanning-tree", "switchport", "username", "vlan", "wr", "write"))
+    "aaa", "access-list", "clear", "conf", "configure", "copy", "crypto", "debug", "default",
+    "delete", "do", "enable", "erase", "hostname", "int", "interface", "ip", "ipv6", "line",
+    "logging", "no", "ntp", "reload", "route-map", "router", "service", "shut", "shutdown",
+    "snmp-server", "spanning-tree", "switchport", "terminal", "username", "vlan", "write"))
+#: An exec command complete in one word, a terminal step on its own.
+STANDALONE = frozenset(("reload", "enable", "wr"))
+#: The read verbs, a terminal step only after a device's prompt ("edge1# show running-config").
+READ_VERBS = frozenset(("show", "sh", "sho", "ping", "traceroute"))
 _CODE_SPAN = re.compile(r"`([^`\n]+)`")
 _FENCE = re.compile(r"```[^\n]*\n(.*?)```", re.S)
-_DEVICE_PROMPT = re.compile(r"(?m)^\s*[A-Za-z][\w.-]*(?:\([\w-]+\))?[#>]\s*\S.*$")
+_DEVICE_PROMPT = re.compile(r"(?:^|`)\s*([A-Za-z][\w.-]*(?:\([\w-]+\))?[#>])[ \t]*([a-z][\w-]*)",
+                            re.M)
+
+
+def _command_in(line: str) -> bool:
+    words = line.strip().split()
+    if not words:
+        return False
+    return (len(words) >= 2 and words[0] in CLI_VERBS) or (len(words) == 1 and
+                                                           words[0] in STANDALONE)
 
 
 def device_command(text: str) -> str:
-    """The first device command *text* names (`CLI_VERBS`: in a code span, a code block's line,
-    or after a device prompt), or ``""``."""
+    """The first device command *text* names, or ``""``: a code span or a code block's line that
+    is one (`CLI_VERBS` with words after it, or `STANDALONE`), or a device prompt followed by a
+    command or a read ("edge1# reload", "Router(config)# no ip route …")."""
     text = text or ""
     spans = [m.group(1) for m in _CODE_SPAN.finditer(text)]
     spans += [line for m in _FENCE.finditer(text) for line in m.group(1).splitlines()]
     for span in spans:
-        words = span.strip().split()
-        if words and words[0].lower() in CLI_VERBS:
+        if _command_in(span):
             return span.strip()
-    prompt = _DEVICE_PROMPT.search(text)
-    return prompt.group(0).strip() if prompt else ""
+    for m in _DEVICE_PROMPT.finditer(text):
+        if m.group(2) in CLI_VERBS or m.group(2) in READ_VERBS:
+            return f"{m.group(1)} {m.group(2)}"
+    return ""
 
 
 @register("assistant", 1)
@@ -545,7 +565,9 @@ def check(words, chosen: list, read_ids=()) -> str:
                 "makes none: a plan runs only once a person approves it")
     # C4334: never a device command, in the answer or in what it says Mercury has no tool for.
     lacking = getattr(words, "no_tool", None)
-    for text in (words.answer, getattr(lacking, "wanted", ""), getattr(lacking, "why", "")):
+    handoff = getattr(words, "handoff", None)
+    for text in (words.answer, getattr(lacking, "wanted", ""), getattr(lacking, "why", ""),
+                 getattr(handoff, "words", "") if handoff is not None else ""):
         command = device_command(text)
         if command:
             return (f"its words name a device command (\"{command[:80]}\"), and the assistant "

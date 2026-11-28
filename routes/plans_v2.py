@@ -27,10 +27,12 @@ bp = Blueprint("plans_v2", __name__, url_prefix="/v2/plans")
 
 def _params_chars() -> int:
     """The longest ``params`` a request may carry (C4329: 2,000 refused a change of a few
-    steps): the largest plan the step kinds take, `plan_engine.MOST_STEPS` steps each of
-    `plan_engine.MOST_CHANGES` changes, each change's path, before and after within 512
-    characters. Derived from the plan engine's own bounds, not measured; the chat never sends
-    them in an address (its card is asked by the answer's id, `_answered_plan`)."""
+    steps): `plan_engine.MOST_STEPS` steps each of `plan_engine.MOST_CHANGES` changes (the
+    engine's own counts), and an allowance of 512 characters for each change's path, before and
+    after (an allowance, not a bound the engine holds; not measured). A change's parameters
+    never travel in an address: the chat asks its card by the answer's id (`_answered_plan`),
+    and a running card's redraw names only its run and job; a named plan's few parameters are in
+    its address as before."""
     from modules import plan_engine as E
 
     return E.MOST_STEPS * E.MOST_CHANGES * 512
