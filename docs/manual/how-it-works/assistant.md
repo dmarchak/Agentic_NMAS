@@ -72,7 +72,9 @@ which).
    each, runs those it allows, and makes one more recorded call with their answers.
 5. `check`: {{product}} checks the answer before it is drawn: every section it cites is one
    it was sent, every read it cites is one that ran, every screen it names is one this
-   manual names, and no word of it says a change was made (the assistant makes none). An
+   manual names, no word of it says a change was made (the assistant makes none), and
+   neither it nor what it says Mercury has no tool for names a device command (a command in
+   code, or after a device's prompt: a read goes through Mercury's reads). An
    answer that fails is never drawn: **Couldn't answer:** says why, and the call is in
    History.
 6. `draw`: the answer is drawn with its sources ([below](#sources)); a plan it proposes is

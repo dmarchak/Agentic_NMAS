@@ -72,7 +72,7 @@ def _V4():
 
 
 def _v4(**over):
-    return _V4()(**dict(words("Mercury can describe both ends."), no_tool=None, **over))
+    return _V4()(**dict(words("Mercury can describe both ends."), **{"no_tool": None, **over}))
 
 
 def _steps_check(steps) -> str:
@@ -202,6 +202,30 @@ class TestTheNevers:
         for fine in ("Approve the plan and Mercury applies both steps.",
                      "History shows Mercury deployed r2's intent on Tuesday (read:1).",
                      "Once approved, the change is applied step by step."):
+            assert assistant.check(_v4(answer=fine, cites=["x"]), [{"link": "x"}]) == "", fine
+
+
+    @pytest.mark.parametrize("said", [
+        "Run `show ip ospf neighbor` on r2.",
+        "On the device:\n```\nconfigure terminal\ninterface Gi2\n shutdown\n```",
+        "Type `reload` at the console.",
+        "r2# show running-config | section line vty",
+        "Router(config)# no ip route 0.0.0.0 0.0.0.0"])
+    def test_an_answer_naming_a_device_command_is_refused(self, said):
+        """NEVER (C4334; CLAUDE.md, No terminal steps): an answer, or what it says Mercury has
+        no tool for, never names a device command: held by Mercury's check, not the prompt
+        alone. Mercury's own words for its screens and controls pass."""
+        why = assistant.check(_v4(answer=said, cites=["x"]), [{"link": "x"}])
+        assert why.startswith("its words name a device command"), why
+        lacking = _V4().model_fields["no_tool"].annotation.__args__[0](
+            wanted="a reload of r2", why=said)
+        why = assistant.check(_v4(answer="Mercury has no tool for this.", cites=["x"],
+                                  no_tool=lacking), [{"link": "x"}])
+        assert why.startswith("its words name a device command"), why
+        for fine in ("Open **Show commands**, choose r2 and the OSPF neighbours read.",
+                     "Use **Change it in words…** on r2's Intent tab, then preview it.",
+                     "Mercury has no operation that reloads a whole site at once.",
+                     "The `description` field of GigabitEthernet2 holds the old text."):
             assert assistant.check(_v4(answer=fine, cites=["x"]), [{"link": "x"}]) == "", fine
 
 

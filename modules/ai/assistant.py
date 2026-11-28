@@ -165,6 +165,35 @@ _CLAIMS_MADE = re.compile(
     r"(?:made|applied|deployed|done|complete|committed)\b", re.I)
 
 
+#: C4334 (CLAUDE.md, "No terminal steps"): the words a device's command line starts with. An
+#: answer, or its "Mercury has no tool for this", that names one in a code span, a code block's
+#: line, or after a device prompt ("edge1#", "Router(config)#") is refused by Mercury's check, held
+#: by code and not only by the prompt. Refusing by resemblance is safe: a refused answer is said
+#: and kept in History, never drawn.
+CLI_VERBS = frozenset((
+    "aaa", "access-list", "clear", "conf", "configure", "copy", "crypto", "debug", "delete", "do",
+    "enable", "end", "erase", "exit", "hostname", "int", "interface", "ip", "ipv6", "line",
+    "logging", "no", "ntp", "reload", "router", "service", "sh", "sho", "show", "shut",
+    "shutdown", "snmp-server", "spanning-tree", "switchport", "username", "vlan", "wr", "write"))
+_CODE_SPAN = re.compile(r"`([^`\n]+)`")
+_FENCE = re.compile(r"```[^\n]*\n(.*?)```", re.S)
+_DEVICE_PROMPT = re.compile(r"(?m)^\s*[A-Za-z][\w.-]*(?:\([\w-]+\))?[#>]\s*\S.*$")
+
+
+def device_command(text: str) -> str:
+    """The first device command *text* names (`CLI_VERBS`: in a code span, a code block's line,
+    or after a device prompt), or ``""``."""
+    text = text or ""
+    spans = [m.group(1) for m in _CODE_SPAN.finditer(text)]
+    spans += [line for m in _FENCE.finditer(text) for line in m.group(1).splitlines()]
+    for span in spans:
+        words = span.strip().split()
+        if words and words[0].lower() in CLI_VERBS:
+            return span.strip()
+    prompt = _DEVICE_PROMPT.search(text)
+    return prompt.group(0).strip() if prompt else ""
+
+
 @register("assistant", 1)
 class AssistantAnswer(StrictModel):
     """The model's answer: the steps, the passages they rest on (their links, as sent), whether
@@ -514,6 +543,14 @@ def check(words, chosen: list, read_ids=()) -> str:
         # it. Its words are never drawn saying otherwise.
         return (f"its words say a change was made (\"{claim.group(0)}\"), and the assistant "
                 "makes none: a plan runs only once a person approves it")
+    # C4334: never a device command, in the answer or in what it says Mercury has no tool for.
+    lacking = getattr(words, "no_tool", None)
+    for text in (words.answer, getattr(lacking, "wanted", ""), getattr(lacking, "why", "")):
+        command = device_command(text)
+        if command:
+            return (f"its words name a device command (\"{command[:80]}\"), and the assistant "
+                    "never gives one: a read goes through Mercury's reads, and a change "
+                    "through a plan you approve or its gated flow")
     return ""
 
 
