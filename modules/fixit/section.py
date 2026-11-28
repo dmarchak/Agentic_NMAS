@@ -944,8 +944,7 @@ def _contract(out: dict, network: str, found: dict, inc, rec: dict, tried: dict,
             key = run.get("key") or ""
             ran = next((o for o in offers if key and o["key"] == key), {})
             name = ran.get("name") or saved_plans.run_name(network, key)
-            out["working"] = (f"Running {name}" if run.get("by") == "person"
-                              else f"Self-healing: fixing with saved script {name}")
+            out["working"] = saved_plans.running_words(network, run, name)
             out["working_step"] = run["step"]
             out["fix_running"] = {"key": run.get("key") or "", "name": name}
             out["status"], out["status_source"] = out["working"], ""

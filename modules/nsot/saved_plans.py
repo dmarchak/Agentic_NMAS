@@ -1524,6 +1524,17 @@ def run_name(network: str, key: str) -> str:
     return (str(t.words or "").split(":")[0].strip() or key) if t is not None else key
 
 
+def running_words(network: str, run: dict, name: str = "") -> str:
+    """What a fix running on an incident (*run*, `running_on`'s answer) is said as, the one home
+    of the words the incident's card and the Incidents list both draw (C4310): a person's press
+    "Running <name>", self-healing's own run "Self-healing: fixing with saved script <name>";
+    *name* the caller's own name for the fix (the card's offer), else its key's (`run_name`).
+    A read."""
+    name = name or run_name(network, run.get("key") or "")
+    return (f"Running {name}" if run.get("by") == "person"
+            else f"Self-healing: fixing with saved script {name}")
+
+
 def running_on(network: str, incident_id: str) -> dict:
     """The saved script's run on *incident_id* still running in this process (its job's page is
     the incident's), ``{"job", "step"}`` with what it is doing now, or ``{}``; with ``key``

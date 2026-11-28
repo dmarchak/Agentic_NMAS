@@ -118,6 +118,9 @@ class TestASavedScriptsRun:
 
         monkeypatch.setattr(capture_job, "start", REAL_START)
         monkeypatch.setattr(SP, "script_for", lambda network, found: (dict(SCRIPT), None))
+        # The fix its job's page names (C4302: every run's page names it, `&fix=`) is found by
+        # its key among the saved fixes (C4310: the list names the job's own fix).
+        monkeypatch.setattr(SP, "fixes", lambda network=None, **k: {SCRIPT["key"]: dict(SCRIPT)})
         iid = planted()["cant_fix"]
         steps, go, attached = [], threading.Event(), threading.Event()
 
@@ -129,10 +132,11 @@ class TestASavedScriptsRun:
             return {"state": "done", "words": ""}
         job = capture_job.start(NET, SP.actor_words(SCRIPT), SCRIPT["promoted_by"], work,
                                 kind=SP.JOB_KIND, actor_kind="policy",
-                                page=f"/v2/incident/{iid}?list={NET}")
+                                page=f"/v2/incident/{iid}?list={NET}&fix={SCRIPT['key']}")
         try:
             assert attached.wait(60)
-            assert SP.running_on(NET, iid) == {"job": job, "step": "starting"}
+            assert SP.running_on(NET, iid) == {"job": job, "step": "starting",
+                                               "key": SCRIPT["key"], "by": "policy"}
             steps.append({"step": "hold", "result": "ok"})
             assert SP.running_on(NET, iid)["step"] == "checking preconditions"
             steps.append({"step": "send", "result": "ok"})
@@ -151,6 +155,41 @@ class TestASavedScriptsRun:
             go.set()
             assert capture_job.wait(job, 60)
         assert SP.running_on(NET, iid) == {}, "a run that ended is no longer running"
+
+    def test_a_persons_run_is_named_on_the_list_by_its_own_fix_not_the_automatic_match(
+            self, world, monkeypatch):  # noqa: F811
+        # C4310: the list named the first Automatic fix that matched (`script_for`) and said
+        # "Self-healing:" though a person pressed Run on another fix.
+        from modules import op_progress
+        from modules.nsot import saved_plans as SP
+
+        pressed = {"key": "bpdu-any", "name": "BPDU guard recovery (any port)"}
+        monkeypatch.setattr(capture_job, "start", REAL_START)
+        monkeypatch.setattr(SP, "script_for", lambda network, found: (dict(SCRIPT), None))
+        monkeypatch.setattr(SP, "fixes", lambda network=None, **k: {
+            SCRIPT["key"]: dict(SCRIPT), pressed["key"]: dict(pressed)})
+        iid = planted()["cant_fix"]
+        steps, go, attached = [], threading.Event(), threading.Event()
+
+        def work(_job):
+            op_progress.attach((("hold", "Hold"), ("send", "Send"), ("verify", "Verify")),
+                               steps)
+            attached.set()
+            go.wait(60)
+            return {"state": "done", "words": ""}
+        # A person's Run, as routes/fixit_v2.py starts it: its kind and its page naming the fix.
+        job = capture_job.start(NET, f"{pressed['name']} on {iid}", "op@example.com", work,
+                                kind=SP.JOB_KIND,
+                                page=f"/v2/incident/{iid}?list={NET}&fix={pressed['key']}")
+        try:
+            assert attached.wait(60)
+            row = row_of(iid)
+            assert row["status"] == "Running BPDU guard recovery (any port) · starting", \
+                row["status"]
+            assert "Self-healing" not in row["status"] and SCRIPT["name"] not in row["status"]
+        finally:
+            go.set()
+            assert capture_job.wait(job, 60)
 
     def test_an_automatic_run_is_self_healings_naming_who_approved_it(self):
         from modules import display_names

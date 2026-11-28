@@ -246,9 +246,9 @@ def _row(network: str, found: dict, fixit_ids: set) -> dict:
         from modules.nsot import saved_plans
         run = saved_plans.running_on(network, found["id"])
         if run:
-            e = saved_plans.script_for(network, found)[0] or {}
-            fx = dict(fx, working=(f"Self-healing: fixing with saved script "
-                                   f"{e.get('name') or ''} · {run['step']}"))
+            # The job's own fix and who started it, in the card's words (C4310), never the first
+            # Automatic fix that matches.
+            fx = dict(fx, working=f"{saved_plans.running_words(network, run)} · {run['step']}")
     who = tl["who"]
     by = ((identity.display_name(who["actor"]) if who["actor"] else "a person not recorded")
           if who["kind"] == "person" else "Mercury" if who["kind"] == "none" else "")
