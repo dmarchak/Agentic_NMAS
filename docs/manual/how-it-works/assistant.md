@@ -59,7 +59,10 @@ which).
    otherwise (host key and re-key, password and secret reference, reboot and reload); and a
    boost for the page of the screen you asked from. Below a floor (no passage scores enough,
    or the best meets too little of your question) no passage is sent; with nothing to read
-   either, the answer is **The manual doesn't cover this.** and no call is made. The ranking
+   either, the answer is **The manual doesn't cover this.** and no call is made, unless you
+   asked for a change (your words start "set", "add", "reserve", "deploy" and the like): that
+   is asked all the same, and answered with a plan of {{product}}'s operations or what it has no
+   tool for. The ranking
    reads your question with any secret masked out, so a pasted value never ranks the manual.
 3. `ask`: one recorded, capped call through {{product}}'s AI gateway, as you (trigger
    person): the instructions, the list of screens, the plans and the reads it may ask for

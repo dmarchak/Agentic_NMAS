@@ -485,6 +485,37 @@ def test_the_assistant_reaches_no_run_start_or_approve():
     assert N.findings(seen, never) == []
 
 
+class TestAChangeRequestReachesTheModel:
+    """C4330, measured 2026-11-28: of twelve typical change requests two chose no passage of the
+    manual (a DHCP reservation, an OSPF cost); with no device in view they were drawn "The
+    manual doesn't cover this" and made no call, so no plan was offered though Mercury has one.
+    A change request is asked of the model; a question the manual does not cover still is not."""
+
+    RESERVE = "Reserve 192.0.2.50 for the printer with MAC 00:11:22:33:44:55"
+
+    def test_the_premise_no_passage_is_chosen(self):
+        from modules.ai import manual_index
+        assert manual_index.select(self.RESERVE) == []
+
+    @pytest.mark.parametrize("q", [
+        RESERVE, "Please set the OSPF cost on edge1 Gi2 to 50",
+        "Can you remove the old NTP server from edge1?", "change edge1's hostname"])
+    def test_a_change_request_is_one(self, q):
+        assert assistant.asks_a_change(q) is True
+
+    @pytest.mark.parametrize("q", [
+        "What is the capital of France?", "How do I reserve an address?",
+        "Why is edge1's OSPF down?", "settings for NTP", ""])
+    def test_a_question_is_not(self, q):
+        assert assistant.asks_a_change(q) is False
+
+    def test_with_no_passage_and_nothing_to_read_a_change_is_asked_a_question_is_not(self):
+        asked = assistant.prepare(self.RESERVE, screen="", place={})
+        assert "done" not in asked and asked["chosen"] == [], asked.get("done")
+        gap = assistant.prepare("What is the capital of France?", screen="", place={})
+        assert gap["done"]["state"] == "not_covered" and gap["done"]["gap"] is True
+
+
 def test_a_no_tool_reason_is_drawn_as_its_own_sentence():
     """Shot of artboard G, 2026-11-28: the reason after "Mercury has no tool for this: …." was
     drawn as the model wrote it, lower case after a full stop; it is its own sentence."""

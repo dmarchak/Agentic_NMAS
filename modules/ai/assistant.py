@@ -705,6 +705,28 @@ STOPPED = ("Stopped by you. No call was made after Stop; a round of reads alread
 STOPPED_USE = "stopped by the person"
 
 
+#: C4330: the verbs a person asks a change with. A question that starts with one (after "please"
+#: or "can you") is a change request, asked of the model though no passage of the manual is
+#: chosen and nothing may be read: the model answers it with a plan of Mercury's operations or
+#: "Mercury has no tool for this", neither of which cites the manual. Measured 2026-11-28 on twelve
+#: typical requests: two chose no passage (a DHCP reservation, an OSPF cost), so without a device
+#: in view they were drawn "The manual doesn't cover this" and no plan was offered. Matching a
+#: verb only spends the one call the person pressed Send for; it allows nothing else.
+CHANGE_VERBS = frozenset((
+    "add", "apply", "assign", "bring", "change", "configure", "create", "delete", "deploy",
+    "describe", "disable", "enable", "make", "move", "push", "remove", "rename", "reserve",
+    "restore", "set", "shut", "start", "turn", "update"))
+_LEAD_IN = re.compile(r"^(?:please\s+|(?:can|could|would|will)\s+you\s+(?:please\s+)?)",
+                      re.I)
+
+
+def asks_a_change(question: str) -> bool:
+    """Whether *question* asks for a change (`CHANGE_VERBS`, its first word after a polite lead
+    in), so it is asked of the model even when no passage is chosen (C4330)."""
+    words = _LEAD_IN.sub("", (question or "").strip()).split()
+    return bool(words) and words[0].lower().strip(",.:;!?") in CHANGE_VERBS
+
+
 def prepare(question: str, *, screen: str = "", place: dict = None,
             reads_off: str = NO_PLACE) -> dict:
     """`answer`'s steps before its call, the one code path a person's press and an evaluation's
@@ -729,7 +751,7 @@ def prepare(question: str, *, screen: str = "", place: dict = None,
     ranked_by = re.sub(r"<redacted[^>]*>", " ", redact.redact_typed(question))
     chosen = manual_index.select(ranked_by, screen=screen)
     drawn = [{"link": p["link"], "page": p["page"], "heading": p["heading"]} for p in chosen]
-    if not chosen and (reads_off or not place.get("devices")):
+    if not chosen and (reads_off or not place.get("devices")) and not asks_a_change(question):
         return {"done": {"ok": True, "state": "not_covered", "error": "", "detail": NOT_COVERED,
                          "passages": [], "gap": True}}
     data = parts(question, screen, chosen, place)
