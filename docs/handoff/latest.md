@@ -1,6 +1,36 @@
-# Handoff: main red only on C4090; nothing deployed (2026-11-25, 02:30 Denver)
+# Handoff: the assistant as an engineer, deployed green (2026-11-28, 02:30 Denver)
 
-## 0000000000000000. The night of 2026-11-24 to 25 (17:05 to 02:30 Denver): read this first
+## The evening of 2026-11-27 to 28 (to 02:30 Denver): read this first
+
+- **State.** The host runs 72ddb6cde since 07:20 UTC (CI #2364 and #2365 green, SMOKE OK, Default
+  in dry run). Main is 71e4ecc86 (docs on top of it) plus this handoff's commit. Every deploy
+  tonight went the CI path (the laptop's WinBoat VM holds 8 GiB, under the gate's floor): a
+  pre-gate, a ci/ branch, GitHub CI on the exact sha, then main fast-forwarded. Needs attention
+  on the host at 07:3x UTC: no rows, 8 acknowledged; Mercury itself holds coverage-nightly and
+  mutation-nightly (the first failed on C4090's loop scan before C4090 landed: it clears at its
+  next scheduled run; C4339, C4279 closed).
+- **What landed** (every sha with its tests and red-on-parent evidence in its message; the day's
+  report, docs/handoff/reports/2026-11-27.md, has the list):
+  - The Assistant: a model selector (Haiku default, Sonnet, Opus; the egress hand check; reviewed,
+    its HIGH and MEDIUM fixed); the senior network engineer (a change is one plan of Mercury's
+    operations, approved by hash in the chat; "Mercury has no tool for this" said and recorded;
+    reads of named devices; reviewed SAFE); then C4329 (a long change previews), C4334 (no device
+    command in its words, narrowed after review), C4332 (a dropped plan says which step), C4330
+    (a change request reaches the model though no passage is chosen; review's MEDIUMs fixed),
+    and the panel opening empty on the next page in Firefox 156 (C4328).
+  - Needs attention: Acknowledged only under its chip; Mercury itself a plain list; r7's failed
+    run cleared by the later baseline (C4322); a command plan titled by its plan's name (C4321);
+    one slow Loki answer asked once more within a measured bound (C4327, the operator's "How do I
+    clear this error?").
+  - The sidebar's Self-healing removed; SDN's mode in words, never "HITL" (C4295); C4310, C4305,
+    C4300.
+- **Waiting on the operator:** OPERATOR.md#assistant-v6-cases (measure prompt v6, about $1 on
+  Haiku); OPERATOR.md#automatic-port-scope (C4320); the break-glass export.
+- **Next:** Restore or keep's defaults table (Stage 6): its nine lines are measured and where it
+  applies is written (docs/RESTORE_OR_KEEP_DESIGN.md, item 1); build it with the independent
+  review device-facing comparisons get. Then the register's open B rows.
+
+## 0000000000000000. The night of 2026-11-24 to 25 (17:05 to 02:30 Denver)
 
 - **State.** Main's head is b6688704 plus this handoff's commit (the last code commit is
   78a0599f; those after it are docs and the register). CI on every push from cdd4e46c to

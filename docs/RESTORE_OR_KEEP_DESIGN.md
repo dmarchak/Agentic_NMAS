@@ -73,6 +73,16 @@ would send.
 
    `license boot level …` names the image's licence level, which a person may change: it joins
    the table only as the line this image prints when nothing sets it, so another level differs.
+
+   **Where it applies (read 2026-11-28 for the build):** not in `platform_defaults.HIDDEN`.
+   That table is the opposite direction (a target line the device holds without printing), and
+   `deploy.classify_diff` treats a HIDDEN target line as satisfied and never sends it, so a
+   printed default added there would keep intent's `no mop enabled` from ever reaching a device
+   printing `mop enabled`: a deploy that never converges. The printed defaults are left out of
+   the device's side only, where a comparison reads it and intent lacks the line:
+   `roundtrip.canonical_lines` (through `change_rows` and `canonical_diff`), `roundtrip.compare`'s
+   running side (Intent-Match, so the Intent row and Save All's baseline), and the drift check's
+   residue; never in the program the deploy builds or in verify's read-back.
 2. **Restore intent: a true replace.** Where the platform has `configure replace` (IOS-XE; IOS
    15.x with an archive), the rendered intent is sent as a file to the device's own flash and
    replaced onto running: preview (the exact file, masked, and the diff it will make, both
