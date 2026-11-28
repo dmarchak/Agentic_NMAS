@@ -4,8 +4,9 @@
 
 - **State.** The host runs cd355a7dc, deployed 08:38 UTC on CI #2373 green.
   - The deploy's checks: SMOKE OK, 0 tracebacks, Default in dry run, the SDN lab off.
-  - Main is cd355a7dc plus this handoff's commit. Main's own CI run on cd355a7dc (#2374) is
-    green as well.
+  - Main is cd355a7dc plus three docs commits: the handoff b2ba09f1c, the register's
+    measurements 3a4b0b366 and this line's. Every CI run on them is green (#2374 on cd355a7dc,
+    #2375, #2376).
   - Needs attention on the host at 08:40 UTC: no rows, 8 acknowledged, and Mercury itself holds
     the two scheduled-job warnings, as before.
   - The deploy went the CI path again (pre-gate, then a ci/ branch). The laptop's WinBoat VM
