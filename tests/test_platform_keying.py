@@ -65,6 +65,9 @@ KEYING = {
     # TELEMETRY_PLATFORMS: the dialect the telemetry section applies to.
     "modules/nsot/profile_propose.py":      "dialect",
     "modules/nsot/ip_sla_policy.py":        "dialect",
+    # PRINTED: the lines an image prints at its default, each rule for the dialect it was
+    # measured on, compared with the caller's dialect (Restore or keep's prerequisite).
+    "modules/nsot/platform_defaults.py":    "dialect",
     "modules/nsot/manifest.py":             "dialect",
     # The OSPFv3 target file is IOS-XE only (vIOS does not implement
     # OSPFV3-MIB): compared with platform_for_device(), a dialect.
