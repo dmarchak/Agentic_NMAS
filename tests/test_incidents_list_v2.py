@@ -552,9 +552,10 @@ class TestPressedInARealBrowser:
                 # the open count is the page's own Open tab's, read in the browser.
                 count = b.wait_for("var t = document.querySelector('a.tab[data-tab=open]');"
                                    " return t && t.textContent.trim()")
-                b.click('nav.sidebar a.nav-item[href*="tab=heal"]')
-                heal = b.wait_for("return location.pathname.indexOf('/v2/settings/network/')"
-                                  " === 0 && " + self.WHERE[7:])
+                # The operator, 2026-11-28: Self-healing left the sidebar (it only opened
+                # Settings' Self-healing tab): no sidebar item leads there.
+                heal = b.js("return document.querySelectorAll("
+                            "'nav.sidebar a[href*=\"tab=heal\"]').length")
             finally:
                 b.go("about:blank")
                 browser.close_socketio_sessions()
@@ -563,14 +564,16 @@ class TestPressedInARealBrowser:
         section = before[before.index("TROUBLESHOOTING") + 1:before.index("OBSERVE")]
         # Premise corrected (measured 2026-11-18: templates/v2/base.html draws Troubleshooting ›
         # Fixes between them, C3849, board fixes-list approved by the operator 2026-11-16).
-        assert section == ["Incidents", "Fixes", "Self-healing"], section
+        # Premise corrected again (the operator, 2026-11-28: "Remove it from the sidebar"):
+        # Self-healing is not drawn.
+        assert section == ["Incidents", "Fixes"], section
         # Premise corrected (C4084, the operator, 2026-11-18: "'Closed but not confirmed' stays
         # open and needs a person"; C3876 had put the rolled-back heal its store closed on
         # Closed): it is on Open, as TestTheRows holds: 3 open.
         assert landed[1] == "Incidents" and landed[2].startswith("3 open"), landed
-        assert kids == ["svg span", "svg span"], kids
+        assert kids == ["svg span"], kids
         assert count == "Open · 3", count
-        assert heal == f"/v2/settings/network/{NET}?tab=heal", heal
+        assert heal == 0, heal
 
     def test_a_row_opens_its_incident_whose_breadcrumb_leads_back_and_search_narrows(
             self, planted):

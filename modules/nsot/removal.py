@@ -898,8 +898,8 @@ def removable(target: str, captured: str, *, mgmt_ip: str, dialect: str) -> list
         if merged:
             into.setdefault(merged, []).append(c)
     # C4305: the split stanzas merge only when none holds a line the target's stanza does not
-    # set (the deploy sets its settings and removes nothing): r8's `line vty 1` held `length 0`,
-    # so IOS kept printing three stanzas while the preview said they merge.
+    # set (the deploy sets its settings and removes nothing): a router's `line vty 1` held
+    # `length 0`, so IOS kept printing three stanzas while the preview said they merge.
     apart = {merged: _kept_apart(units, target, merged) for merged, units in into.items()}
     out = []
     for c, why, merged in judged_each:

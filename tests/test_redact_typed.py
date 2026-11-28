@@ -123,8 +123,10 @@ def test_the_assistant_s_gap_record_never_keeps_a_prose_secret(monkeypatch, tmp_
 
 def test_the_typed_paths_use_it():
     """Each place a person's typed words leave the host or are pushed masks them with
-    `redact_typed`: the gateway's typed parts, the assistant's ranking and gap record, a
-    commit message, and the two boxes that draw a masked question back."""
+    `redact_typed`: the gateway's typed parts, the assistant's ranking, gap record and the
+    device names it reads from the question (`named_devices`, 2026-11-28: a name is matched
+    in the masked words, never the raw ones), a commit message, and the two boxes that draw a
+    masked question back."""
     import inspect
 
     from modules.ai import assistant, gateway
@@ -132,6 +134,7 @@ def test_the_typed_paths_use_it():
     from routes import intent_v2, v2
     assert "redact.redact_typed(" in inspect.getsource(gateway.mask_typed)
     assert "redact.redact_typed(" in inspect.getsource(repo.masked_message)
-    assert inspect.getsource(assistant).count("redact.redact_typed(") == 2
+    assert inspect.getsource(assistant).count("redact.redact_typed(") == 3
+    assert "redact.redact_typed(" in inspect.getsource(assistant.named_devices)
     assert "redact.redact_typed(" in inspect.getsource(intent_v2)
     assert "redact.redact_typed(" in inspect.getsource(v2)

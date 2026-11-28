@@ -580,9 +580,9 @@ def diffs(repo: str, hostname: str, committed_render, edited_render: str,
     edit_added = set(edit["added"])
     kept = _kept(edit["removed"], edit["added"])
     # C4305 (2): a line this edit deletes is left in place only where the device still holds
-    # it: its capture's lines the edited render lacks (`deploy["removed"]`). r8's edit deleted
-    # `line vty 0 4`, which r8 printed split (`line vty 0`, `1`, `2 4`), and the warning named
-    # it. With no capture to read, every one is named, as before.
+    # it: its capture's lines the edited render lacks (`deploy["removed"]`). A router's edit
+    # deleted `line vty 0 4`, which it printed split (`line vty 0`, `1`, `2 4`), and the warning
+    # named it. With no capture to read, every one is named, as before.
     on_device = set(deploy["removed"])
     not_removed = [p for p in kept if p in on_device] if (capture or "").strip() else kept
     # How the device departs from this intent in lines a deploy keeps (C884): the device's

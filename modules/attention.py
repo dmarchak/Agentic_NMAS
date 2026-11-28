@@ -1991,8 +1991,8 @@ def deploy_source(read=None, saves=None, adjacency=None, baseline=None) -> dict:
     page) and which a save read back after the receipt clears, as `unsaved`'s does.
 
     A run that failed and left nothing unsaved or held is superseded by an earned baseline
-    recorded after it (C4322: r7's failed command plan stood while r7 was at intent in
-    baseline 20261127T233631Z): that baseline measured the device at its intent, so the row
+    recorded after it (C4322: a router's failed command plan stood while the router was at
+    intent in a later baseline): that baseline measured the device at its intent, so the row
     clears and What was checked names the baseline. *baseline* replaces the read of the newest
     one (`_newest_baseline`, tests), asked at most once and only when such a row would be
     drawn."""
